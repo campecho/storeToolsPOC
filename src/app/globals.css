@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens from the handoff wires
+ * (docs/handoff/feedback-tracker/README.md — "Design tokens").
+ * Grayscale wireframe values are used as-is per the fidelity contract;
+ * one-off structural grays stay inline as arbitrary values.
+ */
+@theme {
+  /* Motiva Sans is the Staples brand face — see public/fonts/README.md.
+     The handoff prototype itself falls back to system-ui (no font binaries
+     ship with it), so the fallback stack matches wire fidelity. */
+  --font-sans: "Motiva Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* brand red — action / active / primary CTA / bug accent */
+  --color-brand: #cc0000;
+  --color-brand-press: #a30000;
+  --color-brand-tint: #fbebeb;
+  --color-brand-border: #f0c9c9;
+  --color-brand-border-soft: #e2b4b4;
+  --color-brand-deep: #9a1818;
+  --color-brand-muted: #a86b6b;
+
+  /* success green — shipped / fixed */
+  --color-success: #2e8b3d;
+  --color-success-deep: #2e6b36;
+  --color-success-tint: #eef7ef;
+  --color-success-border: #cfe6d3;
+
+  /* info / link blue — links, Planned, feature accent */
+  --color-info: #086dd2;
+  --color-info-tint: #eef4fb;
+
+  /* ink */
+  --color-ink: #1a1a1a;
+
+  /* status dots */
+  --color-status-new: #9a9a9a;
+  --color-status-planned: #086dd2;
+  --color-status-done: #2e8b3d;
+  --color-status-declined: #bcbcbc;
+
+  /* motion (handoff README — "Motion" table; plain ease, no spring) */
+  --animate-pulse-count: pulseCount 0.6s ease;
+  --animate-pop-in: popIn 0.18s ease;
+  --animate-fade-in: fadeIn 0.16s ease;
+  --animate-slide-in: slideIn 0.22s ease;
+  --animate-ring-expand: ringExpand 1s ease-out;
+  --animate-ring-loop: ringExpand 1.4s ease-out infinite;
+  --animate-star-pop: starPop 0.5s ease-out;
+}
+
+@keyframes pulseCount {
+  0% { transform: scale(1); }
+  32% { transform: scale(1.45); }
+  100% { transform: scale(1); }
+}
+@keyframes popIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideIn {
+  from { transform: translateX(30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes ringExpand {
+  from { transform: scale(0.35); opacity: 0.5; }
+  to { transform: scale(1.75); opacity: 0; }
+}
+@keyframes starPop {
+  0% { transform: scale(0) rotate(-25deg); opacity: 0; }
+  55% { transform: scale(1.15) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+@layer base {
+  body {
+    @apply bg-white font-sans font-light text-[13px] text-[#333] antialiased;
+  }
+  input,
+  textarea {
+    font-family: inherit;
+  }
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #c6c6c6;
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
