@@ -39,11 +39,15 @@ pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`
   **preserved per-store reports** (own store highlighted, each store's words kept verbatim),
   and the non-threaded comments list. Opens from any board row; vote/follow stay in sync with
   the row underneath.
-- **Interim stub:** `/feedback/releases` (banner + bare version list; full release cards are
-  Step 5).
+- **Step 5 — What's new / Releases** (`/feedback/releases`): the "You asked, we delivered."
+  banner with the impact tally, and reverse-chronological release cards — version chip, date,
+  Latest / "Your store asked" badges, plain-language summary, and the delivered items
+  (features + fixes) with store credits ("Your store + 8 asked" in red vs "10 stores asked" in
+  gray) and "View →" cross-links that open the item's board detail. Item ↔ release links work
+  in both directions.
 
-Next up per the plan: **Step 5** (the full releases surface), then
-notifications/celebrate.
+Next up per the plan: **Step 6** (notifications dropdown + celebrate moment), then
+persistence/Docker polish (Step 7).
 
 ## Where things live
 

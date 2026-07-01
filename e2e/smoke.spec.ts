@@ -196,6 +196,41 @@ test.describe("Item detail drawer", () => {
   });
 });
 
+test.describe("What's new / Releases", () => {
+  test("release cards render badges, credits, and delivered items", async ({ page }) => {
+    await page.goto("/feedback/releases");
+
+    await expect(page.getByText("You asked, we delivered.")).toBeVisible();
+    await expect(page.getByText("7 improvements")).toBeVisible();
+
+    const latest = page.getByTestId("release-v1.4");
+    await expect(latest.getByText("Latest")).toBeVisible();
+    await expect(latest.getByText("Your store asked")).toBeVisible();
+    await expect(latest.getByText("Cleaner edges, straighter cuts, faster proofs.")).toBeVisible();
+
+    // credits: red when this store backed it, gray otherwise
+    await expect(latest.getByText("Your store + 8 asked")).toHaveCSS("color", "rgb(204, 0, 0)");
+    await expect(latest.getByText("10 stores asked")).toHaveCSS("color", "rgb(153, 153, 153)");
+
+    // v1.0 launch row: no stores recorded → no credit, no View link
+    const launch = page.getByTestId("release-v1.0");
+    await expect(launch.getByText("Unified file intake and product picker")).toBeVisible();
+    await expect(launch.getByText("View →")).toBeHidden();
+    await expect(launch.getByText("asked", { exact: false })).toHaveCount(0); // no credit line renders
+  });
+
+  test("View → cross-links a delivered item back to its board detail", async ({ page }) => {
+    await page.goto("/feedback/releases");
+
+    await page.getByTestId("release-v1.4").getByText("One-click proof PDF").click();
+    await expect(page).toHaveURL(/\/feedback\/board/);
+    const drawer = page.getByTestId("detail-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText("One-click proof PDF I can text to the customer");
+    await expect(drawer).toContainText("Shipped in v1.4");
+  });
+});
+
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
     await page.goto("/");
