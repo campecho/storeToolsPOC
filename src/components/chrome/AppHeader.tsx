@@ -11,6 +11,7 @@ import { useFeedbackStore, selectUnreadCount } from "@/store";
 export function AppHeader() {
   const store = useFeedbackStore((s) => s.store);
   const openReport = useFeedbackStore((s) => s.openReport);
+  const toggleNotif = useFeedbackStore((s) => s.toggleNotif);
   const unread = useFeedbackStore(selectUnreadCount);
 
   return (
@@ -43,7 +44,8 @@ export function AppHeader() {
         <button
           type="button"
           aria-label="Notifications"
-          title="Notifications"
+          data-testid="notif-bell"
+          onClick={toggleNotif}
           className="relative flex h-[33px] w-[33px] cursor-pointer items-center justify-center rounded-[7px] border border-[#e0e0e0] bg-white hover:bg-[#f6f6f6]"
         >
           <Bell size={17} strokeWidth={1.8} className="text-[#555]" />

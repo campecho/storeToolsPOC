@@ -40,9 +40,12 @@ export function CapturedContextPanel() {
         ))}
       </div>
 
-      <div
+      <button
+        type="button"
         onClick={toggleAttach}
-        className="flex cursor-pointer items-center gap-[11px] border-t border-[#eee] px-[14px] py-3"
+        role="checkbox"
+        aria-checked={attachFile}
+        className="flex w-full cursor-pointer items-center gap-[11px] border-t border-[#eee] px-[14px] py-3 text-left"
         style={{ background: attachFile ? "#fbf5f5" : "#fff" }}
       >
         <div
@@ -58,7 +61,7 @@ export function CapturedContextPanel() {
           <div className="text-[12px] font-semibold text-[#444]">Attach the customer file that misbehaved</div>
           <div className="text-[11px] text-[#999]">Smith_BizCard_v2.pdf · handled as sensitive, purged in 14 days.</div>
         </div>
-      </div>
+      </button>
     </div>
   );
 }

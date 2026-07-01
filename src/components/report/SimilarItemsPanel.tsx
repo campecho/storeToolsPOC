@@ -18,7 +18,7 @@ export function SimilarItemsPanel() {
 
   const headline =
     similar.length === 1
-      ? "1 store already raised something like this"
+      ? "1 related item already open — back it instead of filing a duplicate"
       : `${similar.length} related items already open — some backed by many stores`;
 
   return (

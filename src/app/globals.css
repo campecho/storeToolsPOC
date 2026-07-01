@@ -48,6 +48,11 @@
   --animate-ring-expand: ringExpand 1s ease-out;
   --animate-ring-loop: ringExpand 1.4s ease-out infinite;
   --animate-star-pop: starPop 0.5s ease-out;
+
+  /* symmetric exits — overlays leave the way they arrived */
+  --animate-pop-out: popOut 0.18s ease forwards;
+  --animate-fade-out: fadeOut 0.16s ease forwards;
+  --animate-slide-out: slideOut 0.22s ease forwards;
 }
 
 @keyframes pulseCount {
@@ -75,6 +80,18 @@
   0% { transform: scale(0) rotate(-25deg); opacity: 0; }
   55% { transform: scale(1.15) rotate(4deg); opacity: 1; }
   100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+@keyframes popOut {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.96); opacity: 0; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes slideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(30px); opacity: 0; }
 }
 
 @layer base {

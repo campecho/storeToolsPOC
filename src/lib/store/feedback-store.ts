@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { FeedbackItem, ItemType, Release, AppNotification } from "@/schema";
 import type { TypeFilter, StatusFilter, ScopeFilter } from "@/lib/board";
 import { seedItems, seedReleases, seedNotifications } from "@/data";
@@ -13,6 +14,11 @@ import { seedItems, seedReleases, seedNotifications } from "@/data";
  */
 
 export type ReportStep = "choose" | "bug" | "feature" | "upvoted" | "confirm";
+
+export interface CelebrateEntry {
+  itemId: number;
+  release: string | null;
+}
 
 export interface FeedbackState {
   // identity & recognition
@@ -47,6 +53,18 @@ export interface FeedbackState {
   fScope: ScopeFilter;
   query: string;
 
+  // notifications & celebrate moment
+  notifOpen: boolean;
+  /** Configurable tweak (prototype prop): off routes shipped notifications straight to the release note. */
+  celebrations: boolean;
+  celebrateOpen: boolean;
+  celebrateQueue: CelebrateEntry[];
+  celebrateIndex: number;
+  /** Auto-play fires once per session, on the first board landing. */
+  autoCelebrated: boolean;
+  /** Set when a notification routes to the board with a detail open — skips the auto-play once. */
+  suppressAutoCelebrate: boolean;
+
   // actions — report flow
   openReport: () => void;
   closeReport: () => void;
@@ -74,37 +92,77 @@ export interface FeedbackState {
   setStatusFilter: (v: StatusFilter) => void;
   setScopeFilter: (v: ScopeFilter) => void;
   setQuery: (v: string) => void;
+
+  // actions — notifications & celebrate
+  toggleNotif: () => void;
+  closeNotif: () => void;
+  markRead: (id: string) => void;
+  /** Route target for a notification that opens an item on the board. */
+  goToNotifiedItem: (itemId: number) => void;
+  /** First board landing per session: queue every shipped notification and celebrate. */
+  maybeAutoCelebrate: () => void;
+  openCelebrate: (queue: CelebrateEntry[]) => void;
+  closeCelebrate: () => void;
+  celebratePrev: () => void;
+  celebrateNext: () => void;
+
+  /** Restore the pristine seed demo — clears filed items, votes, follows, read-state. */
+  resetDemo: () => void;
 }
 
-export const useFeedbackStore = create<FeedbackState>((set, get) => ({
-  store: "#1284",
-  impact: 7,
-
+/** Initial (seed) state — also what resetDemo restores. */
+const initialData = () => ({
   items: seedItems,
   releases: seedReleases,
   notifications: seedNotifications,
+  impact: 7,
+  nextId: 100,
+});
 
+const initialUi = {
   reportOpen: false,
-  reportStep: "choose",
+  reportStep: "choose" as ReportStep,
   reportTitle: "",
   reportDesc: "",
   reportName: "",
   attachFile: true,
   upvotedId: null,
   newItemId: null,
-  nextId: 100,
-
   highlightId: null,
   justVotedId: null,
   coachOpen: true,
   detailId: null,
-
-  fType: "all",
-  fStatus: "all",
-  fScope: "all",
+  fType: "all" as TypeFilter,
+  fStatus: "all" as StatusFilter,
+  fScope: "all" as ScopeFilter,
   query: "",
+  notifOpen: false,
+  celebrations: true,
+  celebrateOpen: false,
+  celebrateQueue: [] as CelebrateEntry[],
+  celebrateIndex: 0,
+  autoCelebrated: false,
+  suppressAutoCelebrate: false,
+};
 
-  openReport: () =>
+// SSR/tests have no localStorage — persistence becomes a silent no-op there.
+const noopStorage: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+};
+
+export const useFeedbackStore = create<FeedbackState>()(
+  persist(
+    (set, get) => ({
+      store: "#1284",
+      ...initialData(),
+      ...initialUi,
+
+      openReport: () =>
     set({
       reportOpen: true,
       reportStep: "choose",
@@ -113,6 +171,7 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
       reportName: "",
       attachFile: true,
       coachOpen: false,
+      notifOpen: false,
     }),
   closeReport: () => set({ reportOpen: false }),
   chooseType: (type) => set({ reportStep: type }),
@@ -123,7 +182,10 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
   toggleAttach: () => set((s) => ({ attachFile: !s.attachFile })),
 
   upvoteFromSimilar: (id) => {
-    get().upvote(id);
+    // Add-only: one vote per store (§5.7) — backing an item the store already
+    // backed keeps the standing vote rather than toggling it off.
+    const it = get().items.find((i) => i.id === id);
+    if (it && !it.votedByMe) get().upvote(id);
     set({ reportStep: "upvoted", upvotedId: id, highlightId: id });
   },
 
@@ -195,13 +257,87 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
 
   setHighlight: (id) => set({ highlightId: id }),
   dismissCoach: () => set({ coachOpen: false }),
-  openDetail: (id) => set({ detailId: id }),
-  closeDetail: () => set({ detailId: null }),
+  openDetail: (id) => set({ detailId: id, notifOpen: false }),
+  closeDetail: () => set({ detailId: null, suppressAutoCelebrate: false }),
   setTypeFilter: (v) => set({ fType: v }),
   setStatusFilter: (v) => set({ fStatus: v }),
   setScopeFilter: (v) => set({ fScope: v }),
   setQuery: (v) => set({ query: v }),
-}));
+
+  toggleNotif: () => set((s) => ({ notifOpen: !s.notifOpen, coachOpen: false })),
+  closeNotif: () => set({ notifOpen: false }),
+  markRead: (id) =>
+    set((s) => ({
+      notifications: s.notifications.map((n) => (n.id === id ? { ...n, unread: false } : n)),
+    })),
+
+  goToNotifiedItem: (itemId) =>
+    set({ notifOpen: false, detailId: itemId, suppressAutoCelebrate: true }),
+
+  maybeAutoCelebrate: () => {
+    const s = get();
+    // A notification just routed here with a detail open — let it show. The
+    // flag holds (rather than consuming once) so double-invoked mount effects
+    // (React StrictMode) stay harmless; closeDetail clears it.
+    if (s.suppressAutoCelebrate) {
+      if (s.detailId != null) return;
+      set({ suppressAutoCelebrate: false }); // stale flag — clear and fall through
+    }
+    if (s.autoCelebrated) return;
+    if (!s.celebrations) {
+      set({ autoCelebrated: true });
+      return;
+    }
+    // Only unread shipped notifications queue, and playing the queue marks
+    // them read — so a delivery celebrates once, not on every page load now
+    // that read-state persists.
+    const shipped = s.notifications.filter((n) => n.kind === "shipped" && n.unread);
+    if (!shipped.length) {
+      set({ autoCelebrated: true });
+      return;
+    }
+    set({
+      autoCelebrated: true,
+      celebrateOpen: true,
+      celebrateQueue: shipped.map((n) => ({ itemId: n.itemId, release: n.release })),
+      celebrateIndex: 0,
+      notifOpen: false,
+      detailId: null,
+      notifications: s.notifications.map((n) =>
+        n.kind === "shipped" && n.unread ? { ...n, unread: false } : n,
+      ),
+    });
+  },
+
+  openCelebrate: (queue) =>
+    set({ celebrateOpen: true, celebrateQueue: queue, celebrateIndex: 0, notifOpen: false }),
+  // The queue is kept on close so the exit animation can still render the
+  // current item; every opener replaces it.
+  closeCelebrate: () => set({ celebrateOpen: false }),
+  celebratePrev: () => set((s) => ({ celebrateIndex: Math.max(0, s.celebrateIndex - 1) })),
+  celebrateNext: () =>
+    set((s) => ({ celebrateIndex: Math.min(s.celebrateQueue.length - 1, s.celebrateIndex + 1) })),
+
+      resetDemo: () => set({ ...initialData(), ...initialUi }),
+    }),
+    {
+      name: "stp-feedback-v1",
+      storage: createJSONStorage(() =>
+        typeof window === "undefined" ? noopStorage : window.localStorage,
+      ),
+      // SSR and the first client render use the seed; StoreHydrator rehydrates
+      // from localStorage after mount so server and client markup match.
+      skipHydration: true,
+      // Only the data the associate can change persists — UI state is per-session.
+      partialize: (s) => ({
+        items: s.items,
+        notifications: s.notifications,
+        impact: s.impact,
+        nextId: s.nextId,
+      }),
+    },
+  ),
+);
 
 /** Number of unread notifications — drives the header bell badge. */
 export function selectUnreadCount(s: FeedbackState): number {

@@ -7,13 +7,41 @@ POC for the In-Store Print & Design Tool Suite, starting with the suite homepage
 ```bash
 npm install
 npm run dev        # http://localhost:3000
-npm test           # Vitest unit tests (similarity scorer, store semantics)
+npm test           # Vitest unit tests (similarity, filters, store semantics)
 npm run e2e        # Playwright smoke of the main flows
 npm run build      # production build (standalone output)
 ```
 
 If Playwright complains about a missing browser and downloads are blocked, point it at a
 pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`.
+
+**Docker** (standalone runner, unprivileged, Cloud Run shape — binds `0.0.0.0:8080`):
+
+```bash
+docker build -t store-tools-poc .
+docker run --rm -p 8080:8080 store-tools-poc   # http://localhost:8080
+```
+
+**Persistence:** votes, follows, filed reports, and notification read-state persist to
+localStorage (`stp-feedback-v1`) so a demo survives reloads. **Reset demo data** (top-right of
+the tracker sub-bar on board/releases) restores the pristine seed.
+
+## Demo script (~2 minutes, cold start)
+
+1. **Home** — the suite homepage placeholder. Note the persistent header: every surface has
+   **Give feedback** and the notification bell (3 unread). Dismiss the coachmark.
+2. **Give feedback → Report a problem** — type `large format resize crash` and watch the
+   **similar items** panel surface the existing 47-store item; **Back this** instead of filing
+   a duplicate → "Your store's backing is in." → **See it on the board**.
+3. **First board landing auto-plays the celebrate moment** — two items the store backed
+   shipped in v1.4; step through *1 of 2 → 2 of 2*, then **Dismiss all**.
+4. **The board** — ranked by store votes. Filter *Bugs*, roll up to *My store #1284*, search;
+   toggle an upvote (one vote per store). Click a row → the **detail drawer**: status
+   timeline, vote/follow, and each store's **preserved original words**.
+5. **Bell → a shipped notification** — the celebrate moment fires → **See what's new** lands on
+   **Releases**: v1.4 with *Latest* / *Your store asked* badges and per-item store credits;
+   **View →** jumps back to the item on the board.
+6. Finish with **Reset demo data** to hand the station back clean.
 
 ## What's built so far (plan steps 0–2)
 
@@ -33,11 +61,35 @@ pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`
   my store), and the "Stores behind v1.4" spotlight; main column with the scope-aware subline,
   search (title/area/description), and the votes-ranked item rows — upvote toggles with one
   vote per store and a pulse on change. Row click sets up the detail drawer (renders in Step 4).
-- **Interim stub:** `/feedback/releases` (banner + bare version list; full release cards are
-  Step 5).
+- **Step 4 — item detail drawer:** slides in from the right over a dimmed backdrop — status
+  timeline (New → Planned → Fixed/Shipped, or → Declined/Closed), shipped-release card that
+  cross-links to the releases surface, decline-reason card, big vote + follow actions, the
+  **preserved per-store reports** (own store highlighted, each store's words kept verbatim),
+  and the non-threaded comments list. Opens from any board row; vote/follow stay in sync with
+  the row underneath.
+- **Step 5 — What's new / Releases** (`/feedback/releases`): the "You asked, we delivered."
+  banner with the impact tally, and reverse-chronological release cards — version chip, date,
+  Latest / "Your store asked" badges, plain-language summary, and the delivered items
+  (features + fixes) with store credits ("Your store + 8 asked" in red vs "10 stores asked" in
+  gray) and "View →" cross-links that open the item's board detail. Item ↔ release links work
+  in both directions.
 
-Next up per the plan: **Step 4** (item detail drawer), then releases, and
-notifications/celebrate.
+- **Step 6 — notifications & the celebrate moment:** the header bell opens the notifications
+  dropdown (kind-tinted icons, unread dots, action links); tapping a row marks it read and
+  routes by kind — **shipped** fires the celebrate moment, release-tied updates open the
+  release note, the rest open the item on the board. The **celebrate "shipped" moment**
+  (pulsing rings, star pop, release pill, impact tally) **auto-plays once per session** on the
+  first board landing as a queue of every shipped item the store backed, with prev/next
+  controls and "Dismiss all". A `celebrations` flag in the store (prototype tweak) routes
+  shipped notifications straight to the release note when off.
+
+- **UI consistency pass:** symmetric enter/exit motion on every overlay (drawer slides back
+  out, modals/dropdown/coachmark pop out, backdrops fade out); board rows glide on reorder
+  ("items reorder gently as backing shifts"); the celebrate queue fades between items and
+  replays the star pop; Escape closes the topmost overlay; a delivery celebrates once (unread
+  shipped only, marked read on play — no replay after reload); "Back this" never un-votes;
+  navigation clears an open drawer; empty state + one-tap clear on the board; new filings
+  scroll their highlight into view; the wire's 4-point spark star is used consistently.
 
 ## Where things live
 
