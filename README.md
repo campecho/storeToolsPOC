@@ -83,6 +83,13 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   controls and "Dismiss all". A `celebrations` flag in the store (prototype tweak) routes
   shipped notifications straight to the release note when off.
 
+- **Board redesign — "Recently shipped" band:** deliveries from the last 7 days group at the
+  top of the board in a green band (most recent first, "Fixed/Shipped in vX · N days ago");
+  each entry has a **Got it** dismissal, the band has **Clear all**, and entries fall off after
+  7 days — acknowledgments persist. The ranked list is now a purely open queue: the
+  **Shipped / Fixed status filter is removed** ("All open" is the default; New / Planned /
+  Declined available), the subline honestly counts open items, and delivered items live in the
+  band, the drawer/release cross-links, and What's new (the permanent record).
 - **UI consistency pass:** symmetric enter/exit motion on every overlay (drawer slides back
   out, modals/dropdown/coachmark pop out, backdrops fade out); board rows glide on reorder
   ("items reorder gently as backing shifts"); the celebrate queue fades between items and

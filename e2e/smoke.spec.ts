@@ -111,22 +111,35 @@ test.describe("The board", () => {
     await page.goto("/feedback/board");
     await dismissAutoCelebrate(page);
     await expect(page.getByTestId("board-subline")).toHaveText(
-      "12 items · All stores · ranked by store votes",
+      "7 open items · All stores · ranked by store votes",
     );
+    // delivered items live in the Recently shipped band, not the ranked list
+    await expect(page.getByTestId("board-item-9")).toBeHidden();
+    await expect(page.getByTestId("shipped-row-9")).toBeVisible();
+    // and there is no shipped status filter anymore
+    await expect(page.getByRole("button", { name: "Shipped / Fixed" })).toBeHidden();
 
     await page.getByRole("button", { name: "Bugs" }).click();
-    await expect(page.getByTestId("board-subline")).toContainText("7 items");
+    await expect(page.getByTestId("board-subline")).toContainText("4 open items");
     await expect(page.getByTestId("board-item-2")).toBeVisible();
     await expect(page.getByTestId("board-item-1")).toBeHidden(); // feature filtered out
 
-    await page.getByRole("button", { name: "Shipped / Fixed" }).click();
-    await expect(page.getByTestId("board-item-9")).toBeVisible();
-    await expect(page.getByTestId("board-item-2")).toBeHidden(); // planned filtered out
+    await page.getByRole("button", { name: "Planned", exact: true }).click();
+    await expect(page.getByTestId("board-subline")).toContainText("1 open item ·");
+    await expect(page.getByTestId("board-item-2")).toBeVisible();
+    await expect(page.getByTestId("board-item-4")).toBeHidden(); // new filtered out
 
     await page.getByRole("button", { name: "My store #1284" }).click();
-    await expect(page.getByTestId("board-subline")).toContainText("2 items · My store #1284");
-    await expect(page.getByTestId("board-item-11")).toBeVisible();
-    await expect(page.getByTestId("board-item-12")).toBeHidden(); // fixed, but not this store's
+    await expect(page.getByTestId("board-subline")).toContainText("1 open item · My store #1284");
+    await expect(page.getByTestId("board-item-2")).toBeVisible();
+
+    // declined / closed items have their own filter row
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    await page.getByRole("button", { name: "All stores (chain)" }).click();
+    await page.getByRole("button", { name: "Declined / closed" }).click();
+    await expect(page.getByTestId("board-subline")).toContainText("1 closed item");
+    await expect(page.getByTestId("board-item-8")).toBeVisible();
+    await expect(page.getByTestId("board-item-2")).toBeHidden();
   });
 
   test("search matches title/area/description and always ranks by votes", async ({ page }) => {
@@ -134,15 +147,16 @@ test.describe("The board", () => {
     await dismissAutoCelebrate(page);
 
     await page.getByTestId("board-search").fill("publisher converter"); // area match
-    await expect(page.getByTestId("board-subline")).toContainText("2 items");
+    await expect(page.getByTestId("board-subline")).toContainText("1 open item");
     await expect(page.getByTestId("board-item-5")).toBeVisible();
-    await expect(page.getByTestId("board-item-12")).toBeVisible();
+    // item 12 also matches but is delivered — never in the ranked list
+    await expect(page.getByTestId("board-item-12")).toBeHidden();
 
     // no matches → empty state with a one-tap reset
     await page.getByTestId("board-search").fill("zzz nothing matches this");
     await expect(page.getByTestId("board-empty")).toBeVisible();
     await page.getByRole("button", { name: "Clear search & filters" }).click();
-    await expect(page.getByTestId("board-subline")).toContainText("12 items");
+    await expect(page.getByTestId("board-subline")).toContainText("7 open items");
 
     // votes-desc ranking: the 61-vote item leads the unfiltered list
     const first = page.locator('[data-testid^="board-item-"]').first();
@@ -201,6 +215,8 @@ test.describe("Item detail drawer", () => {
     await page.goto("/feedback/board");
     await dismissAutoCelebrate(page);
 
+    // declined items sit behind their own filter now
+    await page.getByRole("button", { name: "Declined / closed" }).click();
     await page.getByTestId("board-item-8").click(); // dark mode — declined
     await expect(page.getByTestId("detail-drawer")).toContainText("Why we're not doing this");
     await expect(page.getByTestId("detail-drawer")).toContainText("color-calibrated for accurate proofing");
@@ -209,7 +225,8 @@ test.describe("Item detail drawer", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("detail-drawer")).toBeHidden();
 
-    await page.getByTestId("board-item-9").click(); // bleed fix — done bug
+    // a delivered item opens from the Recently shipped band
+    await page.getByTestId("shipped-row-9").click(); // bleed fix — done bug
     await expect(page.getByTestId("detail-drawer")).toContainText("Fixed in v1.4");
     await page.getByTestId("detail-see-release").click();
     await expect(page).toHaveURL(/\/feedback\/releases/);
@@ -339,12 +356,50 @@ test.describe("Persistence", () => {
     await page.reload();
     await expect(page.getByTestId("board-item-100")).toContainText("Persistence check item");
     await expect(page.getByTestId("celebrate-modal")).toBeHidden();
-    await expect(page.getByTestId("board-subline")).toContainText("13 items");
+    await expect(page.getByTestId("board-subline")).toContainText("8 open items");
 
     // reset restores the pristine seed
     await page.getByTestId("reset-demo").click();
     await expect(page.getByTestId("board-item-100")).toBeHidden();
-    await expect(page.getByTestId("board-subline")).toContainText("12 items");
+    await expect(page.getByTestId("board-subline")).toContainText("7 open items");
+  });
+});
+
+test.describe("Recently shipped", () => {
+  test("band groups the week's deliveries; Got it / Clear all acknowledge and persist", async ({ page }) => {
+    await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
+
+    const band = page.getByTestId("shipped-group");
+    await expect(band).toBeVisible();
+    await expect(band).toContainText("Recently shipped");
+
+    // most recent first, each with its release + age
+    const rows = band.locator('[data-testid^="shipped-row-"]');
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toContainText("Cut template is off-center on the right guillotine");
+    await expect(rows.nth(0)).toContainText("Fixed in v1.4 · 2 days ago");
+    await expect(rows.nth(2)).toContainText("One-click proof PDF I can text to the customer");
+    await expect(rows.nth(2)).toContainText("Shipped in v1.4 · 6 days ago");
+    // v1.3's fix (43 days old) fell off the 7-day window
+    await expect(band).not.toContainText("Fonts substitute silently");
+
+    // a band row opens the item's detail like any board row
+    await rows.nth(0).click();
+    await expect(page.getByTestId("detail-drawer")).toContainText("Cut template is off-center");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("detail-drawer")).toBeHidden();
+
+    // Got it clears one entry — and the acknowledgment survives a reload
+    await page.getByTestId("shipped-got-it-11").click();
+    await expect(rows).toHaveCount(2);
+    await page.reload();
+    await expect(page.getByTestId("celebrate-modal")).toBeHidden(); // read-state persisted too
+    await expect(page.getByTestId("shipped-group").locator('[data-testid^="shipped-row-"]')).toHaveCount(2);
+
+    // Clear all empties and hides the band
+    await page.getByTestId("shipped-clear-all").click();
+    await expect(page.getByTestId("shipped-group")).toBeHidden();
   });
 });
 

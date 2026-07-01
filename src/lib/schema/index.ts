@@ -44,6 +44,11 @@ export const FeedbackItemSchema = z.object({
   inDistrict: z.boolean(),
   inRegion: z.boolean(),
   shippedIn: z.string().optional(),
+  /** How many days ago this item's fix/feature shipped — drives the board's
+      "Recently shipped" band (mock age, like the wires' other relative dates). */
+  shippedDaysAgo: z.number().optional(),
+  /** The store acknowledged this delivery in the "Recently shipped" band ("Got it"). */
+  recentShipAcked: z.boolean().optional(),
   declineReason: z.string().optional(),
   comments: z.array(ItemCommentSchema),
   reports: z.array(StoreReportSchema),

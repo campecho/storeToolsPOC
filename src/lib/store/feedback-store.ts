@@ -82,6 +82,10 @@ export interface FeedbackState {
   // actions — items
   upvote: (id: number) => void;
   toggleFollow: (id: number) => void;
+  /** "Got it" on one entry in the Recently shipped band. */
+  ackShipped: (id: number) => void;
+  /** "Clear all" — acknowledge every entry currently in the band. */
+  ackAllShipped: () => void;
 
   // actions — UI
   setHighlight: (id: number | null) => void;
@@ -133,7 +137,7 @@ const initialUi = {
   coachOpen: true,
   detailId: null,
   fType: "all" as TypeFilter,
-  fStatus: "all" as StatusFilter,
+  fStatus: "open" as StatusFilter,
   fScope: "all" as ScopeFilter,
   query: "",
   notifOpen: false,
@@ -255,6 +259,19 @@ export const useFeedbackStore = create<FeedbackState>()(
       items: s.items.map((i) => (i.id === id ? { ...i, followed: !i.followed } : i)),
     })),
 
+  ackShipped: (id) =>
+    set((s) => ({
+      items: s.items.map((i) => (i.id === id ? { ...i, recentShipAcked: true } : i)),
+    })),
+  ackAllShipped: () =>
+    set((s) => ({
+      items: s.items.map((i) =>
+        i.status === "done" && i.shippedDaysAgo != null && !i.recentShipAcked
+          ? { ...i, recentShipAcked: true }
+          : i,
+      ),
+    })),
+
   setHighlight: (id) => set({ highlightId: id }),
   dismissCoach: () => set({ coachOpen: false }),
   openDetail: (id) => set({ detailId: id, notifOpen: false }),
@@ -322,6 +339,9 @@ export const useFeedbackStore = create<FeedbackState>()(
     }),
     {
       name: "stp-feedback-v1",
+      // Bumped when the persisted item shape changes (e.g. shippedDaysAgo /
+      // recentShipAcked) — mismatched stored state is discarded for the seed.
+      version: 1,
       storage: createJSONStorage(() =>
         typeof window === "undefined" ? noopStorage : window.localStorage,
       ),

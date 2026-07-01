@@ -216,6 +216,20 @@ describe("notifications & celebrate", () => {
   });
 });
 
+describe("recently shipped acknowledgments", () => {
+  it("ackShipped clears one entry; ackAllShipped clears the band", () => {
+    useFeedbackStore.getState().ackShipped(11);
+    expect(getItem(11).recentShipAcked).toBe(true);
+    expect(getItem(9).recentShipAcked).toBeFalsy();
+
+    useFeedbackStore.getState().ackAllShipped();
+    expect(getItem(9).recentShipAcked).toBe(true);
+    expect(getItem(10).recentShipAcked).toBe(true);
+    // open items are untouched
+    expect(getItem(1).recentShipAcked).toBeFalsy();
+  });
+});
+
 describe("resetDemo", () => {
   it("restores the pristine seed after mutations", () => {
     const s = useFeedbackStore.getState();

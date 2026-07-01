@@ -7,6 +7,7 @@ import { filterItems, scopeLabel } from "@/lib/board";
 import { useFlip } from "@/lib/use-flip";
 import { BoardRail } from "@/components/board/BoardRail";
 import { ItemRow } from "@/components/board/ItemRow";
+import { RecentlyShipped } from "@/components/board/RecentlyShipped";
 import { DetailDrawer } from "@/components/detail/DetailDrawer";
 
 /**
@@ -37,10 +38,15 @@ export default function BoardPage() {
 
   const clearFilters = () => {
     setTypeFilter("all");
-    setStatusFilter("all");
+    setStatusFilter("open");
     setScopeFilter("all");
     setQuery("");
   };
+
+  // "7 open items" by default; under the Declined / closed filter the count
+  // isn't of open items, so the noun follows the filter.
+  const noun = fStatus === "declined" ? "closed" : "open";
+  const plural = ranked.length === 1 ? "item" : "items";
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -51,7 +57,7 @@ export default function BoardPage() {
           <div className="flex-1">
             <div className="text-[17px] font-bold text-ink">What stores are asking for</div>
             <div data-testid="board-subline" className="mt-[2px] text-[12px] text-[#888]">
-              {ranked.length} items · {scopeLabel(fScope, store)} · ranked by store votes
+              {ranked.length} {noun} {plural} · {scopeLabel(fScope, store)} · ranked by store votes
             </div>
           </div>
           <div className="flex h-[34px] w-[280px] items-center gap-2 rounded-[7px] border border-[#d6d6d6] bg-white px-[11px] focus-within:border-brand">
@@ -67,6 +73,7 @@ export default function BoardPage() {
         </div>
 
         <div className="flex flex-1 flex-col gap-[10px] overflow-auto px-[22px] pb-[26px] pt-[14px]">
+          <RecentlyShipped />
           {ranked.map((item) => (
             <ItemRow key={item.id} item={item} flipRef={flipRef(item.id)} />
           ))}

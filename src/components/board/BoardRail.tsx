@@ -15,12 +15,13 @@ const TYPE_OPTS: { value: TypeFilter; label: string }[] = [
   { value: "feature", label: "Requests" },
 ];
 
+// No shipped filter: delivered items surface in the "Recently shipped" band
+// for their first week and live permanently on the Releases surface.
 const STATUS_OPTS: { value: StatusFilter; label: string; dot: string | null }[] = [
-  { value: "all", label: "All statuses", dot: null },
+  { value: "open", label: "All open", dot: null },
   { value: "new", label: "New", dot: "#9a9a9a" },
   { value: "planned", label: "Planned", dot: "#086DD2" },
-  { value: "done", label: "Shipped / Fixed", dot: "#2e8b3d" },
-  { value: "declined", label: "Declined / Closed", dot: "#bcbcbc" },
+  { value: "declined", label: "Declined / closed", dot: "#bcbcbc" },
 ];
 
 const SCOPE_OPTS: { value: ScopeFilter; label: string }[] = [
