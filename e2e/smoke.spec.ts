@@ -90,6 +90,19 @@ test.describe("Report flow", () => {
     await expect(backed).toHaveCSS("border-color", "rgb(204, 0, 0)");
     // the backed vote button is filled red
     await expect(page.getByTestId("upvote-4")).toHaveCSS("background-color", "rgb(204, 0, 0)");
+
+    // votes toggle on every surface: the same flow removes the standing vote,
+    // with the button and confirmation reflecting the removal
+    await page.getByTestId("give-feedback").click();
+    await page.getByTestId("choose-bug").click();
+    await page.getByTestId("report-title").fill("barcodes print blurry");
+    // item 4 ranks first (highest overlap); item 2 also matches and is seed-backed
+    await panel.getByRole("button", { name: "Remove backing" }).first().click();
+    await expect(page.getByText("Your store's vote was removed.")).toBeVisible();
+
+    await page.getByRole("button", { name: "See it on the board" }).click();
+    await expect(page.getByTestId("upvote-4")).toContainText("33");
+    await expect(page.getByTestId("upvote-4")).toHaveCSS("background-color", "rgb(255, 255, 255)");
   });
 
   test("feature form shows the area auto-tag and files a request", async ({ page }) => {

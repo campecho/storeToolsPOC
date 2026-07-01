@@ -40,12 +40,17 @@ export function SimilarItemsPanel() {
                 {item.area} · {statusMeta(item.type, item.status).label}
               </div>
             </div>
+            {/* Toggles like every vote surface — the label shows which way the tap goes. */}
             <button
               type="button"
               onClick={() => upvoteFromSimilar(item.id)}
-              className="shrink-0 cursor-pointer rounded-[7px] bg-brand px-3 py-[7px] text-[12px] font-semibold text-white hover:bg-brand-press"
+              className={`shrink-0 cursor-pointer rounded-[7px] px-3 py-[7px] text-[12px] font-semibold ${
+                item.votedByMe
+                  ? "border border-brand bg-white text-brand hover:bg-brand-tint"
+                  : "bg-brand text-white hover:bg-brand-press"
+              }`}
             >
-              Back this
+              {item.votedByMe ? "Remove backing" : "Back this"}
             </button>
           </div>
         ))}

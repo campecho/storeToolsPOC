@@ -182,10 +182,11 @@ export const useFeedbackStore = create<FeedbackState>()(
   toggleAttach: () => set((s) => ({ attachFile: !s.attachFile })),
 
   upvoteFromSimilar: (id) => {
-    // Add-only: one vote per store (§5.7) — backing an item the store already
-    // backed keeps the standing vote rather than toggling it off.
-    const it = get().items.find((i) => i.id === id);
-    if (it && !it.votedByMe) get().upvote(id);
+    // Toggles, like every other vote surface (product decision): tapping
+    // "Back this" on an item the store already backs removes the standing
+    // vote. The upvoted step and the panel button both reflect which way
+    // the tap went.
+    get().upvote(id);
     set({ reportStep: "upvoted", upvotedId: id, highlightId: id });
   },
 

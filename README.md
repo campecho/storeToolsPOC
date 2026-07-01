@@ -87,7 +87,8 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   out, modals/dropdown/coachmark pop out, backdrops fade out); board rows glide on reorder
   ("items reorder gently as backing shifts"); the celebrate queue fades between items and
   replays the star pop; Escape closes the topmost overlay; a delivery celebrates once (unread
-  shipped only, marked read on play — no replay after reload); "Back this" never un-votes;
+  shipped only, marked read on play — no replay after reload); "Back this" toggles like every
+  vote surface, with the button and confirmation reflecting added vs removed backing;
   navigation clears an open drawer; empty state + one-tap clear on the board; new filings
   scroll their highlight into view; the wire's 4-point spark star is used consistently.
 
