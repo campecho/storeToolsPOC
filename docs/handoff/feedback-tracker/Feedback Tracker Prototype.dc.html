@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<template id="__bundler_thumbnail" data-bg-color="#CC0000">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="360" y="220" width="480" height="360" rx="20" fill="#ffffff"/>
+    <rect x="360" y="220" width="480" height="60" rx="20" fill="#f0f0f0"/>
+    <rect x="388" y="240" width="86" height="20" rx="5" fill="#CC0000"/>
+    <rect x="392" y="316" width="96" height="150" rx="10" fill="#efefef"/>
+    <path d="M440 452 l14-20 14 20 z" fill="#CC0000"/>
+    <rect x="440" y="424" width="26" height="14" rx="4" fill="#dcdcdc"/>
+    <rect x="516" y="312" width="292" height="18" rx="5" fill="#e2e2e2"/>
+    <rect x="516" y="346" width="230" height="12" rx="4" fill="#ececec"/>
+    <rect x="516" y="392" width="292" height="18" rx="5" fill="#e2e2e2"/>
+    <rect x="516" y="426" width="200" height="12" rx="4" fill="#ececec"/>
+    <text x="600" y="650" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">Feedback Tracker</text>
+  </svg>
+</template>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/staples-print-design-system-019e2687-1db4-7a98-aa24-6f47c5847cec/colors_and_type.css">
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; background:#cfcfcf; font-family:"Motiva Sans", system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:#c6c6c6; border-radius:5px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  input, textarea { font-family:inherit; }
+  @keyframes pulseCount { 0%{transform:scale(1);} 32%{transform:scale(1.45);} 100%{transform:scale(1);} }
+  @keyframes popIn { from{transform:scale(.96);opacity:0;} to{transform:scale(1);opacity:1;} }
+  @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+  @keyframes slideIn { from{transform:translateX(30px);opacity:0;} to{transform:translateX(0);opacity:1;} }
+  @keyframes ringExpand { from{transform:scale(.35);opacity:.5;} to{transform:scale(1.75);opacity:0;} }
+  @keyframes starPop { 0%{transform:scale(0) rotate(-25deg);opacity:0;} 55%{transform:scale(1.15) rotate(4deg);opacity:1;} 100%{transform:scale(1) rotate(0);opacity:1;} }
+  @keyframes riseGlow { 0%{background:#FBEBEB;} 100%{background:#fff;} }
+  @keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-3px);} 75%{transform:translateX(3px);} }
+</style>
+</helmet>
+
+<div style="min-height:100vh; padding:26px 22px 40px; display:flex; flex-direction:column; align-items:center;">
+
+  <!-- caption + legend -->
+  <div style="width:1440px; max-width:100%; margin-bottom:12px; display:flex; justify-content:space-between; align-items:flex-end; gap:20px;">
+    <div>
+      <div style="font-weight:700; font-size:22px; color:#1a1a1a; letter-spacing:-.01em;">In-Store Suite — Feedback &amp; Request Tracker</div>
+      <div style="font-weight:300; font-size:13px; color:#5a5a5a; margin-top:4px;">Functional wireframe · counter-associate side · desktop in-store station. One tap to report, one tap to back what others raised, and see it ship.</div>
+    </div>
+    <div style="display:flex; gap:16px; align-items:center; flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; border-radius:3px; background:#CC0000;"></div><span style="font-size:11px; color:#555;">Action / active</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; border-radius:50%; background:#2e8b3d;"></div><span style="font-size:11px; color:#555;">Shipped / fixed</span></div>
+      <div style="display:flex; align-items:center; gap:6px;"><div style="width:12px; height:12px; border-radius:3px; background:#e4e4e4;"></div><span style="font-size:11px; color:#555;">Placeholder</span></div>
+    </div>
+  </div>
+
+  <!-- ============ STATION SCREEN ============ -->
+  <div style="width:1440px; height:900px; background:#fff; border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.22); border:1px solid #cdcdcd; overflow:hidden; position:relative;">
+
+    <!-- ===== persistent app header ===== -->
+    <div style="height:52px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 16px; gap:14px; position:relative; z-index:20;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div style="background:#CC0000; color:#fff; font-weight:700; font-size:13px; padding:4px 8px; border-radius:3px;">Staples</div>
+        <span style="font-weight:700; font-size:14px; color:#333;">Print Studio</span>
+      </div>
+      <div style="flex:1; display:flex; justify-content:center;">
+        <div style="width:440px; height:32px; background:#fff; border:1px solid #d6d6d6; border-radius:6px; display:flex; align-items:center; padding:0 12px; gap:8px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <span style="font-size:12px; color:#9a9a9a;">Open a file or pick a product…</span>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:12px; color:#777;">Store {{ store }}</span>
+        <div onClick="{{ openReport }}" style="display:flex; align-items:center; gap:7px; border:1px solid #e2b4b4; background:#fff; border-radius:7px; padding:6px 11px; cursor:pointer;" style-hover="background:#FBEBEB;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#CC0000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span style="font-size:12px; color:#CC0000; font-weight:600;">Give feedback</span>
+        </div>
+        <div onClick="{{ toggleNotif }}" style="position:relative; width:33px; height:33px; display:flex; align-items:center; justify-content:center; border:1px solid #e0e0e0; border-radius:7px; background:#fff; cursor:pointer;" style-hover="background:#f6f6f6;">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <sc-if value="{{ hasUnread }}" hint-placeholder-val="{{ true }}"><div style="position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; background:#CC0000; color:#fff; border-radius:9px; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #f0f0f0;">{{ unreadCount }}</div></sc-if>
+        </div>
+        <div style="width:28px; height:28px; background:#d3d3d3; border-radius:50%;"></div>
+      </div>
+    </div>
+
+    <!-- ===== tracker sub-bar (board / releases only) ===== -->
+    <sc-if value="{{ isTracker }}" hint-placeholder-val="{{ false }}">
+      <div style="height:46px; background:#fff; border-bottom:1px solid #ececec; display:flex; align-items:center; padding:0 16px; gap:10px; position:relative; z-index:10;">
+        <div onClick="{{ goHome }}" style="display:flex; align-items:center; gap:5px; cursor:pointer; color:#666; font-size:12px; font-weight:500;" style-hover="color:#CC0000;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          Back to Print Studio
+        </div>
+        <div style="width:1px; height:20px; background:#e6e6e6; margin:0 6px;"></div>
+        <div onClick="{{ goBoard }}" style="padding:7px 15px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; color:{{ boardTabColor }}; background:{{ boardTabBg }};">The board</div>
+        <div onClick="{{ goReleases }}" style="padding:7px 15px; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; color:{{ relTabColor }}; background:{{ relTabBg }};">What's new</div>
+      </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: HOME & FILE INTAKE                                      -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; flex-direction:column; height:848px;">
+      <!-- quick-jump tool shortcuts -->
+      <div style="padding:16px 26px; border-bottom:1px solid #ececec; display:flex; gap:14px;">
+        <div style="flex:1; border:1px solid #e6e6e6; border-radius:10px; padding:13px 15px; display:flex; align-items:center; gap:12px; cursor:pointer; background:#fff;" style-hover="border-color:#CC0000; box-shadow:0 2px 10px rgba(0,0,0,.06);">
+          <div style="width:40px; height:40px; border-radius:9px; background:#f4f4f4; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg></div>
+          <div><div style="font-size:14px; font-weight:700; color:#2a2a2a;">Document</div><div style="font-size:11px; color:#999; margin-top:2px;">Word, PDF &amp; text</div></div>
+        </div>
+        <div style="flex:1; border:1px solid #e6e6e6; border-radius:10px; padding:13px 15px; display:flex; align-items:center; gap:12px; cursor:pointer; background:#fff;" style-hover="border-color:#CC0000; box-shadow:0 2px 10px rgba(0,0,0,.06);">
+          <div style="width:40px; height:40px; border-radius:9px; background:#f4f4f4; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>
+          <div><div style="font-size:14px; font-weight:700; color:#2a2a2a;">Layout</div><div style="font-size:11px; color:#999; margin-top:2px;">Design &amp; arrange</div></div>
+        </div>
+        <div style="flex:1; border:1px solid #e6e6e6; border-radius:10px; padding:13px 15px; display:flex; align-items:center; gap:12px; cursor:pointer; background:#fff;" style-hover="border-color:#CC0000; box-shadow:0 2px 10px rgba(0,0,0,.06);">
+          <div style="width:40px; height:40px; border-radius:9px; background:#f4f4f4; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+          <div><div style="font-size:14px; font-weight:700; color:#2a2a2a;">Quick Fix</div><div style="font-size:11px; color:#999; margin-top:2px;">Auto-repair file content</div></div>
+        </div>
+        <div style="flex:1; border:1px solid #e6e6e6; border-radius:10px; padding:13px 15px; display:flex; align-items:center; gap:12px; cursor:pointer; background:#fff;" style-hover="border-color:#CC0000; box-shadow:0 2px 10px rgba(0,0,0,.06);">
+          <div style="width:40px; height:40px; border-radius:9px; background:#f4f4f4; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m21 15-5-5L5 21"/></svg></div>
+          <div><div style="font-size:14px; font-weight:700; color:#2a2a2a;">Photo Edit</div><div style="font-size:11px; color:#999; margin-top:2px;">Crop, retouch, color</div></div>
+        </div>
+        <div style="flex:1; border:1px solid #e6e6e6; border-radius:10px; padding:13px 15px; display:flex; align-items:center; gap:12px; cursor:pointer; background:#fff;" style-hover="border-color:#CC0000; box-shadow:0 2px 10px rgba(0,0,0,.06);">
+          <div style="width:40px; height:40px; border-radius:9px; background:#f4f4f4; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg></div>
+          <div><div style="font-size:14px; font-weight:700; color:#2a2a2a;">Print Setup</div><div style="font-size:11px; color:#999; margin-top:2px;">Size, bleed &amp; imposition</div></div>
+        </div>
+      </div>
+      <div style="flex:1; display:flex; min-height:0;">
+      <!-- left: intake -->
+      <div style="width:520px; border-right:1px solid #ececec; padding:26px; display:flex; flex-direction:column; gap:16px;">
+        <div style="font-weight:700; font-size:11px; letter-spacing:.05em; color:#5f5f5f; text-transform:uppercase;">Bring in a file</div>
+        <div style="border:2px dashed #c4c4c4; border-radius:10px; background:#fafafa; height:196px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px;">
+          <div style="width:46px; height:46px; border:2px solid #c0c0c0; border-radius:9px; display:flex; align-items:center; justify-content:center;"><div style="width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:14px solid #b4b4b4;"></div></div>
+          <div style="font-weight:500; font-size:15px; color:#444;">Drop a customer file to start</div>
+          <div style="font-size:12px; color:#8c8c8c;">We detect the type — no need to pick a tool</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:400px; margin-top:2px;">
+            <span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">JPG</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">PNG</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">HEIC</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">SVG</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">PDF</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">DOCX</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">XLSX</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">PPTX</span><span style="font-size:11px; color:#fff; background:#CC0000; border-radius:4px; padding:2px 7px;">.PUB</span><span style="font-size:11px; color:#777; border:1px solid #ddd; border-radius:4px; padding:2px 7px;">ZIP</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1; height:40px; background:#CC0000; color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:13px; cursor:pointer;" style-hover="background:#A30000;">Browse files</div>
+          <div style="flex:1; height:40px; background:#fff; border:1px solid #cfcfcf; color:#444; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:13px; cursor:pointer;" style-hover="background:#f6f6f6;">Fetch from an order</div>
+        </div>
+        <div style="border:1px solid #f0c9c9; background:#FBEBEB; border-radius:8px; padding:13px; display:flex; gap:12px; align-items:center;">
+          <div style="width:34px; height:34px; background:#fff; border:1px solid #e6b9b9; border-radius:6px; flex-shrink:0;"></div>
+          <div style="flex:1;"><div style="font-weight:600; font-size:13px; color:#9a1818;">Got an old .pub file?</div><div style="font-size:12px; color:#a86b6b;">Convert your Publisher file — we'll recover the layout.</div></div>
+          <div style="font-size:12px; color:#CC0000; font-weight:600;">Convert →</div>
+        </div>
+        <div style="height:1px; background:#eee;"></div>
+        <div style="font-weight:700; font-size:11px; letter-spacing:.05em; color:#5f5f5f; text-transform:uppercase;">Start a new document or print layout</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; display:flex; align-items:center; gap:11px;"><div style="width:26px; height:34px; background:#fff; border:1.5px solid #c4c4c4; border-radius:2px;"></div><div><div style="font-size:13px; font-weight:600; color:#3a3a3a;">Letter</div><div style="font-size:11px; color:#999;">8.5 × 11 in</div></div></div>
+          <div style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; display:flex; align-items:center; gap:11px;"><div style="width:25px; height:38px; background:#fff; border:1.5px solid #c4c4c4; border-radius:2px;"></div><div><div style="font-size:13px; font-weight:600; color:#3a3a3a;">Legal</div><div style="font-size:11px; color:#999;">8.5 × 14 in</div></div></div>
+          <div style="border:1px solid #e0e0e0; border-radius:8px; padding:12px; display:flex; align-items:center; gap:11px;"><div style="width:28px; height:40px; background:#fff; border:1.5px solid #c4c4c4; border-radius:2px;"></div><div><div style="font-size:13px; font-weight:600; color:#3a3a3a;">Ledger</div><div style="font-size:11px; color:#999;">11 × 17 in</div></div></div>
+          <div style="border:1.5px dashed #CC0000; background:#FBEBEB; border-radius:8px; padding:12px; display:flex; align-items:center; gap:11px;"><div style="width:28px; height:34px; border:1.5px dashed #CC0000; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#CC0000; font-size:17px;">+</div><div><div style="font-size:13px; font-weight:600; color:#9a1818;">Custom size</div><div style="font-size:11px; color:#a86b6b;">Define the canvas</div></div></div>
+        </div>
+      </div>
+      <!-- right: pick a product -->
+      <div style="flex:1; padding:26px; display:flex; flex-direction:column; gap:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:baseline; gap:10px;"><div style="font-weight:700; font-size:11px; letter-spacing:.05em; color:#5f5f5f; text-transform:uppercase;">Pick a product</div><span style="font-size:11px; color:#aaa;">Sorted by most used</span></div>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div style="display:flex; align-items:center; gap:7px; border:1px solid #CC0000; border-radius:6px; padding:5px 11px; background:#fff; cursor:pointer;"><div style="width:12px; height:12px; border:1.5px solid #CC0000; border-radius:50%;"></div><span style="font-size:12px; color:#CC0000; font-weight:600;">Recent projects</span><span style="color:#CC0000; font-size:11px;">▾</span></div>
+            <span style="font-size:12px; color:#086DD2;">Browse all templates →</span>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;">
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Business cards</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Flyers</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Documents</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Postcards</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Rack cards</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Posters</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Signs</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Banners</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Labels</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Stickers &amp; decals</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Booklets</div></div>
+          <div style="border:1px solid #e6e6e6; border-radius:8px; overflow:hidden;"><div style="height:80px; background:#e4e4e4;"></div><div style="padding:8px 10px; font-size:12px; color:#444; font-weight:500;">Envelopes</div></div>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="border:1px dashed #d8d8d8; border-radius:10px; padding:16px 18px; display:flex; align-items:center; gap:16px; background:#fbfbfb;">
+          <div style="width:40px; height:40px; border-radius:9px; background:#FBEBEB; border:1px solid #f0c9c9; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#CC0000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:13px; font-weight:600; color:#3a3a3a;">Feedback from your store helped ship <span style="color:#CC0000;">{{ impact }} improvements</span></div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">Hit a snag or have an idea? Tell us — it takes seconds, and stores upvote the ones that matter.</div>
+          </div>
+          <div onClick="{{ goBoard }}" style="font-size:12px; color:#CC0000; font-weight:600; cursor:pointer; white-space:nowrap;">Open the board →</div>
+        </div>
+      </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: THE BOARD                                               -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; height:802px;">
+      <!-- left rail: recognition + filters -->
+      <div style="width:272px; border-right:1px solid #ececec; padding:18px; display:flex; flex-direction:column; gap:16px; overflow:auto; background:#fafafa;">
+        <div style="border:1px solid #ecd7d7; background:#fff; border-radius:10px; padding:14px;">
+          <div style="font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:#b07c7c; font-weight:700;">Your store's impact</div>
+          <div style="font-size:26px; font-weight:700; color:#CC0000; margin-top:6px; line-height:1;">{{ impact }}</div>
+          <div style="font-size:12px; color:#777; margin-top:3px;">improvements shipped from feedback your store raised or backed.</div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:11px; letter-spacing:.04em; color:#5f5f5f; text-transform:uppercase; margin-bottom:9px;">Type</div>
+          <div style="display:flex; gap:6px;">
+            <sc-for list="{{ typeOpts }}" as="o" hint-placeholder-count="3"><div onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</div></sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:11px; letter-spacing:.04em; color:#5f5f5f; text-transform:uppercase; margin-bottom:9px;">Status</div>
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            <sc-for list="{{ statusOpts }}" as="o" hint-placeholder-count="5"><div onClick="{{ o.on }}" style="{{ o.style }}"><sc-if value="{{ o.hasDot }}"><span style="width:8px; height:8px; border-radius:50%; background:{{ o.dot }}; flex-shrink:0;"></span></sc-if>{{ o.label }}</div></sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:11px; letter-spacing:.04em; color:#5f5f5f; text-transform:uppercase; margin-bottom:9px;">Roll up by</div>
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            <sc-for list="{{ scopeOpts }}" as="o" hint-placeholder-count="4"><div onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</div></sc-for>
+          </div>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="border:1px solid #eaeaea; background:#fff; border-radius:10px; padding:13px;">
+          <div style="font-weight:700; font-size:11px; letter-spacing:.04em; color:#5f5f5f; text-transform:uppercase; margin-bottom:9px;">Stores behind v1.4</div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            <sc-for list="{{ topStores }}" as="s" hint-placeholder-count="5"><span style="font-size:11px; font-weight:600; padding:3px 8px; border-radius:12px; color:{{ s.color }}; background:{{ s.bg }}; border:1px solid {{ s.border }};">{{ s.label }}</span></sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- main: ranked list -->
+      <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+        <div style="padding:16px 22px 12px; border-bottom:1px solid #f0f0f0; display:flex; align-items:center; gap:14px;">
+          <div style="flex:1;">
+            <div style="font-weight:700; font-size:17px; color:#1a1a1a;">What stores are asking for</div>
+            <div style="font-size:12px; color:#888; margin-top:2px;">{{ resultCount }} open items · {{ scopeLabel }} · ranked by store votes</div>
+          </div>
+          <div style="width:280px; height:34px; background:#fff; border:1px solid #d6d6d6; border-radius:7px; display:flex; align-items:center; padding:0 11px; gap:8px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search feedback…" style="border:none; outline:none; font-size:12px; color:#444; width:100%; background:transparent;" />
+          </div>
+        </div>
+        <div style="flex:1; overflow:auto; padding:14px 22px 26px; display:flex; flex-direction:column; gap:10px;">
+          <sc-for list="{{ filteredItems }}" as="item" hint-placeholder-count="6">
+            <div onClick="{{ item.onOpen }}" style="border:1px solid {{ item.rowBorder }}; border-radius:10px; padding:14px 16px; display:flex; gap:15px; cursor:pointer; background:#fff; box-shadow:{{ item.rowShadow }}; position:relative;" style-hover="border-color:#cfcfcf;">
+              <!-- upvote -->
+              <div onClick="{{ item.onUpvote }}" style="width:56px; flex-shrink:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border:1px solid {{ item.voteBorder }}; border-radius:9px; background:{{ item.voteBg }}; color:{{ item.voteColor }}; padding:8px 0; cursor:pointer;">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+                <span style="font-size:15px; font-weight:700; {{ item.countStyle }}">{{ item.votes }}</span>
+              </div>
+              <!-- middle -->
+              <div style="flex:1; min-width:0;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px;">
+                  <span style="font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:{{ item.typeColor }}; background:{{ item.typeBg }}; padding:2px 7px; border-radius:4px;">{{ item.typeLabel }}</span>
+                  <span style="font-size:11px; color:#999;">{{ item.area }}</span>
+                </div>
+                <div style="font-size:14px; font-weight:600; color:#2a2a2a; line-height:1.35;">{{ item.title }}</div>
+                <div style="display:flex; align-items:center; gap:14px; margin-top:9px;">
+                  <span style="font-size:11px; color:#888;">{{ item.reach }}</span>
+                  <span style="display:flex; align-items:center; gap:4px; font-size:11px; color:#888;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    {{ item.commentCount }}
+                  </span>
+                  <sc-if value="{{ item.mine }}"><span style="font-size:11px; color:#CC0000; font-weight:600;">Raised by your store</span></sc-if>
+                </div>
+              </div>
+              <!-- right: status -->
+              <div style="flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:6px; border:1px solid #e6e6e6; border-radius:20px; padding:4px 10px;">
+                  <span style="width:8px; height:8px; border-radius:50%; background:{{ item.statusDot }};"></span>
+                  <span style="font-size:11px; font-weight:600; color:#555;">{{ item.statusLabel }}</span>
+                </div>
+                <sc-if value="{{ item.isShipped }}"><span style="font-size:11px; color:#2e8b3d; font-weight:600; margin-top:8px;">Shipped in {{ item.shippedIn }}</span></sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: WHAT'S NEW / RELEASES                                   -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ isReleases }}" hint-placeholder-val="{{ false }}">
+    <div style="height:802px; overflow:auto;">
+      <div style="max-width:860px; margin:0 auto; padding:26px 30px 44px;">
+        <div style="border:1px solid #ecd7d7; background:#FBEBEB; border-radius:12px; padding:18px 20px; display:flex; align-items:center; gap:16px; margin-bottom:26px;">
+          <div style="width:42px; height:42px; border-radius:10px; background:#fff; border:1px solid #f0c9c9; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#CC0000" stroke="none"><path d="M12 2l1.9 6.3L20 10l-6.1 1.7L12 18l-1.9-6.3L4 10l6.1-1.7z"/></svg>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:16px; font-weight:700; color:#1a1a1a;">You asked, we delivered.</div>
+            <div style="font-size:13px; color:#7a6a6a; margin-top:2px;">Feedback from your store has helped ship <span style="font-weight:700; color:#CC0000;">{{ impact }} improvements</span>.</div>
+          </div>
+        </div>
+
+        <sc-for list="{{ releasesD }}" as="r" hint-placeholder-count="3">
+          <div style="border:1px solid {{ r.cardBorder }}; border-radius:12px; padding:22px 24px; margin-bottom:16px; background:#fff; box-shadow:{{ r.cardShadow }};">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
+              <span style="font-size:13px; font-weight:700; color:#fff; background:#1a1a1a; border-radius:6px; padding:4px 10px;">{{ r.version }}</span>
+              <span style="font-size:12px; color:#999;">{{ r.date }}</span>
+              <sc-if value="{{ r.isLatest }}"><span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#2e8b3d; background:#e8f5ea; padding:3px 8px; border-radius:5px;">Latest</span></sc-if>
+              <sc-if value="{{ r.yourStore }}"><span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#CC0000; background:#FBEBEB; padding:3px 8px; border-radius:5px;">Your store asked</span></sc-if>
+            </div>
+            <div style="font-size:18px; font-weight:700; color:#1a1a1a; margin-top:8px;">{{ r.title }}</div>
+            <div style="font-size:13px; color:#666; line-height:1.55; margin-top:6px;">{{ r.summary }}</div>
+
+            <sc-if value="{{ r.hasFeatures }}">
+              <div style="margin-top:18px;">
+                <div style="font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#5f5f5f; margin-bottom:8px;">New features</div>
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <sc-for list="{{ r.featuresD }}" as="f" hint-placeholder-count="1">
+                    <div onClick="{{ f.onOpen }}" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border:1px solid #eee; border-radius:8px; cursor:{{ f.cursor }};" style-hover="border-color:#dcdcdc;">
+                      <span style="width:8px; height:8px; border-radius:50%; background:#2e8b3d; flex-shrink:0;"></span>
+                      <span style="flex:1; font-size:13px; color:#333; font-weight:500;">{{ f.title }}</span>
+                      <span style="font-size:11px; color:{{ f.creditColor }}; font-weight:600;">{{ f.credit }}</span>
+                      <sc-if value="{{ f.hasLink }}"><span style="font-size:12px; color:#086DD2;">View →</span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ r.hasFixes }}">
+              <div style="margin-top:16px;">
+                <div style="font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#5f5f5f; margin-bottom:8px;">Fixes</div>
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <sc-for list="{{ r.fixesD }}" as="f" hint-placeholder-count="2">
+                    <div onClick="{{ f.onOpen }}" style="display:flex; align-items:center; gap:11px; padding:10px 12px; border:1px solid #eee; border-radius:8px; cursor:{{ f.cursor }};" style-hover="border-color:#dcdcdc;">
+                      <span style="width:8px; height:8px; border-radius:50%; background:#2e8b3d; flex-shrink:0;"></span>
+                      <span style="flex:1; font-size:13px; color:#333; font-weight:500;">{{ f.title }}</span>
+                      <span style="font-size:11px; color:{{ f.creditColor }}; font-weight:600;">{{ f.credit }}</span>
+                      <sc-if value="{{ f.hasLink }}"><span style="font-size:12px; color:#086DD2;">View →</span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- OVERLAY: notification dropdown                                -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ notifOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeNotif }}" style="position:absolute; inset:0; z-index:30;"></div>
+      <div style="position:absolute; top:56px; right:64px; width:384px; background:#fff; border:1px solid #e2e2e2; border-radius:11px; box-shadow:0 16px 44px rgba(0,0,0,.2); z-index:31; overflow:hidden; animation:popIn .16s ease;">
+        <div style="padding:13px 16px; border-bottom:1px solid #f0f0f0; display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-weight:700; font-size:14px; color:#1a1a1a;">Notifications</span>
+          <span style="font-size:11px; color:#999;">{{ unreadCount }} unread</span>
+        </div>
+        <div style="max-height:420px; overflow:auto;">
+          <sc-for list="{{ notifsD }}" as="n" hint-placeholder-count="4">
+            <div onClick="{{ n.on }}" style="padding:13px 16px; border-bottom:1px solid #f4f4f4; display:flex; gap:11px; cursor:pointer; background:{{ n.bg }};" style-hover="background:#f7f7f7;">
+              <div style="width:30px; height:30px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:{{ n.iconBg }};">
+                <sc-if value="{{ n.isShipped }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="#CC0000" stroke="none"><path d="M12 2l1.7 5.6L19 9l-5.3 1.4L12 16l-1.7-5.6L5 9l5.3-1.4z"/></svg></sc-if>
+                <sc-if value="{{ n.isStatus }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#086DD2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></sc-if>
+                <sc-if value="{{ n.isBacked }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2e8b3d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg></sc-if>
+              </div>
+              <div style="flex:1;">
+                <div style="font-size:12px; color:#3a3a3a; line-height:1.45;">{{ n.text }}</div>
+                <div style="font-size:11px; color:#086DD2; margin-top:5px; font-weight:600;">{{ n.action }}</div>
+              </div>
+              <sc-if value="{{ n.unread }}"><span style="width:8px; height:8px; border-radius:50%; background:#CC0000; flex-shrink:0; margin-top:4px;"></span></sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- OVERLAY: item detail drawer                                   -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ detailOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeDetail }}" style="position:absolute; inset:0; background:rgba(20,20,20,.28); z-index:40; animation:fadeIn .16s ease;"></div>
+      <div style="position:absolute; top:0; right:0; width:452px; height:900px; background:#fff; z-index:41; box-shadow:-8px 0 32px rgba(0,0,0,.16); display:flex; flex-direction:column; animation:slideIn .22s ease;">
+        <div style="padding:18px 22px; border-bottom:1px solid #eee; display:flex; align-items:flex-start; gap:12px;">
+          <div style="flex:1;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <span style="font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:{{ detail.typeColor }}; background:{{ detail.typeBg }}; padding:2px 7px; border-radius:4px;">{{ detail.typeLabel }}</span>
+              <span style="font-size:11px; color:#999;">{{ detail.area }}</span>
+            </div>
+            <div style="font-size:16px; font-weight:700; color:#1a1a1a; line-height:1.35;">{{ detail.title }}</div>
+          </div>
+          <div onClick="{{ closeDetail }}" style="width:30px; height:30px; border-radius:7px; border:1px solid #e6e6e6; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;" style-hover="background:#f5f5f5;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#777" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </div>
+        </div>
+        <div style="flex:1; overflow:auto; padding:20px 22px;">
+          <!-- status timeline -->
+          <div style="display:flex; align-items:center; gap:0; margin-bottom:18px;">
+            <sc-for list="{{ detail.trail }}" as="t" hint-placeholder-count="2">
+              <div style="display:flex; align-items:center; gap:0;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:5px;">
+                  <span style="width:13px; height:13px; border-radius:50%; background:{{ t.dot }}; border:2px solid #fff; box-shadow:0 0 0 1px {{ t.dot }};"></span>
+                  <span style="font-size:10px; color:#666; font-weight:600;">{{ t.label }}</span>
+                </div>
+                <sc-if value="{{ t.line }}"><div style="width:38px; height:2px; background:#e2e2e2; margin:0 4px 15px;"></div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ detail.isShipped }}">
+            <div onClick="{{ detail.onSeeRelease }}" style="border:1px solid #cfe6d3; background:#f1f9f2; border-radius:9px; padding:12px 14px; display:flex; align-items:center; gap:11px; margin-bottom:16px; cursor:pointer;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2e8b3d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <div style="flex:1;"><div style="font-size:13px; font-weight:600; color:#2e6b36;">{{ detail.shippedLabel }} in {{ detail.shippedIn }}</div><div style="font-size:11px; color:#6a8a70;">See the release note →</div></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ detail.hasDecline }}">
+            <div style="border:1px solid #eee; background:#fafafa; border-radius:9px; padding:12px 14px; margin-bottom:16px;">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#999; margin-bottom:4px;">Why we're not doing this</div>
+              <div style="font-size:12px; color:#666; line-height:1.5;">{{ detail.declineReason }}</div>
+            </div>
+          </sc-if>
+
+          <div style="font-size:13px; color:#555; line-height:1.6; margin-bottom:20px;">{{ detail.desc }}</div>
+
+          <!-- vote + follow -->
+          <div style="display:flex; gap:10px; margin-bottom:22px;">
+            <div onClick="{{ detail.onUpvote }}" style="flex:1; height:42px; border:1px solid {{ detail.voteBorder }}; border-radius:8px; background:{{ detail.voteBg }}; color:{{ detail.voteColor }}; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+              {{ detail.voteLabel }}
+            </div>
+            <div onClick="{{ detail.onFollow }}" style="width:120px; height:42px; border:1px solid {{ detail.followBorder }}; border-radius:8px; background:{{ detail.followBg }}; color:{{ detail.followColor }}; display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; font-size:13px; font-weight:600;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg>
+              {{ detail.followLabel }}
+            </div>
+          </div>
+
+          <!-- preserved reports -->
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#5f5f5f; margin-bottom:11px;">{{ detail.backedLine }}</div>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:22px;">
+            <sc-for list="{{ detail.reportsList }}" as="rep" hint-placeholder-count="2">
+              <div style="border:1px solid #eee; border-radius:8px; padding:11px 13px; background:{{ rep.bg }};">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                  <span style="font-size:12px; font-weight:700; color:{{ rep.storeColor }};">Store {{ rep.store }}</span>
+                  <sc-if value="{{ rep.hasName }}"><span style="font-size:11px; color:#999;">· {{ rep.name }}</span></sc-if>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:11px; color:#aaa;">{{ rep.when }}</span>
+                </div>
+                <div style="font-size:12px; color:#666; line-height:1.45;">"{{ rep.text }}"</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- comments -->
+          <sc-if value="{{ detail.hasComments }}">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#5f5f5f; margin-bottom:11px;">Comments</div>
+            <div style="display:flex; flex-direction:column; gap:9px;">
+              <sc-for list="{{ detail.commentsList }}" as="c" hint-placeholder-count="1">
+                <div style="display:flex; gap:9px;">
+                  <div style="width:26px; height:26px; border-radius:50%; background:#e2e2e2; flex-shrink:0;"></div>
+                  <div style="flex:1;"><span style="font-size:11px; font-weight:700; color:#555;">Store {{ c.store }}</span><div style="font-size:12px; color:#666; line-height:1.45; margin-top:2px;">{{ c.text }}</div></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- OVERLAY: report modal                                         -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ reportOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeReport }}" style="position:absolute; inset:0; background:rgba(20,20,20,.34); z-index:50; animation:fadeIn .16s ease;"></div>
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:660px; max-height:830px; background:#fff; border-radius:14px; z-index:51; box-shadow:0 24px 64px rgba(0,0,0,.28); overflow:hidden; display:flex; flex-direction:column; animation:popIn .18s ease;">
+
+        <!-- STEP: choose -->
+        <sc-if value="{{ rChoose }}">
+          <div style="padding:26px 28px;">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between;">
+              <div>
+                <div style="font-size:19px; font-weight:700; color:#1a1a1a;">Give feedback</div>
+                <div style="font-size:13px; color:#888; margin-top:3px;">One sentence from you — we capture the rest.</div>
+              </div>
+              <div onClick="{{ closeReport }}" style="width:30px; height:30px; border-radius:7px; border:1px solid #e6e6e6; display:flex; align-items:center; justify-content:center; cursor:pointer;" style-hover="background:#f5f5f5;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#777" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+            </div>
+            <div style="display:flex; gap:14px; margin-top:22px;">
+              <div onClick="{{ chooseBug }}" style="flex:1; border:1.5px solid #e6e6e6; border-radius:11px; padding:20px; cursor:pointer;" style-hover="border-color:#CC0000; background:#FBEBEB;">
+                <div style="width:38px; height:38px; border-radius:9px; background:#FBEBEB; display:flex; align-items:center; justify-content:center; margin-bottom:12px;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#CC0000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                </div>
+                <div style="font-size:15px; font-weight:700; color:#1a1a1a;">Report a problem</div>
+                <div style="font-size:12px; color:#888; margin-top:4px; line-height:1.45;">Something broke or looks wrong. We'll attach what you were doing automatically.</div>
+              </div>
+              <div onClick="{{ chooseFeature }}" style="flex:1; border:1.5px solid #e6e6e6; border-radius:11px; padding:20px; cursor:pointer;" style-hover="border-color:#CC0000; background:#FBEBEB;">
+                <div style="width:38px; height:38px; border-radius:9px; background:#eef4fb; display:flex; align-items:center; justify-content:center; margin-bottom:12px;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#086DD2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+                </div>
+                <div style="font-size:15px; font-weight:700; color:#1a1a1a;">Request a feature</div>
+                <div style="font-size:12px; color:#888; margin-top:4px; line-height:1.45;">An idea to make the tool better. We'll tag it to where you are.</div>
+              </div>
+            </div>
+            <div onClick="{{ goBoardFromReport }}" style="text-align:center; margin-top:20px; font-size:12px; color:#086DD2; cursor:pointer;">or browse the feedback board →</div>
+          </div>
+        </sc-if>
+
+        <!-- STEP: bug / feature form -->
+        <sc-if value="{{ rForm }}">
+          <div style="padding:22px 28px; border-bottom:1px solid #f0f0f0; display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div onClick="{{ backToChoose }}" style="width:28px; height:28px; border-radius:7px; border:1px solid #e6e6e6; display:flex; align-items:center; justify-content:center; cursor:pointer;" style-hover="background:#f5f5f5;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#777" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></div>
+              <div style="font-size:16px; font-weight:700; color:#1a1a1a;">{{ formTitle }}</div>
+            </div>
+            <div onClick="{{ closeReport }}" style="width:30px; height:30px; border-radius:7px; border:1px solid #e6e6e6; display:flex; align-items:center; justify-content:center; cursor:pointer;" style-hover="background:#f5f5f5;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#777" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+          </div>
+          <div style="flex:1; overflow:auto; padding:20px 28px 4px;">
+            <div style="font-size:12px; font-weight:600; color:#555; margin-bottom:7px;">{{ titleLabel }}</div>
+            <input value="{{ reportTitle }}" onChange="{{ onReportTitle }}" placeholder="{{ titlePlaceholder }}" style="width:100%; height:42px; border:1px solid #d4d4d4; border-radius:8px; padding:0 13px; font-size:13px; color:#333; outline:none;" style-focus="border-color:#CC0000;" />
+
+            <!-- similar items while typing -->
+            <sc-if value="{{ hasSimilar }}">
+              <div style="border:1px solid #f0d9d9; background:#fdf6f6; border-radius:9px; padding:13px; margin-top:12px;">
+                <div style="font-size:12px; font-weight:700; color:#9a1818; margin-bottom:10px;">{{ similarHeadline }}</div>
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <sc-for list="{{ similarItems }}" as="s" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:center; gap:11px; background:#fff; border:1px solid #eee; border-radius:8px; padding:9px 11px;">
+                      <div style="width:40px; text-align:center; flex-shrink:0;"><div style="font-size:14px; font-weight:700; color:#555;">{{ s.votes }}</div><div style="font-size:9px; color:#aaa;">stores</div></div>
+                      <div style="flex:1; min-width:0;"><div style="font-size:12px; font-weight:600; color:#333; line-height:1.35;">{{ s.title }}</div><div style="font-size:11px; color:#999; margin-top:2px;">{{ s.area }} · {{ s.statusLabel }}</div></div>
+                      <div onClick="{{ s.onPick }}" style="flex-shrink:0; background:#CC0000; color:#fff; border-radius:7px; padding:7px 12px; font-size:12px; font-weight:600; cursor:pointer;" style-hover="background:#A30000;">Back this</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="font-size:12px; font-weight:600; color:#555; margin:16px 0 7px;">{{ descLabel }}</div>
+            <textarea value="{{ reportDesc }}" onChange="{{ onReportDesc }}" placeholder="{{ descPlaceholder }}" style="width:100%; height:70px; border:1px solid #d4d4d4; border-radius:8px; padding:10px 13px; font-size:13px; color:#333; outline:none; resize:none; line-height:1.5;" style-focus="border-color:#CC0000;"></textarea>
+
+            <!-- auto-captured context (bug only) -->
+            <sc-if value="{{ isBugForm }}">
+              <div style="border:1px solid #e6e6e6; border-radius:10px; margin-top:16px; overflow:hidden;">
+                <div style="background:#f7f7f7; padding:10px 14px; display:flex; align-items:center; gap:8px; border-bottom:1px solid #eee;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2e8b3d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span style="font-size:12px; font-weight:700; color:#444;">We've already captured the context</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:11px; color:#999;">no typing needed</span>
+                </div>
+                <div style="padding:13px 14px; display:flex; flex-direction:column; gap:9px;">
+                  <div style="display:flex; gap:10px;"><span style="width:118px; font-size:11px; color:#999; flex-shrink:0;">Tool / mode</span><span style="font-size:12px; color:#444; font-weight:500;">Print Studio · Standard editor</span></div>
+                  <div style="display:flex; gap:10px;"><span style="width:118px; font-size:11px; color:#999; flex-shrink:0;">File</span><span style="font-size:12px; color:#444; font-weight:500;">Smith_BizCard_v2.pdf · 3.5 × 2 in · 300 dpi · CMYK</span></div>
+                  <div style="display:flex; gap:10px;"><span style="width:118px; font-size:11px; color:#999; flex-shrink:0;">Product spec</span><span style="font-size:12px; color:#444; font-weight:500;">Business cards · SKU 24704 · 0.125 in bleed</span></div>
+                  <div style="display:flex; gap:10px;"><span style="width:118px; font-size:11px; color:#999; flex-shrink:0;">What happened</span><span style="font-size:12px; color:#444; font-weight:500;">Resize to 4 × 3.5 in → app stopped responding</span></div>
+                  <div style="display:flex; gap:10px;"><span style="width:118px; font-size:11px; color:#999; flex-shrink:0;">Recent steps</span><span style="font-size:12px; color:#444; font-weight:500;">Opened file → Standard → Resize → Apply (froze)</span></div>
+                  <div style="display:flex; gap:10px;"><span style="width:118px; font-size:11px; color:#999; flex-shrink:0;">Environment</span><span style="font-size:12px; color:#444; font-weight:500;">Store #1284 · Station POS-3 · v1.3.2 · Jul 1, 2:14 PM</span></div>
+                </div>
+                <div onClick="{{ toggleAttach }}" style="border-top:1px solid #eee; padding:12px 14px; display:flex; align-items:center; gap:11px; cursor:pointer; background:{{ attachBg }};">
+                  <div style="width:20px; height:20px; border-radius:5px; border:1.5px solid {{ attachBorder }}; background:{{ attachFill }}; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                    <sc-if value="{{ attachFile }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></sc-if>
+                  </div>
+                  <div style="flex:1;">
+                    <div style="font-size:12px; font-weight:600; color:#444;">Attach the customer file that misbehaved</div>
+                    <div style="font-size:11px; color:#999;">Smith_BizCard_v2.pdf · handled as sensitive, purged in 14 days.</div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- feature: area auto-tag -->
+            <sc-if value="{{ isFeatureForm }}">
+              <div style="display:flex; align-items:center; gap:9px; margin-top:14px; padding:11px 13px; border:1px solid #eef; background:#f7f9fd; border-radius:9px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#086DD2" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.6a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><path d="M7 7h.01"/></svg>
+                <span style="font-size:12px; color:#555;">Tagged to <span style="font-weight:700; color:#086DD2;">Design editor</span> automatically — where you are right now.</span>
+              </div>
+            </sc-if>
+
+            <!-- identity -->
+            <div style="margin-top:16px; display:flex; gap:12px; align-items:flex-end;">
+              <div style="flex:1;">
+                <div style="font-size:12px; font-weight:600; color:#555; margin-bottom:7px;">Your name <span style="color:#aaa; font-weight:400;">(optional)</span></div>
+                <input value="{{ reportName }}" onChange="{{ onReportName }}" placeholder="Leave blank to post as your store only" style="width:100%; height:40px; border:1px solid #d4d4d4; border-radius:8px; padding:0 13px; font-size:13px; color:#333; outline:none;" style-focus="border-color:#CC0000;" />
+              </div>
+            </div>
+            <div style="font-size:11px; color:#999; margin-top:8px;">Tracked to <span style="font-weight:600; color:#666;">Store {{ store }}</span>.</div>
+          </div>
+          <div style="padding:16px 28px; border-top:1px solid #f0f0f0; display:flex; align-items:center; gap:12px;">
+            <div style="flex:1;"></div>
+            <div onClick="{{ closeReport }}" style="height:40px; padding:0 16px; border:1px solid #d4d4d4; border-radius:8px; display:flex; align-items:center; color:#555; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#f5f5f5;">Cancel</div>
+            <div onClick="{{ submitReport }}" style="height:40px; padding:0 22px; background:#CC0000; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#A30000;">{{ submitLabel }}</div>
+          </div>
+        </sc-if>
+
+        <!-- STEP: upvoted existing -->
+        <sc-if value="{{ rUpvoted }}">
+          <div style="padding:40px 34px; text-align:center;">
+            <div style="width:60px; height:60px; border-radius:50%; background:#FBEBEB; display:flex; align-items:center; justify-content:center; margin:0 auto 18px; position:relative;">
+              <div style="position:absolute; inset:0; border-radius:50%; border:2px solid #CC0000; animation:ringExpand 1s ease-out;"></div>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#CC0000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+            </div>
+            <div style="font-size:18px; font-weight:700; color:#1a1a1a;">Your store's backing is in.</div>
+            <div style="font-size:13px; color:#777; margin-top:8px; line-height:1.5; max-width:420px; margin-left:auto; margin-right:auto;">Added Store {{ store }} to <span style="font-weight:600; color:#444;">"{{ upvotedTitle }}"</span>. You'll be notified when its status changes.</div>
+            <div onClick="{{ viewUpvoted }}" style="display:inline-flex; margin-top:22px; height:42px; padding:0 22px; background:#CC0000; color:#fff; border-radius:8px; align-items:center; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#A30000;">See it on the board</div>
+          </div>
+        </sc-if>
+
+        <!-- STEP: confirm filed -->
+        <sc-if value="{{ rConfirm }}">
+          <div style="padding:40px 34px; text-align:center;">
+            <div style="width:60px; height:60px; border-radius:50%; background:#eef7ef; display:flex; align-items:center; justify-content:center; margin:0 auto 18px; position:relative;">
+              <div style="position:absolute; inset:0; border-radius:50%; border:2px solid #2e8b3d; animation:ringExpand 1s ease-out;"></div>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2e8b3d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </div>
+            <div style="font-size:18px; font-weight:700; color:#1a1a1a;">Filed. Tracked to Store {{ store }}.</div>
+            <div style="font-size:13px; color:#777; margin-top:8px; line-height:1.5; max-width:430px; margin-left:auto; margin-right:auto;">It's on the board now and following automatically — you'll get a ping on every status change.</div>
+            <div style="display:flex; gap:12px; justify-content:center; margin-top:22px;">
+              <div onClick="{{ closeReport }}" style="height:42px; padding:0 18px; border:1px solid #d4d4d4; border-radius:8px; display:flex; align-items:center; color:#555; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#f5f5f5;">Back to my work</div>
+              <div onClick="{{ confirmDone }}" style="height:42px; padding:0 22px; background:#CC0000; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#A30000;">See it on the board</div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- OVERLAY: celebratory shipped moment                           -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ celebrateOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeCelebrate }}" style="position:absolute; inset:0; background:rgba(20,20,20,.4); z-index:60; animation:fadeIn .18s ease;"></div>
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:520px; background:#fff; border-radius:16px; z-index:61; box-shadow:0 28px 70px rgba(0,0,0,.32); overflow:hidden; animation:popIn .22s ease; text-align:center;">
+        <div style="height:150px; background:linear-gradient(180deg,#FBEBEB,#fff); display:flex; align-items:center; justify-content:center; position:relative;">
+          <div style="position:absolute; width:96px; height:96px; border-radius:50%; border:2px solid #CC0000; animation:ringExpand 1.4s ease-out infinite;"></div>
+          <div style="position:absolute; width:96px; height:96px; border-radius:50%; border:2px solid #CC0000; animation:ringExpand 1.4s ease-out .5s infinite;"></div>
+          <div style="width:74px; height:74px; border-radius:50%; background:#fff; box-shadow:0 4px 16px rgba(204,0,0,.22); display:flex; align-items:center; justify-content:center; position:relative; z-index:2;">
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="#CC0000" stroke="none" style="animation:starPop .5s ease-out;"><path d="M12 2l1.9 6.3L20 10l-6.1 1.7L12 18l-1.9-6.3L4 10l6.1-1.7z"/></svg>
+          </div>
+        </div>
+        <div style="padding:6px 34px 32px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#CC0000;">You asked, we delivered
+          <div style="font-size:20px; font-weight:700; color:#1a1a1a; margin-top:10px; line-height:1.3;">{{ celebrate.title }}</div>
+          <div style="font-size:13px; color:#777; margin-top:10px; line-height:1.55;">{{ celebrate.line }}</div>
+          <div style="display:inline-flex; align-items:center; gap:8px; margin-top:16px; background:#eef7ef; border:1px solid #cfe6d3; border-radius:20px; padding:6px 14px;">
+            <span style="width:8px; height:8px; border-radius:50%; background:#2e8b3d;"></span>
+            <span style="font-size:12px; font-weight:700; color:#2e6b36;">{{ celebrate.shipped }} in {{ celebrate.release }}</span>
+          </div>
+          <div style="font-size:12px; color:#999; margin-top:16px;">That brings your store's shipped-from-feedback tally to <span style="font-weight:700; color:#CC0000;">{{ impact }}</span>.</div>
+          <sc-if value="{{ celebrate.hasMultiple }}">
+            <div style="display:flex; align-items:center; justify-content:center; gap:14px; margin-top:20px;">
+              <div onClick="{{ celebratePrev }}" style="{{ celebrate.prevStyle }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></div>
+              <span style="font-size:12px; color:#999; font-weight:600; min-width:48px; text-align:center;">{{ celebrate.index }} of {{ celebrate.total }}</span>
+              <div onClick="{{ celebrateNext }}" style="{{ celebrate.nextStyle }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+            </div>
+          </sc-if>
+          <div style="display:flex; gap:12px; justify-content:center; margin-top:18px;">
+            <div onClick="{{ closeCelebrate }}" style="height:42px; padding:0 18px; border:1px solid #d4d4d4; border-radius:8px; display:flex; align-items:center; color:#555; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#f5f5f5;">{{ celebrate.dismissLabel }}</div>
+            <div onClick="{{ celebrateToReleases }}" style="height:42px; padding:0 22px; background:#CC0000; color:#fff; border-radius:8px; display:flex; align-items:center; font-size:13px; font-weight:600; cursor:pointer;" style-hover="background:#A30000;">See what's new</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============================================================ -->
+    <!-- OVERLAY: coachmark on home                                    -->
+    <!-- ============================================================ -->
+    <sc-if value="{{ showCoach }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute; top:58px; right:150px; width:250px; background:#1a1a1a; border-radius:10px; padding:14px 15px; z-index:25; box-shadow:0 12px 30px rgba(0,0,0,.28); animation:popIn .2s ease;">
+        <div style="position:absolute; top:-7px; right:56px; width:14px; height:14px; background:#1a1a1a; transform:rotate(45deg);"></div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div style="font-size:13px; font-weight:700; color:#fff;">Hit a snag or have an idea?</div>
+          <div onClick="{{ dismissCoach }}" style="cursor:pointer; flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+        </div>
+        <div style="font-size:12px; color:#c8c8c8; margin-top:5px; line-height:1.5;">Tell us right here — it takes seconds, and stores upvote the ones that matter.</div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1500,&quot;height&quot;:1020},&quot;startView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;board&quot;,&quot;releases&quot;],&quot;default&quot;:&quot;home&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;,&quot;label&quot;:&quot;Open on surface&quot;},&quot;coachmark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;,&quot;label&quot;:&quot;Show entry coachmark&quot;},&quot;celebrations&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;,&quot;label&quot;:&quot;Celebratory shipped moment&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      view: (props && props.startView) || 'home',
+      celebrations: !(props && props.celebrations === false),
+      coachOpen: !(props && props.coachmark === false),
+      reportOpen: false, reportStep: 'choose',
+      reportTitle: '', reportDesc: '', reportName: '', attachFile: true,
+      notifOpen: false, detailId: null,
+      celebrateOpen: false, celebrateQueue: [], celebrateIndex: 0, autoCelebrated: false,
+      fType: 'all', fStatus: 'all', fScope: 'all', query: '',
+      justVotedId: null, alreadyVotedId: null, highlightId: null,
+      upvotedId: null, newItemId: null, nextId: 100,
+      impact: 7, store: '#1284',
+      items: this.seedItems(), releases: this.seedReleases(), notifications: this.seedNotifs(),
+    };
+  }
+
+  componentDidMount() {
+    if (this.state.view === 'board') this.maybeAutoCelebrate();
+  }
+  maybeAutoCelebrate() {
+    if (this.state.autoCelebrated) return;
+    if (!this.state.celebrations) { this.setState({ autoCelebrated: true }); return; }
+    const shipped = this.state.notifications.filter(n => n.kind === 'shipped');
+    if (!shipped.length) { this.setState({ autoCelebrated: true }); return; }
+    const queue = shipped.map(n => ({ itemId: n.itemId, release: n.release }));
+    this.setState({ autoCelebrated: true, celebrateOpen: true, celebrateQueue: queue, celebrateIndex: 0, notifOpen: false, detailId: null });
+  }
+
+  seedItems() {
+    return [
+      { id: 1, type: 'feature', title: "Save a customer's brand colors to reuse next visit", desc: "When a repeat customer comes back I re-key their exact colors every time. Let me save a palette to the customer or order so it's one tap next visit.", area: 'Design editor', status: 'planned', votes: 61, districts: 14, mine: false, votedByMe: false, followed: false, inDistrict: true, inRegion: true,
+        comments: [{ store: '#0412', text: 'Our regulars would love this — we keep a sticky note of hex codes at the counter.' }, { store: '#1190', text: '+1, and let us name the palettes.' }],
+        reports: [{ store: '#0412', when: '3 weeks ago', name: 'Dana', text: 'Save brand colors per customer.' }, { store: '#1190', when: '2 weeks ago', name: null, text: 'Reuse a saved palette between visits.' }, { store: '#0733', when: '9 days ago', name: null, text: 'Stop making me re-enter the same greens.' }] },
+      { id: 2, type: 'bug', title: 'Large-format resize crashes when the file is over ~200 MB', desc: 'Resizing a big banner PDF to another size freezes the whole station and I lose the job.', area: 'Print production', status: 'planned', votes: 47, districts: 9, mine: true, votedByMe: true, followed: true, inDistrict: true, inRegion: true,
+        comments: [{ store: '#1284', text: 'Happens on every 36-inch banner for us.' }],
+        reports: [{ store: '#1284', when: '12 days ago', name: 'You', text: 'App freezes resizing large banners over 200MB.' }, { store: '#0733', when: '9 days ago', name: null, text: 'Crash on big file resize.' }, { store: '#2051', when: '6 days ago', name: 'Marcus', text: 'Station locks up on large-format resize.' }] },
+      { id: 3, type: 'feature', title: 'Batch-place business cards N-up without doing the math', desc: 'Let me set "fill the sheet" and have it impose 10-up automatically instead of me measuring.', area: 'Imposition', status: 'planned', votes: 52, districts: 11, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: true,
+        comments: [], reports: [{ store: '#1190', when: '3 weeks ago', name: null, text: 'Auto N-up for cards.' }, { store: '#0412', when: '2 weeks ago', name: 'Dana', text: 'Fill the sheet automatically.' }] },
+      { id: 4, type: 'bug', title: 'Barcodes render blurry below 600 dpi', desc: 'Scanners reject them and we have to redo the whole label run.', area: 'PDF toolkit', status: 'new', votes: 33, districts: 7, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: true,
+        comments: [], reports: [{ store: '#2051', when: '1 week ago', name: null, text: 'Barcodes come out fuzzy and won\u2019t scan.' }] },
+      { id: 5, type: 'bug', title: '.pub files with linked images drop the images on convert', desc: 'The layout comes in fine but every placed photo is gone.', area: 'Publisher converter', status: 'new', votes: 29, districts: 8, mine: true, votedByMe: false, followed: false, inDistrict: true, inRegion: true,
+        comments: [], reports: [{ store: '#1284', when: '5 days ago', name: 'You', text: 'Converted a .pub and all the images vanished.' }, { store: '#0733', when: '4 days ago', name: null, text: 'Linked images lost on Publisher import.' }] },
+      { id: 6, type: 'feature', title: "Pull the customer's phone number from the order into the design", desc: 'Autofill contact info from the linked order instead of retyping it.', area: 'Fetch from order', status: 'new', votes: 18, districts: 5, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: true,
+        comments: [], reports: [{ store: '#0412', when: '6 days ago', name: null, text: 'Autofill phone/email from the order.' }] },
+      { id: 7, type: 'bug', title: 'Excel handler drops cell borders on wide sheets', desc: 'Borders vanish past about column N when the sheet is wide.', area: 'Excel handler', status: 'new', votes: 15, districts: 4, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: false,
+        comments: [], reports: [{ store: '#2051', when: '1 week ago', name: null, text: 'Wide spreadsheets lose their gridlines.' }] },
+      { id: 8, type: 'feature', title: 'Dark mode for the station at night', desc: 'The bright white UI is harsh on late shifts.', area: 'App', status: 'declined', votes: 9, districts: 3, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: false,
+        declineReason: 'Station displays are color-calibrated for accurate proofing. A dark theme would shift how proofs read on screen, so we\u2019re not proceeding — but we\u2019re looking at dimming the chrome only.',
+        comments: [], reports: [{ store: '#0733', when: '2 weeks ago', name: null, text: 'Night mode please.' }] },
+      { id: 9, type: 'bug', title: "Background doesn't extend to the bleed on imported PDFs", desc: 'Edges print white after cutting because the art stops at the trim line.', area: 'Preflight', status: 'done', shippedIn: 'v1.4', votes: 38, districts: 8, mine: true, votedByMe: true, followed: true, inDistrict: true, inRegion: true,
+        comments: [{ store: '#1190', text: 'This one bit us weekly. Glad it\u2019s fixed.' }],
+        reports: [{ store: '#1284', when: '5 weeks ago', name: 'You', text: 'White slivers on the edge after cutting.' }, { store: '#0412', when: '4 weeks ago', name: null, text: 'Bleed not filling on PDF import.' }] },
+      { id: 10, type: 'feature', title: 'One-click proof PDF I can text to the customer', desc: 'A clean, watermarked proof I can send from my phone while they wait.', area: 'Proof & handoff', status: 'done', shippedIn: 'v1.4', votes: 40, districts: 10, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: true,
+        comments: [], reports: [{ store: '#1190', when: '6 weeks ago', name: null, text: 'Fast proof to send customers.' }] },
+      { id: 11, type: 'bug', title: 'Cut template is off-center on the right guillotine', desc: 'Every cut on that machine lands a few millimeters off.', area: 'Cut templates', status: 'done', shippedIn: 'v1.4', votes: 44, districts: 9, mine: true, votedByMe: true, followed: true, inDistrict: true, inRegion: true,
+        comments: [{ store: '#2051', text: 'Per-device offset fixed it for us too.' }],
+        reports: [{ store: '#1284', when: '6 weeks ago', name: 'You', text: 'Right cutter is always off-center.' }, { store: '#0733', when: '5 weeks ago', name: 'Marcus', text: 'Cuts drift a few mm on the second guillotine.' }] },
+      { id: 12, type: 'bug', title: 'Fonts substitute silently on .pub import', desc: 'The wrong font ships without any warning that it swapped.', area: 'Publisher converter', status: 'done', shippedIn: 'v1.3', votes: 26, districts: 6, mine: false, votedByMe: false, followed: false, inDistrict: false, inRegion: true,
+        comments: [], reports: [{ store: '#0412', when: '9 weeks ago', name: null, text: 'Fonts change on import with no heads-up.' }] },
+    ];
+  }
+
+  seedReleases() {
+    return [
+      { version: 'v1.4', date: 'Jun 24, 2026', title: 'Cleaner edges, straighter cuts, faster proofs.', summary: "This one's all about the finish. Bleeds now fill to the edge on imported PDFs, the right guillotine cut lands where it should, and you can send a customer a proof in one tap.", yourStore: true, latest: true,
+        features: [{ id: 10, title: 'One-click proof PDF', stores: 10, yours: false }],
+        fixes: [{ id: 9, title: 'Bleed now fills on imported PDFs', stores: 8, yours: true }, { id: 11, title: 'Right guillotine cut re-centered', stores: 9, yours: true }] },
+      { version: 'v1.3', date: 'May 19, 2026', title: 'Publisher files come in cleaner.', summary: 'Old .pub files convert with fewer surprises — fonts no longer swap themselves out silently, so what you see is what prints.', yourStore: false, latest: false,
+        features: [],
+        fixes: [{ id: 12, title: 'Fonts no longer substitute silently on .pub import', stores: 6, yours: false }] },
+      { version: 'v1.2', date: 'Apr 15, 2026', title: 'Groundwork for large format.', summary: 'Faster handling of big banner files and the first per-device cut-template calibration tools land in beta.', yourStore: false, latest: false,
+        features: [{ id: null, title: 'Per-device cut calibration (beta)', stores: 5, yours: false }],
+        fixes: [{ id: null, title: 'Faster load for files over 100 MB', stores: 7, yours: false }] },
+      { version: 'v1.1', date: 'Mar 18, 2026', title: 'Fit and finish.', summary: 'Dozens of small fixes from your first month with the suite — snappier panels, clearer preflight warnings, fewer surprises.', yourStore: false, latest: false,
+        features: [], fixes: [{ id: null, title: 'Clearer preflight warning wording', stores: 4, yours: false }] },
+      { version: 'v1.0', date: 'Feb 24, 2026', title: 'Print Studio launches across every store.', summary: 'The suite replaces the old Publisher workflow. Open any file, pick a product, and print — same-day.', yourStore: false, latest: false,
+        features: [{ id: null, title: 'Unified file intake and product picker', stores: 0, yours: false }], fixes: [] },
+    ];
+  }
+
+  seedNotifs() {
+    return [
+      { id: 'n1', kind: 'shipped', unread: true, itemId: 11, release: 'v1.4', text: 'Your store asked for this — "Right guillotine cut re-centered" shipped in v1.4.' },
+      { id: 'n2', kind: 'shipped', unread: true, itemId: 9, release: 'v1.4', text: 'A bug you backed is fixed — "Bleed now fills on imported PDFs" in v1.4.' },
+      { id: 'n3', kind: 'status', unread: true, itemId: 2, release: null, text: '"Large-format resize crash" moved to Planned. You\u2019re following this one.' },
+      { id: 'n4', kind: 'backed', unread: false, itemId: 2, release: null, text: '12 more stores backed "Large-format resize crash" with you — 47 in total now.' },
+    ];
+  }
+
+  // ---------- helpers ----------
+  statusMeta(type, status) {
+    if (status === 'new') return { label: 'New', dot: '#9a9a9a' };
+    if (status === 'planned') return { label: 'Planned', dot: '#086DD2' };
+    if (status === 'done') return { label: type === 'bug' ? 'Fixed' : 'Shipped', dot: '#2e8b3d' };
+    return { label: type === 'bug' ? 'Closed' : 'Declined', dot: '#bcbcbc' };
+  }
+  chip(active) {
+    return 'padding:6px 11px; border-radius:16px; font-size:12px; font-weight:600; cursor:pointer; text-align:center; border:1px solid ' + (active ? '#CC0000' : '#dcdcdc') + '; background:' + (active ? '#FBEBEB' : '#fff') + '; color:' + (active ? '#CC0000' : '#666') + ';';
+  }
+  rowChip(active) {
+    return 'display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:8px; font-size:12.5px; font-weight:' + (active ? '600' : '500') + '; cursor:pointer; color:' + (active ? '#CC0000' : '#555') + '; background:' + (active ? '#FBEBEB' : 'transparent') + ';';
+  }
+  tokens(s) {
+    const stop = { the: 1, and: 1, for: 1, that: 1, this: 1, with: 1, when: 1, over: 1, into: 1, from: 1, without: 1, doing: 1, does: 1, dont: 1, cant: 1, are: 1, was: 1, but: 1, out: 1, its: 1, has: 1, get: 1, got: 1, use: 1, let: 1, the: 1, you: 1, your: 1 };
+    return (s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !stop[w]);
+  }
+
+  decorate(it) {
+    const m = this.statusMeta(it.type, it.status);
+    const voted = it.votedByMe;
+    return Object.assign({}, it, {
+      isBug: it.type === 'bug',
+      typeLabel: it.type === 'bug' ? 'Bug' : 'Feature request',
+      typeColor: it.type === 'bug' ? '#CC0000' : '#086DD2',
+      typeBg: it.type === 'bug' ? '#FBEBEB' : '#eef4fb',
+      statusLabel: m.label, statusDot: m.dot,
+      reach: it.votes + ' stores \u00b7 ' + it.districts + ' districts',
+      commentCount: (it.comments || []).length,
+      isShipped: !!it.shippedIn,
+      shippedLabel: it.type === 'bug' ? 'Fixed' : 'Shipped',
+      highlight: it.id === this.state.highlightId,
+      already: it.id === this.state.alreadyVotedId,
+      rowBorder: it.id === this.state.highlightId ? '#CC0000' : '#e6e6e6',
+      rowShadow: it.id === this.state.highlightId ? '0 0 0 3px rgba(204,0,0,.12)' : '0 1px 3px rgba(0,0,0,.05)',
+      countStyle: it.id === this.state.justVotedId ? 'display:inline-block; animation:pulseCount .6s ease;' : '',
+      voteBg: voted ? '#CC0000' : '#fff',
+      voteBorder: voted ? '#CC0000' : '#d4d4d4',
+      voteColor: voted ? '#fff' : '#666',
+      voteLabel: voted ? "Backed by your store \u00b7 tap to remove" : "Add your store's vote",
+      followBg: it.followed ? '#FBEBEB' : '#fff',
+      followBorder: it.followed ? '#CC0000' : '#d4d4d4',
+      followColor: it.followed ? '#CC0000' : '#666',
+      followLabel: it.followed ? 'Following' : 'Follow',
+      backedLine: it.votes + ' stores across ' + it.districts + ' districts back this',
+      onUpvote: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.upvote(it.id); },
+      onOpen: () => this.openDetail(it.id),
+      onFollow: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.toggleFollow(it.id); },
+    });
+  }
+
+  // ---------- actions ----------
+  setF(key, val) { const o = {}; o[key] = val; this.setState(o); }
+  go(view) { this.setState({ view: view, notifOpen: false, detailId: null, coachOpen: false }, () => { if (view === 'board') this.maybeAutoCelebrate(); }); }
+  goHome() { this.go('home'); }
+  goBoard() { this.go('board'); }
+  goReleases() { this.go('releases'); }
+
+  upvote(id) {
+    const it = this.state.items.find(i => i.id === id);
+    if (!it) return;
+    const nowVoted = !it.votedByMe;
+    this.setState(s => ({ items: s.items.map(i => i.id === id ? Object.assign({}, i, { votes: i.votes + (nowVoted ? 1 : -1), votedByMe: nowVoted, inDistrict: nowVoted ? true : i.inDistrict, inRegion: nowVoted ? true : i.inRegion }) : i), justVotedId: id }));
+    setTimeout(() => this.setState({ justVotedId: null }), 650);
+  }
+  toggleFollow(id) {
+    this.setState(s => ({ items: s.items.map(i => i.id === id ? Object.assign({}, i, { followed: !i.followed }) : i) }));
+  }
+  openDetail(id) { this.setState({ detailId: id, notifOpen: false }); }
+  closeDetail() { this.setState({ detailId: null }); }
+
+  // report flow
+  openReport() { this.setState({ reportOpen: true, reportStep: 'choose', reportTitle: '', reportDesc: '', reportName: '', attachFile: true, notifOpen: false, coachOpen: false }); }
+  closeReport() { this.setState({ reportOpen: false }); }
+  chooseBug() { this.setState({ reportStep: 'bug' }); }
+  chooseFeature() { this.setState({ reportStep: 'feature' }); }
+  backToChoose() { this.setState({ reportStep: 'choose', reportTitle: '', reportDesc: '' }); }
+  onReportTitle(e) { this.setState({ reportTitle: e.target.value }); }
+  onReportDesc(e) { this.setState({ reportDesc: e.target.value }); }
+  onReportName(e) { this.setState({ reportName: e.target.value }); }
+  toggleAttach() { this.setState(s => ({ attachFile: !s.attachFile })); }
+  goBoardFromReport() { this.setState({ reportOpen: false, view: 'board' }, () => this.maybeAutoCelebrate()); }
+
+  computeSimilar() {
+    const q = this.state.reportTitle || '';
+    if (q.trim().length < 3) return [];
+    const qt = this.tokens(q);
+    if (!qt.length) return [];
+    const scored = this.state.items.filter(i => i.status !== 'done').map(i => {
+      const itk = this.tokens(i.title + ' ' + i.area);
+      let ov = 0;
+      qt.forEach(t => { if (itk.some(w => w.indexOf(t) >= 0 || t.indexOf(w) >= 0)) ov++; });
+      return { i: i, ov: ov };
+    }).filter(x => x.ov > 0).sort((a, b) => b.ov - a.ov || b.i.votes - a.i.votes).slice(0, 3);
+    return scored.map(x => {
+      const d = this.decorate(x.i);
+      d.onPick = () => this.upvoteFromSimilar(x.i.id);
+      return d;
+    });
+  }
+  upvoteFromSimilar(id) {
+    const it = this.state.items.find(i => i.id === id);
+    this.upvote(id);
+    this.setState({ reportStep: 'upvoted', upvotedId: id, highlightId: id });
+  }
+  viewUpvoted() { this.setState({ reportOpen: false, view: 'board' }, () => this.maybeAutoCelebrate()); }
+  submitReport() {
+    const type = this.state.reportStep === 'bug' ? 'bug' : 'feature';
+    const id = this.state.nextId;
+    const title = (this.state.reportTitle || '').trim() || (type === 'bug' ? 'Reported problem' : 'Feature idea');
+    const item = {
+      id: id, type: type, title: title, desc: (this.state.reportDesc || '').trim() || (type === 'bug' ? 'Something went wrong.' : 'An idea to make the tool better.'),
+      area: 'Design editor', status: 'new', votes: 1, districts: 1, mine: true, votedByMe: true, followed: true, inDistrict: true, inRegion: true,
+      comments: [], reports: [{ store: this.state.store, when: 'just now', name: (this.state.reportName || '').trim() || null, text: (this.state.reportDesc || '').trim() || title }],
+    };
+    this.setState(s => ({ items: [item].concat(s.items), reportStep: 'confirm', nextId: s.nextId + 1, newItemId: id }));
+  }
+  confirmDone() { this.setState({ reportOpen: false, view: 'board', highlightId: this.state.newItemId }, () => this.maybeAutoCelebrate()); }
+
+  // notifications
+  toggleNotif() { this.setState(s => ({ notifOpen: !s.notifOpen, coachOpen: false })); }
+  closeNotif() { this.setState({ notifOpen: false }); }
+  markRead(id) { this.setState(s => ({ notifications: s.notifications.map(n => n.id === id ? Object.assign({}, n, { unread: false }) : n) })); }
+  notifSee(n) {
+    this.markRead(n.id);
+    if (n.kind === 'shipped' && this.state.celebrations) {
+      this.setState({ notifOpen: false, celebrateOpen: true, celebrateQueue: [{ itemId: n.itemId, release: n.release }], celebrateIndex: 0 });
+    } else if (n.release) {
+      this.setState({ notifOpen: false, view: 'releases' });
+    } else {
+      this.setState({ notifOpen: false, view: 'board', detailId: n.itemId });
+    }
+  }
+  closeCelebrate() { this.setState({ celebrateOpen: false, celebrateQueue: [], celebrateIndex: 0 }); }
+  celebrateToReleases() { this.setState({ celebrateOpen: false, celebrateQueue: [], celebrateIndex: 0, view: 'releases' }); }
+  celebratePrev() { this.setState(s => ({ celebrateIndex: Math.max(0, (s.celebrateIndex || 0) - 1) })); }
+  celebrateNext() { this.setState(s => ({ celebrateIndex: Math.min((s.celebrateQueue || []).length - 1, (s.celebrateIndex || 0) + 1) })); }
+  dismissCoach() { this.setState({ coachOpen: false }); }
+  goItem(id) { this.setState({ view: 'board', detailId: id, notifOpen: false }, () => this.maybeAutoCelebrate()); }
+
+  // ---------- filtered list ----------
+  filtered() {
+    let list = this.state.items.slice();
+    const s = this.state;
+    if (s.fType !== 'all') list = list.filter(i => i.type === s.fType);
+    if (s.fStatus !== 'all') list = list.filter(i => i.status === s.fStatus);
+    if (s.fScope === 'mine') list = list.filter(i => i.mine || i.votedByMe);
+    else if (s.fScope === 'district') list = list.filter(i => i.inDistrict);
+    else if (s.fScope === 'region') list = list.filter(i => i.inRegion);
+    if (s.query.trim()) {
+      const q = s.query.toLowerCase();
+      list = list.filter(i => (i.title + ' ' + i.area + ' ' + (i.desc || '')).toLowerCase().indexOf(q) >= 0);
+    }
+    list.sort((a, b) => b.votes - a.votes);
+    return list.map(i => this.decorate(i));
+  }
+
+  buildDetail() {
+    const id = this.state.detailId;
+    if (id == null) return null;
+    const it = this.state.items.find(i => i.id === id);
+    if (!it) return null;
+    const d = this.decorate(it);
+    const trail = [{ label: 'New', dot: '#9a9a9a', line: true }];
+    if (it.status === 'planned' || it.status === 'done') trail.push({ label: 'Planned', dot: '#086DD2', line: it.status === 'done' });
+    if (it.status === 'done') trail.push({ label: it.type === 'bug' ? 'Fixed' : 'Shipped', dot: '#2e8b3d', line: false });
+    if (it.status === 'declined') trail.push({ label: it.type === 'bug' ? 'Closed' : 'Declined', dot: '#bcbcbc', line: false });
+    trail[trail.length - 1].line = false;
+    d.trail = trail;
+    d.reportsList = (it.reports || []).map((r, idx) => Object.assign({}, r, { hasName: !!r.name, bg: r.store === this.state.store ? '#FBEBEB' : '#fff', storeColor: r.store === this.state.store ? '#CC0000' : '#555' }));
+    d.commentsList = it.comments || [];
+    d.hasComments = (it.comments || []).length > 0;
+    d.hasDecline = !!it.declineReason;
+    d.declineReason = it.declineReason || '';
+    d.onSeeRelease = () => this.setState({ view: 'releases', detailId: null });
+    return d;
+  }
+
+  buildReleases() {
+    return this.state.releases.map(r => {
+      const dec = (f) => Object.assign({}, f, {
+        hasLink: f.id != null,
+        cursor: f.id != null ? 'pointer' : 'default',
+        credit: f.stores > 0 ? (f.yours ? 'Your store + ' + (f.stores - 1) + ' asked' : f.stores + ' stores asked') : '',
+        creditColor: f.yours ? '#CC0000' : '#999',
+        onOpen: f.id != null ? () => this.goItem(f.id) : null,
+      });
+      return Object.assign({}, r, {
+        isLatest: r.latest,
+        hasFeatures: r.features.length > 0,
+        hasFixes: r.fixes.length > 0,
+        featuresD: r.features.map(dec),
+        fixesD: r.fixes.map(dec),
+        cardBorder: r.latest ? '#e6cfcf' : '#eaeaea',
+        cardShadow: r.latest ? '0 4px 16px rgba(0,0,0,.07)' : '0 1px 3px rgba(0,0,0,.04)',
+      });
+    });
+  }
+
+  buildNotifs() {
+    return this.state.notifications.map(n => Object.assign({}, n, {
+      isShipped: n.kind === 'shipped', isStatus: n.kind === 'status', isBacked: n.kind === 'backed',
+      iconBg: n.kind === 'shipped' ? '#FBEBEB' : (n.kind === 'status' ? '#eef4fb' : '#eef7ef'),
+      bg: n.unread ? '#fcfaf7' : '#fff',
+      action: n.kind === 'shipped' ? 'See what shipped \u2192' : (n.release ? 'See detail \u2192' : 'View on the board \u2192'),
+      on: () => this.notifSee(n),
+    }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const view = s.view;
+    const isBug = s.reportStep === 'bug';
+    const detail = this.buildDetail();
+    const similar = this.computeSimilar();
+    const cq = s.celebrateQueue || [];
+    const cIdx = s.celebrateIndex || 0;
+    const cCur = cq[cIdx] || null;
+    const cel = cCur ? this.state.items.find(i => i.id === cCur.itemId) : null;
+    const cArrow = 'width:34px; height:34px; border-radius:50%; border:1px solid #e0e0e0; display:flex; align-items:center; justify-content:center; background:#fff;';
+    const unread = s.notifications.filter(n => n.unread).length;
+    const scopeLabels = { all: 'All stores', region: 'Region \u00b7 Northeast', district: 'District 118', mine: 'My store ' + s.store };
+
+    const typeOpts = [
+      { label: 'All', on: () => this.setF('fType', 'all'), style: this.chip(s.fType === 'all') },
+      { label: 'Bugs', on: () => this.setF('fType', 'bug'), style: this.chip(s.fType === 'bug') },
+      { label: 'Requests', on: () => this.setF('fType', 'feature'), style: this.chip(s.fType === 'feature') },
+    ];
+    const statusDefs = [['all', 'All statuses', null], ['new', 'New', '#9a9a9a'], ['planned', 'Planned', '#086DD2'], ['done', 'Shipped / Fixed', '#2e8b3d'], ['declined', 'Declined / Closed', '#bcbcbc']];
+    const statusOpts = statusDefs.map(d => ({ label: d[1], dot: d[2] || '#ccc', hasDot: !!d[2], on: () => this.setF('fStatus', d[0]), style: this.rowChip(s.fStatus === d[0]) }));
+    const scopeDefs = [['all', 'All stores (chain)'], ['region', 'Region \u00b7 Northeast'], ['district', 'District 118'], ['mine', 'My store ' + s.store]];
+    const scopeOpts = scopeDefs.map(d => ({ label: d[1], on: () => this.setF('fScope', d[0]), style: this.rowChip(s.fScope === d[0]) }));
+
+    const topStores = [
+      { store: '#1190' }, { store: '#0412' }, { store: s.store, you: true }, { store: '#0733' }, { store: '#2051' }
+    ].map(t => ({
+      label: t.you ? 'Store ' + t.store + ' (you)' : 'Store ' + t.store,
+      color: t.you ? '#CC0000' : '#666', bg: t.you ? '#FBEBEB' : '#f4f4f4', border: t.you ? '#e6c4c4' : '#e6e6e6',
+    }));
+
+    return {
+      store: s.store, impact: s.impact,
+      view: view, isHome: view === 'home', isBoard: view === 'board', isReleases: view === 'releases', isTracker: view === 'board' || view === 'releases',
+      goHome: () => this.goHome(), goBoard: () => this.goBoard(), goReleases: () => this.goReleases(),
+      openReport: () => this.openReport(), toggleNotif: () => this.toggleNotif(),
+      boardTabBg: view === 'board' ? '#CC0000' : '#fff', boardTabColor: view === 'board' ? '#fff' : '#666',
+      relTabBg: view === 'releases' ? '#CC0000' : '#fff', relTabColor: view === 'releases' ? '#fff' : '#666',
+
+      hasUnread: unread > 0, unreadCount: unread,
+      notifOpen: s.notifOpen, closeNotif: () => this.closeNotif(), notifsD: this.buildNotifs(),
+
+      filteredItems: this.filtered(), resultCount: this.filtered().length, scopeLabel: scopeLabels[s.fScope],
+      typeOpts: typeOpts, statusOpts: statusOpts, scopeOpts: scopeOpts, topStores: topStores,
+      query: s.query, onQuery: (e) => this.setState({ query: e.target.value }),
+
+      detailOpen: detail != null, detail: detail || {}, closeDetail: () => this.closeDetail(),
+
+      releasesD: this.buildReleases(),
+
+      reportOpen: s.reportOpen, reportStep: s.reportStep,
+      rChoose: s.reportStep === 'choose', rForm: s.reportStep === 'bug' || s.reportStep === 'feature',
+      rUpvoted: s.reportStep === 'upvoted', rConfirm: s.reportStep === 'confirm',
+      isBugForm: isBug, isFeatureForm: s.reportStep === 'feature',
+      formTitle: isBug ? 'Report a problem' : 'Request a feature',
+      titleLabel: isBug ? 'What went wrong?' : 'What do you want?',
+      titlePlaceholder: isBug ? 'e.g. Large-format resize freezes the app' : 'e.g. Save a customer\u2019s brand colors to reuse',
+      descLabel: isBug ? 'Anything to add? (optional)' : 'Why it would help (optional)',
+      descPlaceholder: isBug ? 'One line on what you were doing when it broke.' : 'One line on the problem it solves for you.',
+      submitLabel: isBug ? 'File the problem' : 'File the request',
+      reportTitle: s.reportTitle, onReportTitle: (e) => this.onReportTitle(e),
+      reportDesc: s.reportDesc, onReportDesc: (e) => this.onReportDesc(e),
+      reportName: s.reportName, onReportName: (e) => this.onReportName(e),
+      closeReport: () => this.closeReport(), chooseBug: () => this.chooseBug(), chooseFeature: () => this.chooseFeature(),
+      backToChoose: () => this.backToChoose(), submitReport: () => this.submitReport(), confirmDone: () => this.confirmDone(),
+      goBoardFromReport: () => this.goBoardFromReport(), viewUpvoted: () => this.viewUpvoted(),
+      upvotedTitle: (this.state.items.find(i => i.id === s.upvotedId) || {}).title || '',
+      hasSimilar: similar.length > 0, similarItems: similar,
+      similarHeadline: similar.length + (similar.length === 1 ? ' store already raised something like this' : ' related items already open — some backed by many stores'),
+      attachFile: s.attachFile, toggleAttach: () => this.toggleAttach(),
+      attachBg: s.attachFile ? '#fbf5f5' : '#fff', attachBorder: s.attachFile ? '#CC0000' : '#c4c4c4', attachFill: s.attachFile ? '#CC0000' : '#fff',
+
+      celebrateOpen: s.celebrateOpen, closeCelebrate: () => this.closeCelebrate(), celebrateToReleases: () => this.celebrateToReleases(),
+      celebratePrev: () => this.celebratePrev(), celebrateNext: () => this.celebrateNext(),
+      celebrate: cel ? {
+        title: cel.title, shipped: cel.type === 'bug' ? 'Fixed' : 'Shipped', release: cCur.release,
+        line: cel.type === 'bug' ? 'The bug your store reported is gone — here\u2019s the version that carried the fix.' : 'The idea your store backed is live for every store.',
+        hasMultiple: cq.length > 1, index: cIdx + 1, total: cq.length,
+        dismissLabel: cq.length > 1 ? 'Dismiss all' : 'Nice',
+        prevStyle: cArrow + (cIdx > 0 ? 'cursor:pointer;' : 'opacity:.35; cursor:default;'),
+        nextStyle: cArrow + (cIdx < cq.length - 1 ? 'cursor:pointer;' : 'opacity:.35; cursor:default;'),
+      } : {},
+
+      showCoach: s.coachOpen && view === 'home', dismissCoach: () => this.dismissCoach(),
+    };
+  }
+}
+</script>
+</body>
+</html>
