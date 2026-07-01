@@ -3,12 +3,15 @@
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useFeedbackStore } from "@/store";
+import { useOverlayTransition } from "@/lib/use-overlay-transition";
+import { SparkStar } from "@/components/ui/SparkStar";
 
 /**
  * Celebrate "shipped" moment (wire view 7) — the one place a small celebratory
  * flourish is spent: pulsing ring pair, star pop, the delivered item, its
  * release pill, the store's running tally, and queue controls when multiple
- * items shipped. Auto-plays once per session on the first board landing.
+ * items shipped. Content is keyed by queue position so stepping the queue
+ * replays the star pop and fades the new item in.
  */
 export function CelebrateModal() {
   const router = useRouter();
@@ -21,9 +24,12 @@ export function CelebrateModal() {
   const celebratePrev = useFeedbackStore((s) => s.celebratePrev);
   const celebrateNext = useFeedbackStore((s) => s.celebrateNext);
 
+  const phase = useOverlayTransition(open, 190);
+  const closing = phase === "closing";
+
   const current = queue[index];
   const item = current ? items.find((i) => i.id === current.itemId) : undefined;
-  if (!open || !current || !item) return null;
+  if (phase === "closed" || !current || !item) return null;
 
   const isBug = item.type === "bug";
   const hasMultiple = queue.length > 1;
@@ -38,36 +44,44 @@ export function CelebrateModal() {
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] animate-fade-in bg-[rgba(20,20,20,.4)]" onClick={closeCelebrate} />
+      <div
+        className={`fixed inset-0 z-[60] bg-[rgba(20,20,20,.4)] ${closing ? "pointer-events-none animate-fade-out" : "animate-fade-in"}`}
+        onClick={closeCelebrate}
+      />
       <div
         data-testid="celebrate-modal"
-        className="fixed left-1/2 top-1/2 z-[61] w-[520px] -translate-x-1/2 -translate-y-1/2 animate-pop-in overflow-hidden rounded-[16px] bg-white text-center shadow-[0_28px_70px_rgba(0,0,0,.32)]"
+        className={`fixed left-1/2 top-1/2 z-[61] w-[520px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[16px] bg-white text-center shadow-[0_28px_70px_rgba(0,0,0,.32)] ${
+          closing ? "pointer-events-none animate-pop-out" : "animate-pop-in"
+        }`}
       >
         {/* top band: pulsing rings behind the star disc */}
         <div className="relative flex h-[150px] items-center justify-center bg-gradient-to-b from-brand-tint to-white">
           <div className="absolute h-24 w-24 rounded-full border-2 border-brand" style={{ animation: "ringExpand 1.4s ease-out infinite" }} />
           <div className="absolute h-24 w-24 rounded-full border-2 border-brand" style={{ animation: "ringExpand 1.4s ease-out .5s infinite" }} />
           <div className="relative z-[2] flex h-[74px] w-[74px] items-center justify-center rounded-full bg-white shadow-[0_4px_16px_rgba(204,0,0,.22)]">
-            <svg width="38" height="38" viewBox="0 0 24 24" fill="#CC0000" style={{ animation: "starPop .5s ease-out" }}>
-              <path d="M12 2l1.9 6.3L20 10l-6.1 1.7L12 18l-1.9-6.3L4 10l6.1-1.7z" />
-            </svg>
+            {/* keyed by queue position so the pop replays on prev/next */}
+            <SparkStar key={index} size={38} className="text-brand" style={{ animation: "starPop .5s ease-out" }} />
           </div>
         </div>
 
         <div className="px-[34px] pb-8 pt-[6px]">
           <div className="text-[11px] font-bold uppercase tracking-[.08em] text-brand">You asked, we delivered</div>
-          <div className="mt-[10px] text-[20px] font-bold leading-[1.3] text-ink">{item.title}</div>
-          <div className="mt-[10px] text-[13px] leading-[1.55] text-[#777]">
-            {isBug
-              ? "The bug your store reported is gone — here's the version that carried the fix."
-              : "The idea your store backed is live for every store."}
-          </div>
 
-          <div className="mt-4 inline-flex items-center gap-2 rounded-[20px] border border-success-border bg-success-tint px-[14px] py-[6px]">
-            <span className="h-2 w-2 rounded-full bg-success" />
-            <span className="text-[12px] font-bold text-success-deep">
-              {isBug ? "Fixed" : "Shipped"} in {current.release}
-            </span>
+          {/* keyed by queue position so stepping the queue fades the item in */}
+          <div key={index} className="animate-fade-in">
+            <div className="mt-[10px] text-[20px] font-bold leading-[1.3] text-ink">{item.title}</div>
+            <div className="mt-[10px] text-[13px] leading-[1.55] text-[#777]">
+              {isBug
+                ? "The bug your store reported is gone — here's the version that carried the fix."
+                : "The idea your store backed is live for every store."}
+            </div>
+
+            <div className="mt-4 inline-flex items-center gap-2 rounded-[20px] border border-success-border bg-success-tint px-[14px] py-[6px]">
+              <span className="h-2 w-2 rounded-full bg-success" />
+              <span className="text-[12px] font-bold text-success-deep">
+                {isBug ? "Fixed" : "Shipped"} in {current.release}
+              </span>
+            </div>
           </div>
 
           <div className="mt-4 text-[12px] text-[#999]">

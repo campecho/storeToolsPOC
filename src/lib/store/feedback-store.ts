@@ -182,7 +182,10 @@ export const useFeedbackStore = create<FeedbackState>()(
   toggleAttach: () => set((s) => ({ attachFile: !s.attachFile })),
 
   upvoteFromSimilar: (id) => {
-    get().upvote(id);
+    // Add-only: one vote per store (§5.7) — backing an item the store already
+    // backed keeps the standing vote rather than toggling it off.
+    const it = get().items.find((i) => i.id === id);
+    if (it && !it.votedByMe) get().upvote(id);
     set({ reportStep: "upvoted", upvotedId: id, highlightId: id });
   },
 
@@ -285,7 +288,10 @@ export const useFeedbackStore = create<FeedbackState>()(
       set({ autoCelebrated: true });
       return;
     }
-    const shipped = s.notifications.filter((n) => n.kind === "shipped");
+    // Only unread shipped notifications queue, and playing the queue marks
+    // them read — so a delivery celebrates once, not on every page load now
+    // that read-state persists.
+    const shipped = s.notifications.filter((n) => n.kind === "shipped" && n.unread);
     if (!shipped.length) {
       set({ autoCelebrated: true });
       return;
@@ -297,12 +303,17 @@ export const useFeedbackStore = create<FeedbackState>()(
       celebrateIndex: 0,
       notifOpen: false,
       detailId: null,
+      notifications: s.notifications.map((n) =>
+        n.kind === "shipped" && n.unread ? { ...n, unread: false } : n,
+      ),
     });
   },
 
   openCelebrate: (queue) =>
     set({ celebrateOpen: true, celebrateQueue: queue, celebrateIndex: 0, notifOpen: false }),
-  closeCelebrate: () => set({ celebrateOpen: false, celebrateQueue: [], celebrateIndex: 0 }),
+  // The queue is kept on close so the exit animation can still render the
+  // current item; every opener replaces it.
+  closeCelebrate: () => set({ celebrateOpen: false }),
   celebratePrev: () => set((s) => ({ celebrateIndex: Math.max(0, s.celebrateIndex - 1) })),
   celebrateNext: () =>
     set((s) => ({ celebrateIndex: Math.min(s.celebrateQueue.length - 1, s.celebrateIndex + 1) })),

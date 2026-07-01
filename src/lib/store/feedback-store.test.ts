@@ -121,6 +121,16 @@ describe("upvoteFromSimilar", () => {
     // No duplicate item was created.
     expect(st.items.length).toBe(useFeedbackStore.getInitialState().items.length);
   });
+
+  it("backing an already-backed item keeps the standing vote — never toggles it off", () => {
+    // Item 2 is already votedByMe in the seed.
+    const before = getItem(2).votes;
+    useFeedbackStore.getState().upvoteFromSimilar(2);
+
+    expect(getItem(2).votes).toBe(before);
+    expect(getItem(2).votedByMe).toBe(true);
+    expect(useFeedbackStore.getState().reportStep).toBe("upvoted");
+  });
 });
 
 describe("notifications & celebrate", () => {
@@ -131,7 +141,7 @@ describe("notifications & celebrate", () => {
     expect(useFeedbackStore.getState().notifications.filter((n) => n.unread).length).toBe(2);
   });
 
-  it("maybeAutoCelebrate queues every shipped notification, once per session", () => {
+  it("maybeAutoCelebrate queues every unread shipped notification, once per session", () => {
     useFeedbackStore.getState().maybeAutoCelebrate();
     let st = useFeedbackStore.getState();
     expect(st.celebrateOpen).toBe(true);
@@ -143,12 +153,28 @@ describe("notifications & celebrate", () => {
     expect(st.autoCelebrated).toBe(true);
     // the auto-play clears any open detail (celebrate wins the first landing)
     expect(st.detailId).toBe(null);
+    // …and marks the celebrated deliveries read, leaving others untouched
+    expect(st.notifications.filter((n) => n.kind === "shipped" && n.unread).length).toBe(0);
+    expect(st.notifications.find((n) => n.id === "n3")!.unread).toBe(true);
 
     // a second landing never re-fires
     useFeedbackStore.getState().closeCelebrate();
     useFeedbackStore.getState().maybeAutoCelebrate();
     st = useFeedbackStore.getState();
     expect(st.celebrateOpen).toBe(false);
+  });
+
+  it("already-celebrated deliveries don't replay in a fresh session", () => {
+    useFeedbackStore.getState().maybeAutoCelebrate(); // celebrates + marks read
+    useFeedbackStore.getState().closeCelebrate();
+
+    // simulate a reload: read-state persists, session flags reset
+    useFeedbackStore.setState({ autoCelebrated: false, celebrateQueue: [], celebrateIndex: 0 });
+    useFeedbackStore.getState().maybeAutoCelebrate();
+
+    const st = useFeedbackStore.getState();
+    expect(st.celebrateOpen).toBe(false);
+    expect(st.autoCelebrated).toBe(true);
   });
 
   it("celebrations off: auto-play never fires but still marks the session", () => {

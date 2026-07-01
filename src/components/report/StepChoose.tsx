@@ -64,9 +64,13 @@ export function StepChoose() {
         </button>
       </div>
 
-      <div onClick={browseBoard} className="mt-5 cursor-pointer text-center text-[12px] text-info">
+      <button
+        type="button"
+        onClick={browseBoard}
+        className="mt-5 block w-full cursor-pointer text-center text-[12px] text-info"
+      >
         or browse the feedback board →
-      </div>
+      </button>
     </div>
   );
 }

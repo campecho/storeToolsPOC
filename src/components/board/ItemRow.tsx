@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useRef } from "react";
 import { ChevronUp, MessageSquare } from "lucide-react";
 import { useFeedbackStore } from "@/store";
 import { statusMeta, type FeedbackItem } from "@/schema";
@@ -7,9 +8,16 @@ import { statusMeta, type FeedbackItem } from "@/schema";
 /**
  * One board row (wire): upvote button (56px, toggles, one vote per store,
  * pulseCount on change) · type tag + area + title + reach meta · status pill
- * and "Shipped/Fixed in vX". Clicking the row opens the detail drawer (Step 4).
+ * and "Shipped/Fixed in vX". Clicking (or Enter/Space on) the row opens the
+ * detail drawer. `flipRef` lets the board glide rows on reorder.
  */
-export function ItemRow({ item }: { item: FeedbackItem }) {
+export function ItemRow({
+  item,
+  flipRef,
+}: {
+  item: FeedbackItem;
+  flipRef?: (el: HTMLElement | null) => void;
+}) {
   const highlightId = useFeedbackStore((s) => s.highlightId);
   const justVotedId = useFeedbackStore((s) => s.justVotedId);
   const upvote = useFeedbackStore((s) => s.upvote);
@@ -19,15 +27,38 @@ export function ItemRow({ item }: { item: FeedbackItem }) {
   const highlighted = item.id === highlightId;
   const isBug = item.type === "bug";
 
+  const rowEl = useRef<HTMLDivElement | null>(null);
+  const setRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      rowEl.current = el;
+      flipRef?.(el);
+    },
+    [flipRef],
+  );
+
+  // A newly filed/backed item may rank below the fold — bring its ring into view.
+  useEffect(() => {
+    if (highlighted) rowEl.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [highlighted]);
+
   return (
     <div
+      ref={setRef}
       data-testid={`board-item-${item.id}`}
+      role="button"
+      tabIndex={0}
       onClick={() => openDetail(item.id)}
-      className="relative flex cursor-pointer gap-[15px] rounded-[10px] border bg-white px-4 py-[14px] hover:border-[#cfcfcf]"
-      style={{
-        borderColor: highlighted ? "#CC0000" : "#e6e6e6",
-        boxShadow: highlighted ? "0 0 0 3px rgba(204,0,0,.12)" : "0 1px 3px rgba(0,0,0,.05)",
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openDetail(item.id);
+        }
       }}
+      className={`relative flex cursor-pointer gap-[15px] rounded-[10px] border bg-white px-4 py-[14px] ${
+        highlighted
+          ? "border-brand shadow-[0_0_0_3px_rgba(204,0,0,.12)]"
+          : "border-[#e6e6e6] shadow-[0_1px_3px_rgba(0,0,0,.05)] hover:border-[#cfcfcf]"
+      }`}
     >
       {/* upvote */}
       <button
@@ -37,12 +68,9 @@ export function ItemRow({ item }: { item: FeedbackItem }) {
           e.stopPropagation();
           upvote(item.id);
         }}
-        className="flex w-[56px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[9px] border py-2"
-        style={{
-          background: item.votedByMe ? "#CC0000" : "#fff",
-          borderColor: item.votedByMe ? "#CC0000" : "#d4d4d4",
-          color: item.votedByMe ? "#fff" : "#666",
-        }}
+        className={`flex w-[56px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] rounded-[9px] border py-2 ${
+          item.votedByMe ? "border-brand bg-brand text-white" : "border-[#d4d4d4] bg-white text-[#666]"
+        }`}
       >
         <ChevronUp size={17} strokeWidth={2.3} />
         <span

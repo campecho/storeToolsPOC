@@ -4,6 +4,7 @@ import { ReportModal } from "@/components/report/ReportModal";
 import { NotificationsDropdown } from "@/components/overlays/NotificationsDropdown";
 import { CelebrateModal } from "@/components/overlays/CelebrateModal";
 import { StoreHydrator } from "@/components/chrome/StoreHydrator";
+import { EscapeCloser } from "@/components/chrome/EscapeCloser";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           h-screen + internal scrolling so the board's rail and list scroll independently. */}
       <body className="flex h-screen min-w-[1200px] flex-col">
         <StoreHydrator />
+        <EscapeCloser />
         <AppHeader />
         <main className="flex min-h-0 flex-1 flex-col overflow-auto">{children}</main>
         {/* Overlays live at the root so they open over any surface. */}

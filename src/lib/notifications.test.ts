@@ -15,9 +15,10 @@ describe("decorateNotification", () => {
     expect(decorateNotification(byId("n4")).iconBg).toBe("#eef7ef"); // backed
   });
 
-  it("tints unread rows and labels the action by kind", () => {
-    expect(decorateNotification(byId("n1"))).toMatchObject({ bg: "#fcfaf7", action: "See what shipped →" });
-    expect(decorateNotification(byId("n4"))).toMatchObject({ bg: "#fff", action: "View on the board →" });
+  it("labels the action by kind", () => {
+    expect(decorateNotification(byId("n1")).action).toBe("See what shipped →");
+    expect(decorateNotification(byId("n3")).action).toBe("View on the board →");
+    expect(decorateNotification(byId("n4")).action).toBe("View on the board →");
   });
 });
 

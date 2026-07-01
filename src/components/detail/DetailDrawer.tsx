@@ -1,30 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronUp, Flag, X } from "lucide-react";
 import { useFeedbackStore } from "@/store";
 import { buildDetail } from "@/lib/detail";
+import { useOverlayTransition } from "@/lib/use-overlay-transition";
 import { StatusTimeline } from "./StatusTimeline";
 import { PreservedReports } from "./PreservedReports";
 import { CommentsList } from "./CommentsList";
 
 /**
  * Item detail drawer (wire view 4) — slides in from the right over a dimmed
- * backdrop: status timeline, shipped/declined cards, description, big vote +
- * follow actions, preserved per-store reports, and comments.
+ * backdrop and slides back out on close: status timeline, shipped/declined
+ * cards, description, big vote + follow actions, preserved per-store reports,
+ * and comments.
  */
 export function DetailDrawer() {
   const router = useRouter();
   const detailId = useFeedbackStore((s) => s.detailId);
   const items = useFeedbackStore((s) => s.items);
   const store = useFeedbackStore((s) => s.store);
-  const justVotedId = useFeedbackStore((s) => s.justVotedId);
   const closeDetail = useFeedbackStore((s) => s.closeDetail);
   const upvote = useFeedbackStore((s) => s.upvote);
   const toggleFollow = useFeedbackStore((s) => s.toggleFollow);
 
-  const item = detailId == null ? undefined : items.find((i) => i.id === detailId);
-  if (!item) return null;
+  const phase = useOverlayTransition(detailId != null, 230);
+  const closing = phase === "closing";
+
+  // Retain the last-open item so the exit animation has content to render.
+  const [lastId, setLastId] = useState<number | null>(null);
+  useEffect(() => {
+    if (detailId != null) setLastId(detailId);
+  }, [detailId]);
+
+  const renderId = detailId ?? lastId;
+  const item = renderId == null ? undefined : items.find((i) => i.id === renderId);
+  if (phase === "closed" || !item) return null;
 
   const detail = buildDetail(item, store);
   const isBug = item.type === "bug";
@@ -38,12 +50,12 @@ export function DetailDrawer() {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 animate-fade-in bg-[rgba(20,20,20,.28)]"
+        className={`fixed inset-0 z-40 bg-[rgba(20,20,20,.28)] ${closing ? "pointer-events-none animate-fade-out" : "animate-fade-in"}`}
         onClick={closeDetail}
       />
       <aside
         data-testid="detail-drawer"
-        className="fixed right-0 top-0 z-[41] flex h-screen w-[452px] animate-slide-in flex-col bg-white shadow-[-8px_0_32px_rgba(0,0,0,.16)]"
+        className={`fixed right-0 top-0 z-[41] flex h-screen w-[452px] flex-col bg-white shadow-[-8px_0_32px_rgba(0,0,0,.16)] ${closing ? "pointer-events-none animate-slide-out" : "animate-slide-in"}`}
       >
         {/* header */}
         <div className="flex items-start gap-3 border-b border-[#eee] px-[22px] py-[18px]">
@@ -107,30 +119,20 @@ export function DetailDrawer() {
               type="button"
               data-testid="detail-upvote"
               onClick={() => upvote(item.id)}
-              className="flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-2 rounded-[8px] border text-[13px] font-semibold"
-              style={{
-                background: voted ? "#CC0000" : "#fff",
-                borderColor: voted ? "#CC0000" : "#d4d4d4",
-                color: voted ? "#fff" : "#666",
-              }}
+              className={`flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-2 rounded-[8px] border text-[13px] font-semibold ${
+                voted ? "border-brand bg-brand text-white" : "border-[#d4d4d4] bg-white text-[#666]"
+              }`}
             >
-              <ChevronUp
-                size={16}
-                strokeWidth={2.3}
-                style={item.id === justVotedId ? { animation: "pulseCount .6s ease" } : undefined}
-              />
+              <ChevronUp size={16} strokeWidth={2.3} />
               {voted ? "Backed by your store · tap to remove" : "Add your store's vote"}
             </button>
             <button
               type="button"
               data-testid="detail-follow"
               onClick={() => toggleFollow(item.id)}
-              className="flex h-[42px] w-[120px] cursor-pointer items-center justify-center gap-[7px] rounded-[8px] border text-[13px] font-semibold"
-              style={{
-                background: item.followed ? "#FBEBEB" : "#fff",
-                borderColor: item.followed ? "#CC0000" : "#d4d4d4",
-                color: item.followed ? "#CC0000" : "#666",
-              }}
+              className={`flex h-[42px] w-[120px] cursor-pointer items-center justify-center gap-[7px] rounded-[8px] border text-[13px] font-semibold ${
+                item.followed ? "border-brand bg-brand-tint text-brand" : "border-[#d4d4d4] bg-white text-[#666]"
+              }`}
             >
               <Flag size={15} strokeWidth={1.9} />
               {item.followed ? "Following" : "Follow"}

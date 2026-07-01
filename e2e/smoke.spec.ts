@@ -111,11 +111,11 @@ test.describe("The board", () => {
     await page.goto("/feedback/board");
     await dismissAutoCelebrate(page);
     await expect(page.getByTestId("board-subline")).toHaveText(
-      "12 open items · All stores · ranked by store votes",
+      "12 items · All stores · ranked by store votes",
     );
 
     await page.getByRole("button", { name: "Bugs" }).click();
-    await expect(page.getByTestId("board-subline")).toContainText("7 open items");
+    await expect(page.getByTestId("board-subline")).toContainText("7 items");
     await expect(page.getByTestId("board-item-2")).toBeVisible();
     await expect(page.getByTestId("board-item-1")).toBeHidden(); // feature filtered out
 
@@ -124,7 +124,7 @@ test.describe("The board", () => {
     await expect(page.getByTestId("board-item-2")).toBeHidden(); // planned filtered out
 
     await page.getByRole("button", { name: "My store #1284" }).click();
-    await expect(page.getByTestId("board-subline")).toContainText("2 open items · My store #1284");
+    await expect(page.getByTestId("board-subline")).toContainText("2 items · My store #1284");
     await expect(page.getByTestId("board-item-11")).toBeVisible();
     await expect(page.getByTestId("board-item-12")).toBeHidden(); // fixed, but not this store's
   });
@@ -134,12 +134,15 @@ test.describe("The board", () => {
     await dismissAutoCelebrate(page);
 
     await page.getByTestId("board-search").fill("publisher converter"); // area match
-    await expect(page.getByTestId("board-subline")).toContainText("2 open items");
+    await expect(page.getByTestId("board-subline")).toContainText("2 items");
     await expect(page.getByTestId("board-item-5")).toBeVisible();
     await expect(page.getByTestId("board-item-12")).toBeVisible();
 
-    await page.getByTestId("board-search").fill("");
-    await expect(page.getByTestId("board-subline")).toContainText("12 open items");
+    // no matches → empty state with a one-tap reset
+    await page.getByTestId("board-search").fill("zzz nothing matches this");
+    await expect(page.getByTestId("board-empty")).toBeVisible();
+    await page.getByRole("button", { name: "Clear search & filters" }).click();
+    await expect(page.getByTestId("board-subline")).toContainText("12 items");
 
     // votes-desc ranking: the 61-vote item leads the unfiltered list
     const first = page.locator('[data-testid^="board-item-"]').first();
@@ -201,10 +204,11 @@ test.describe("Item detail drawer", () => {
     await page.getByTestId("board-item-8").click(); // dark mode — declined
     await expect(page.getByTestId("detail-drawer")).toContainText("Why we're not doing this");
     await expect(page.getByTestId("detail-drawer")).toContainText("color-calibrated for accurate proofing");
-    await page.keyboard.press("Escape").catch(() => {});
-    // close via backdrop then open a shipped item
-    await page.getByTestId("detail-drawer").isVisible();
-    await page.mouse.click(200, 450); // backdrop
+
+    // Escape closes the drawer (keyboard counterpart of the backdrop click)
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("detail-drawer")).toBeHidden();
+
     await page.getByTestId("board-item-9").click(); // bleed fix — done bug
     await expect(page.getByTestId("detail-drawer")).toContainText("Fixed in v1.4");
     await page.getByTestId("detail-see-release").click();
@@ -330,16 +334,17 @@ test.describe("Persistence", () => {
     await dismissAutoCelebrate(page);
     await expect(page.getByTestId("board-item-100")).toContainText("Persistence check item");
 
-    // survives a full reload (fresh session → the auto-celebration re-fires)
+    // survives a full reload — and the already-played celebration must NOT
+    // replay, since the shipped notifications' read-state persisted
     await page.reload();
-    await dismissAutoCelebrate(page);
     await expect(page.getByTestId("board-item-100")).toContainText("Persistence check item");
-    await expect(page.getByTestId("board-subline")).toContainText("13 open items");
+    await expect(page.getByTestId("celebrate-modal")).toBeHidden();
+    await expect(page.getByTestId("board-subline")).toContainText("13 items");
 
     // reset restores the pristine seed
     await page.getByTestId("reset-demo").click();
     await expect(page.getByTestId("board-item-100")).toBeHidden();
-    await expect(page.getByTestId("board-subline")).toContainText("12 open items");
+    await expect(page.getByTestId("board-subline")).toContainText("12 items");
   });
 });
 

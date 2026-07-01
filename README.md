@@ -83,8 +83,13 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   controls and "Dismiss all". A `celebrations` flag in the store (prototype tweak) routes
   shipped notifications straight to the release note when off.
 
-Next up per the plan: **Step 7** — localStorage persistence + demo reset, Dockerfile, and the
-final cross-surface polish pass.
+- **UI consistency pass:** symmetric enter/exit motion on every overlay (drawer slides back
+  out, modals/dropdown/coachmark pop out, backdrops fade out); board rows glide on reorder
+  ("items reorder gently as backing shifts"); the celebrate queue fades between items and
+  replays the star pop; Escape closes the topmost overlay; a delivery celebrates once (unread
+  shipped only, marked read on play — no replay after reload); "Back this" never un-votes;
+  navigation clears an open drawer; empty state + one-tap clear on the board; new filings
+  scroll their highlight into view; the wire's 4-point spark star is used consistently.
 
 ## Where things live
 

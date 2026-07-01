@@ -10,14 +10,12 @@ import type { AppNotification } from "@/schema";
 
 export interface NotificationDecor {
   iconBg: string;
-  bg: string;
   action: string;
 }
 
 export function decorateNotification(n: AppNotification): NotificationDecor {
   return {
     iconBg: n.kind === "shipped" ? "#FBEBEB" : n.kind === "status" ? "#eef4fb" : "#eef7ef",
-    bg: n.unread ? "#fcfaf7" : "#fff",
     action: n.kind === "shipped" ? "See what shipped →" : n.release ? "See detail →" : "View on the board →",
   };
 }

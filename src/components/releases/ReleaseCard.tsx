@@ -25,9 +25,11 @@ function DeliveredItemRow({ item }: { item: DeliveredItem }) {
   };
 
   return (
-    <div
+    <button
+      type="button"
       onClick={open}
-      className="flex items-center gap-[11px] rounded-[8px] border border-[#eee] px-3 py-[10px] hover:border-[#dcdcdc]"
+      aria-disabled={!hasLink}
+      className="flex w-full items-center gap-[11px] rounded-[8px] border border-[#eee] px-3 py-[10px] text-left hover:border-[#dcdcdc]"
       style={{ cursor: hasLink ? "pointer" : "default" }}
     >
       <span className="h-2 w-2 shrink-0 rounded-full bg-success" />
@@ -38,7 +40,7 @@ function DeliveredItemRow({ item }: { item: DeliveredItem }) {
         </span>
       )}
       {hasLink && <span className="text-[12px] text-info">View →</span>}
-    </div>
+    </button>
   );
 }
 
