@@ -147,6 +147,55 @@ test.describe("The board", () => {
   });
 });
 
+test.describe("Item detail drawer", () => {
+  test("opens from a row, shows timeline + preserved reports, and vote/follow stay in sync", async ({ page }) => {
+    await page.goto("/feedback/board");
+
+    // Open the large-format resize bug (id 2): planned, backed by this store.
+    await page.getByTestId("board-item-2").click();
+    const drawer = page.getByTestId("detail-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText("Large-format resize crashes when the file is over ~200 MB");
+
+    // status timeline
+    await expect(drawer.getByText("New", { exact: true })).toBeVisible();
+    await expect(drawer.getByText("Planned", { exact: true })).toBeVisible();
+
+    // preserved reports: this store's own words are kept
+    await expect(drawer).toContainText("47 stores across 9 districts back this");
+    await expect(drawer).toContainText("App freezes resizing large banners over 200MB.");
+
+    // follow toggles
+    const follow = page.getByTestId("detail-follow");
+    await expect(follow).toHaveText("Following");
+    await follow.click();
+    await expect(follow).toHaveText("Follow");
+
+    // unvote in the drawer reflects on the board row underneath
+    await expect(page.getByTestId("detail-upvote")).toContainText("Backed by your store");
+    await page.getByTestId("detail-upvote").click();
+    await expect(page.getByTestId("detail-upvote")).toContainText("Add your store's vote");
+    await expect(page.getByTestId("upvote-2")).toContainText("46"); // 47 → 46
+  });
+
+  test("declined item shows the honest reason; shipped item cross-links to releases", async ({ page }) => {
+    await page.goto("/feedback/board");
+
+    await page.getByTestId("board-item-8").click(); // dark mode — declined
+    await expect(page.getByTestId("detail-drawer")).toContainText("Why we're not doing this");
+    await expect(page.getByTestId("detail-drawer")).toContainText("color-calibrated for accurate proofing");
+    await page.keyboard.press("Escape").catch(() => {});
+    // close via backdrop then open a shipped item
+    await page.getByTestId("detail-drawer").isVisible();
+    await page.mouse.click(200, 450); // backdrop
+    await page.getByTestId("board-item-9").click(); // bleed fix — done bug
+    await expect(page.getByTestId("detail-drawer")).toContainText("Fixed in v1.4");
+    await page.getByTestId("detail-see-release").click();
+    await expect(page).toHaveURL(/\/feedback\/releases/);
+    await expect(page.getByTestId("detail-drawer")).toBeHidden();
+  });
+});
+
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
     await page.goto("/");

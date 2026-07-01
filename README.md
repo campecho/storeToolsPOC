@@ -33,10 +33,16 @@ pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`
   my store), and the "Stores behind v1.4" spotlight; main column with the scope-aware subline,
   search (title/area/description), and the votes-ranked item rows — upvote toggles with one
   vote per store and a pulse on change. Row click sets up the detail drawer (renders in Step 4).
+- **Step 4 — item detail drawer:** slides in from the right over a dimmed backdrop — status
+  timeline (New → Planned → Fixed/Shipped, or → Declined/Closed), shipped-release card that
+  cross-links to the releases surface, decline-reason card, big vote + follow actions, the
+  **preserved per-store reports** (own store highlighted, each store's words kept verbatim),
+  and the non-threaded comments list. Opens from any board row; vote/follow stay in sync with
+  the row underneath.
 - **Interim stub:** `/feedback/releases` (banner + bare version list; full release cards are
   Step 5).
 
-Next up per the plan: **Step 4** (item detail drawer), then releases, and
+Next up per the plan: **Step 5** (the full releases surface), then
 notifications/celebrate.
 
 ## Where things live

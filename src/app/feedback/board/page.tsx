@@ -5,6 +5,7 @@ import { useFeedbackStore } from "@/store";
 import { filterItems, scopeLabel } from "@/lib/board";
 import { BoardRail } from "@/components/board/BoardRail";
 import { ItemRow } from "@/components/board/ItemRow";
+import { DetailDrawer } from "@/components/detail/DetailDrawer";
 
 /**
  * The board (wire view 3) — the population-wide, ranked list: left rail with
@@ -52,6 +53,8 @@ export default function BoardPage() {
           ))}
         </div>
       </div>
+
+      <DetailDrawer />
     </div>
   );
 }
