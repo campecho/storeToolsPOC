@@ -122,14 +122,15 @@ describe("upvoteFromSimilar", () => {
     expect(st.items.length).toBe(useFeedbackStore.getInitialState().items.length);
   });
 
-  it("backing an already-backed item keeps the standing vote — never toggles it off", () => {
+  it("backing an already-backed item toggles the vote off — votes toggle on every surface", () => {
     // Item 2 is already votedByMe in the seed.
     const before = getItem(2).votes;
     useFeedbackStore.getState().upvoteFromSimilar(2);
 
-    expect(getItem(2).votes).toBe(before);
-    expect(getItem(2).votedByMe).toBe(true);
+    expect(getItem(2).votes).toBe(before - 1);
+    expect(getItem(2).votedByMe).toBe(false);
     expect(useFeedbackStore.getState().reportStep).toBe("upvoted");
+    expect(useFeedbackStore.getState().upvotedId).toBe(2);
   });
 });
 

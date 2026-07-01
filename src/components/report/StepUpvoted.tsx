@@ -4,7 +4,11 @@ import { useRouter } from "next/navigation";
 import { ChevronUp } from "lucide-react";
 import { useFeedbackStore } from "@/store";
 
-/** Step "upvoted" — the store backed an existing item instead of filing a duplicate. */
+/**
+ * Step "upvoted" — the store backed an existing item instead of filing a
+ * duplicate, or (since votes toggle) removed its standing backing. The copy
+ * reflects which way the tap went.
+ */
 export function StepUpvoted() {
   const router = useRouter();
   const store = useFeedbackStore((s) => s.store);
@@ -12,7 +16,9 @@ export function StepUpvoted() {
   const items = useFeedbackStore((s) => s.items);
   const closeReport = useFeedbackStore((s) => s.closeReport);
 
-  const upvotedTitle = items.find((i) => i.id === upvotedId)?.title ?? "";
+  const item = items.find((i) => i.id === upvotedId);
+  const upvotedTitle = item?.title ?? "";
+  const backed = item?.votedByMe ?? true;
 
   const seeOnBoard = () => {
     closeReport();
@@ -25,10 +31,21 @@ export function StepUpvoted() {
         <div className="absolute inset-0 animate-ring-expand rounded-full border-2 border-brand" />
         <ChevronUp size={28} strokeWidth={2.4} className="text-brand" />
       </div>
-      <div className="text-[18px] font-bold text-ink">Your store's backing is in.</div>
+      <div className="text-[18px] font-bold text-ink">
+        {backed ? "Your store's backing is in." : "Your store's vote was removed."}
+      </div>
       <div className="mx-auto mt-2 max-w-[420px] text-[13px] leading-[1.5] text-[#777]">
-        Added Store {store} to <span className="font-semibold text-[#444]">"{upvotedTitle}"</span>. You'll be notified
-        when its status changes.
+        {backed ? (
+          <>
+            Added Store {store} to <span className="font-semibold text-[#444]">"{upvotedTitle}"</span>. You'll be
+            notified when its status changes.
+          </>
+        ) : (
+          <>
+            Removed Store {store} from <span className="font-semibold text-[#444]">"{upvotedTitle}"</span>. One tap on
+            the board adds it back any time.
+          </>
+        )}
       </div>
       <button
         type="button"
