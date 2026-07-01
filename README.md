@@ -28,11 +28,15 @@ pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`
   live **similar items** ("Back this" upvotes instead of filing a duplicate), bug-only
   auto-captured context with the attach-file toggle, feature area auto-tag, optional name →
   upvoted / confirm steps. Filing unshifts the item and lands highlighted on the board.
-- **Interim stubs:** `/feedback/board` (ranked list with upvote toggle + highlight; full board
-  with rail filters and the detail drawer is Step 3) and `/feedback/releases` (banner + bare
-  version list; full release cards are Step 5).
+- **Step 3 — the board** (`/feedback/board`): left rail with the store-impact card,
+  type/status/scope filters (scope rolls up by the store hierarchy: chain → region → district →
+  my store), and the "Stores behind v1.4" spotlight; main column with the scope-aware subline,
+  search (title/area/description), and the votes-ranked item rows — upvote toggles with one
+  vote per store and a pulse on change. Row click sets up the detail drawer (renders in Step 4).
+- **Interim stub:** `/feedback/releases` (banner + bare version list; full release cards are
+  Step 5).
 
-Next up per the plan: **Step 3** (the full board), then the detail drawer, releases, and
+Next up per the plan: **Step 4** (item detail drawer), then releases, and
 notifications/celebrate.
 
 ## Where things live

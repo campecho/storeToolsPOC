@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { FeedbackItem, ItemType, Release, AppNotification } from "@/schema";
+import type { TypeFilter, StatusFilter, ScopeFilter } from "@/lib/board";
 import { seedItems, seedReleases, seedNotifications } from "@/data";
 
 /**
@@ -38,6 +39,13 @@ export interface FeedbackState {
   highlightId: number | null;
   justVotedId: number | null;
   coachOpen: boolean;
+  detailId: number | null;
+
+  // board filters
+  fType: TypeFilter;
+  fStatus: StatusFilter;
+  fScope: ScopeFilter;
+  query: string;
 
   // actions — report flow
   openReport: () => void;
@@ -60,6 +68,12 @@ export interface FeedbackState {
   // actions — UI
   setHighlight: (id: number | null) => void;
   dismissCoach: () => void;
+  openDetail: (id: number) => void;
+  closeDetail: () => void;
+  setTypeFilter: (v: TypeFilter) => void;
+  setStatusFilter: (v: StatusFilter) => void;
+  setScopeFilter: (v: ScopeFilter) => void;
+  setQuery: (v: string) => void;
 }
 
 export const useFeedbackStore = create<FeedbackState>((set, get) => ({
@@ -83,6 +97,12 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
   highlightId: null,
   justVotedId: null,
   coachOpen: true,
+  detailId: null,
+
+  fType: "all",
+  fStatus: "all",
+  fScope: "all",
+  query: "",
 
   openReport: () =>
     set({
@@ -175,6 +195,12 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
 
   setHighlight: (id) => set({ highlightId: id }),
   dismissCoach: () => set({ coachOpen: false }),
+  openDetail: (id) => set({ detailId: id }),
+  closeDetail: () => set({ detailId: null }),
+  setTypeFilter: (v) => set({ fType: v }),
+  setStatusFilter: (v) => set({ fStatus: v }),
+  setScopeFilter: (v) => set({ fScope: v }),
+  setQuery: (v) => set({ query: v }),
 }));
 
 /** Number of unread notifications — drives the header bell badge. */

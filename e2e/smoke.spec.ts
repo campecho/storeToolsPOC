@@ -94,6 +94,59 @@ test.describe("Report flow", () => {
   });
 });
 
+test.describe("The board", () => {
+  test("filters compose: type, status, and store-hierarchy scope", async ({ page }) => {
+    await page.goto("/feedback/board");
+    await expect(page.getByTestId("board-subline")).toHaveText(
+      "12 open items · All stores · ranked by store votes",
+    );
+
+    await page.getByRole("button", { name: "Bugs" }).click();
+    await expect(page.getByTestId("board-subline")).toContainText("7 open items");
+    await expect(page.getByTestId("board-item-2")).toBeVisible();
+    await expect(page.getByTestId("board-item-1")).toBeHidden(); // feature filtered out
+
+    await page.getByRole("button", { name: "Shipped / Fixed" }).click();
+    await expect(page.getByTestId("board-item-9")).toBeVisible();
+    await expect(page.getByTestId("board-item-2")).toBeHidden(); // planned filtered out
+
+    await page.getByRole("button", { name: "My store #1284" }).click();
+    await expect(page.getByTestId("board-subline")).toContainText("2 open items · My store #1284");
+    await expect(page.getByTestId("board-item-11")).toBeVisible();
+    await expect(page.getByTestId("board-item-12")).toBeHidden(); // fixed, but not this store's
+  });
+
+  test("search matches title/area/description and always ranks by votes", async ({ page }) => {
+    await page.goto("/feedback/board");
+
+    await page.getByTestId("board-search").fill("publisher converter"); // area match
+    await expect(page.getByTestId("board-subline")).toContainText("2 open items");
+    await expect(page.getByTestId("board-item-5")).toBeVisible();
+    await expect(page.getByTestId("board-item-12")).toBeVisible();
+
+    await page.getByTestId("board-search").fill("");
+    await expect(page.getByTestId("board-subline")).toContainText("12 open items");
+
+    // votes-desc ranking: the 61-vote item leads the unfiltered list
+    const first = page.locator('[data-testid^="board-item-"]').first();
+    await expect(first).toContainText("Save a customer's brand colors to reuse next visit");
+  });
+
+  test("upvote toggles on the board row — one vote per store", async ({ page }) => {
+    await page.goto("/feedback/board");
+    const vote = page.getByTestId("upvote-1");
+
+    await expect(vote).toContainText("61");
+    await vote.click();
+    await expect(vote).toContainText("62");
+    await expect(vote).toHaveCSS("background-color", "rgb(204, 0, 0)");
+
+    await vote.click(); // second tap removes the store's vote, not another tally
+    await expect(vote).toContainText("61");
+    await expect(vote).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  });
+});
+
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
     await page.goto("/");
