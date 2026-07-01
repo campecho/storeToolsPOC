@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Search } from "lucide-react";
 import { useFeedbackStore } from "@/store";
 import { filterItems, scopeLabel } from "@/lib/board";
@@ -20,6 +21,12 @@ export default function BoardPage() {
   const fScope = useFeedbackStore((s) => s.fScope);
   const query = useFeedbackStore((s) => s.query);
   const setQuery = useFeedbackStore((s) => s.setQuery);
+  const maybeAutoCelebrate = useFeedbackStore((s) => s.maybeAutoCelebrate);
+
+  // First board landing per session auto-plays the celebrate queue (§5.6).
+  useEffect(() => {
+    maybeAutoCelebrate();
+  }, [maybeAutoCelebrate]);
 
   const ranked = filterItems(items, { fType, fStatus, fScope, query });
 

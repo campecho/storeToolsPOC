@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/chrome/AppHeader";
 import { ReportModal } from "@/components/report/ReportModal";
+import { NotificationsDropdown } from "@/components/overlays/NotificationsDropdown";
+import { CelebrateModal } from "@/components/overlays/CelebrateModal";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex min-h-0 flex-1 flex-col overflow-auto">{children}</main>
         {/* Overlays live at the root so they open over any surface. */}
         <ReportModal />
+        <NotificationsDropdown />
+        <CelebrateModal />
       </body>
     </html>
   );

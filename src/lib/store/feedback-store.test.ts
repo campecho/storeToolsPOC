@@ -123,6 +123,73 @@ describe("upvoteFromSimilar", () => {
   });
 });
 
+describe("notifications & celebrate", () => {
+  it("markRead clears a notification's unread flag", () => {
+    const unreadBefore = useFeedbackStore.getState().notifications.filter((n) => n.unread).length;
+    expect(unreadBefore).toBe(3);
+    useFeedbackStore.getState().markRead("n3");
+    expect(useFeedbackStore.getState().notifications.filter((n) => n.unread).length).toBe(2);
+  });
+
+  it("maybeAutoCelebrate queues every shipped notification, once per session", () => {
+    useFeedbackStore.getState().maybeAutoCelebrate();
+    let st = useFeedbackStore.getState();
+    expect(st.celebrateOpen).toBe(true);
+    expect(st.celebrateQueue).toEqual([
+      { itemId: 11, release: "v1.4" },
+      { itemId: 9, release: "v1.4" },
+    ]);
+    expect(st.celebrateIndex).toBe(0);
+    expect(st.autoCelebrated).toBe(true);
+    // the auto-play clears any open detail (celebrate wins the first landing)
+    expect(st.detailId).toBe(null);
+
+    // a second landing never re-fires
+    useFeedbackStore.getState().closeCelebrate();
+    useFeedbackStore.getState().maybeAutoCelebrate();
+    st = useFeedbackStore.getState();
+    expect(st.celebrateOpen).toBe(false);
+  });
+
+  it("celebrations off: auto-play never fires but still marks the session", () => {
+    useFeedbackStore.setState({ celebrations: false });
+    useFeedbackStore.getState().maybeAutoCelebrate();
+    const st = useFeedbackStore.getState();
+    expect(st.celebrateOpen).toBe(false);
+    expect(st.autoCelebrated).toBe(true);
+  });
+
+  it("a notification-routed board landing shows the detail, not the celebration", () => {
+    useFeedbackStore.getState().goToNotifiedItem(2);
+    expect(useFeedbackStore.getState().detailId).toBe(2);
+
+    // while the routed detail is open, landings never celebrate — even when the
+    // mount effect double-fires (React StrictMode)
+    useFeedbackStore.getState().maybeAutoCelebrate();
+    useFeedbackStore.getState().maybeAutoCelebrate();
+    let st = useFeedbackStore.getState();
+    expect(st.celebrateOpen).toBe(false);
+    expect(st.autoCelebrated).toBe(false);
+    expect(st.detailId).toBe(2);
+
+    // closing the drawer clears the suppression; a later landing celebrates
+    useFeedbackStore.getState().closeDetail();
+    useFeedbackStore.getState().maybeAutoCelebrate();
+    st = useFeedbackStore.getState();
+    expect(st.celebrateOpen).toBe(true);
+  });
+
+  it("queue controls clamp at the ends", () => {
+    useFeedbackStore.getState().maybeAutoCelebrate(); // queue of 2
+    useFeedbackStore.getState().celebratePrev();
+    expect(useFeedbackStore.getState().celebrateIndex).toBe(0); // clamped low
+    useFeedbackStore.getState().celebrateNext();
+    expect(useFeedbackStore.getState().celebrateIndex).toBe(1);
+    useFeedbackStore.getState().celebrateNext();
+    expect(useFeedbackStore.getState().celebrateIndex).toBe(1); // clamped high
+  });
+});
+
 describe("report flow state", () => {
   it("openReport resets the form and dismisses the coachmark", () => {
     useFeedbackStore.setState({ reportTitle: "left over", coachOpen: true });

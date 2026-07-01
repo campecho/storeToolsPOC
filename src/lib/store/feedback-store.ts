@@ -14,6 +14,11 @@ import { seedItems, seedReleases, seedNotifications } from "@/data";
 
 export type ReportStep = "choose" | "bug" | "feature" | "upvoted" | "confirm";
 
+export interface CelebrateEntry {
+  itemId: number;
+  release: string | null;
+}
+
 export interface FeedbackState {
   // identity & recognition
   store: string;
@@ -47,6 +52,18 @@ export interface FeedbackState {
   fScope: ScopeFilter;
   query: string;
 
+  // notifications & celebrate moment
+  notifOpen: boolean;
+  /** Configurable tweak (prototype prop): off routes shipped notifications straight to the release note. */
+  celebrations: boolean;
+  celebrateOpen: boolean;
+  celebrateQueue: CelebrateEntry[];
+  celebrateIndex: number;
+  /** Auto-play fires once per session, on the first board landing. */
+  autoCelebrated: boolean;
+  /** Set when a notification routes to the board with a detail open — skips the auto-play once. */
+  suppressAutoCelebrate: boolean;
+
   // actions — report flow
   openReport: () => void;
   closeReport: () => void;
@@ -74,6 +91,19 @@ export interface FeedbackState {
   setStatusFilter: (v: StatusFilter) => void;
   setScopeFilter: (v: ScopeFilter) => void;
   setQuery: (v: string) => void;
+
+  // actions — notifications & celebrate
+  toggleNotif: () => void;
+  closeNotif: () => void;
+  markRead: (id: string) => void;
+  /** Route target for a notification that opens an item on the board. */
+  goToNotifiedItem: (itemId: number) => void;
+  /** First board landing per session: queue every shipped notification and celebrate. */
+  maybeAutoCelebrate: () => void;
+  openCelebrate: (queue: CelebrateEntry[]) => void;
+  closeCelebrate: () => void;
+  celebratePrev: () => void;
+  celebrateNext: () => void;
 }
 
 export const useFeedbackStore = create<FeedbackState>((set, get) => ({
@@ -104,6 +134,14 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
   fScope: "all",
   query: "",
 
+  notifOpen: false,
+  celebrations: true,
+  celebrateOpen: false,
+  celebrateQueue: [],
+  celebrateIndex: 0,
+  autoCelebrated: false,
+  suppressAutoCelebrate: false,
+
   openReport: () =>
     set({
       reportOpen: true,
@@ -113,6 +151,7 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
       reportName: "",
       attachFile: true,
       coachOpen: false,
+      notifOpen: false,
     }),
   closeReport: () => set({ reportOpen: false }),
   chooseType: (type) => set({ reportStep: type }),
@@ -195,12 +234,58 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
 
   setHighlight: (id) => set({ highlightId: id }),
   dismissCoach: () => set({ coachOpen: false }),
-  openDetail: (id) => set({ detailId: id }),
-  closeDetail: () => set({ detailId: null }),
+  openDetail: (id) => set({ detailId: id, notifOpen: false }),
+  closeDetail: () => set({ detailId: null, suppressAutoCelebrate: false }),
   setTypeFilter: (v) => set({ fType: v }),
   setStatusFilter: (v) => set({ fStatus: v }),
   setScopeFilter: (v) => set({ fScope: v }),
   setQuery: (v) => set({ query: v }),
+
+  toggleNotif: () => set((s) => ({ notifOpen: !s.notifOpen, coachOpen: false })),
+  closeNotif: () => set({ notifOpen: false }),
+  markRead: (id) =>
+    set((s) => ({
+      notifications: s.notifications.map((n) => (n.id === id ? { ...n, unread: false } : n)),
+    })),
+
+  goToNotifiedItem: (itemId) =>
+    set({ notifOpen: false, detailId: itemId, suppressAutoCelebrate: true }),
+
+  maybeAutoCelebrate: () => {
+    const s = get();
+    // A notification just routed here with a detail open — let it show. The
+    // flag holds (rather than consuming once) so double-invoked mount effects
+    // (React StrictMode) stay harmless; closeDetail clears it.
+    if (s.suppressAutoCelebrate) {
+      if (s.detailId != null) return;
+      set({ suppressAutoCelebrate: false }); // stale flag — clear and fall through
+    }
+    if (s.autoCelebrated) return;
+    if (!s.celebrations) {
+      set({ autoCelebrated: true });
+      return;
+    }
+    const shipped = s.notifications.filter((n) => n.kind === "shipped");
+    if (!shipped.length) {
+      set({ autoCelebrated: true });
+      return;
+    }
+    set({
+      autoCelebrated: true,
+      celebrateOpen: true,
+      celebrateQueue: shipped.map((n) => ({ itemId: n.itemId, release: n.release })),
+      celebrateIndex: 0,
+      notifOpen: false,
+      detailId: null,
+    });
+  },
+
+  openCelebrate: (queue) =>
+    set({ celebrateOpen: true, celebrateQueue: queue, celebrateIndex: 0, notifOpen: false }),
+  closeCelebrate: () => set({ celebrateOpen: false, celebrateQueue: [], celebrateIndex: 0 }),
+  celebratePrev: () => set((s) => ({ celebrateIndex: Math.max(0, s.celebrateIndex - 1) })),
+  celebrateNext: () =>
+    set((s) => ({ celebrateIndex: Math.min(s.celebrateQueue.length - 1, s.celebrateIndex + 1) })),
 }));
 
 /** Number of unread notifications — drives the header bell badge. */

@@ -1,4 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+/**
+ * The first board landing per session auto-plays the celebrate queue (§5.6) —
+ * dismiss it so the test can interact with the board underneath.
+ */
+async function dismissAutoCelebrate(page: Page) {
+  await expect(page.getByTestId("celebrate-modal")).toBeVisible();
+  await page.getByTestId("celebrate-dismiss").click();
+  await expect(page.getByTestId("celebrate-modal")).toBeHidden();
+}
 
 test.describe("Home & file intake", () => {
   test("renders the header chrome and homepage sections", async ({ page }) => {
@@ -47,6 +57,7 @@ test.describe("Report flow", () => {
     await page.getByTestId("confirm-see-board").click();
 
     await expect(page).toHaveURL(/\/feedback\/board/);
+    await dismissAutoCelebrate(page);
     const newItem = page.getByTestId("board-item-100");
     await expect(newItem).toBeVisible();
     await expect(newItem).toContainText("Stapler icon overlaps the toolbar");
@@ -73,6 +84,7 @@ test.describe("Report flow", () => {
 
     await page.getByRole("button", { name: "See it on the board" }).click();
     await expect(page).toHaveURL(/\/feedback\/board/);
+    await dismissAutoCelebrate(page);
     const backed = page.getByTestId("board-item-4");
     await expect(backed).toContainText("34 stores");
     await expect(backed).toHaveCSS("border-color", "rgb(204, 0, 0)");
@@ -97,6 +109,7 @@ test.describe("Report flow", () => {
 test.describe("The board", () => {
   test("filters compose: type, status, and store-hierarchy scope", async ({ page }) => {
     await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
     await expect(page.getByTestId("board-subline")).toHaveText(
       "12 open items · All stores · ranked by store votes",
     );
@@ -118,6 +131,7 @@ test.describe("The board", () => {
 
   test("search matches title/area/description and always ranks by votes", async ({ page }) => {
     await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
 
     await page.getByTestId("board-search").fill("publisher converter"); // area match
     await expect(page.getByTestId("board-subline")).toContainText("2 open items");
@@ -134,6 +148,7 @@ test.describe("The board", () => {
 
   test("upvote toggles on the board row — one vote per store", async ({ page }) => {
     await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
     const vote = page.getByTestId("upvote-1");
 
     await expect(vote).toContainText("61");
@@ -150,6 +165,7 @@ test.describe("The board", () => {
 test.describe("Item detail drawer", () => {
   test("opens from a row, shows timeline + preserved reports, and vote/follow stay in sync", async ({ page }) => {
     await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
 
     // Open the large-format resize bug (id 2): planned, backed by this store.
     await page.getByTestId("board-item-2").click();
@@ -180,6 +196,7 @@ test.describe("Item detail drawer", () => {
 
   test("declined item shows the honest reason; shipped item cross-links to releases", async ({ page }) => {
     await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
 
     await page.getByTestId("board-item-8").click(); // dark mode — declined
     await expect(page.getByTestId("detail-drawer")).toContainText("Why we're not doing this");
@@ -220,7 +237,11 @@ test.describe("What's new / Releases", () => {
   });
 
   test("View → cross-links a delivered item back to its board detail", async ({ page }) => {
-    await page.goto("/feedback/releases");
+    // Land on the board first so the session's auto-celebrate is spent —
+    // on the very first landing the celebrate moment wins over any drawer.
+    await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
+    await page.getByRole("link", { name: "What's new" }).click();
 
     await page.getByTestId("release-v1.4").getByText("One-click proof PDF").click();
     await expect(page).toHaveURL(/\/feedback\/board/);
@@ -231,11 +252,77 @@ test.describe("What's new / Releases", () => {
   });
 });
 
+test.describe("Notifications & celebrate", () => {
+  test("first board landing auto-plays the shipped queue with working controls", async ({ page }) => {
+    await page.goto("/feedback/board");
+
+    const modal = page.getByTestId("celebrate-modal");
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText("You asked, we delivered");
+    await expect(modal).toContainText("Cut template is off-center on the right guillotine");
+    await expect(modal).toContainText("Fixed in v1.4");
+    await expect(page.getByTestId("celebrate-counter")).toHaveText("1 of 2");
+    await expect(page.getByTestId("celebrate-prev")).toHaveCSS("opacity", "0.35"); // dimmed at the start
+
+    await page.getByTestId("celebrate-next").click();
+    await expect(page.getByTestId("celebrate-counter")).toHaveText("2 of 2");
+    await expect(modal).toContainText("Background doesn't extend to the bleed on imported PDFs");
+    await expect(page.getByTestId("celebrate-next")).toHaveCSS("opacity", "0.35"); // dimmed at the end
+
+    await expect(page.getByTestId("celebrate-dismiss")).toHaveText("Dismiss all");
+    await page.getByTestId("celebrate-dismiss").click();
+    await expect(modal).toBeHidden();
+
+    // once per session: leaving and returning does not re-fire
+    await page.getByRole("link", { name: "Back to Print Studio" }).click();
+    await page.getByTestId("open-board").click();
+    await expect(page).toHaveURL(/\/feedback\/board/);
+    await expect(modal).toBeHidden();
+  });
+
+  test("bell dropdown routes a status notification to the item and marks it read", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("notif-bell").click();
+
+    const dropdown = page.getByTestId("notif-dropdown");
+    await expect(dropdown).toBeVisible();
+    await expect(dropdown).toContainText("3 unread");
+
+    await page.getByTestId("notif-n3").click(); // status: "moved to Planned"
+    await expect(page).toHaveURL(/\/feedback\/board/);
+    // notification routing shows the item detail — the celebration doesn't clobber it
+    await expect(page.getByTestId("celebrate-modal")).toBeHidden();
+    const drawer = page.getByTestId("detail-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText("Large-format resize crashes when the file is over ~200 MB");
+
+    // marked read: badge drops 3 → 2
+    await expect(page.getByTestId("notif-bell")).toContainText("2");
+  });
+
+  test("shipped notification fires the celebrate moment and links to what's new", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("notif-bell").click();
+    await page.getByTestId("notif-n1").click(); // shipped: guillotine fix
+
+    const modal = page.getByTestId("celebrate-modal");
+    await expect(modal).toBeVisible();
+    await expect(modal).toContainText("Cut template is off-center on the right guillotine");
+    await expect(page.getByTestId("celebrate-counter")).toBeHidden(); // single item — no queue controls
+    await expect(page.getByTestId("celebrate-dismiss")).toHaveText("Nice");
+
+    await page.getByTestId("celebrate-see-releases").click();
+    await expect(page).toHaveURL(/\/feedback\/releases/);
+    await expect(page.getByTestId("release-v1.4")).toBeVisible();
+  });
+});
+
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
     await page.goto("/");
     await page.getByTestId("open-board").click();
     await expect(page).toHaveURL(/\/feedback\/board/);
+    await dismissAutoCelebrate(page);
     await expect(page.getByText("What stores are asking for")).toBeVisible();
 
     await page.getByRole("link", { name: "What's new" }).click();

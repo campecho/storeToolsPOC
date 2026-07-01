@@ -46,8 +46,17 @@ pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`
   gray) and "View →" cross-links that open the item's board detail. Item ↔ release links work
   in both directions.
 
-Next up per the plan: **Step 6** (notifications dropdown + celebrate moment), then
-persistence/Docker polish (Step 7).
+- **Step 6 — notifications & the celebrate moment:** the header bell opens the notifications
+  dropdown (kind-tinted icons, unread dots, action links); tapping a row marks it read and
+  routes by kind — **shipped** fires the celebrate moment, release-tied updates open the
+  release note, the rest open the item on the board. The **celebrate "shipped" moment**
+  (pulsing rings, star pop, release pill, impact tally) **auto-plays once per session** on the
+  first board landing as a queue of every shipped item the store backed, with prev/next
+  controls and "Dismiss all". A `celebrations` flag in the store (prototype tweak) routes
+  shipped notifications straight to the release note when off.
+
+Next up per the plan: **Step 7** — localStorage persistence + demo reset, Dockerfile, and the
+final cross-surface polish pass.
 
 ## Where things live
 
