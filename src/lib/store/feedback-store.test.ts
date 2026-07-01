@@ -190,6 +190,29 @@ describe("notifications & celebrate", () => {
   });
 });
 
+describe("resetDemo", () => {
+  it("restores the pristine seed after mutations", () => {
+    const s = useFeedbackStore.getState();
+    s.upvote(1);
+    s.openReport();
+    s.chooseType("bug");
+    s.setReportTitle("A stray report");
+    useFeedbackStore.getState().submitReport();
+    useFeedbackStore.getState().markRead("n1");
+    expect(useFeedbackStore.getState().items.length).toBe(13);
+
+    useFeedbackStore.getState().resetDemo();
+
+    const st = useFeedbackStore.getState();
+    expect(st.items.length).toBe(12);
+    expect(st.items.find((i) => i.id === 1)!.votes).toBe(61);
+    expect(st.notifications.filter((n) => n.unread).length).toBe(3);
+    expect(st.nextId).toBe(100);
+    expect(st.reportOpen).toBe(false);
+    expect(st.autoCelebrated).toBe(false);
+  });
+});
+
 describe("report flow state", () => {
   it("openReport resets the form and dismisses the coachmark", () => {
     useFeedbackStore.setState({ reportTitle: "left over", coachOpen: true });

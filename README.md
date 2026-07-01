@@ -7,13 +7,41 @@ POC for the In-Store Print & Design Tool Suite, starting with the suite homepage
 ```bash
 npm install
 npm run dev        # http://localhost:3000
-npm test           # Vitest unit tests (similarity scorer, store semantics)
+npm test           # Vitest unit tests (similarity, filters, store semantics)
 npm run e2e        # Playwright smoke of the main flows
 npm run build      # production build (standalone output)
 ```
 
 If Playwright complains about a missing browser and downloads are blocked, point it at a
 pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`.
+
+**Docker** (standalone runner, unprivileged, Cloud Run shape — binds `0.0.0.0:8080`):
+
+```bash
+docker build -t store-tools-poc .
+docker run --rm -p 8080:8080 store-tools-poc   # http://localhost:8080
+```
+
+**Persistence:** votes, follows, filed reports, and notification read-state persist to
+localStorage (`stp-feedback-v1`) so a demo survives reloads. **Reset demo data** (top-right of
+the tracker sub-bar on board/releases) restores the pristine seed.
+
+## Demo script (~2 minutes, cold start)
+
+1. **Home** — the suite homepage placeholder. Note the persistent header: every surface has
+   **Give feedback** and the notification bell (3 unread). Dismiss the coachmark.
+2. **Give feedback → Report a problem** — type `large format resize crash` and watch the
+   **similar items** panel surface the existing 47-store item; **Back this** instead of filing
+   a duplicate → "Your store's backing is in." → **See it on the board**.
+3. **First board landing auto-plays the celebrate moment** — two items the store backed
+   shipped in v1.4; step through *1 of 2 → 2 of 2*, then **Dismiss all**.
+4. **The board** — ranked by store votes. Filter *Bugs*, roll up to *My store #1284*, search;
+   toggle an upvote (one vote per store). Click a row → the **detail drawer**: status
+   timeline, vote/follow, and each store's **preserved original words**.
+5. **Bell → a shipped notification** — the celebrate moment fires → **See what's new** lands on
+   **Releases**: v1.4 with *Latest* / *Your store asked* badges and per-item store credits;
+   **View →** jumps back to the item on the board.
+6. Finish with **Reset demo data** to hand the station back clean.
 
 ## What's built so far (plan steps 0–2)
 

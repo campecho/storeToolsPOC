@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { FeedbackItem, ItemType, Release, AppNotification } from "@/schema";
 import type { TypeFilter, StatusFilter, ScopeFilter } from "@/lib/board";
 import { seedItems, seedReleases, seedNotifications } from "@/data";
@@ -104,45 +105,64 @@ export interface FeedbackState {
   closeCelebrate: () => void;
   celebratePrev: () => void;
   celebrateNext: () => void;
+
+  /** Restore the pristine seed demo — clears filed items, votes, follows, read-state. */
+  resetDemo: () => void;
 }
 
-export const useFeedbackStore = create<FeedbackState>((set, get) => ({
-  store: "#1284",
-  impact: 7,
-
+/** Initial (seed) state — also what resetDemo restores. */
+const initialData = () => ({
   items: seedItems,
   releases: seedReleases,
   notifications: seedNotifications,
+  impact: 7,
+  nextId: 100,
+});
 
+const initialUi = {
   reportOpen: false,
-  reportStep: "choose",
+  reportStep: "choose" as ReportStep,
   reportTitle: "",
   reportDesc: "",
   reportName: "",
   attachFile: true,
   upvotedId: null,
   newItemId: null,
-  nextId: 100,
-
   highlightId: null,
   justVotedId: null,
   coachOpen: true,
   detailId: null,
-
-  fType: "all",
-  fStatus: "all",
-  fScope: "all",
+  fType: "all" as TypeFilter,
+  fStatus: "all" as StatusFilter,
+  fScope: "all" as ScopeFilter,
   query: "",
-
   notifOpen: false,
   celebrations: true,
   celebrateOpen: false,
-  celebrateQueue: [],
+  celebrateQueue: [] as CelebrateEntry[],
   celebrateIndex: 0,
   autoCelebrated: false,
   suppressAutoCelebrate: false,
+};
 
-  openReport: () =>
+// SSR/tests have no localStorage — persistence becomes a silent no-op there.
+const noopStorage: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+};
+
+export const useFeedbackStore = create<FeedbackState>()(
+  persist(
+    (set, get) => ({
+      store: "#1284",
+      ...initialData(),
+      ...initialUi,
+
+      openReport: () =>
     set({
       reportOpen: true,
       reportStep: "choose",
@@ -286,7 +306,27 @@ export const useFeedbackStore = create<FeedbackState>((set, get) => ({
   celebratePrev: () => set((s) => ({ celebrateIndex: Math.max(0, s.celebrateIndex - 1) })),
   celebrateNext: () =>
     set((s) => ({ celebrateIndex: Math.min(s.celebrateQueue.length - 1, s.celebrateIndex + 1) })),
-}));
+
+      resetDemo: () => set({ ...initialData(), ...initialUi }),
+    }),
+    {
+      name: "stp-feedback-v1",
+      storage: createJSONStorage(() =>
+        typeof window === "undefined" ? noopStorage : window.localStorage,
+      ),
+      // SSR and the first client render use the seed; StoreHydrator rehydrates
+      // from localStorage after mount so server and client markup match.
+      skipHydration: true,
+      // Only the data the associate can change persists — UI state is per-session.
+      partialize: (s) => ({
+        items: s.items,
+        notifications: s.notifications,
+        impact: s.impact,
+        nextId: s.nextId,
+      }),
+    },
+  ),
+);
 
 /** Number of unread notifications — drives the header bell badge. */
 export function selectUnreadCount(s: FeedbackState): number {

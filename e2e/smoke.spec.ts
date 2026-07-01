@@ -317,6 +317,32 @@ test.describe("Notifications & celebrate", () => {
   });
 });
 
+test.describe("Persistence", () => {
+  test("filed reports survive a reload; reset restores the demo", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("give-feedback").click();
+    await page.getByTestId("choose-bug").click();
+    await page.getByTestId("report-title").fill("Persistence check item");
+    await page.getByTestId("report-submit").click();
+    await page.getByRole("button", { name: "Back to my work" }).click();
+
+    await page.goto("/feedback/board");
+    await dismissAutoCelebrate(page);
+    await expect(page.getByTestId("board-item-100")).toContainText("Persistence check item");
+
+    // survives a full reload (fresh session → the auto-celebration re-fires)
+    await page.reload();
+    await dismissAutoCelebrate(page);
+    await expect(page.getByTestId("board-item-100")).toContainText("Persistence check item");
+    await expect(page.getByTestId("board-subline")).toContainText("13 open items");
+
+    // reset restores the pristine seed
+    await page.getByTestId("reset-demo").click();
+    await expect(page.getByTestId("board-item-100")).toBeHidden();
+    await expect(page.getByTestId("board-subline")).toContainText("12 open items");
+  });
+});
+
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
     await page.goto("/");
