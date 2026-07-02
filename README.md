@@ -43,7 +43,7 @@ the tracker sub-bar on board/releases) restores the pristine seed.
    **View →** jumps back to the item on the board.
 6. Finish with **Reset demo data** to hand the station back clean.
 
-## What's built so far (plan steps 0–2)
+## What's built so far
 
 - **Step 0 — scaffold:** Next.js 15 (App Router) + React 19 + TypeScript strict, Tailwind v4
   design tokens from the wires, motion keyframes, Zustand store, Zod schemas, Vitest + Playwright.
@@ -98,6 +98,15 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   vote surface, with the button and confirmation reflecting added vs removed backing;
   navigation clears an open drawer; empty state + one-tap clear on the board; new filings
   scroll their highlight into view; the wire's 4-point spark star is used consistently.
+
+- **Layout editor — step L1, shell: frame, chrome & Home band** (`/layout`): the page-layout
+  editor (Publisher replacement) opens from the homepage's **Layout** card — title bar (back
+  link, doc name, Simple/Standard/Pro switch with Standard active and the rest disabled until
+  L8), Publisher-style ribbon (tab switching live, Home band built), Affinity-style tool
+  palette with the live status-bar tool readout, pages pane, rulers + pasteboard with the
+  Letter page proxy (bleed/margin guides, corner marks, legend), Page inspector tab, and
+  status bar. Desktop-only: below `lg` an honest "needs a bigger screen" gate shows instead.
+  Build plan: [docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md).
 
 ## Where things live
 
