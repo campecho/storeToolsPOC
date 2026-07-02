@@ -43,7 +43,7 @@ the tracker sub-bar on board/releases) restores the pristine seed.
    **View →** jumps back to the item on the board.
 6. Finish with **Reset demo data** to hand the station back clean.
 
-## What's built so far (plan steps 0–2)
+## What's built so far
 
 - **Step 0 — scaffold:** Next.js 15 (App Router) + React 19 + TypeScript strict, Tailwind v4
   design tokens from the wires, motion keyframes, Zustand store, Zod schemas, Vitest + Playwright.
@@ -99,6 +99,15 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   navigation clears an open drawer; empty state + one-tap clear on the board; new filings
   scroll their highlight into view; the wire's 4-point spark star is used consistently.
 
+- **Layout editor — step L1, shell: frame, chrome & Home band** (`/layout`): the page-layout
+  editor (Publisher replacement) opens from the homepage's **Layout** card — title bar (back
+  link, doc name, Simple/Standard/Pro switch with Standard active and the rest disabled until
+  L8), Publisher-style ribbon (tab switching live, Home band built), Affinity-style tool
+  palette with the live status-bar tool readout, pages pane, rulers + pasteboard with the
+  Letter page proxy (bleed/margin guides, corner marks, legend), Page inspector tab, and
+  status bar. Desktop-only: below `lg` an honest "needs a bigger screen" gate shows instead.
+  Build plan: [docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md).
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts
@@ -111,7 +120,8 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 
 ## Start here (docs)
 
-- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC.
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. Next up.
 
 ## Reference documents
 
@@ -120,4 +130,9 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   - `feedback-tracker-prototype.html` — runnable prototype; open in any browser, no setup. The behavioral source of truth.
   - `Feedback Tracker Prototype.dc.html` — readable source (markup + `Component` logic).
   - `FUNCTIONAL_DESIGN.md` — the tracker's product/functional design (v0.1).
-- `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early.
+- `docs/handoff/layout-editor/` — the layout-editor design handoff package:
+  - `README.md` — the design spec (regions, control groups, state model, tokens, growth scope).
+  - `Layout Editor (offline).html` — runnable prototype of the editor shell; the behavioral source of truth.
+  - `Layout Editor.dc.html` — readable source (markup + `Component` logic).
+- `docs/Desktop_Publisher_Design_Doc.md` — the desktop publishing application design doc (product vision, experience model, capability targets the editor serves).
+- `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early; the layout editor is Track B's custom-size layout core.
