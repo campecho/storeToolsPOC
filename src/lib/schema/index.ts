@@ -4,6 +4,10 @@ import { z } from "zod";
  * Data model from the handoff prototype
  * (docs/handoff/feedback-tracker/README.md — "State management" / "Data model").
  *
+ * CONTRACT: these Zod schemas are the tracker's data shapes — a backend in any
+ * stack implements against them (all app types derive via z.infer; there is no
+ * second definition to drift).
+ *
  * `status: 'done'` renders as "Fixed" for bugs and "Shipped" for features.
  * `votes` is the number of distinct backing stores (one vote per store).
  * `reports` are the preserved per-store originals — merges aggregate, never flatten.
@@ -15,6 +19,9 @@ export type ItemType = z.infer<typeof ItemTypeSchema>;
 export const ItemStatusSchema = z.enum(["new", "planned", "done", "declined"]);
 export type ItemStatus = z.infer<typeof ItemStatusSchema>;
 
+// PII: `name` is a typed associate name and `text` free prose that in real use
+// will carry customer/file details. PROD-TODO: classify + set retention before
+// this data leaves the browser.
 export const StoreReportSchema = z.object({
   store: z.string(),
   when: z.string(),
@@ -23,6 +30,7 @@ export const StoreReportSchema = z.object({
 });
 export type StoreReport = z.infer<typeof StoreReportSchema>;
 
+// PII: free prose from associates — same classification as StoreReport.text.
 export const ItemCommentSchema = z.object({
   store: z.string(),
   text: z.string(),

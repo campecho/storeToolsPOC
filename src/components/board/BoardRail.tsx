@@ -26,14 +26,17 @@ const STATUS_OPTS: { value: StatusFilter; label: string; dot: string | null }[] 
   { value: "declined", label: "Declined / closed", dot: "#bcbcbc" },
 ];
 
-const SCOPE_OPTS: { value: ScopeFilter; label: string }[] = [
+// ASSUMPTION: region/district names are demo copy from the wires — real
+// rollup hierarchy comes with store identity (src/lib/identity.ts).
+const scopeOpts = (store: string): { value: ScopeFilter; label: string }[] => [
   { value: "all", label: "All stores (chain)" },
   { value: "region", label: "Region · Northeast" },
   { value: "district", label: "District 118" },
-  { value: "mine", label: "My store #1284" },
+  { value: "mine", label: `My store ${store}` },
 ];
 
 // Positive, non-ranked spotlight — the store's own chip highlighted.
+// MOCK: fixture list standing in for the release-participation query.
 const TOP_STORES = ["#1190", "#0412", "#1284", "#0733", "#2051"];
 
 function RailLabel({ children }: { children: React.ReactNode }) {
@@ -127,7 +130,7 @@ export function BoardRail({ open = false, onClose }: { open?: boolean; onClose?:
       <div>
         <RailLabel>Roll up by</RailLabel>
         <div className="flex flex-col gap-[3px]">
-          {SCOPE_OPTS.map((o) => (
+          {scopeOpts(store).map((o) => (
             <button key={o.value} type="button" onClick={() => setScopeFilter(o.value)} className={rowChip(fScope === o.value)}>
               {o.label}
             </button>

@@ -45,6 +45,20 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 
 ## What's built so far
 
+Status at a glance (✅ done · 🟡 partial · ❌ stubbed / not started — details in the build log
+below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
+
+| Surface | Status |
+|---|---|
+| Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
+| Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
+| Layout editor — shell, document model, objects, text, multi-page & masters (L1–L6) | ✅ shipped |
+| Layout editor — multi-select/align/snap, experience levels, hardening (L7–L9) | ❌ next in plan |
+| Product/SKU catalog binding | ❌ inert affordance; schema field exists |
+| `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
+| Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
+| Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
+
 - **Step 0 — scaffold:** Next.js 15 (App Router) + React 19 + TypeScript strict, Tailwind v4
   design tokens from the wires, motion keyframes, Zustand store, Zod schemas, Vitest + Playwright.
   Persistent app header (Staples badge, search, store ID, **Give feedback**, notification bell
@@ -179,6 +193,7 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 
 ## Start here (docs)
 
+- **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
 - **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L6 shipped.
 

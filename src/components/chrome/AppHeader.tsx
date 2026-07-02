@@ -21,8 +21,10 @@ export function AppHeader() {
         <span className="text-[14px] font-bold text-[#333]">Print Studio</span>
       </div>
 
-      {/* Placeholder global search — collapses below md; the spacer keeps the
-          right-hand controls pinned to the edge on phones. */}
+      {/* PROTOTYPE-ONLY: inert global-search face (a span, deliberately not an
+          input) and the avatar circle below — file/product search and the
+          associate menu are future suite surfaces. Collapses below md; the
+          spacer keeps the right-hand controls pinned to the edge on phones. */}
       <div className="flex flex-1 justify-center">
         <div className="hidden h-8 w-full max-w-[440px] items-center gap-2 rounded-[6px] border border-[#d6d6d6] bg-white px-3 md:flex">
           <Search size={15} strokeWidth={1.9} className="text-[#9a9a9a]" />

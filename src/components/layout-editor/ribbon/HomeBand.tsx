@@ -20,8 +20,9 @@ import { RibbonGroup } from "./RibbonGroup";
  * Home command band (wire 2b · Home): Clipboard · Font · Paragraph · Styles ·
  * Editing. Font/Paragraph/Styles are live against the text target (plan L5) —
  * the frame being edited or the selected text frame — and fall back to the
- * wire's at-rest faces, disabled, when there is none. Clipboard/Editing and
- * the list/¶ controls stay static chrome for later slices.
+ * wire's at-rest faces, disabled, when there is none.
+ * PROTOTYPE-ONLY: the Clipboard and Editing groups, the list/¶ controls, and
+ * Styles' "+ New" are inert chrome for later slices (plan §6).
  */
 
 /** 26×24 white icon button — static chrome or a live toggle. */

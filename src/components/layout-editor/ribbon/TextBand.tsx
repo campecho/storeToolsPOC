@@ -9,8 +9,9 @@ import { RibbonGroup } from "./RibbonGroup";
 /**
  * Text command band (wire 2b · Text): Character · Styles · Spacing ·
  * Text flow. Character, Styles, and line spacing are live against the text
- * target (plan L5); paragraph Space and the Text-flow group (Link boxes /
- * Wrap) stay inert placeholders for the deferred threading slice.
+ * target (plan L5).
+ * PROTOTYPE-ONLY: paragraph Space and the Text-flow group (Link boxes / Wrap)
+ * are inert placeholders for the deferred story-threading slice (plan §6).
  */
 
 /** 26px white pill — static chrome. */

@@ -1,7 +1,7 @@
 import type { FeedbackItem } from "@/schema";
 
 /**
- * Seed content copied verbatim from the handoff prototype
+ * MOCK: demo dataset — seed content copied verbatim from the handoff prototype
  * (docs/handoff/feedback-tracker/Feedback Tracker Prototype.dc.html — seedItems()).
  * This is authored design content, part of the wires.
  */

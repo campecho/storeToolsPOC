@@ -8,8 +8,10 @@ import { RibbonGroup } from "./RibbonGroup";
 /**
  * Insert command band (wire 2b · Insert): Pages · Text & media ·
  * Illustrations · Links. Text box / Picture arm their tools (plan L4);
- * Add page inserts after the active page (plan L6); Masters / Shapes /
- * Table / Hyperlink stay inert placeholders for the deferred slices.
+ * Add page inserts after the active page (plan L6).
+ * PROTOTYPE-ONLY: the Masters, Shapes, Table, and Hyperlink tiles are inert
+ * placeholders for deferred slices (plan §6) — visible so the ceiling reads
+ * as reachable, static until their slices land.
  */
 
 /** 52×52 white command tile — the band's big-control chrome. */

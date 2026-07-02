@@ -5,6 +5,13 @@ import { z } from "zod";
  * inches, z-order is array order. Page size is document-level; per-page mixed
  * sizes are deferred (plan §6). Text styling is per-frame for the POC — the
  * richer per-run model is the versioned v2 migration (plan §9).
+ *
+ * CONTRACT: LayoutDocumentSchema IS the document format — the persistence
+ * shape, the `.pub` import target (plan §9-§11), and the render contract. Any
+ * backend stack implements against it; a committed example lives at
+ * fixtures/layout-document.v1.json.
+ * PROD-TODO: schema v2 (per-run text, assets, vector paths) ships with a
+ * v1→v2 migration; the prototype may drop-and-reseed, production must not.
  */
 
 export const OrientationSchema = z.enum(["portrait", "landscape"]);
@@ -64,6 +71,9 @@ export type LineObject = z.infer<typeof LineObjectSchema>;
 export const LayoutObjectSchema = z.union([FrameObjectSchema, LineObjectSchema]);
 export type LayoutObject = z.infer<typeof LayoutObjectSchema>;
 
+// PROD-TODO: `masterId` is a soft reference — store actions guard it but the
+// schema doesn't; a dangling id renders furniture-less rather than erroring.
+// A real store enforces the constraint (FK or validation on write).
 export const LayoutPageSchema = z.object({
   id: z.string(),
   masterId: z.string().nullable(),

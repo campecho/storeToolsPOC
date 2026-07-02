@@ -7,6 +7,8 @@ import type { LayoutDocument } from "@/schema";
  */
 
 export const DPI = 96;
+// ASSUMPTION: 10%–400% zoom and the 1–240 in page bounds below are guesses at
+// useful working ranges — confirm against real large-format jobs.
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 4;
 /** Fit leaves ~15% pasteboard breathing room around the page + bleed box. */

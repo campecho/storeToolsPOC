@@ -86,6 +86,8 @@ export type TextPropsPatch = {
   lineSpacing?: number;
 };
 
+// ASSUMPTION: 50 undo steps matches desktop-publishing norms — confirm with
+// associates once real documents exist.
 const HISTORY_CAP = 50;
 
 /** Spread into a set() patch: push a snapshot, clear the redo stack. */
@@ -710,9 +712,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
         })),
     }),
     {
+      // CONTRACT: the storage key + LayoutDocumentSchema are the saved-file
+      // format — a real backend persists the same shape per publication.
       name: "stp-layout-v1",
       // Bumped when the persisted document shape changes beyond what the
       // schema-validating merge below can absorb.
+      // PROD-TODO: production migrates old documents (v1→v2 per plan §9);
+      // the prototype may drop-and-reseed. A failed write (quota, private
+      // mode) only logs — production needs a visible "not saved" state.
       version: 1,
       storage: createJSONStorage(() =>
         typeof window === "undefined" ? noopStorage : window.localStorage,

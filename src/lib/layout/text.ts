@@ -9,6 +9,8 @@ import type { TextProps } from "@/schema";
  */
 
 /** Display name → CSS stack. The document stores the display name. */
+// ASSUMPTION: curated list is a guess at the in-store set; Motiva Sans renders
+// via system fallback until brand licensing is confirmed (public/fonts/README).
 export const FONT_FAMILIES: { name: string; stack: string }[] = [
   { name: "Motiva Sans", stack: '"Motiva Sans", system-ui, -apple-system, "Segoe UI", sans-serif' },
   { name: "Arial", stack: "Arial, Helvetica, sans-serif" },

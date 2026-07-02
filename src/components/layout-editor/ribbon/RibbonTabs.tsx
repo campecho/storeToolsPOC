@@ -8,9 +8,10 @@ const INTERACTIVE_TABS: { id: RibbonTab; label: string }[] = [
 ];
 
 /**
- * Ribbon tab strip (wire region 2a). File is static red; Home/Insert/Layout/
- * Text switch the command band; Arrange/View/Help stay muted until their
- * slices land (plan §2, static-by-design).
+ * Ribbon tab strip (wire region 2a). Home/Insert/Layout/Text switch the
+ * command band.
+ * PROTOTYPE-ONLY: File (open/save/export lands with the print-production
+ * slice) and Arrange/View/Help (plan §6) are inert, static-by-design labels.
  */
 export function RibbonTabs() {
   const ribbon = useLayoutStore((s) => s.ribbon);

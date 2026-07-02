@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   useLayoutStore,
@@ -604,6 +606,21 @@ describe("persisted-state validation (the merge guard)", () => {
     const doc = createDefaultDocument();
     doc.name = "From storage";
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it("the committed contract fixture parses (fixtures/layout-document.v1.json)", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v1.json"), "utf8");
+    const parsed = LayoutDocumentSchema.safeParse(JSON.parse(raw));
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.pages).toHaveLength(2);
+      expect(parsed.data.masters.map((m) => m.label)).toEqual(["A", "B"]);
+      // every page's master reference resolves (soft ref — see schema note)
+      const masterIds = new Set(parsed.data.masters.map((m) => m.id));
+      for (const p of parsed.data.pages) {
+        expect(p.masterId === null || masterIds.has(p.masterId)).toBe(true);
+      }
+    }
   });
 
   it("rejects corrupt shapes so the editor falls back to pristine", () => {

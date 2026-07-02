@@ -43,6 +43,9 @@ export function PageTab() {
     <div className="flex flex-col gap-4">
       <div>
         <SectionLabel>Product</SectionLabel>
+        {/* PROTOTYPE-ONLY: the catalog link is inert — SKU binding lands with
+            the catalog/spec-sync slice (plan §6); doc.product is already in
+            the schema so bound documents render correctly today. */}
         <div className="flex flex-col gap-[6px] rounded-[7px] border border-[#ececec] px-[11px] py-[10px]">
           <div className="text-[12px] text-[#555]">
             {doc.product ? doc.product.label : "Custom size — not bound to a SKU"}

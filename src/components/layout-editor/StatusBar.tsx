@@ -83,7 +83,8 @@ export function StatusBar() {
 
       <div className="flex-1" />
 
-      {/* view: single page (active) · two-page spread (static until spreads land) */}
+      {/* PROTOTYPE-ONLY: view toggles — single page (active) · two-page
+          spread, inert until facing pages land (plan §6) */}
       <div className="flex items-center gap-2">
         <div className="h-[18px] w-[22px] rounded-[3px] border border-brand bg-brand-tint" />
         <div className="flex h-[18px] w-[22px] items-center justify-center gap-[1px] rounded-[3px] border border-[#cfcfcf] bg-white">
