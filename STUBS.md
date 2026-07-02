@@ -61,5 +61,6 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 | Station/app version copy | `src/components/report/CapturedContextPanel.tsx` | "Station POS-3 · v1.3.2" |
 | Undo depth 50 | `src/lib/store/layout-store.ts` | Desktop-publishing norm |
 | Zoom 10–400%, page 1–240 in | `src/lib/layout/geometry.ts` | Working-range guesses (large-format friendly) |
+| Snap radius 6px (screen) | `src/lib/layout/snap.ts` | Feel-based; confirm on store hardware |
 | Curated font list | `src/lib/layout/text.ts` | In-store set TBD; Motiva licensing pending |
 | Recently-shipped band window (7 days) | board logic / seeds | Product to confirm |

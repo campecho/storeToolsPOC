@@ -601,6 +601,103 @@ describe("pages & masters (L6)", () => {
   });
 });
 
+describe("multi-select, align & distribute (L7)", () => {
+  function seedThree() {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 2, 2, 1, 1);
+    const c = createFrame("rect", 7, 5, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.addObject(c);
+    return [a, b, c] as const;
+  }
+
+  it("toggleSelected adds and removes members and ends a text session", () => {
+    const s = useLayoutStore.getState();
+    const [a, b] = seedThree();
+    s.setSelection([a.id]);
+    s.setEditingText(a.id);
+    s.toggleSelected(b.id);
+    expect(useLayoutStore.getState().selectedIds).toEqual([a.id, b.id]);
+    expect(useLayoutStore.getState().editingTextId).toBeNull();
+    s.toggleSelected(a.id);
+    expect(useLayoutStore.getState().selectedIds).toEqual([b.id]);
+  });
+
+  it("setSurfaceObjects replaces the surface — transiently or as one undo step", () => {
+    const s = useLayoutStore.getState();
+    const [a] = seedThree();
+    const depth = useLayoutStore.getState().past.length;
+    const moved = pageObjects().map((o) => (o.id === a.id ? { ...o, x: 5 } : o));
+    s.setSurfaceObjects(moved, true);
+    expect(useLayoutStore.getState().past).toHaveLength(depth); // transient
+    expect(pageObjects().find((o) => o.id === a.id)).toMatchObject({ x: 5 });
+    s.setSurfaceObjects(pageObjects(), false);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+  });
+
+  it("alignSelection works on one object relative to the page", () => {
+    const s = useLayoutStore.getState();
+    const [a] = seedThree();
+    s.setSelection([a.id]);
+    s.alignSelection("centerH");
+    expect(pageObjects().find((o) => o.id === a.id)).toMatchObject({ x: 3.75 }); // (8.5-1)/2
+  });
+
+  it("relative to the selection needs two, and aligns to the union", () => {
+    const s = useLayoutStore.getState();
+    const [a, b] = seedThree();
+    s.setAlignRel("selection");
+    s.setSelection([a.id]);
+    const before = useLayoutStore.getState().doc;
+    s.alignSelection("left");
+    expect(useLayoutStore.getState().doc).toBe(before); // guarded no-op
+
+    s.setSelection([a.id, b.id]);
+    s.alignSelection("right"); // union right edge = 3
+    const objs = pageObjects();
+    expect(objs.find((o) => o.id === a.id)).toMatchObject({ x: 2 });
+    expect(objs.find((o) => o.id === b.id)).toMatchObject({ x: 2 });
+  });
+
+  it("aligning is one undo step with a no-op guard", () => {
+    const s = useLayoutStore.getState();
+    const [a, b] = seedThree();
+    s.setSelection([a.id, b.id]);
+    const depth = useLayoutStore.getState().past.length;
+    s.alignSelection("top"); // both to y 0 (a already there)
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.alignSelection("top"); // nothing moves — no history entry
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo();
+    expect(pageObjects().find((o) => o.id === b.id)).toMatchObject({ y: 2 });
+  });
+
+  it("distributeSelection needs three and equalizes gaps", () => {
+    const s = useLayoutStore.getState();
+    const [a, b, c] = seedThree();
+    s.setAlignRel("selection");
+    s.setSelection([a.id, b.id]);
+    const before = useLayoutStore.getState().doc;
+    s.distributeSelection("h");
+    expect(useLayoutStore.getState().doc).toBe(before); // guarded
+
+    s.setSelection([a.id, b.id, c.id]);
+    s.distributeSelection("h"); // union 0..8, sizes 3 → gap 2.5
+    const xs = [a.id, b.id, c.id].map(
+      (id) => (pageObjects().find((o) => o.id === id)! as { x: number }).x,
+    );
+    expect(xs).toEqual([0, 3.5, 7]);
+  });
+
+  it("alignRel defaults to page and switches", () => {
+    expect(useLayoutStore.getState().alignRel).toBe("page");
+    useLayoutStore.getState().setAlignRel("selection");
+    expect(useLayoutStore.getState().alignRel).toBe("selection");
+  });
+});
+
 describe("persisted-state validation (the merge guard)", () => {
   it("accepts a valid stored document", () => {
     const doc = createDefaultDocument();

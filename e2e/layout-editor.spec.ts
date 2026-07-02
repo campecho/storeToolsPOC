@@ -731,3 +731,144 @@ test.describe("Multi-page & masters (L6)", () => {
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
   });
 });
+
+/**
+ * Multi-select, align & snapping (plan step L7): shift-click and marquee
+ * selection, group behavior, the live Align tab verified numerically, and
+ * object-edge snapping with smart guides that appear mid-drag and clear.
+ */
+test.describe("Multi-select, align & snapping (L7)", () => {
+  async function dragOnPage(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  async function drawRect(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, from, to);
+  }
+
+  test("shift-click multi-selects; Align (relative to page) moves both — verified numerically", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await drawRect(page, { x: 40, y: 60 }, { x: 120, y: 120 });
+    await drawRect(page, { x: 180, y: 150 }, { x: 260, y: 230 });
+
+    // the second rect is selected; shift-click the first to grow the group
+    await page.getByTestId("object-rect").first().click({ modifiers: ["Shift"] });
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 2 objects");
+    await expect(page.getByTestId("multi-select-frame")).toHaveCount(2);
+
+    await page.getByTestId("insp-align").click();
+    await page.getByTestId("obj-align-top").click();
+
+    // a dragless click on a member collapses the group to it — inspect each
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-rect").first().click();
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+    await expect(page.getByTestId("prop-y")).toHaveValue("0");
+    await page.getByTestId("object-rect").nth(1).click();
+    await expect(page.getByTestId("prop-y")).toHaveValue("0");
+
+    // one undo restores both
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.getByTestId("object-rect").nth(1).click();
+    await expect(page.getByTestId("prop-y")).not.toHaveValue("0");
+  });
+
+  test("distribute equalizes gaps relative to the selection union", async ({ page }) => {
+    await page.goto("/layout");
+    // three rects, then pin their geometry numerically for an exact expectation
+    const spots: [{ x: number; y: number }, { x: number; y: number }][] = [
+      [{ x: 20, y: 40 }, { x: 70, y: 90 }],
+      [{ x: 120, y: 40 }, { x: 170, y: 90 }],
+      [{ x: 220, y: 40 }, { x: 270, y: 90 }],
+    ];
+    for (const [from, to] of spots) await drawRect(page, from, to);
+
+    await page.getByTestId("insp-props").click();
+    const geoms = [
+      { x: "0", w: "1" },
+      { x: "2", w: "1" },
+      { x: "7", w: "1" },
+    ];
+    for (let i = 0; i < 3; i++) {
+      await page.getByTestId("object-rect").nth(i).click();
+      await page.getByTestId("prop-x").fill(geoms[i].x);
+      await page.getByTestId("prop-x").press("Enter");
+      await page.getByTestId("prop-w").fill(geoms[i].w);
+      await page.getByTestId("prop-w").press("Enter");
+    }
+
+    // select all three and distribute within the selection: 0 · 3.5 · 7
+    await page.getByTestId("object-rect").first().click();
+    await page.getByTestId("object-rect").nth(1).click({ modifiers: ["Shift"] });
+    await page.getByTestId("object-rect").nth(2).click({ modifiers: ["Shift"] });
+    await page.getByTestId("insp-align").click();
+    await page.getByTestId("align-rel").selectOption("selection");
+    await page.getByTestId("distribute-h").click();
+
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-rect").nth(1).click();
+    await expect(page.getByTestId("prop-x")).toHaveValue("3.5");
+    // the anchors stayed put
+    await page.getByTestId("object-rect").first().click();
+    await expect(page.getByTestId("prop-x")).toHaveValue("0");
+    await page.getByTestId("object-rect").nth(2).click();
+    await expect(page.getByTestId("prop-x")).toHaveValue("7");
+  });
+
+  test("a marquee from empty pasteboard rubber-bands a multi-selection", async ({ page }) => {
+    await page.goto("/layout");
+    await drawRect(page, { x: 60, y: 80 }, { x: 130, y: 140 });
+    await drawRect(page, { x: 200, y: 180 }, { x: 270, y: 250 });
+
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + 20, box.y + 30); // empty page corner
+    await page.mouse.down();
+    await page.mouse.move(box.x + 300, box.y + 270, { steps: 8 });
+    await expect(page.getByTestId("marquee")).toBeVisible();
+    await page.mouse.up();
+
+    await expect(page.getByTestId("marquee")).toHaveCount(0);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 2 objects");
+    await expect(page.getByTestId("multi-select-frame")).toHaveCount(2);
+  });
+
+  test("dragging near another object's edge snaps to it with smart guides", async ({ page }) => {
+    await page.goto("/layout");
+    // different rows, so the snapped rect never sits on top of the reference
+    await drawRect(page, { x: 60, y: 100 }, { x: 140, y: 160 });
+    await drawRect(page, { x: 260, y: 240 }, { x: 340, y: 300 });
+
+    const a = (await page.getByTestId("object-rect").first().boundingBox())!;
+    const b = (await page.getByTestId("object-rect").nth(1).boundingBox())!;
+
+    // grab B and park its left edge 4px from A's left edge — inside the 6px radius
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + 4 + b.width / 2, b.y + b.height / 2, { steps: 8 });
+    await expect(page.getByTestId("smart-guide").first()).toBeVisible();
+    await page.mouse.up();
+    await expect(page.getByTestId("smart-guide")).toHaveCount(0);
+
+    // left edges now agree exactly
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-rect").first().click();
+    const ax = await page.getByTestId("prop-x").inputValue();
+    await page.getByTestId("object-rect").nth(1).click();
+    await expect(page.getByTestId("prop-x")).toHaveValue(ax);
+  });
+});

@@ -52,8 +52,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 |---|---|
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
-| Layout editor — shell, document model, objects, text, multi-page & masters (L1–L6) | ✅ shipped |
-| Layout editor — multi-select/align/snap, experience levels, hardening (L7–L9) | ❌ next in plan |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap (L1–L7) | ✅ shipped |
+| Layout editor — experience levels, hardening (L8–L9) | ❌ next in plan |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
@@ -181,6 +181,19 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   undoable with the session pointers resolved across undo (e.g. undoing Add page steps back
   to the neighbor); multi-page files persist and rehydrate onto page 1.
 
+- **Layout editor — step L7, multi-select, align & snapping:** measurement-driven precision
+  layout. **Shift-click** toggles selection membership, an empty-canvas drag **rubber-bands a
+  marquee**, and grabbing any member **drags the group** (a dragless click collapses back to
+  the one object); multi-selections outline every member, with resize handles staying
+  single-object. The **Align inspector tab goes live**: six aligns and Distribute H/V
+  (equal-gap, ends anchored) against a "Relative to" choice of Page or Selection, with honest
+  disabled states (selection-relative needs 2, distribute needs 3) — each action is one undo
+  step. **Snapping** engages during move/resize/draw/endpoint drags: page margins, page
+  centers, column guides (only while the Guides toggle is on), and other objects'
+  edges/centers, within a 6px screen radius at any zoom; the engaged targets render as
+  brand-red **smart guides** that clear on release, and snapped geometry lands exactly (the
+  e2e proves edge-to-edge equality numerically). Group moves snap as one union box.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts
@@ -195,7 +208,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 
 - **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L6 shipped.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L7 shipped.
 
 ## Reference documents
 

@@ -16,6 +16,14 @@ import {
 } from "@/lib/layout/geometry";
 import { getPreset } from "@/lib/layout/presets";
 import { DUPLICATE_OFFSET_IN, MIN_OBJECT_IN, translated } from "@/lib/layout/objects";
+import {
+  alignObjects,
+  distributeObjects,
+  unionBBox,
+  type AlignKind,
+  type AlignRelativeTo,
+  type DistributeAxis,
+} from "@/lib/layout/align";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -238,6 +246,8 @@ export interface LayoutEditorState {
   selectedIds: string[];
   /** Text frame with the contentEditable overlay open (plan L5). */
   editingTextId: string | null;
+  /** Align tab's "Relative to" choice (plan L7) — session UI, not persisted. */
+  alignRel: AlignRelativeTo;
 
   // history (session): bounded per-gesture snapshots of the document slice
   past: LayoutDocument[];
@@ -296,6 +306,16 @@ export interface LayoutEditorState {
 
   // selection & objects (the editing surface — active page or edited master)
   setSelection: (ids: string[]) => void;
+  /** Shift-click: add/remove one object, keeping the rest (plan L7). */
+  toggleSelected: (id: string) => void;
+  /** Replace the surface's object array wholesale — group drags write this
+      transiently from the gesture's start array; commitGesture closes them. */
+  setSurfaceObjects: (objects: LayoutObject[], transient?: boolean) => void;
+  setAlignRel: (v: AlignRelativeTo) => void;
+  /** Align the selection to the page box or the selection union (plan L7). */
+  alignSelection: (kind: AlignKind) => void;
+  /** Equal-gap distribution — needs three or more objects. */
+  distributeSelection: (axis: DistributeAxis) => void;
   setEditingText: (id: string | null) => void;
   /** Typing is transient — the edit session commits one snapshot at close. */
   setTextContent: (id: string, content: string) => void;
@@ -348,6 +368,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       selectedIds: [],
       editingTextId: null,
+      alignRel: "page",
       past: [],
       future: [],
 
@@ -531,6 +552,55 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setFocusPageSize: (v) => set({ focusPageSize: v }),
 
       setSelection: (ids) => set({ selectedIds: ids }),
+
+      toggleSelected: (id) =>
+        set((s) => ({
+          selectedIds: s.selectedIds.includes(id)
+            ? s.selectedIds.filter((i) => i !== id)
+            : [...s.selectedIds, id],
+          // adjusting the selection ends a text session, like any other grab
+          editingTextId: null,
+        })),
+
+      setSurfaceObjects: (objects, transient = false) =>
+        set((s) => {
+          const doc = mapSurfaceObjects(s, () => objects);
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      setAlignRel: (v) => set({ alignRel: v }),
+
+      alignSelection: (kind) =>
+        set((s) => {
+          const objs = surfaceObjects(s);
+          const selSet = new Set(s.selectedIds);
+          const sel = objs.filter((o) => selSet.has(o.id));
+          if (sel.length < (s.alignRel === "selection" ? 2 : 1)) return s;
+          const ref =
+            s.alignRel === "page"
+              ? { x: 0, y: 0, w: s.doc.size.w, h: s.doc.size.h }
+              : unionBBox(sel)!;
+          const moved = new Map(alignObjects(sel, kind, ref).map((o) => [o.id, o]));
+          const next = objs.map((o) => moved.get(o.id) ?? o);
+          if (JSON.stringify(next) === JSON.stringify(objs)) return s;
+          return { ...pushed(s, s.doc), doc: mapSurfaceObjects(s, () => next) };
+        }),
+
+      distributeSelection: (axis) =>
+        set((s) => {
+          const objs = surfaceObjects(s);
+          const selSet = new Set(s.selectedIds);
+          const sel = objs.filter((o) => selSet.has(o.id));
+          if (sel.length < 3) return s;
+          const ref =
+            s.alignRel === "page"
+              ? { x: 0, y: 0, w: s.doc.size.w, h: s.doc.size.h }
+              : unionBBox(sel)!;
+          const moved = new Map(distributeObjects(sel, axis, ref).map((o) => [o.id, o]));
+          const next = objs.map((o) => moved.get(o.id) ?? o);
+          if (JSON.stringify(next) === JSON.stringify(objs)) return s;
+          return { ...pushed(s, s.doc), doc: mapSurfaceObjects(s, () => next) };
+        }),
 
       setEditingText: (id) => set({ editingTextId: id }),
 
