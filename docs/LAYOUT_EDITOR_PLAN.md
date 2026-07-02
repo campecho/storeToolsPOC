@@ -6,6 +6,8 @@ The editor is explicitly **built over time**: the shell lands first, capability 
 
 **Revision (v1.1):** this plan now carries the technical design for the *functional* editor beyond the POC — a **Konva (Canvas 2D) render layer** (§8), the **document-model v2 deltas** it and import require (§9), the **`.pub` import & conversion pipeline** built on `libmspub` per `PUB_TO_IDML_RESEARCH.md` (§10), and the **K-/P-tranche build order** that grows both onto the L1–L9 POC (§11). L1–L9 are unchanged: the POC still ships DOM/SVG-rendered; the Konva swap and the `.pub` on-ramp are the tranches that make it a complete, functional Publisher replacement.
 
+**Revision (v1.2):** §10.1 now records the agreed **POC security posture** for the import pipeline. This is a *fully functional POC, not a production deployment*, and the threat model scales with what's wired in — so the security doc's controls split into **POC-enforced** (built in P1, tested in P5) vs. **production-deferred with recorded accepted risk**. The same section picks up the Debian-slim base-image requirement and a no-binary **fixture mode** for dev/CI.
+
 **Inputs reviewed:**
 
 | Input | Where | Role |
@@ -369,15 +371,30 @@ Everything else — inches, array z-order, masters, `rotation` — already carri
 
 The pipeline is the `PUB_TO_IDML_RESEARCH.md` architecture with one substitution: **the generator target is `LayoutDocument`, not IDML.** The research doc's front half (`libmspub` parse → intermediate layout model) is adopted as-is; the intermediate model becomes the **shared hub** that can emit *both* outputs — `LayoutDocument` for this editor, IDML for the interchange/migration deliverable — so the parse investment is made once.
 
-### 10.1 Where it runs: server-side, sandboxed [CRITICAL]
+### 10.1 Where it runs: server-side, sandboxed [CRITICAL] — with an explicit POC posture (v1.2)
 
-`libmspub` is the security doc's highest-parser-risk engine — C++ over an undocumented OLE2/Escher binary. Import therefore runs **server-side only**, in the POC's existing container (add `libmspub-tools` to the image; `docker run` still serves everything), as an out-of-process job behind a Next.js route handler, inheriting the `SECURITY_CONSIDERATIONS.md` checklist:
+`libmspub` is the security doc's highest-parser-risk engine — C++ over an undocumented OLE2/Escher binary. Import therefore runs **server-side only**, as an out-of-process job behind a Next.js route handler in the POC's existing container. The runtime image moves to a **Debian-slim base** (`node:22-bookworm-slim` + `apt-get install libmspub-tools` — the research doc's own install path; `libmspub-tools` is not an Alpine package); `docker run` still serves everything.
 
-- **Content-sniff, never trust the extension**: OLE2/CFBF magic for `.pub` (`E8 AC 22 00` / `E8 AC 2C 00` in the `Contents` stream; `E7 AC 2C 00` for the rare v1 blob), CAB magic for `.puz`.
-- **Sandbox the parse subprocess**: no network, temp-dir jail, dropped privileges, CPU/memory/wall-time rlimits (kill and report on breach — a hang *is* a finding).
+**POC posture.** This is a fully functional POC, not a production deployment, and the threat model scales with what's wired in: `SECURITY_CONSIDERATIONS.md`'s verdict is that the risk follows from the parser being connected to *customer PII, order systems, and the production queue* — the POC touches none of those (no integrations, no PII stores, no write-back, no meaningful container secrets, ephemeral demo deploy). The checklist therefore splits into what the POC **enforces now** — the portable, our-own-code half, which is exactly what P5's adversarial tests exercise — and what is **deferred to production as recorded accepted risk**. Deferred ≠ dropped: every deferred line is a named launch gate for the production tranche.
+
+**POC-enforced (built in P1, tested in P5):**
+
+- **Content-sniff, never trust the extension**: OLE2/CFBF container magic first, then the `Contents`-stream markers (`E8 AC 22 00` / `E8 AC 2C 00`; `E7 AC 2C 00` for the rare v1 flat blob), CAB magic for `.puz`.
+- **Out-of-process subprocess with caps**: per-file size cap, wall-clock timeout with kill (a hang *is* a finding), CPU/memory rlimits via a `prlimit`/`ulimit` wrapper.
+- **Scratch-dir jail** created per job and wiped after — parse inputs/outputs never touch application storage.
 - **Harden `.puz` (CAB) extraction**: path canonicalization + confinement, entry-count/size/ratio caps, reject symlinks and absolute paths; the inner `.pub` re-enters the same pipeline.
-- **Per-file size cap + AV scan hook on ingest** (the suite's ClamAV-or-commercial decision applies here; the hook exists from P1 even if the engine lands later).
-- Imported assets are re-encoded (image transcode = content-disarm), never served back as original bytes.
+- **Content-disarm on the way out**: imported assets are re-encoded (image transcode), never served back as original bytes.
+- **AV scan hook on ingest** — present from P1 as a logging stub so the seam exists (the suite's ClamAV-or-commercial decision lands later).
+
+**Production-deferred (accepted risk for the POC, recorded here):**
+
+- Namespace/microVM-grade isolation and privilege separation beyond the container — the security doc's open decision #1 (container-per-parse vs. gVisor/Firecracker-class) is made for the production tranche, not now.
+- Per-subprocess **network-egress jail**. The POC-grade story, stated honestly: `libmspub`/`pub2raw` make no network calls by design, and the deploy's container-level egress policy is the backstop; the enforced jail is a production control (unprivileged Cloud Run-class containers can't create network namespaces anyway).
+- A **real AV engine** behind the ingest hook, and re-scan on export/write-back (no write-back path exists in the POC).
+
+**Exposure guard (holds regardless of posture):** the import endpoint ships behind the demo deployment with the size cap, timeout, and rate limiting — it is never advertised as a public anonymous upload surface. Behind the demo, the residual risk is a crashed ephemeral container; on the open internet it would be a free fuzzing service against a C++ parser, which the POC does not accept.
+
+**Dev/CI without the binary — fixture mode:** because the pipeline consumes `pub2raw`'s *text trace*, the golden traces §10.5 specifies double as a dev fallback: when the binary is absent, the import route serves a canned demo trace through the real trace-parser → mapper → report → editor path. `npm run dev` and Playwright therefore run everywhere with no native dependency; the binary is required only where live conversion is exercised (the Docker image, and P5's full-pipeline lane).
 
 ### 10.2 Pipeline
 
@@ -447,13 +464,13 @@ Both tranches follow the L-steps' contract: one commit per step, demoable after 
 | K2 | Interaction migration: draw/select/drag/resize/marquee/snap on Konva events | Full editing parity; DOM canvas components deleted |
 | K3 | Text-layout module + Konva text render + edit overlay swap | Text parity incl. overflow badge; schema-v2 migration ships |
 | K4 | Perf pass + `toDataURL` thumbnails; §8.1 spike numbers recorded on store-profile hardware | The engine decision is *evidenced*, closing §7.2 |
-| P1 | Sandboxed import service: sniff → `pub2raw` → trace parser → geometry-only mapping | A `.pub` opens as correctly-sized, correctly-placed frames (the research doc's Milestone-1 bar) |
+| P1 | Import service per §10.1's POC posture (Debian-slim image; fixture mode for binary-less dev/CI): sniff → `pub2raw` → trace parser → geometry-only mapping | A `.pub` opens as correctly-sized, correctly-placed frames (the research doc's Milestone-1 bar) |
 | P2 | Text runs + styles + font remap; paths | Real content: text in the right boxes, right sizes; polygons faithful |
 | P3 | Image extraction → assets + picture frames | Image-bearing publications convert; picture rendering exits placeholder-only |
 | P4 | Import report UI + overset check + `.puz` handling | The associate sees exactly what to review — the design doc's §5.1 report requirement |
 | P5 | Corpus + fidelity harness + adversarial security tests wired to CI | The ≥90% fidelity metric is measured, not asserted; §10.1 controls proven |
 
-*K-tranche exit gate:* L1–L9 e2e green on Konva; spike criteria met and recorded. *P-tranche exit gate:* corpus fidelity ≥90% element-level on tier-1 categories; every degradation reported, nothing silent; sandbox controls pass the adversarial set.
+*K-tranche exit gate:* L1–L9 e2e green on Konva; spike criteria met and recorded. *P-tranche exit gate:* corpus fidelity ≥90% element-level on tier-1 categories; every degradation reported, nothing silent; the §10.1 **POC-enforced** controls pass the adversarial set (the production-deferred controls remain launch gates for the production tranche, not this one).
 
 ---
 
