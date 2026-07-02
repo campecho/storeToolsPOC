@@ -128,6 +128,18 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   editable and the size hint/caption/legend track the file. Homepage **size tiles deep-link**
   (`/layout?preset=…`, `?custom=1` lands in the width field) into fresh documents.
 
+- **Layout editor — step L4, objects: draw, select, transform:** the first editing
+  capability — **Rect / Ellipse / Line / Picture drag-to-draw** (dashed preview, Picture as
+  the gray placeholder frame, tool auto-returns to Select), **click-select / drag-move /
+  8-handle resize** (Shift preserves aspect) with line endpoint handles, and the **Properties
+  tab live**: Transform X/Y/W/H round-trip plus Fill/Stroke rows (grayscale ramp + brand red
+  + none). Full keyboard: Delete, Cmd/Ctrl+D duplicate, arrow nudge 1/32 in (Shift ×10),
+  **Cmd/Ctrl+Z / Shift+Z undo/redo** (bounded per-gesture snapshots — one entry per completed
+  drag or input commit), Cmd/Ctrl+]/[ z-order, Esc deselect (yields to suite overlays). The
+  status bar tracks tool + selection ("Rectangle tool · drag to draw", "Select tool · 2
+  objects", "Table tool · coming later in the beta"), and the Insert band's Text box/Picture
+  tiles arm their tools. Drawn objects persist with the document.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts

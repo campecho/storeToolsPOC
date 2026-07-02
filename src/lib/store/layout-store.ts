@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { LayoutDocumentSchema, type LayoutDocument, type Orientation } from "@/schema";
+import {
+  LayoutDocumentSchema,
+  type LayoutDocument,
+  type LayoutObject,
+  type Orientation,
+  type Stroke,
+} from "@/schema";
 import {
   clampPageDim,
   clampZoom,
@@ -8,6 +14,7 @@ import {
   zoomOutStep,
 } from "@/lib/layout/geometry";
 import { getPreset } from "@/lib/layout/presets";
+import { DUPLICATE_OFFSET_IN, MIN_OBJECT_IN, translated } from "@/lib/layout/objects";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -16,7 +23,9 @@ import { getPreset } from "@/lib/layout/presets";
  *
  * Slices: document (persisted under `stp-layout-v1`, beside the tracker's
  * `stp-feedback-v1`), experience level (persisted), viewport zoom/pan/guides
- * (session), and the UI toggles (session). Selection and history land in L4.
+ * (session), selection (session), and bounded per-gesture undo history
+ * (session, cap 50 — snapshots push on completed gestures and input commits,
+ * never per pointer-move).
  */
 
 export type RibbonTab = "home" | "insert" | "layout" | "text";
@@ -46,6 +55,77 @@ export const TOOL_LABELS: Record<EditorTool, string> = {
   zoom: "Zoom tool",
   move: "Move tool",
 };
+
+/** Geometry-only edit to one object — frame x/y/w/h or line endpoints. */
+export type TransformPatch = {
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+};
+
+export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
+
+const HISTORY_CAP = 50;
+
+/** Spread into a set() patch: push a snapshot, clear the redo stack. */
+function pushed(s: Pick<LayoutEditorState, "past">, snapshot: LayoutDocument) {
+  return { past: [...s.past, snapshot].slice(-HISTORY_CAP), future: [] as LayoutDocument[] };
+}
+
+function mapPageObjects(
+  doc: LayoutDocument,
+  pageId: string,
+  fn: (objects: LayoutObject[]) => LayoutObject[],
+): LayoutDocument {
+  return {
+    ...doc,
+    pages: doc.pages.map((p) => (p.id === pageId ? { ...p, objects: fn(p.objects) } : p)),
+  };
+}
+
+/** Selection filtered to objects that still exist (after undo/redo). */
+function pruneSelection(ids: string[], doc: LayoutDocument, pageId: string): string[] {
+  const page = doc.pages.find((p) => p.id === pageId);
+  if (!page) return [];
+  const alive = new Set(page.objects.map((o) => o.id));
+  return ids.filter((id) => alive.has(id));
+}
+
+function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
+  if (o.type === "line") {
+    return {
+      ...o,
+      x1: patch.x1 ?? o.x1,
+      y1: patch.y1 ?? o.y1,
+      x2: patch.x2 ?? o.x2,
+      y2: patch.y2 ?? o.y2,
+    };
+  }
+  return {
+    ...o,
+    x: patch.x ?? o.x,
+    y: patch.y ?? o.y,
+    w: Math.max(MIN_OBJECT_IN, patch.w ?? o.w),
+    h: Math.max(MIN_OBJECT_IN, patch.h ?? o.h),
+  };
+}
+
+function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
+  if (o.type === "line") {
+    // a line always keeps a stroke (schema) — fill and stroke-none don't apply
+    return patch.stroke ? { ...o, stroke: patch.stroke } : o;
+  }
+  return {
+    ...o,
+    ...(patch.fill !== undefined ? { fill: patch.fill } : {}),
+    ...(patch.stroke !== undefined ? { stroke: patch.stroke } : {}),
+  };
+}
 
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
 export function createDefaultDocument(): LayoutDocument {
@@ -77,6 +157,13 @@ export interface LayoutEditorState {
   doc: LayoutDocument;
   activePageId: string;
   masterEditingId: string | null;
+
+  // selection (session)
+  selectedIds: string[];
+
+  // history (session): bounded per-gesture snapshots of the document slice
+  past: LayoutDocument[];
+  future: LayoutDocument[];
 
   // experience (persisted; switching arrives in L8)
   level: ExperienceLevel;
@@ -116,6 +203,25 @@ export interface LayoutEditorState {
   toggleGuides: () => void;
   setFocusPageSize: (v: boolean) => void;
 
+  // selection & objects (active page)
+  setSelection: (ids: string[]) => void;
+  /** Appends, selects, and returns the tool to Select (Publisher behavior). */
+  addObject: (obj: LayoutObject) => void;
+  /** Geometry edit; `transient` skips history (live drags — commitGesture ends them). */
+  transformObject: (id: string, patch: TransformPatch, transient?: boolean) => void;
+  setObjectProps: (id: string, patch: ObjectPropsPatch) => void;
+  deleteSelection: () => void;
+  /** Copies land 0.25 in right+down and become the selection. */
+  duplicateSelection: () => void;
+  reorder: (dir: "forward" | "backward") => void;
+  nudgeSelection: (dx: number, dy: number) => void;
+
+  // history
+  /** Push the pre-gesture snapshot, once, if the gesture changed the doc. */
+  commitGesture: (before: LayoutDocument) => void;
+  undo: () => void;
+  redo: () => void;
+
   /** Start over: pristine document, guides on, view re-fit. */
   resetDoc: () => void;
 }
@@ -144,6 +250,10 @@ export const useLayoutStore = create<LayoutEditorState>()(
       masterEditingId: null,
       level: "standard",
 
+      selectedIds: [],
+      past: [],
+      future: [],
+
       zoom: 1,
       pan: { x: 0, y: 0 },
       guidesVisible: true,
@@ -155,6 +265,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
 
+      // Name typing is per-keystroke — kept out of the undo history so it
+      // doesn't flood the gesture-grained stack.
       setName: (name) => set((s) => ({ doc: { ...s.doc, name } })),
 
       applyPreset: (presetId) => {
@@ -162,11 +274,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
         if (!preset) return;
         set((s) => {
           const landscape = s.doc.orientation === "landscape";
+          const size = landscape ? { w: preset.h, h: preset.w } : { w: preset.w, h: preset.h };
+          if (size.w === s.doc.size.w && size.h === s.doc.size.h) return s;
           return {
-            doc: {
-              ...s.doc,
-              size: landscape ? { w: preset.h, h: preset.w } : { w: preset.w, h: preset.h },
-            },
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, size },
             fitRequestId: s.fitRequestId + 1,
           };
         });
@@ -176,9 +288,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
         set((s) => {
           const cw = clampPageDim(w);
           const ch = clampPageDim(h);
+          if (cw === s.doc.size.w && ch === s.doc.size.h) return s;
           const orientation: Orientation =
             cw === ch ? s.doc.orientation : cw > ch ? "landscape" : "portrait";
           return {
+            ...pushed(s, s.doc),
             doc: { ...s.doc, size: { w: cw, h: ch }, orientation },
             fitRequestId: s.fitRequestId + 1,
           };
@@ -188,6 +302,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
         set((s) => {
           if (s.doc.orientation === orientation) return s;
           return {
+            ...pushed(s, s.doc),
             doc: {
               ...s.doc,
               orientation,
@@ -198,18 +313,26 @@ export const useLayoutStore = create<LayoutEditorState>()(
         }),
 
       setBleed: (bleed) =>
-        set((s) => ({ doc: { ...s.doc, bleed: Math.min(0.5, Math.max(0, bleed)) } })),
+        set((s) => {
+          const next = Math.min(0.5, Math.max(0, bleed));
+          if (next === s.doc.bleed) return s;
+          return { ...pushed(s, s.doc), doc: { ...s.doc, bleed: next } };
+        }),
 
       setMargin: (margin) =>
         set((s) => {
           const max = Math.min(s.doc.size.w, s.doc.size.h) / 2;
-          return { doc: { ...s.doc, margin: Math.min(max, Math.max(0, margin)) } };
+          const next = Math.min(max, Math.max(0, margin));
+          if (next === s.doc.margin) return s;
+          return { ...pushed(s, s.doc), doc: { ...s.doc, margin: next } };
         }),
 
       setColumns: (columns) =>
-        set((s) => ({
-          doc: { ...s.doc, columns: Math.min(6, Math.max(1, Math.round(columns))) },
-        })),
+        set((s) => {
+          const next = Math.min(6, Math.max(1, Math.round(columns)));
+          if (next === s.doc.columns) return s;
+          return { ...pushed(s, s.doc), doc: { ...s.doc, columns: next } };
+        }),
 
       setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
       zoomIn: () => set((s) => ({ zoom: zoomInStep(s.zoom) })),
@@ -218,6 +341,135 @@ export const useLayoutStore = create<LayoutEditorState>()(
       toggleGuides: () => set((s) => ({ guidesVisible: !s.guidesVisible })),
       setFocusPageSize: (v) => set({ focusPageSize: v }),
 
+      setSelection: (ids) => set({ selectedIds: ids }),
+
+      addObject: (obj) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: mapPageObjects(s.doc, s.activePageId, (objs) => [...objs, obj]),
+          selectedIds: [obj.id],
+          // Publisher behavior: a completed draw returns to Select
+          tool: "select",
+        })),
+
+      transformObject: (id, patch, transient = false) =>
+        set((s) => {
+          const doc = mapPageObjects(s.doc, s.activePageId, (objs) =>
+            objs.map((o) => (o.id === id ? applyTransform(o, patch) : o)),
+          );
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      setObjectProps: (id, patch) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+            objs.map((o) => (o.id === id ? applyProps(o, patch) : o)),
+          ),
+        })),
+
+      deleteSelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const drop = new Set(s.selectedIds);
+          return {
+            ...pushed(s, s.doc),
+            doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+              objs.filter((o) => !drop.has(o.id)),
+            ),
+            selectedIds: [],
+          };
+        }),
+
+      duplicateSelection: () =>
+        set((s) => {
+          const page = s.doc.pages.find((p) => p.id === s.activePageId);
+          if (!page || !s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const copies = page.objects
+            .filter((o) => sel.has(o.id))
+            .map((o) => ({
+              ...translated(o, DUPLICATE_OFFSET_IN, DUPLICATE_OFFSET_IN),
+              id: crypto.randomUUID(),
+            }));
+          if (!copies.length) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapPageObjects(s.doc, s.activePageId, (objs) => [...objs, ...copies]),
+            selectedIds: copies.map((c) => c.id),
+          };
+        }),
+
+      reorder: (dir) =>
+        set((s) => {
+          const page = s.doc.pages.find((p) => p.id === s.activePageId);
+          if (!page || !s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const next = [...page.objects];
+          if (dir === "forward") {
+            // z-order is array order: swap selected items toward the top
+            for (let i = next.length - 2; i >= 0; i--) {
+              if (sel.has(next[i].id) && !sel.has(next[i + 1].id)) {
+                [next[i], next[i + 1]] = [next[i + 1], next[i]];
+              }
+            }
+          } else {
+            for (let i = 1; i < next.length; i++) {
+              if (sel.has(next[i].id) && !sel.has(next[i - 1].id)) {
+                [next[i], next[i - 1]] = [next[i - 1], next[i]];
+              }
+            }
+          }
+          if (next.every((o, i) => o === page.objects[i])) return s; // already at the edge
+          return {
+            ...pushed(s, s.doc),
+            doc: mapPageObjects(s.doc, s.activePageId, () => next),
+          };
+        }),
+
+      nudgeSelection: (dx, dy) =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          return {
+            ...pushed(s, s.doc),
+            doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+              objs.map((o) => (sel.has(o.id) ? translated(o, dx, dy) : o)),
+            ),
+          };
+        }),
+
+      commitGesture: (before) =>
+        set((s) =>
+          s.doc === before
+            ? s
+            : { past: [...s.past, before].slice(-HISTORY_CAP), future: [] },
+        ),
+
+      undo: () =>
+        set((s) => {
+          const prev = s.past[s.past.length - 1];
+          if (!prev) return s;
+          return {
+            past: s.past.slice(0, -1),
+            future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
+            doc: prev,
+            selectedIds: pruneSelection(s.selectedIds, prev, s.activePageId),
+          };
+        }),
+
+      redo: () =>
+        set((s) => {
+          const next = s.future[0];
+          if (!next) return s;
+          return {
+            past: [...s.past, s.doc].slice(-HISTORY_CAP),
+            future: s.future.slice(1),
+            doc: next,
+            selectedIds: pruneSelection(s.selectedIds, next, s.activePageId),
+          };
+        }),
+
       resetDoc: () =>
         set((s) => ({
           doc: createDefaultDocument(),
@@ -225,6 +477,9 @@ export const useLayoutStore = create<LayoutEditorState>()(
           masterEditingId: null,
           guidesVisible: true,
           pan: { x: 0, y: 0 },
+          selectedIds: [],
+          past: [],
+          future: [],
           fitRequestId: s.fitRequestId + 1,
         })),
     }),

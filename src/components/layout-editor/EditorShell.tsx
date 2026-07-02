@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, PanelsTopLeft } from "lucide-react";
 import { useLayoutStore } from "@/store";
+import { useEditorKeyboard } from "./useEditorKeyboard";
 import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
@@ -57,6 +58,7 @@ function DeepLinkInit() {
  */
 export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
+  useEditorKeyboard();
 
   return (
     <>

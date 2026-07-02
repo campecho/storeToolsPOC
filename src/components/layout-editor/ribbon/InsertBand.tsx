@@ -1,21 +1,49 @@
+"use client";
+
 // `Image` aliased: jsx-a11y/alt-text mistakes the lucide glyph for an <img>.
 import { Image as ImageIcon, Link, Shapes, Table } from "lucide-react";
+import { useLayoutStore } from "@/store";
 import { RibbonGroup } from "./RibbonGroup";
 
 /**
  * Insert command band (wire 2b · Insert): Pages · Text & media ·
- * Illustrations · Links. Static chrome in L2 — Add page goes live in L6;
- * Text box / Picture arm their tools in L4; Shapes / Table / Hyperlink stay
- * inert placeholders for the deferred slices.
+ * Illustrations · Links. Text box / Picture arm their tools (plan L4);
+ * Add page goes live in L6; Shapes / Table / Hyperlink stay inert
+ * placeholders for the deferred slices.
  */
 
 /** 52×52 white command tile — the band's big-control chrome. */
-function Tile({ icon, label }: { icon: React.ReactNode; label: string }) {
+function Tile({
+  icon,
+  label,
+  onClick,
+  testId,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick?: () => void;
+  testId?: string;
+}) {
+  const cls =
+    "flex h-[52px] w-[52px] flex-col items-center justify-center gap-1 rounded-[6px] border border-[#dcdcdc] bg-white text-[#555]";
+  if (!onClick) {
+    return (
+      <div className={cls}>
+        {icon}
+        <span className="text-[9.5px]">{label}</span>
+      </div>
+    );
+  }
   return (
-    <div className="flex h-[52px] w-[52px] flex-col items-center justify-center gap-1 rounded-[6px] border border-[#dcdcdc] bg-white text-[#555]">
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className={`${cls} cursor-pointer hover:border-[#c9c9c9] hover:bg-[#fafafa]`}
+    >
       {icon}
       <span className="text-[9.5px]">{label}</span>
-    </div>
+    </button>
   );
 }
 
@@ -52,6 +80,8 @@ function TextBoxIcon() {
 }
 
 export function InsertBand() {
+  const setTool = useLayoutStore((s) => s.setTool);
+
   return (
     <>
       <RibbonGroup label="Pages" wide gap7>
@@ -63,8 +93,19 @@ export function InsertBand() {
 
       <RibbonGroup label="Text & media" wide gap7>
         <div className="flex gap-[6px]">
-          <Tile label="Text box" icon={<TextBoxIcon />} />
-          <Tile label="Picture" icon={<ImageIcon size={18} strokeWidth={1.6} />} />
+          {/* arm the matching tools (plan L4) — the palette shows the armed state */}
+          <Tile
+            label="Text box"
+            icon={<TextBoxIcon />}
+            onClick={() => setTool("text")}
+            testId="insert-textbox"
+          />
+          <Tile
+            label="Picture"
+            icon={<ImageIcon size={18} strokeWidth={1.6} />}
+            onClick={() => setTool("pic")}
+            testId="insert-picture"
+          />
         </div>
       </RibbonGroup>
 

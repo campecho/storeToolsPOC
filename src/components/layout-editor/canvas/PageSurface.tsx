@@ -14,10 +14,13 @@ export function PageSurface({
   doc,
   zoom,
   guidesVisible,
+  children,
 }: {
   doc: LayoutDocument;
   zoom: number;
   guidesVisible: boolean;
+  /** The object layer + selection chrome, positioned in page coordinates. */
+  children?: React.ReactNode;
 }) {
   const w = inToPx(doc.size.w, zoom);
   const h = inToPx(doc.size.h, zoom);
@@ -75,6 +78,8 @@ export function PageSurface({
           ))}
         </>
       )}
+
+      {children}
 
       {/* bleed corner marks — straddling the bleed line, as the wire's -15px
           marks do against its 9px offset */}

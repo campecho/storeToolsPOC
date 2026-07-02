@@ -5,13 +5,27 @@ import { useLayoutStore, TOOL_LABELS } from "@/store";
 import { clampZoom, ZOOM_MAX, ZOOM_MIN } from "@/lib/layout/geometry";
 
 /**
- * Status bar (wire region 8): page nav · live tool readout · view buttons ·
- * zoom · reset (the reset affordance is additive, per plan §3.2's component
- * map). Zoom is live from L3; page nav becomes interactive with multi-page
- * in L6; the spread view toggle stays static until facing pages land (§6).
+ * Status bar (wire region 8): page nav · live tool + selection readout ·
+ * view buttons · zoom · reset (the reset affordance is additive, per plan
+ * §3.2's component map). Draw tools hint "drag to draw", Select reports the
+ * selection, Table is honest about being deferred (plan L4). Page nav
+ * becomes interactive with multi-page in L6; the spread view toggle stays
+ * static until facing pages land (§6).
  */
+function statusText(tool: ReturnType<typeof useLayoutStore.getState>["tool"], count: number) {
+  if (tool === "select") {
+    return count ? `Select tool · ${count} object${count > 1 ? "s" : ""}` : "Select tool · ready";
+  }
+  if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "pic") {
+    return `${TOOL_LABELS[tool]} · drag to draw`;
+  }
+  if (tool === "table") return "Table tool · coming later in the beta";
+  return `${TOOL_LABELS[tool]} · ready`;
+}
+
 export function StatusBar() {
   const tool = useLayoutStore((s) => s.tool);
+  const selectedCount = useLayoutStore((s) => s.selectedIds.length);
   const zoom = useLayoutStore((s) => s.zoom);
   const pageCount = useLayoutStore((s) => s.doc.pages.length);
   const zoomIn = useLayoutStore((s) => s.zoomIn);
@@ -28,7 +42,7 @@ export function StatusBar() {
       </div>
       <div className="h-[14px] w-px bg-[#d4d4d4]" />
       <span className="text-[11px] text-[#777]" data-testid="status-tool">
-        {TOOL_LABELS[tool]} · ready
+        {statusText(tool, selectedCount)}
       </span>
 
       <div className="flex-1" />

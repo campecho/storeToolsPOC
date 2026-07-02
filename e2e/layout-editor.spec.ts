@@ -34,7 +34,7 @@ test.describe("Layout editor shell (L1)", () => {
     await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
 
     await page.getByTestId("tool-rect").click();
-    await expect(page.getByTestId("status-tool")).toHaveText("Rectangle tool · ready");
+    await expect(page.getByTestId("status-tool")).toHaveText("Rectangle tool · drag to draw");
     await expect(page.getByTestId("tool-rect")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "false");
 
@@ -271,5 +271,145 @@ test.describe("Document model & true-scale page (L3)", () => {
     // direct URL form works too
     await page.goto("/layout?preset=legal");
     await expect(page.getByTestId("size-hint")).toHaveText("· Legal · 8.5 × 14 in");
+  });
+});
+
+/**
+ * Objects: draw, select, transform (plan step L4): the draw → move → resize →
+ * numeric-edit → undo chain, duplicate/delete/z-order via keyboard, fill
+ * edits, persistence of drawn objects, and the honest Table status.
+ */
+test.describe("Objects: draw, select, transform (L4)", () => {
+  /** Drag on the pasteboard from one page-relative point to another. */
+  async function drag(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  test("the draw → move → resize → numeric-edit → undo chain holds", async ({ page }) => {
+    await page.goto("/layout");
+
+    // draw a rectangle
+    await page.getByTestId("tool-rect").click();
+    await expect(page.getByTestId("status-tool")).toHaveText("Rectangle tool · drag to draw");
+    await drag(page, { x: 40, y: 40 }, { x: 190, y: 140 });
+
+    // the tool returned to Select and the object is selected
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await expect(page.getByTestId("selection-frame")).toBeVisible();
+
+    // Properties round-trip: W is the drawn width; set it numerically
+    // (the inspector stays on its own tab — auto-follow is L8's Simple mode)
+    await page.getByTestId("insp-props").click();
+    const w0 = Number(await page.getByTestId("prop-w").inputValue());
+    expect(w0).toBeGreaterThan(0);
+    await page.getByTestId("prop-w").fill("2");
+    await page.getByTestId("prop-w").press("Enter");
+    await expect(page.getByTestId("prop-w")).toHaveValue("2");
+
+    // drag-move the object; X/Y advance
+    const x0 = Number(await page.getByTestId("prop-x").inputValue());
+    const objBox = (await page.getByTestId("object-rect").boundingBox())!;
+    await page.mouse.move(objBox.x + objBox.width / 2, objBox.y + objBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(objBox.x + objBox.width / 2 + 60, objBox.y + objBox.height / 2, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    const x1 = Number(await page.getByTestId("prop-x").inputValue());
+    expect(x1).toBeGreaterThan(x0);
+
+    // resize via the se handle; W grows
+    const se = (await page.getByTestId("handle-se").boundingBox())!;
+    await page.mouse.move(se.x + se.width / 2, se.y + se.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(se.x + se.width / 2 + 50, se.y + se.height / 2 + 30, { steps: 6 });
+    await page.mouse.up();
+    const w1 = Number(await page.getByTestId("prop-w").inputValue());
+    expect(w1).toBeGreaterThan(2);
+
+    // undo unwinds resize → move → numeric edit, one gesture each
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("prop-w")).toHaveValue("2");
+    await page.keyboard.press("ControlOrMeta+z"); // undo the move
+    await expect(page.getByTestId("prop-x")).toHaveValue(String(x0));
+    await page.keyboard.press("ControlOrMeta+z"); // undo the numeric W edit
+    await expect(page.getByTestId("prop-w")).toHaveValue(String(w0));
+    // redo brings the numeric edit back
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(page.getByTestId("prop-w")).toHaveValue("2");
+  });
+
+  test("duplicate, delete, and undo-restore via the keyboard", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-ellipse").click();
+    await drag(page, { x: 60, y: 60 }, { x: 160, y: 140 });
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(1);
+
+    await page.keyboard.press("ControlOrMeta+d");
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(2);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+
+    await page.keyboard.press("Delete");
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(1);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
+
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(2);
+  });
+
+  test("lines draw and expose endpoint handles; Escape deselects", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-line").click();
+    await drag(page, { x: 40, y: 200 }, { x: 200, y: 260 });
+    await expect(page.getByTestId("object-line")).toHaveCount(1);
+    await expect(page.getByTestId("handle-p1")).toBeVisible();
+    await expect(page.getByTestId("handle-p2")).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("handle-p1")).toBeHidden();
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
+  });
+
+  test("fill swatches restyle the selection; drawn objects persist", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-rect").click();
+    await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
+
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("fill-CC0000").click();
+    await expect(page.getByTestId("object-rect")).toHaveCSS(
+      "background-color",
+      "rgb(204, 0, 0)",
+    );
+
+    await page.reload();
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await expect(page.getByTestId("object-rect")).toHaveCSS(
+      "background-color",
+      "rgb(204, 0, 0)",
+    );
+  });
+
+  test("Insert band arms tools; Table is honest about being deferred", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-picture").click();
+    await expect(page.getByTestId("tool-pic")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("status-tool")).toHaveText("Picture tool · drag to draw");
+
+    await page.getByTestId("tool-table").click();
+    await expect(page.getByTestId("status-tool")).toHaveText(
+      "Table tool · coming later in the beta",
+    );
   });
 });

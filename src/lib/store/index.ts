@@ -9,4 +9,6 @@ export type {
   InspectorTab,
   PagesPaneView,
   ExperienceLevel,
+  TransformPatch,
+  ObjectPropsPatch,
 } from "./layout-store";
