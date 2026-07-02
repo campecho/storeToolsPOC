@@ -54,7 +54,7 @@ export function ItemRow({
           openDetail(item.id);
         }
       }}
-      className={`relative flex cursor-pointer gap-[15px] rounded-[10px] border bg-white px-4 py-[14px] ${
+      className={`relative flex cursor-pointer gap-3 rounded-[10px] border bg-white px-3 py-[13px] sm:gap-[15px] sm:px-4 sm:py-[14px] ${
         highlighted
           ? "border-brand shadow-[0_0_0_3px_rgba(204,0,0,.12)]"
           : "border-[#e6e6e6] shadow-[0_1px_3px_rgba(0,0,0,.05)] hover:border-[#cfcfcf]"
@@ -93,7 +93,7 @@ export function ItemRow({
           <span className="text-[11px] text-[#999]">{item.area}</span>
         </div>
         <div className="text-[14px] font-semibold leading-[1.35] text-[#2a2a2a]">{item.title}</div>
-        <div className="mt-[9px] flex items-center gap-[14px]">
+        <div className="mt-[9px] flex flex-wrap items-center gap-x-[14px] gap-y-1">
           <span className="text-[11px] text-[#888]">
             {item.votes} stores · {item.districts} districts
           </span>

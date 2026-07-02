@@ -24,7 +24,7 @@ export function RecentlyShipped() {
   return (
     <div
       data-testid="shipped-group"
-      className="rounded-[12px] border border-[#d4e9d8] bg-[#f2f9f3] p-[14px]"
+      className="rounded-[12px] border border-[#d4e9d8] bg-[#f2f9f3] p-3 sm:p-[14px]"
     >
       <div className="mb-[10px] flex items-center gap-2 px-1">
         <Check size={15} strokeWidth={2.2} className="text-success" />
@@ -54,7 +54,7 @@ export function RecentlyShipped() {
                 openDetail(item.id);
               }
             }}
-            className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-[#e0efe3] bg-white px-[14px] py-3 hover:border-[#c4dfc9]"
+            className="flex cursor-pointer items-center gap-3 rounded-[10px] border border-[#e0efe3] bg-white px-3 py-3 hover:border-[#c4dfc9] sm:px-[14px]"
           >
             <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#d9efdc]">
               <Check size={14} strokeWidth={2.4} className="text-success" />

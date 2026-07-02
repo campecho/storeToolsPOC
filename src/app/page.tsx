@@ -11,7 +11,8 @@ export default function HomePage() {
   return (
     <div className="flex flex-1 flex-col">
       <QuickJumpRow />
-      <div className="flex min-h-0 flex-1">
+      {/* Side-by-side on desktop; stacks to a single column below lg. */}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <IntakeColumn />
         <ProductColumn />
       </div>

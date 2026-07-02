@@ -16,7 +16,7 @@ export function StepChoose() {
   };
 
   return (
-    <div className="px-7 py-[26px]">
+    <div className="px-5 py-[22px] sm:px-7 sm:py-[26px]">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-[19px] font-bold text-ink">Give feedback</div>
@@ -32,7 +32,7 @@ export function StepChoose() {
         </button>
       </div>
 
-      <div className="mt-[22px] flex gap-[14px]">
+      <div className="mt-[22px] flex flex-col gap-[14px] sm:flex-row">
         <button
           type="button"
           onClick={() => chooseType("bug")}

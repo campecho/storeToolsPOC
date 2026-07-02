@@ -55,10 +55,10 @@ export function DetailDrawer() {
       />
       <aside
         data-testid="detail-drawer"
-        className={`fixed right-0 top-0 z-[41] flex h-screen w-[452px] flex-col bg-white shadow-[-8px_0_32px_rgba(0,0,0,.16)] ${closing ? "pointer-events-none animate-slide-out" : "animate-slide-in"}`}
+        className={`fixed right-0 top-0 z-[41] flex h-[100dvh] w-full max-w-[452px] flex-col bg-white shadow-[-8px_0_32px_rgba(0,0,0,.16)] sm:w-[452px] ${closing ? "pointer-events-none animate-slide-out" : "animate-slide-in"}`}
       >
         {/* header */}
-        <div className="flex items-start gap-3 border-b border-[#eee] px-[22px] py-[18px]">
+        <div className="flex items-start gap-3 border-b border-[#eee] px-4 py-4 sm:px-[22px] sm:py-[18px]">
           <div className="flex-1">
             <div className="mb-2 flex items-center gap-2">
               <span
@@ -82,7 +82,7 @@ export function DetailDrawer() {
         </div>
 
         {/* body */}
-        <div className="flex-1 overflow-auto px-[22px] py-5">
+        <div className="flex-1 overflow-auto px-4 py-5 sm:px-[22px]">
           <StatusTimeline trail={detail.trail} />
 
           {item.shippedIn && (

@@ -29,17 +29,23 @@ function DeliveredItemRow({ item }: { item: DeliveredItem }) {
       type="button"
       onClick={open}
       aria-disabled={!hasLink}
-      className="flex w-full items-center gap-[11px] rounded-[8px] border border-[#eee] px-3 py-[10px] text-left hover:border-[#dcdcdc]"
+      className="flex w-full flex-col gap-1 rounded-[8px] border border-[#eee] px-3 py-[10px] text-left hover:border-[#dcdcdc] sm:flex-row sm:items-center sm:gap-[11px]"
       style={{ cursor: hasLink ? "pointer" : "default" }}
     >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-success" />
-      <span className="flex-1 text-[13px] font-medium text-[#333]">{item.title}</span>
-      {credit.text && (
-        <span className="text-[11px] font-semibold" style={{ color: credit.color }}>
-          {credit.text}
+      <span className="flex min-w-0 flex-1 items-start gap-[11px] sm:items-center">
+        <span className="mt-[5px] h-2 w-2 shrink-0 rounded-full bg-success sm:mt-0" />
+        <span className="min-w-0 flex-1 text-[13px] font-medium text-[#333]">{item.title}</span>
+      </span>
+      {(credit.text || hasLink) && (
+        <span className="flex shrink-0 items-center gap-[11px] pl-[19px] sm:pl-0">
+          {credit.text && (
+            <span className="text-[11px] font-semibold" style={{ color: credit.color }}>
+              {credit.text}
+            </span>
+          )}
+          {hasLink && <span className="text-[12px] text-info">View →</span>}
         </span>
       )}
-      {hasLink && <span className="text-[12px] text-info">View →</span>}
     </button>
   );
 }
@@ -48,13 +54,13 @@ export function ReleaseCard({ release }: { release: Release }) {
   return (
     <div
       data-testid={`release-${release.version}`}
-      className="mb-4 rounded-[12px] border bg-white px-6 py-[22px]"
+      className="mb-4 rounded-[12px] border bg-white px-4 py-[22px] sm:px-6"
       style={{
         borderColor: release.latest ? "#e6cfcf" : "#eaeaea",
         boxShadow: release.latest ? "0 4px 16px rgba(0,0,0,.07)" : "0 1px 3px rgba(0,0,0,.04)",
       }}
     >
-      <div className="mb-1 flex items-center gap-3">
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="rounded-[6px] bg-ink px-[10px] py-1 text-[13px] font-bold text-white">{release.version}</span>
         <span className="text-[12px] text-[#999]">{release.date}</span>
         {release.latest && (

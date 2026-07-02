@@ -53,6 +53,9 @@
   --animate-pop-out: popOut 0.18s ease forwards;
   --animate-fade-out: fadeOut 0.16s ease forwards;
   --animate-slide-out: slideOut 0.22s ease forwards;
+
+  /* left-edge off-canvas — the board's filter rail on small screens */
+  --animate-slide-in-left: slideInLeft 0.22s ease;
 }
 
 @keyframes pulseCount {
@@ -93,6 +96,10 @@
   from { transform: translateX(0); opacity: 1; }
   to { transform: translateX(30px); opacity: 0; }
 }
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0.5; }
+  to { transform: translateX(0); opacity: 1; }
+}
 
 @layer base {
   body {
@@ -112,5 +119,16 @@
   }
   ::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+@layer utilities {
+  /* horizontal shortcut/tab rows scroll cleanly on small screens without a bar */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

@@ -17,22 +17,23 @@ export default function FeedbackLayout({ children }: { children: React.ReactNode
   const closeDetail = useFeedbackStore((s) => s.closeDetail);
 
   const tab = (active: boolean) =>
-    `rounded-[7px] px-[15px] py-[7px] text-[13px] font-semibold ${
+    `shrink-0 whitespace-nowrap rounded-[7px] px-[13px] py-[7px] text-[13px] font-semibold sm:px-[15px] ${
       active ? "bg-brand text-white" : "bg-white text-[#666]"
     }`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="relative z-10 flex h-[46px] shrink-0 items-center gap-[10px] border-b border-[#ececec] bg-white px-4">
+      <div className="no-scrollbar relative z-10 flex h-[46px] shrink-0 items-center gap-2 overflow-x-auto border-b border-[#ececec] bg-white px-3 sm:gap-[10px] sm:px-4">
         <Link
           href="/"
           onClick={closeDetail}
-          className="flex items-center gap-[5px] text-[12px] font-medium text-[#666] hover:text-brand"
+          aria-label="Back to Print Studio"
+          className="flex shrink-0 items-center gap-[5px] text-[12px] font-medium text-[#666] hover:text-brand"
         >
           <ChevronLeft size={15} strokeWidth={2} />
-          Back to Print Studio
+          <span className="hidden sm:inline">Back to Print Studio</span>
         </Link>
-        <div className="mx-[6px] h-5 w-px bg-[#e6e6e6]" />
+        <div className="mx-[6px] hidden h-5 w-px bg-[#e6e6e6] sm:block" />
         <Link
           href="/feedback/board"
           onClick={closeDetail}
@@ -47,13 +48,13 @@ export default function FeedbackLayout({ children }: { children: React.ReactNode
         >
           What's new
         </Link>
-        <div className="flex-1" />
+        <div className="min-w-[8px] flex-1" />
         {/* Demo affordance, not a wire element: restores the pristine seed data. */}
         <button
           type="button"
           onClick={resetDemo}
           data-testid="reset-demo"
-          className="cursor-pointer text-[11px] text-[#c2c2c2] hover:text-[#888]"
+          className="shrink-0 cursor-pointer whitespace-nowrap text-[11px] text-[#c2c2c2] hover:text-[#888]"
         >
           Reset demo data
         </button>

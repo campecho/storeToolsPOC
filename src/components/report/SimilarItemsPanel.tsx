@@ -28,23 +28,26 @@ export function SimilarItemsPanel() {
         {similar.map((item) => (
           <div
             key={item.id}
-            className="flex items-center gap-[11px] rounded-[8px] border border-[#eee] bg-white px-[11px] py-[9px]"
+            className="flex flex-col gap-2 rounded-[8px] border border-[#eee] bg-white px-[11px] py-[9px] sm:flex-row sm:items-center sm:gap-[11px]"
           >
-            <div className="w-10 shrink-0 text-center">
-              <div className="text-[14px] font-bold text-[#555]">{item.votes}</div>
-              <div className="text-[9px] text-[#aaa]">stores</div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[12px] font-semibold leading-[1.35] text-[#333]">{item.title}</div>
-              <div className="mt-[2px] text-[11px] text-[#999]">
-                {item.area} · {statusMeta(item.type, item.status).label}
+            <div className="flex min-w-0 flex-1 items-center gap-[11px]">
+              <div className="w-10 shrink-0 text-center">
+                <div className="text-[14px] font-bold text-[#555]">{item.votes}</div>
+                <div className="text-[9px] text-[#aaa]">stores</div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold leading-[1.35] text-[#333]">{item.title}</div>
+                <div className="mt-[2px] text-[11px] text-[#999]">
+                  {item.area} · {statusMeta(item.type, item.status).label}
+                </div>
               </div>
             </div>
-            {/* Toggles like every vote surface — the label shows which way the tap goes. */}
+            {/* Toggles like every vote surface — the label shows which way the tap goes.
+                Full-width below the item on phones so the title isn't squeezed. */}
             <button
               type="button"
               onClick={() => upvoteFromSimilar(item.id)}
-              className={`shrink-0 cursor-pointer rounded-[7px] px-3 py-[7px] text-[12px] font-semibold ${
+              className={`w-full shrink-0 cursor-pointer rounded-[7px] px-3 py-[7px] text-[12px] font-semibold sm:w-auto ${
                 item.votedByMe
                   ? "border border-brand bg-white text-brand hover:bg-brand-tint"
                   : "bg-brand text-white hover:bg-brand-press"
