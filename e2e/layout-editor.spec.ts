@@ -413,3 +413,162 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     );
   });
 });
+
+/**
+ * Text frames & typography (plan step L5): the novice promo sign end-to-end —
+ * custom-size page, styled headline, body text — plus edit sessions as
+ * single undo steps, the overflow badge, and the typography controls.
+ */
+test.describe("Text frames & typography (L5)", () => {
+  async function dragOnPage(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  /** Draw a text frame and type into the auto-opened edit session. */
+  async function typeFrame(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    content: string,
+  ) {
+    await page.getByTestId("tool-text").click();
+    await dragOnPage(page, from, to);
+    await expect(page.getByTestId("text-edit-overlay")).toBeVisible();
+    await page.keyboard.type(content);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("text-edit-overlay")).toBeHidden();
+  }
+
+  test("the novice promo sign: custom page, styled headline, body — persists", async ({
+    page,
+  }) => {
+    await page.goto("/layout?custom=1");
+    await expect(page.getByTestId("page-w")).toBeFocused();
+    await page.getByTestId("page-w").fill("12");
+    await page.getByTestId("page-w").press("Enter");
+    await page.getByTestId("page-h").fill("18");
+    await page.getByTestId("page-h").press("Enter");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Custom · 12 × 18 in");
+
+    // headline, then style it with the Heading bundle from the Home band
+    await typeFrame(page, { x: 30, y: 30 }, { x: 300, y: 80 }, "SPRING SALE");
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+    await page.getByTestId("style-heading").click();
+    const headline = page.getByTestId("object-text").first().getByTestId("text-content");
+    await expect(headline).toContainText("SPRING SALE");
+    await expect(headline).toHaveCSS("font-weight", "700");
+
+    // body copy, centered from the Text inspector tab
+    await typeFrame(
+      page,
+      { x: 30, y: 120 },
+      { x: 300, y: 240 },
+      "Everything for the season — this week only.",
+    );
+    await page.getByTestId("insp-text").click();
+    await page.getByTestId("tab-align-center").click();
+    const body = page.getByTestId("object-text").nth(1).getByTestId("text-content");
+    await expect(body).toHaveCSS("text-align", "center");
+
+    // the whole sign survives a reload
+    await page.reload();
+    await expect(page.getByTestId("object-text")).toHaveCount(2);
+    await expect(
+      page.getByTestId("object-text").first().getByTestId("text-content"),
+    ).toHaveCSS("font-weight", "700");
+    await expect(page.getByTestId("object-text").nth(1)).toContainText("this week only");
+  });
+
+  test("double-click re-edits; each session is one undo step", async ({ page }) => {
+    await page.goto("/layout");
+    await typeFrame(page, { x: 40, y: 40 }, { x: 260, y: 110 }, "Hello");
+
+    await page.getByTestId("object-text").dblclick();
+    await expect(page.getByTestId("text-edit-overlay")).toBeVisible();
+    await page.keyboard.type(" world");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("text-content")).toContainText("Hello world");
+
+    await page.keyboard.press("ControlOrMeta+z"); // undo session 2
+    await expect(page.getByTestId("text-content")).toContainText("Hello");
+    await expect(page.getByTestId("text-content")).not.toContainText("world");
+    await page.keyboard.press("ControlOrMeta+z"); // undo session 1 → empty frame
+    await expect(page.getByTestId("text-content")).toHaveText("");
+    await page.keyboard.press("ControlOrMeta+z"); // undo the draw
+    await expect(page.getByTestId("object-text")).toHaveCount(0);
+  });
+
+  test("the overflow badge tracks frame size", async ({ page }) => {
+    await page.goto("/layout");
+    await typeFrame(
+      page,
+      { x: 40, y: 40 },
+      { x: 280, y: 160 },
+      "The quick brown fox jumps over the lazy dog. ".repeat(4).trim(),
+    );
+
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("prop-h").fill("0.2");
+    await page.getByTestId("prop-h").press("Enter");
+    await expect(page.getByTestId("overflow-badge")).toBeVisible();
+
+    await page.getByTestId("prop-h").fill("6");
+    await page.getByTestId("prop-h").press("Enter");
+    await expect(page.getByTestId("overflow-badge")).toBeHidden();
+  });
+
+  test("B/I/U, family, size, and line spacing restyle the target", async ({ page }) => {
+    await page.goto("/layout");
+    await typeFrame(page, { x: 40, y: 40 }, { x: 300, y: 140 }, "Style me");
+    const content = page.getByTestId("text-content");
+
+    await page.getByTestId("tog-bold").click();
+    await expect(content).toHaveCSS("font-weight", "700");
+    await page.getByTestId("tog-italic").click();
+    await expect(content).toHaveCSS("font-style", "italic");
+    await page.getByTestId("tog-underline").click();
+    await expect(content).toHaveCSS("text-decoration-line", "underline");
+    await page.getByTestId("font-family").selectOption("Georgia");
+    await expect(content).toHaveCSS("font-family", /Georgia/);
+
+    // exact metrics at a known zoom: 24 pt = 32 px, ×1.5 line = 48 px
+    await page.getByTestId("zoom-slider").evaluate((el, value) => {
+      const input = el as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, "100");
+    await page.getByTestId("font-size").selectOption("24");
+    await expect(content).toHaveCSS("font-size", "32px");
+    await page.getByTestId("ribbon-text").click();
+    await page.getByTestId("text-band-line").selectOption("1.5");
+    await expect(content).toHaveCSS("line-height", "48px");
+
+    // undo unwinds the styling clicks one at a time — back to the 1.2 default
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(content).toHaveCSS("line-height", "38.4px");
+  });
+
+  test("typography controls disable without a text target", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("tog-bold")).toBeDisabled();
+    await expect(page.getByTestId("font-family")).toBeDisabled();
+    await expect(page.getByTestId("style-heading")).toBeDisabled();
+
+    // a rect selection is not a text target either
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, { x: 40, y: 40 }, { x: 160, y: 120 });
+    await expect(page.getByTestId("tog-bold")).toBeDisabled();
+  });
+});

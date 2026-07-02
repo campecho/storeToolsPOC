@@ -140,6 +140,19 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   objects", "Table tool · coming later in the beta"), and the Insert band's Text box/Picture
   tiles arm their tools. Drawn objects persist with the document.
 
+- **Layout editor — step L5, text frames & typography:** the novice promo-sign use case works
+  end-to-end. The **Text tool draws a frame that opens ready to type** (Publisher behavior);
+  **double-click re-edits** via a contentEditable overlay with identical metrics at the
+  current zoom — each session commits as **one undo step**, and Cmd/Ctrl+B/I/U toggle real
+  document props while editing. The **Home band Font/Paragraph/Styles**, the **Text band**,
+  and the **Text inspector tab** go live against the text target (editing frame or selected
+  text frame; disabled with the wire's at-rest faces otherwise): curated family list (Motiva
+  Sans leading with system fallback until licensing, per `public/fonts/README`), point sizes,
+  B/I/U, L/C/R/J alignment, line spacing, and the two minimal style bundles — **Body · Normal
+  / Heading** ("+ New" stays static). Text renders true-scale (pt × 96/72 × zoom), clips like
+  a print frame, and raises the **red overflow badge** at the bottom edge when content
+  exceeds it. Empty frames keep a faint dashed affordance so they stay findable.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts

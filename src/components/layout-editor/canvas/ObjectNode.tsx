@@ -1,25 +1,127 @@
-import type { LayoutObject } from "@/schema";
+import { useEffect, useRef, useState } from "react";
+import type { FrameObject, LayoutObject } from "@/schema";
 import { inToPx } from "@/lib/layout/geometry";
 import { bboxOf } from "@/lib/layout/objects";
+import { fontStack, isOverflowing, ptToPx } from "@/lib/layout/text";
 
 /**
- * One document object at true scale (plan §3.2): rect / ellipse / picture
- * frames as positioned divs, lines as an SVG spanning their bbox. Stroke
- * widths scale with zoom (they're page ink, not chrome). The picture frame is
- * the gray placeholder with a mountain glyph — real image import is deferred.
+ * One document object at true scale (plan §3.2): rect / ellipse / picture /
+ * text frames as positioned divs, lines as an SVG spanning their bbox.
+ * Stroke widths and type scale with zoom (they're page ink, not chrome); the
+ * picture frame is the gray placeholder with a mountain glyph. Text frames
+ * clip like print frames and raise the red overflow badge (plan L5) when
+ * content exceeds them; an empty frame shows a faint dashed affordance so
+ * it stays findable.
  */
+
+function TextFrameNode({
+  obj,
+  zoom,
+  interactive,
+  editing,
+  onPointerDown,
+  onDoubleClick,
+}: {
+  obj: FrameObject;
+  zoom: number;
+  interactive: boolean;
+  editing: boolean;
+  onPointerDown?: (e: React.PointerEvent) => void;
+  onDoubleClick?: () => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const text = obj.text!;
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    setOverflow(isOverflowing(el.scrollHeight, el.clientHeight));
+  }, [text, obj.w, obj.h, zoom]);
+
+  const strokePx = obj.stroke ? obj.stroke.width * zoom : 0;
+  return (
+    <div
+      data-testid="object-text"
+      className={`absolute ${interactive ? "cursor-move" : "pointer-events-none"}`}
+      style={{
+        left: inToPx(obj.x, zoom),
+        top: inToPx(obj.y, zoom),
+        width: inToPx(obj.w, zoom),
+        height: inToPx(obj.h, zoom),
+        backgroundColor: obj.fill ?? "transparent",
+        border: obj.stroke ? `${strokePx}px solid ${obj.stroke.color}` : undefined,
+        transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+      }}
+      onPointerDown={interactive ? onPointerDown : undefined}
+      onDoubleClick={interactive ? onDoubleClick : undefined}
+    >
+      {text.content === "" && !editing && (
+        <div className="pointer-events-none absolute inset-0 border border-dashed border-[#c9c9c9]" />
+      )}
+      <div
+        ref={contentRef}
+        data-testid="text-content"
+        className="h-full w-full overflow-hidden whitespace-pre-wrap break-words"
+        style={{
+          fontFamily: fontStack(text.font.family),
+          fontSize: ptToPx(text.font.size, zoom),
+          fontWeight: text.font.bold ? 700 : 400,
+          fontStyle: text.font.italic ? "italic" : undefined,
+          textDecoration: text.font.underline ? "underline" : undefined,
+          textAlign: text.align,
+          lineHeight: text.lineSpacing,
+          color: "#111111", // v1 ink — per-run color is the schema-v2 delta (§9)
+          visibility: editing ? "hidden" : undefined,
+        }}
+      >
+        {text.content}
+      </div>
+      {overflow && !editing && (
+        <div
+          data-testid="overflow-badge"
+          title="Text overflows the frame"
+          className="pointer-events-none absolute z-10 flex h-4 w-4 items-center justify-center rounded-[3px] bg-brand text-[10px] font-bold leading-none text-white"
+          // right of bottom-center so the selection's south handle never hides it
+          style={{ bottom: -8, left: "calc(50% + 10px)" }}
+        >
+          ⋯
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ObjectNode({
   obj,
   zoom,
   interactive,
+  editing = false,
   onPointerDown,
+  onDoubleClick,
 }: {
   obj: LayoutObject;
   zoom: number;
   /** True under the Select tool — the object takes pointer-downs and shows a move cursor. */
   interactive: boolean;
+  /** This text frame has the edit overlay open — hide its static text. */
+  editing?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
+  /** Text frames: open the contentEditable overlay (plan L5). */
+  onDoubleClick?: () => void;
 }) {
+  if (obj.type === "text" && obj.text) {
+    return (
+      <TextFrameNode
+        obj={obj}
+        zoom={zoom}
+        interactive={interactive}
+        editing={editing}
+        onPointerDown={onPointerDown}
+        onDoubleClick={onDoubleClick}
+      />
+    );
+  }
   if (obj.type === "line") {
     const b = bboxOf(obj);
     const strokePx = obj.stroke.width * zoom;

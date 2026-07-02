@@ -16,7 +16,7 @@ function statusText(tool: ReturnType<typeof useLayoutStore.getState>["tool"], co
   if (tool === "select") {
     return count ? `Select tool · ${count} object${count > 1 ? "s" : ""}` : "Select tool · ready";
   }
-  if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "pic") {
+  if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "pic" || tool === "text") {
     return `${TOOL_LABELS[tool]} · drag to draw`;
   }
   if (tool === "table") return "Table tool · coming later in the beta";

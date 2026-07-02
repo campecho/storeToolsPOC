@@ -11,11 +11,13 @@ import {
   bboxOf,
   createFrame,
   createLine,
+  createTextFrame,
   resizeBBox,
 } from "@/lib/layout/objects";
 import { PageSurface } from "./PageSurface";
 import { ObjectNode } from "./ObjectNode";
 import { SelectionOverlay } from "./SelectionOverlay";
+import { TextEditOverlay } from "./TextEditOverlay";
 
 /**
  * Rulers + pasteboard + the true-scale publication page (wire regions 5–6,
@@ -28,7 +30,7 @@ import { SelectionOverlay } from "./SelectionOverlay";
  */
 
 const RULER_BREADTH = 18;
-const DRAW_TOOLS = new Set(["rect", "ellipse", "line", "pic"]);
+const DRAW_TOOLS = new Set(["rect", "ellipse", "line", "pic", "text"]);
 
 type Gesture =
   | { kind: "pan"; fromX: number; fromY: number; panX: number; panY: number }
@@ -36,6 +38,8 @@ type Gesture =
   | {
       kind: "move";
       id: string;
+      pointerId: number;
+      captured?: boolean;
       startX: number;
       startY: number;
       startObj: LayoutObject;
@@ -44,6 +48,8 @@ type Gesture =
   | {
       kind: "resize";
       id: string;
+      pointerId: number;
+      captured?: boolean;
       dir: HandleDir;
       startX: number;
       startY: number;
@@ -53,6 +59,8 @@ type Gesture =
   | {
       kind: "endpoint";
       id: string;
+      pointerId: number;
+      captured?: boolean;
       which: "p1" | "p2";
       startX: number;
       startY: number;
@@ -184,6 +192,7 @@ export function CanvasViewport() {
   const guidesVisible = useLayoutStore((s) => s.guidesVisible);
   const fitRequestId = useLayoutStore((s) => s.fitRequestId);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
+  const editingTextId = useLayoutStore((s) => s.editingTextId);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
@@ -251,17 +260,22 @@ export function CanvasViewport() {
     boardRef.current?.setPointerCapture(e.pointerId);
   };
 
-  /** Select-tool pointer-down on an object: select it and start a move. */
+  /**
+   * Select-tool pointer-down on an object: select it and start a move.
+   * Capture is deferred to the first pointermove — capturing here would
+   * retarget the click (and a double-click) to the board, killing dblclick.
+   */
   const startMove = (obj: LayoutObject) => (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    capture(e);
     const p = toPageIn(e);
     const s = useLayoutStore.getState();
     s.setSelection([obj.id]);
+    if (s.editingTextId) s.setEditingText(null); // grabbing an object ends a text session
     gesture.current = {
       kind: "move",
       id: obj.id,
+      pointerId: e.pointerId,
       startX: p.x,
       startY: p.y,
       startObj: obj,
@@ -269,14 +283,22 @@ export function CanvasViewport() {
     };
   };
 
+  /** Double-click on a text frame opens the contentEditable overlay (L5). */
+  const startTextEdit = (obj: LayoutObject) => () => {
+    if (obj.type !== "text") return;
+    const s = useLayoutStore.getState();
+    s.setSelection([obj.id]);
+    s.setEditingText(obj.id);
+  };
+
   const startResize = (obj: LayoutObject) => (dir: HandleDir, e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    capture(e);
     const p = toPageIn(e);
     gesture.current = {
       kind: "resize",
       id: obj.id,
+      pointerId: e.pointerId,
       dir,
       startX: p.x,
       startY: p.y,
@@ -288,11 +310,11 @@ export function CanvasViewport() {
   const startEndpoint = (obj: LineObject) => (which: "p1" | "p2", e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    capture(e);
     const p = toPageIn(e);
     gesture.current = {
       kind: "endpoint",
       id: obj.id,
+      pointerId: e.pointerId,
       which,
       startX: p.x,
       startY: p.y,
@@ -314,7 +336,9 @@ export function CanvasViewport() {
       setDraft({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
     } else if (tool === "select") {
       // reached the pasteboard itself — nothing was hit
-      if (selectedIds.length) useLayoutStore.getState().setSelection([]);
+      const s = useLayoutStore.getState();
+      if (s.editingTextId) s.setEditingText(null);
+      if (selectedIds.length) s.setSelection([]);
     }
   };
 
@@ -329,6 +353,14 @@ export function CanvasViewport() {
     const p = toPageIn(e);
     const dx = p.x - g.startX;
     const dy = p.y - g.startY;
+    if (g.kind !== "draw" && !g.captured) {
+      // Ignore sub-3px jitter so clean clicks (and double-clicks) stay clicks;
+      // past that the drag is real — capture now (deferred, because capturing
+      // at pointer-down would retarget the click to the board).
+      if (Math.hypot(dx, dy) * 96 * zoom < 3) return;
+      boardRef.current?.setPointerCapture(g.pointerId);
+      g.captured = true;
+    }
     if (g.kind === "draw") {
       setDraft({ x1: g.startX, y1: g.startY, x2: p.x, y2: p.y });
     } else if (g.kind === "move") {
@@ -372,8 +404,17 @@ export function CanvasViewport() {
         const w = Math.abs(dx);
         const h = Math.abs(dy);
         if (w < DRAW_THRESHOLD_IN && h < DRAW_THRESHOLD_IN) return;
-        const type = tool === "pic" ? "picture" : (tool as "rect" | "ellipse");
-        s.addObject(createFrame(type, Math.min(g.startX, p.x), Math.min(g.startY, p.y), w, h));
+        const x = Math.min(g.startX, p.x);
+        const y = Math.min(g.startY, p.y);
+        if (tool === "text") {
+          // Publisher behavior: a fresh text box opens ready to type
+          const frame = createTextFrame(x, y, w, h);
+          s.addObject(frame);
+          s.setEditingText(frame.id);
+        } else {
+          const type = tool === "pic" ? "picture" : (tool as "rect" | "ellipse");
+          s.addObject(createFrame(type, x, y, w, h));
+        }
       }
     } else if (g.kind !== "pan") {
       s.commitGesture(g.before);
@@ -439,7 +480,9 @@ export function CanvasViewport() {
                   obj={o}
                   zoom={zoom}
                   interactive={tool === "select"}
+                  editing={o.id === editingTextId}
                   onPointerDown={startMove(o)}
+                  onDoubleClick={startTextEdit(o)}
                 />
               ))}
               {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}
@@ -453,6 +496,14 @@ export function CanvasViewport() {
                   }
                 />
               )}
+              {(() => {
+                const editing = editingTextId
+                  ? page.objects.find((o) => o.id === editingTextId)
+                  : undefined;
+                return editing && editing.type === "text" && editing.text ? (
+                  <TextEditOverlay key={editing.id} obj={editing} zoom={zoom} />
+                ) : null;
+              })()}
             </PageSurface>
           </div>
 

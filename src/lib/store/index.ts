@@ -11,4 +11,5 @@ export type {
   ExperienceLevel,
   TransformPatch,
   ObjectPropsPatch,
+  TextPropsPatch,
 } from "./layout-store";

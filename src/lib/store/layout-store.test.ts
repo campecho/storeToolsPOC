@@ -7,7 +7,12 @@ import {
 } from "./layout-store";
 import { LayoutDocumentSchema } from "@/schema";
 import { MAX_PAGE_IN } from "@/lib/layout/geometry";
-import { DUPLICATE_OFFSET_IN, createFrame, createLine } from "@/lib/layout/objects";
+import {
+  DUPLICATE_OFFSET_IN,
+  createFrame,
+  createLine,
+  createTextFrame,
+} from "@/lib/layout/objects";
 
 /** Objects on the active page, straight from the store. */
 function pageObjects() {
@@ -287,6 +292,92 @@ describe("objects (L4 reducers)", () => {
     expect(moved.type === "line" && moved.x1).toBeCloseTo(1 + 1 / 32, 10);
     expect(moved.type === "line" && moved.y1).toBeCloseTo(1 + 10 / 32, 10);
     expect(useLayoutStore.getState().past).toHaveLength(depth + 2);
+  });
+});
+
+describe("text frames (L5)", () => {
+  it("setTextContent is transient — typing never floods the history", () => {
+    const s = useLayoutStore.getState();
+    const t = createTextFrame(1, 1, 3, 1);
+    s.addObject(t);
+    const depth = useLayoutStore.getState().past.length;
+    s.setTextContent(t.id, "S");
+    s.setTextContent(t.id, "SP");
+    s.setTextContent(t.id, "SPRING SALE");
+    const obj = pageObjects()[0];
+    expect(obj.type === "text" && obj.text?.content).toBe("SPRING SALE");
+    expect(useLayoutStore.getState().past).toHaveLength(depth);
+  });
+
+  it("an edit session commits as one gesture snapshot", () => {
+    const s = useLayoutStore.getState();
+    const t = createTextFrame(1, 1, 3, 1);
+    s.addObject(t);
+    const before = useLayoutStore.getState().doc; // session opens
+    s.setTextContent(t.id, "Hello");
+    s.setTextContent(t.id, "Hello world");
+    s.commitGesture(before); // session closes
+    s.undo();
+    const obj = pageObjects()[0];
+    expect(obj.type === "text" && obj.text?.content).toBe("");
+  });
+
+  it("setTextProps merges flattened patches and pushes history; no-ops don't", () => {
+    const s = useLayoutStore.getState();
+    const t = createTextFrame(1, 1, 3, 1);
+    s.addObject(t);
+    const depth = useLayoutStore.getState().past.length;
+
+    s.setTextProps(t.id, { bold: true, size: 24, align: "center", lineSpacing: 1.1 });
+    let obj = pageObjects()[0];
+    expect(obj.type === "text" && obj.text?.font).toMatchObject({ bold: true, size: 24 });
+    expect(obj.type === "text" && obj.text?.align).toBe("center");
+    expect(obj.type === "text" && obj.text?.lineSpacing).toBe(1.1);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+
+    s.setTextProps(t.id, { bold: true }); // already bold — no change, no entry
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+
+    s.setTextProps(t.id, { italic: true });
+    obj = pageObjects()[0];
+    expect(obj.type === "text" && obj.text?.font.italic).toBe(true);
+    // the earlier fields survived the merge
+    expect(obj.type === "text" && obj.text?.font.bold).toBe(true);
+  });
+
+  it("setTextProps ignores non-text objects", () => {
+    const s = useLayoutStore.getState();
+    const r = createFrame("rect", 1, 1, 2, 1);
+    s.addObject(r);
+    const depth = useLayoutStore.getState().past.length;
+    s.setTextProps(r.id, { bold: true });
+    expect(useLayoutStore.getState().past).toHaveLength(depth);
+  });
+
+  it("editingTextId clears on tool change, delete, undo-prune, and reset", () => {
+    const s = useLayoutStore.getState();
+    const t = createTextFrame(1, 1, 3, 1);
+    s.addObject(t);
+
+    s.setEditingText(t.id);
+    s.setTool("rect");
+    expect(useLayoutStore.getState().editingTextId).toBeNull();
+
+    s.setEditingText(t.id);
+    s.setSelection([t.id]);
+    s.deleteSelection();
+    expect(useLayoutStore.getState().editingTextId).toBeNull();
+
+    s.undo(); // frame back
+    const restored = pageObjects()[0];
+    s.setEditingText(restored.id);
+    s.undo(); // frame gone again — editing pruned
+    expect(useLayoutStore.getState().editingTextId).toBeNull();
+
+    s.redo();
+    s.setEditingText(pageObjects()[0].id);
+    s.resetDoc();
+    expect(useLayoutStore.getState().editingTextId).toBeNull();
   });
 });
 

@@ -55,6 +55,32 @@ export function createFrame(
   };
 }
 
+/**
+ * A text frame with the wire's typographic defaults (Motiva Sans 11 pt,
+ * left, 1.2). Transparent like Publisher's text boxes — no fill, no stroke;
+ * the canvas shows a faint affordance while it's empty.
+ */
+export function createTextFrame(x: number, y: number, w: number, h: number): FrameObject {
+  return {
+    id: crypto.randomUUID(),
+    type: "text",
+    x,
+    y,
+    w: Math.max(MIN_OBJECT_IN, w),
+    h: Math.max(MIN_OBJECT_IN, h),
+    rotation: 0,
+    locked: false,
+    fill: null,
+    stroke: null,
+    text: {
+      content: "",
+      font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
+      align: "left",
+      lineSpacing: 1.2,
+    },
+  };
+}
+
 export function createLine(x1: number, y1: number, x2: number, y2: number): LineObject {
   return {
     id: crypto.randomUUID(),

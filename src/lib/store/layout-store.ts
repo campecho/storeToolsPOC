@@ -70,6 +70,17 @@ export type TransformPatch = {
 
 export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
 
+/** Flattened text edit — font fields, alignment, and line spacing (plan L5). */
+export type TextPropsPatch = {
+  family?: string;
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: "left" | "center" | "right" | "justify";
+  lineSpacing?: number;
+};
+
 const HISTORY_CAP = 50;
 
 /** Spread into a set() patch: push a snapshot, clear the redo stack. */
@@ -112,6 +123,25 @@ function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
     y: patch.y ?? o.y,
     w: Math.max(MIN_OBJECT_IN, patch.w ?? o.w),
     h: Math.max(MIN_OBJECT_IN, patch.h ?? o.h),
+  };
+}
+
+function applyTextProps(o: LayoutObject, patch: TextPropsPatch): LayoutObject {
+  if (o.type !== "text" || !o.text) return o;
+  return {
+    ...o,
+    text: {
+      ...o.text,
+      font: {
+        family: patch.family ?? o.text.font.family,
+        size: patch.size ?? o.text.font.size,
+        bold: patch.bold ?? o.text.font.bold,
+        italic: patch.italic ?? o.text.font.italic,
+        underline: patch.underline ?? o.text.font.underline,
+      },
+      align: patch.align ?? o.text.align,
+      lineSpacing: patch.lineSpacing ?? o.text.lineSpacing,
+    },
   };
 }
 
@@ -160,6 +190,8 @@ export interface LayoutEditorState {
 
   // selection (session)
   selectedIds: string[];
+  /** Text frame with the contentEditable overlay open (plan L5). */
+  editingTextId: string | null;
 
   // history (session): bounded per-gesture snapshots of the document slice
   past: LayoutDocument[];
@@ -205,6 +237,11 @@ export interface LayoutEditorState {
 
   // selection & objects (active page)
   setSelection: (ids: string[]) => void;
+  setEditingText: (id: string | null) => void;
+  /** Typing is transient — the edit session commits one snapshot at close. */
+  setTextContent: (id: string, content: string) => void;
+  /** Styling clicks are discrete input commits — each pushes history. */
+  setTextProps: (id: string, patch: TextPropsPatch) => void;
   /** Appends, selects, and returns the tool to Select (Publisher behavior). */
   addObject: (obj: LayoutObject) => void;
   /** Geometry edit; `transient` skips history (live drags — commitGesture ends them). */
@@ -251,6 +288,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       level: "standard",
 
       selectedIds: [],
+      editingTextId: null,
       past: [],
       future: [],
 
@@ -261,7 +299,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       focusPageSize: false,
 
       setRibbon: (ribbon) => set({ ribbon }),
-      setTool: (tool) => set({ tool }),
+      // Switching tools ends a text-editing session (the overlay commits on unmount)
+      setTool: (tool) => set({ tool, editingTextId: null }),
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
 
@@ -343,6 +382,34 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       setSelection: (ids) => set({ selectedIds: ids }),
 
+      setEditingText: (id) => set({ editingTextId: id }),
+
+      setTextContent: (id, content) =>
+        set((s) => ({
+          doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+            objs.map((o) =>
+              o.id === id && o.type === "text" && o.text
+                ? { ...o, text: { ...o.text, content } }
+                : o,
+            ),
+          ),
+        })),
+
+      setTextProps: (id, patch) =>
+        set((s) => {
+          const page = s.doc.pages.find((p) => p.id === s.activePageId);
+          const target = page?.objects.find((o) => o.id === id);
+          if (!target || target.type !== "text" || !target.text) return s;
+          const next = applyTextProps(target, patch);
+          if (JSON.stringify(next) === JSON.stringify(target)) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+              objs.map((o) => (o.id === id ? next : o)),
+            ),
+          };
+        }),
+
       addObject: (obj) =>
         set((s) => ({
           ...pushed(s, s.doc),
@@ -378,6 +445,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
               objs.filter((o) => !drop.has(o.id)),
             ),
             selectedIds: [],
+            editingTextId:
+              s.editingTextId && drop.has(s.editingTextId) ? null : s.editingTextId,
           };
         }),
 
@@ -455,6 +524,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
             future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
             doc: prev,
             selectedIds: pruneSelection(s.selectedIds, prev, s.activePageId),
+            editingTextId:
+              s.editingTextId &&
+              pruneSelection([s.editingTextId], prev, s.activePageId).length
+                ? s.editingTextId
+                : null,
           };
         }),
 
@@ -467,6 +541,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
             future: s.future.slice(1),
             doc: next,
             selectedIds: pruneSelection(s.selectedIds, next, s.activePageId),
+            editingTextId:
+              s.editingTextId &&
+              pruneSelection([s.editingTextId], next, s.activePageId).length
+                ? s.editingTextId
+                : null,
           };
         }),
 
@@ -478,6 +557,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           guidesVisible: true,
           pan: { x: 0, y: 0 },
           selectedIds: [],
+          editingTextId: null,
           past: [],
           future: [],
           fitRequestId: s.fitRequestId + 1,

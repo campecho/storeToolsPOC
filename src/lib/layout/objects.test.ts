@@ -5,6 +5,7 @@ import {
   bboxOf,
   createFrame,
   createLine,
+  createTextFrame,
   resizeBBox,
   translated,
   withBBox,
@@ -26,6 +27,17 @@ describe("factories", () => {
   it("lines keep endpoint geometry", () => {
     const l = createLine(1, 1, 4, 3);
     expect(l).toMatchObject({ type: "line", x1: 1, y1: 1, x2: 4, y2: 3 });
+  });
+
+  it("text frames are transparent with the wire's typographic defaults", () => {
+    const t = createTextFrame(1, 2, 3, 1);
+    expect(t).toMatchObject({ type: "text", fill: null, stroke: null });
+    expect(t.text).toEqual({
+      content: "",
+      font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
+      align: "left",
+      lineSpacing: 1.2,
+    });
   });
 
   it("every object gets a unique id", () => {
