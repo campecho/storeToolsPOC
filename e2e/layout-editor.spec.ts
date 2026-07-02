@@ -572,3 +572,162 @@ test.describe("Text frames & typography (L5)", () => {
     await expect(page.getByTestId("tog-bold")).toBeDisabled();
   });
 });
+
+/**
+ * Multi-page & masters (plan step L6): live thumbnails that track edits,
+ * page switching via the pane and the status-bar nav, add/remove with the
+ * last-page guard, master editing with propagation to every applied page,
+ * per-page master binding, and multi-page persistence.
+ */
+test.describe("Multi-page & masters (L6)", () => {
+  async function dragOnPage(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  test("pages hold separate objects; thumbnails, pane and status nav track", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 1");
+    await expect(page.getByTestId("page-prev")).toBeDisabled();
+    await expect(page.getByTestId("page-next")).toBeDisabled();
+
+    // add from the pane tile — the new page becomes active
+    await page.getByTestId("page-add").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
+    await expect(page.getByTestId("page-thumb-2")).toHaveAttribute("aria-current", "page");
+
+    // draw a rectangle that lives on page 2 only
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, { x: 40, y: 40 }, { x: 180, y: 130 });
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+
+    // switch to page 1 via its thumbnail: empty canvas, nav follows
+    await page.getByTestId("page-thumb-1").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 2");
+    await expect(page.getByTestId("object-rect")).toHaveCount(0);
+
+    // page 2's thumbnail mini-renders its rectangle (inline paint, no testid)
+    await expect(
+      page.getByTestId("page-thumb-2").locator("[style*='background-color']"),
+    ).toHaveCount(1);
+
+    // the status-bar ▶ walks back to page 2
+    await page.getByTestId("page-next").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await expect(page.getByTestId("page-next")).toBeDisabled();
+
+    // the Insert band's Add page inserts after the active page
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-addpage").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 3 of 3");
+  });
+
+  test("remove hands the slot to the neighbor; the last page is guarded; undo restores", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    // a single page offers no remove affordance
+    await page.getByTestId("page-thumb-1").hover();
+    await expect(page.getByTestId("page-remove-1")).toHaveCount(0);
+
+    await page.getByTestId("page-add").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
+    await page.getByTestId("page-thumb-2").hover();
+    await page.getByTestId("page-remove-2").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 1");
+    await expect(page.getByTestId("page-thumb-2")).toHaveCount(0);
+
+    // removing a page is one undo step
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 2");
+  });
+
+  test("master edits propagate to every page that uses the master", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("page-add").click(); // two pages, both on master A
+
+    // enter master editing from the Masters segment
+    await page.getByTestId("pane-masters").click();
+    await page.getByTestId("master-thumb-a").click();
+    await expect(page.getByTestId("master-banner")).toContainText("Editing master A");
+    await expect(page.getByTestId("page-indicator")).toHaveText("Master A");
+
+    // draw the shared furniture — a footer bar on the master
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, { x: 40, y: 330 }, { x: 260, y: 360 });
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+
+    // done: back on page 2, the furniture renders but can't be selected
+    await page.getByTestId("master-done").click();
+    await expect(page.getByTestId("master-banner")).toHaveCount(0);
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await page.getByTestId("object-rect").click({ force: true });
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
+    await expect(page.getByTestId("selection-frame")).toHaveCount(0);
+
+    // page 1 shows the same furniture — the propagation contract
+    await page.getByTestId("pane-pages").click();
+    await page.getByTestId("page-thumb-1").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+  });
+
+  test("masters bind per page: applying blank B clears A's furniture", async ({ page }) => {
+    await page.goto("/layout");
+
+    // furnish master A with an ellipse
+    await page.getByTestId("pane-masters").click();
+    await page.getByTestId("master-thumb-a").click();
+    await page.getByTestId("tool-ellipse").click();
+    await dragOnPage(page, { x: 100, y: 100 }, { x: 220, y: 200 });
+    await page.getByTestId("master-done").click();
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(1);
+    await expect(page.getByText("A · applied")).toBeVisible();
+
+    // bind the page to blank master B instead
+    await page.getByTestId("master-apply-b").click();
+    await expect(page.getByText("B · applied")).toBeVisible();
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(0);
+
+    // and back
+    await page.getByTestId("master-apply-a").click();
+    await expect(page.getByText("A · applied")).toBeVisible();
+    await expect(page.getByTestId("object-ellipse")).toHaveCount(1);
+  });
+
+  test("+ New master creates a blank C and opens it for editing", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("pane-masters").click();
+    await page.getByTestId("master-new").click();
+    await expect(page.getByTestId("master-banner")).toContainText("Editing master C");
+    await expect(page.getByTestId("page-indicator")).toHaveText("Master C");
+    await expect(page.getByText("C · blank")).toBeVisible();
+    await page.getByTestId("master-done").click();
+    await expect(page.getByTestId("master-banner")).toHaveCount(0);
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 1");
+  });
+
+  test("a multi-page publication with master furniture survives reload", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("page-add").click();
+    await page.getByTestId("pane-masters").click();
+    await page.getByTestId("master-thumb-a").click();
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, { x: 60, y: 300 }, { x: 280, y: 330 });
+    await page.getByTestId("master-done").click();
+
+    await page.reload();
+    // rehydration lands on the first page of the restored two-page file
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 2");
+    await expect(page.getByTestId("page-thumb-2")).toBeVisible();
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+  });
+});

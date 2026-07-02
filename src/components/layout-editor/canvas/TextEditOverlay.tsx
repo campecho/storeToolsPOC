@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { FrameObject } from "@/schema";
-import { useLayoutStore } from "@/store";
+import { surfaceObjects, useLayoutStore } from "@/store";
 import { inToPx } from "@/lib/layout/geometry";
 import { fontStack, ptToPx } from "@/lib/layout/text";
 
@@ -27,8 +27,7 @@ export function TextEditOverlay({ obj, zoom }: { obj: FrameObject; zoom: number 
     const before = store.doc;
     const el = ref.current;
     if (el) {
-      const page = store.doc.pages.find((p) => p.id === store.activePageId);
-      const target = page?.objects.find((o) => o.id === obj.id);
+      const target = surfaceObjects(store).find((o) => o.id === obj.id);
       el.textContent = target?.type === "text" ? (target.text?.content ?? "") : "";
       el.focus();
       // caret at the end of the existing content

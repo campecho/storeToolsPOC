@@ -8,8 +8,9 @@ import { clampZoom, ZOOM_MAX, ZOOM_MIN } from "@/lib/layout/geometry";
  * Status bar (wire region 8): page nav · live tool + selection readout ·
  * view buttons · zoom · reset (the reset affordance is additive, per plan
  * §3.2's component map). Draw tools hint "drag to draw", Select reports the
- * selection, Table is honest about being deferred (plan L4). Page nav
- * becomes interactive with multi-page in L6; the spread view toggle stays
+ * selection, Table is honest about being deferred (plan L4). Page nav is
+ * live (◀ Page N of M ▶, plan L6) and reads "Master X" with the arrows
+ * parked while a master is being edited; the spread view toggle stays
  * static until facing pages land (§6).
  */
 function statusText(tool: ReturnType<typeof useLayoutStore.getState>["tool"], count: number) {
@@ -27,18 +28,53 @@ export function StatusBar() {
   const tool = useLayoutStore((s) => s.tool);
   const selectedCount = useLayoutStore((s) => s.selectedIds.length);
   const zoom = useLayoutStore((s) => s.zoom);
-  const pageCount = useLayoutStore((s) => s.doc.pages.length);
+  const pages = useLayoutStore((s) => s.doc.pages);
+  const activePageId = useLayoutStore((s) => s.activePageId);
+  const masterLabel = useLayoutStore((s) =>
+    s.masterEditingId ? s.doc.masters.find((m) => m.id === s.masterEditingId)?.label : undefined,
+  );
+  const setActivePage = useLayoutStore((s) => s.setActivePage);
   const zoomIn = useLayoutStore((s) => s.zoomIn);
   const zoomOut = useLayoutStore((s) => s.zoomOut);
   const setZoom = useLayoutStore((s) => s.setZoom);
   const resetDoc = useLayoutStore((s) => s.resetDoc);
 
+  const pageIndex = Math.max(
+    pages.findIndex((p) => p.id === activePageId),
+    0,
+  );
+  const inMaster = masterLabel !== undefined;
+  const navBtn = (enabled: boolean) =>
+    enabled ? "cursor-pointer text-[#aaa] hover:text-[#666]" : "text-[#d8d8d8]";
+  const prevOk = !inMaster && pageIndex > 0;
+  const nextOk = !inMaster && pageIndex < pages.length - 1;
+
   return (
     <div className="flex h-7 shrink-0 items-center gap-[14px] border-t border-[#e0e0e0] bg-[#ececec] px-3">
       <div className="flex items-center gap-[6px] text-[11px] text-[#777]">
-        <ChevronLeft size={12} strokeWidth={2} className="text-[#aaa]" />
-        <span>Page 1 of {pageCount}</span>
-        <ChevronRight size={12} strokeWidth={2} className="text-[#aaa]" />
+        <button
+          type="button"
+          data-testid="page-prev"
+          aria-label="Previous page"
+          disabled={!prevOk}
+          onClick={() => prevOk && setActivePage(pages[pageIndex - 1].id)}
+          className={navBtn(prevOk)}
+        >
+          <ChevronLeft size={12} strokeWidth={2} />
+        </button>
+        <span data-testid="page-indicator">
+          {inMaster ? `Master ${masterLabel}` : `Page ${pageIndex + 1} of ${pages.length}`}
+        </span>
+        <button
+          type="button"
+          data-testid="page-next"
+          aria-label="Next page"
+          disabled={!nextOk}
+          onClick={() => nextOk && setActivePage(pages[pageIndex + 1].id)}
+          className={navBtn(nextOk)}
+        >
+          <ChevronRight size={12} strokeWidth={2} />
+        </button>
       </div>
       <div className="h-[14px] w-px bg-[#d4d4d4]" />
       <span className="text-[11px] text-[#777]" data-testid="status-tool">

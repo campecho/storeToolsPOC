@@ -27,6 +27,10 @@ import { TextEditOverlay } from "./TextEditOverlay";
  * zooms; Rect/Ellipse/Line/Picture drag-to-draw; Select clicks, drag-moves,
  * and resizes via the selection handles. Drags write transient document
  * updates and commit one history snapshot at pointer-up (§3.3).
+ *
+ * Multi-page & masters (L6): the tools operate on the editing surface — the
+ * master being edited (banner + Done) or the active page, whose applied
+ * master renders beneath its objects as non-selectable furniture.
  */
 
 const RULER_BREADTH = 18;
@@ -186,6 +190,7 @@ function DraftPreview({
 export function CanvasViewport() {
   const doc = useLayoutStore((s) => s.doc);
   const activePageId = useLayoutStore((s) => s.activePageId);
+  const masterEditingId = useLayoutStore((s) => s.masterEditingId);
   const zoom = useLayoutStore((s) => s.zoom);
   const pan = useLayoutStore((s) => s.pan);
   const tool = useLayoutStore((s) => s.tool);
@@ -239,8 +244,18 @@ export function CanvasViewport() {
   }, []);
 
   const page = doc.pages.find((p) => p.id === activePageId) ?? doc.pages[0];
+  const editingMaster = masterEditingId
+    ? doc.masters.find((m) => m.id === masterEditingId)
+    : undefined;
+  /** What the tools edit: the master's objects in master mode, else the page's (L6). */
+  const surface = editingMaster ? editingMaster.objects : page.objects;
+  /** Master furniture rendered beneath a page — non-selectable from the page. */
+  const appliedMaster =
+    !editingMaster && page.masterId
+      ? doc.masters.find((m) => m.id === page.masterId)
+      : undefined;
   const selected =
-    selectedIds.length === 1 ? page.objects.find((o) => o.id === selectedIds[0]) : undefined;
+    selectedIds.length === 1 ? surface.find((o) => o.id === selectedIds[0]) : undefined;
 
   const pageW = inToPx(doc.size.w, zoom);
   const pageH = inToPx(doc.size.h, zoom);
@@ -468,13 +483,37 @@ export function CanvasViewport() {
             {formatIn(doc.size.h)} in · {Math.round(zoom * 100)}%
           </div>
 
+          {/* master-editing mode banner (plan L6) */}
+          {editingMaster && (
+            <div
+              data-testid="master-banner"
+              className="absolute left-1/2 top-[34px] z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
+            >
+              <span>
+                Editing master {editingMaster.label} — changes apply to every page that uses it
+              </span>
+              <button
+                type="button"
+                data-testid="master-done"
+                onClick={() => useLayoutStore.getState().setMasterEditing(null)}
+                className="cursor-pointer rounded-full border border-brand bg-white px-[9px] py-px text-[10px] font-semibold hover:bg-[#fff5f5]"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
           {/* publication page — centered, offset by the pan */}
           <div
             className="absolute left-1/2 top-1/2"
             style={{ transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))` }}
           >
             <PageSurface doc={doc} zoom={zoom} guidesVisible={guidesVisible}>
-              {page.objects.map((o) => (
+              {/* master furniture first — beneath page objects, never selectable here */}
+              {appliedMaster?.objects.map((o) => (
+                <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} />
+              ))}
+              {surface.map((o) => (
                 <ObjectNode
                   key={o.id}
                   obj={o}
@@ -498,7 +537,7 @@ export function CanvasViewport() {
               )}
               {(() => {
                 const editing = editingTextId
-                  ? page.objects.find((o) => o.id === editingTextId)
+                  ? surface.find((o) => o.id === editingTextId)
                   : undefined;
                 return editing && editing.type === "text" && editing.text ? (
                   <TextEditOverlay key={editing.id} obj={editing} zoom={zoom} />

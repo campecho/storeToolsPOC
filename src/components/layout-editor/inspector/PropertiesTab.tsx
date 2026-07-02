@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutStore } from "@/store";
+import { surfaceObjects, useLayoutStore } from "@/store";
 import type { LayoutObject } from "@/schema";
 import {
   OBJECT_PALETTE,
@@ -52,15 +52,13 @@ function Swatch({
 }
 
 export function PropertiesTab() {
-  const doc = useLayoutStore((s) => s.doc);
-  const activePageId = useLayoutStore((s) => s.activePageId);
+  const objects = useLayoutStore(surfaceObjects);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const transformObject = useLayoutStore((s) => s.transformObject);
   const setObjectProps = useLayoutStore((s) => s.setObjectProps);
 
-  const page = doc.pages.find((p) => p.id === activePageId) ?? doc.pages[0];
   const obj: LayoutObject | undefined =
-    selectedIds.length === 1 ? page.objects.find((o) => o.id === selectedIds[0]) : undefined;
+    selectedIds.length === 1 ? objects.find((o) => o.id === selectedIds[0]) : undefined;
 
   if (!obj) {
     return (

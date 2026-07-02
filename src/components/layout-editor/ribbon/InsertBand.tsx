@@ -8,8 +8,8 @@ import { RibbonGroup } from "./RibbonGroup";
 /**
  * Insert command band (wire 2b · Insert): Pages · Text & media ·
  * Illustrations · Links. Text box / Picture arm their tools (plan L4);
- * Add page goes live in L6; Shapes / Table / Hyperlink stay inert
- * placeholders for the deferred slices.
+ * Add page inserts after the active page (plan L6); Masters / Shapes /
+ * Table / Hyperlink stay inert placeholders for the deferred slices.
  */
 
 /** 52×52 white command tile — the band's big-control chrome. */
@@ -81,12 +81,13 @@ function TextBoxIcon() {
 
 export function InsertBand() {
   const setTool = useLayoutStore((s) => s.setTool);
+  const addPage = useLayoutStore((s) => s.addPage);
 
   return (
     <>
       <RibbonGroup label="Pages" wide gap7>
         <div className="flex gap-[6px]">
-          <Tile label="Add page" icon={<AddPageIcon />} />
+          <Tile label="Add page" icon={<AddPageIcon />} onClick={addPage} testId="insert-addpage" />
           <Tile label="Masters" icon={<MastersIcon />} />
         </div>
       </RibbonGroup>

@@ -153,6 +153,20 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   a print frame, and raises the **red overflow badge** at the bottom edge when content
   exceeds it. Empty frames keep a faint dashed affordance so they stay findable.
 
+- **Layout editor — step L6, multi-page & masters:** publications grow past one page.
+  **Add page** (pages-pane tile + Insert band) inserts after the active page, inheriting its
+  master; the pane's thumbnails are **live mini-renders** of each page's model (the same
+  ObjectNode tree, CSS-scaled — they can't drift from the canvas), with the red active border,
+  click-to-switch, and a hover ✕ (last page guarded); the status bar's **◀ Page N of M ▶ nav
+  is live**. **Master pages:** each page binds a master (`A` seeded applied, `B` blank);
+  master objects render **beneath page objects, non-selectable** from the page. Click a
+  master in the Masters view to **edit it on the canvas** — a brand banner ("Editing master A
+  — changes apply to every page that uses it" + Done) marks the mode, every L4/L5 tool works
+  on the master surface, and edits **propagate to every applied page**. "Apply to this page"
+  rebinds per page; **+ New master** creates blank C/D/… and opens it. Page/master ops are
+  undoable with the session pointers resolved across undo (e.g. undoing Add page steps back
+  to the neighbor); multi-page files persist and rehydrate onto page 1.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts
@@ -166,7 +180,7 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 ## Start here (docs)
 
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L2 shipped.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L6 shipped.
 
 ## Reference documents
 

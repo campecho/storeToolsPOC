@@ -4,6 +4,7 @@ import {
   LayoutDocumentSchema,
   type LayoutDocument,
   type LayoutObject,
+  type MasterPage,
   type Orientation,
   type Stroke,
 } from "@/schema";
@@ -26,6 +27,10 @@ import { DUPLICATE_OFFSET_IN, MIN_OBJECT_IN, translated } from "@/lib/layout/obj
  * (session), selection (session), and bounded per-gesture undo history
  * (session, cap 50 — snapshots push on completed gestures and input commits,
  * never per pointer-move).
+ *
+ * Editing surface (plan L6): object actions target the master being edited
+ * when `masterEditingId` is set, else the active page — one code path for
+ * both, so every L4/L5 gesture works inside a master unchanged.
  */
 
 export type RibbonTab = "home" | "insert" | "layout" | "text";
@@ -88,23 +93,62 @@ function pushed(s: Pick<LayoutEditorState, "past">, snapshot: LayoutDocument) {
   return { past: [...s.past, snapshot].slice(-HISTORY_CAP), future: [] as LayoutDocument[] };
 }
 
-function mapPageObjects(
-  doc: LayoutDocument,
-  pageId: string,
+type EditSurface = { doc: LayoutDocument; activePageId: string; masterEditingId: string | null };
+
+/** Objects on the editing surface — the master being edited, else the active page (L6). */
+export function surfaceObjects(s: EditSurface): LayoutObject[] {
+  if (s.masterEditingId) {
+    return s.doc.masters.find((m) => m.id === s.masterEditingId)?.objects ?? [];
+  }
+  return s.doc.pages.find((p) => p.id === s.activePageId)?.objects ?? [];
+}
+
+function mapSurfaceObjects(
+  s: EditSurface,
   fn: (objects: LayoutObject[]) => LayoutObject[],
 ): LayoutDocument {
+  const { doc } = s;
+  if (s.masterEditingId) {
+    return {
+      ...doc,
+      masters: doc.masters.map((m) =>
+        m.id === s.masterEditingId ? { ...m, objects: fn(m.objects) } : m,
+      ),
+    };
+  }
   return {
     ...doc,
-    pages: doc.pages.map((p) => (p.id === pageId ? { ...p, objects: fn(p.objects) } : p)),
+    pages: doc.pages.map((p) =>
+      p.id === s.activePageId ? { ...p, objects: fn(p.objects) } : p,
+    ),
   };
 }
 
 /** Selection filtered to objects that still exist (after undo/redo). */
-function pruneSelection(ids: string[], doc: LayoutDocument, pageId: string): string[] {
-  const page = doc.pages.find((p) => p.id === pageId);
-  if (!page) return [];
-  const alive = new Set(page.objects.map((o) => o.id));
+function pruneSelection(ids: string[], target: EditSurface): string[] {
+  const alive = new Set(surfaceObjects(target).map((o) => o.id));
   return ids.filter((id) => alive.has(id));
+}
+
+/**
+ * Undo/redo can restore a document without the page or master the session
+ * points at (e.g. undoing an Add page). A vanished page falls back to the
+ * same list position; a vanished master ends master editing.
+ */
+function resolveSurface(
+  s: Pick<LayoutEditorState, "doc" | "activePageId" | "masterEditingId">,
+  next: LayoutDocument,
+): Pick<LayoutEditorState, "activePageId" | "masterEditingId"> {
+  let activePageId = s.activePageId;
+  if (!next.pages.some((p) => p.id === activePageId)) {
+    const wasAt = s.doc.pages.findIndex((p) => p.id === s.activePageId);
+    activePageId = next.pages[Math.min(Math.max(wasAt, 0), next.pages.length - 1)].id;
+  }
+  const masterEditingId =
+    s.masterEditingId && next.masters.some((m) => m.id === s.masterEditingId)
+      ? s.masterEditingId
+      : null;
+  return { activePageId, masterEditingId };
 }
 
 function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
@@ -227,6 +271,19 @@ export interface LayoutEditorState {
   setMargin: (margin: number) => void;
   setColumns: (columns: number) => void;
 
+  // pages & masters (plan L6)
+  /** Inserts a blank page after the active one, inheriting its master. */
+  addPage: () => void;
+  /** Guarded — a publication keeps at least one page. */
+  removePage: (id: string) => void;
+  /** Session navigation, not an undo step; ends master editing. */
+  setActivePage: (id: string) => void;
+  applyMaster: (pageId: string, masterId: string | null) => void;
+  /** Blank master with the next free letter, opened for editing (Publisher behavior). */
+  addMaster: () => void;
+  /** Session-only: the canvas edits this master instead of the active page. */
+  setMasterEditing: (id: string | null) => void;
+
   // viewport
   setZoom: (zoom: number) => void;
   zoomIn: () => void;
@@ -235,7 +292,7 @@ export interface LayoutEditorState {
   toggleGuides: () => void;
   setFocusPageSize: (v: boolean) => void;
 
-  // selection & objects (active page)
+  // selection & objects (the editing surface — active page or edited master)
   setSelection: (ids: string[]) => void;
   setEditingText: (id: string | null) => void;
   /** Typing is transient — the edit session commits one snapshot at close. */
@@ -373,6 +430,97 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return { ...pushed(s, s.doc), doc: { ...s.doc, columns: next } };
         }),
 
+      addPage: () =>
+        set((s) => {
+          const at = Math.max(
+            s.doc.pages.findIndex((p) => p.id === s.activePageId),
+            0,
+          );
+          const page = {
+            id: crypto.randomUUID(),
+            masterId: s.doc.pages[at]?.masterId ?? null,
+            objects: [],
+          };
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              pages: [...s.doc.pages.slice(0, at + 1), page, ...s.doc.pages.slice(at + 1)],
+            },
+            activePageId: page.id,
+            masterEditingId: null,
+            selectedIds: [],
+            editingTextId: null,
+          };
+        }),
+
+      removePage: (id) =>
+        set((s) => {
+          if (s.doc.pages.length <= 1) return s;
+          const at = s.doc.pages.findIndex((p) => p.id === id);
+          if (at < 0) return s;
+          const pages = s.doc.pages.filter((p) => p.id !== id);
+          const removingActive = s.activePageId === id;
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, pages },
+            // the neighbor that slid into the removed page's slot takes over
+            activePageId: removingActive
+              ? pages[Math.min(at, pages.length - 1)].id
+              : s.activePageId,
+            ...(removingActive ? { selectedIds: [], editingTextId: null } : {}),
+          };
+        }),
+
+      setActivePage: (id) =>
+        set((s) => {
+          if (!s.doc.pages.some((p) => p.id === id)) return s;
+          if (id === s.activePageId && !s.masterEditingId) return s;
+          return { activePageId: id, masterEditingId: null, selectedIds: [], editingTextId: null };
+        }),
+
+      applyMaster: (pageId, masterId) =>
+        set((s) => {
+          const page = s.doc.pages.find((p) => p.id === pageId);
+          if (!page || page.masterId === masterId) return s;
+          if (masterId !== null && !s.doc.masters.some((m) => m.id === masterId)) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              pages: s.doc.pages.map((p) => (p.id === pageId ? { ...p, masterId } : p)),
+            },
+          };
+        }),
+
+      addMaster: () =>
+        set((s) => {
+          const used = new Set(s.doc.masters.map((m) => m.label));
+          let label = `M${s.doc.masters.length + 1}`;
+          for (let i = 0; i < 26; i++) {
+            const letter = String.fromCharCode(65 + i);
+            if (!used.has(letter)) {
+              label = letter;
+              break;
+            }
+          }
+          const master: MasterPage = { id: crypto.randomUUID(), label, objects: [] };
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, masters: [...s.doc.masters, master] },
+            masterEditingId: master.id,
+            selectedIds: [],
+            editingTextId: null,
+          };
+        }),
+
+      setMasterEditing: (id) =>
+        set((s) => {
+          if (id === s.masterEditingId) return s;
+          if (id !== null && !s.doc.masters.some((m) => m.id === id)) return s;
+          return { masterEditingId: id, selectedIds: [], editingTextId: null };
+        }),
+
       setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
       zoomIn: () => set((s) => ({ zoom: zoomInStep(s.zoom) })),
       zoomOut: () => set((s) => ({ zoom: zoomOutStep(s.zoom) })),
@@ -386,7 +534,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       setTextContent: (id, content) =>
         set((s) => ({
-          doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+          doc: mapSurfaceObjects(s, (objs) =>
             objs.map((o) =>
               o.id === id && o.type === "text" && o.text
                 ? { ...o, text: { ...o.text, content } }
@@ -397,23 +545,20 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       setTextProps: (id, patch) =>
         set((s) => {
-          const page = s.doc.pages.find((p) => p.id === s.activePageId);
-          const target = page?.objects.find((o) => o.id === id);
+          const target = surfaceObjects(s).find((o) => o.id === id);
           if (!target || target.type !== "text" || !target.text) return s;
           const next = applyTextProps(target, patch);
           if (JSON.stringify(next) === JSON.stringify(target)) return s;
           return {
             ...pushed(s, s.doc),
-            doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
-              objs.map((o) => (o.id === id ? next : o)),
-            ),
+            doc: mapSurfaceObjects(s, (objs) => objs.map((o) => (o.id === id ? next : o))),
           };
         }),
 
       addObject: (obj) =>
         set((s) => ({
           ...pushed(s, s.doc),
-          doc: mapPageObjects(s.doc, s.activePageId, (objs) => [...objs, obj]),
+          doc: mapSurfaceObjects(s, (objs) => [...objs, obj]),
           selectedIds: [obj.id],
           // Publisher behavior: a completed draw returns to Select
           tool: "select",
@@ -421,7 +566,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       transformObject: (id, patch, transient = false) =>
         set((s) => {
-          const doc = mapPageObjects(s.doc, s.activePageId, (objs) =>
+          const doc = mapSurfaceObjects(s, (objs) =>
             objs.map((o) => (o.id === id ? applyTransform(o, patch) : o)),
           );
           return transient ? { doc } : { ...pushed(s, s.doc), doc };
@@ -430,7 +575,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setObjectProps: (id, patch) =>
         set((s) => ({
           ...pushed(s, s.doc),
-          doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+          doc: mapSurfaceObjects(s, (objs) =>
             objs.map((o) => (o.id === id ? applyProps(o, patch) : o)),
           ),
         })),
@@ -441,9 +586,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           const drop = new Set(s.selectedIds);
           return {
             ...pushed(s, s.doc),
-            doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
-              objs.filter((o) => !drop.has(o.id)),
-            ),
+            doc: mapSurfaceObjects(s, (objs) => objs.filter((o) => !drop.has(o.id))),
             selectedIds: [],
             editingTextId:
               s.editingTextId && drop.has(s.editingTextId) ? null : s.editingTextId,
@@ -452,10 +595,9 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       duplicateSelection: () =>
         set((s) => {
-          const page = s.doc.pages.find((p) => p.id === s.activePageId);
-          if (!page || !s.selectedIds.length) return s;
+          if (!s.selectedIds.length) return s;
           const sel = new Set(s.selectedIds);
-          const copies = page.objects
+          const copies = surfaceObjects(s)
             .filter((o) => sel.has(o.id))
             .map((o) => ({
               ...translated(o, DUPLICATE_OFFSET_IN, DUPLICATE_OFFSET_IN),
@@ -464,17 +606,17 @@ export const useLayoutStore = create<LayoutEditorState>()(
           if (!copies.length) return s;
           return {
             ...pushed(s, s.doc),
-            doc: mapPageObjects(s.doc, s.activePageId, (objs) => [...objs, ...copies]),
+            doc: mapSurfaceObjects(s, (objs) => [...objs, ...copies]),
             selectedIds: copies.map((c) => c.id),
           };
         }),
 
       reorder: (dir) =>
         set((s) => {
-          const page = s.doc.pages.find((p) => p.id === s.activePageId);
-          if (!page || !s.selectedIds.length) return s;
+          if (!s.selectedIds.length) return s;
+          const current = surfaceObjects(s);
           const sel = new Set(s.selectedIds);
-          const next = [...page.objects];
+          const next = [...current];
           if (dir === "forward") {
             // z-order is array order: swap selected items toward the top
             for (let i = next.length - 2; i >= 0; i--) {
@@ -489,10 +631,10 @@ export const useLayoutStore = create<LayoutEditorState>()(
               }
             }
           }
-          if (next.every((o, i) => o === page.objects[i])) return s; // already at the edge
+          if (next.every((o, i) => o === current[i])) return s; // already at the edge
           return {
             ...pushed(s, s.doc),
-            doc: mapPageObjects(s.doc, s.activePageId, () => next),
+            doc: mapSurfaceObjects(s, () => next),
           };
         }),
 
@@ -502,7 +644,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           const sel = new Set(s.selectedIds);
           return {
             ...pushed(s, s.doc),
-            doc: mapPageObjects(s.doc, s.activePageId, (objs) =>
+            doc: mapSurfaceObjects(s, (objs) =>
               objs.map((o) => (sel.has(o.id) ? translated(o, dx, dy) : o)),
             ),
           };
@@ -519,14 +661,16 @@ export const useLayoutStore = create<LayoutEditorState>()(
         set((s) => {
           const prev = s.past[s.past.length - 1];
           if (!prev) return s;
+          const surface = resolveSurface(s, prev);
+          const target = { doc: prev, ...surface };
           return {
             past: s.past.slice(0, -1),
             future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
             doc: prev,
-            selectedIds: pruneSelection(s.selectedIds, prev, s.activePageId),
+            ...surface,
+            selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
-              s.editingTextId &&
-              pruneSelection([s.editingTextId], prev, s.activePageId).length
+              s.editingTextId && pruneSelection([s.editingTextId], target).length
                 ? s.editingTextId
                 : null,
           };
@@ -536,14 +680,16 @@ export const useLayoutStore = create<LayoutEditorState>()(
         set((s) => {
           const next = s.future[0];
           if (!next) return s;
+          const surface = resolveSurface(s, next);
+          const target = { doc: next, ...surface };
           return {
             past: [...s.past, s.doc].slice(-HISTORY_CAP),
             future: s.future.slice(1),
             doc: next,
-            selectedIds: pruneSelection(s.selectedIds, next, s.activePageId),
+            ...surface,
+            selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
-              s.editingTextId &&
-              pruneSelection([s.editingTextId], next, s.activePageId).length
+              s.editingTextId && pruneSelection([s.editingTextId], target).length
                 ? s.editingTextId
                 : null,
           };

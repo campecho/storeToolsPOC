@@ -11,7 +11,8 @@ import { fontStack, isOverflowing, ptToPx } from "@/lib/layout/text";
  * picture frame is the gray placeholder with a mountain glyph. Text frames
  * clip like print frames and raise the red overflow badge (plan L5) when
  * content exceeds them; an empty frame shows a faint dashed affordance so
- * it stays findable.
+ * it stays findable. The pane thumbnails reuse this component with
+ * `withTestId={false}` so mini-renders never duplicate the canvas testids.
  */
 
 function TextFrameNode({
@@ -19,6 +20,7 @@ function TextFrameNode({
   zoom,
   interactive,
   editing,
+  withTestId,
   onPointerDown,
   onDoubleClick,
 }: {
@@ -26,6 +28,7 @@ function TextFrameNode({
   zoom: number;
   interactive: boolean;
   editing: boolean;
+  withTestId: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
   onDoubleClick?: () => void;
 }) {
@@ -42,7 +45,7 @@ function TextFrameNode({
   const strokePx = obj.stroke ? obj.stroke.width * zoom : 0;
   return (
     <div
-      data-testid="object-text"
+      data-testid={withTestId ? "object-text" : undefined}
       className={`absolute ${interactive ? "cursor-move" : "pointer-events-none"}`}
       style={{
         left: inToPx(obj.x, zoom),
@@ -61,7 +64,7 @@ function TextFrameNode({
       )}
       <div
         ref={contentRef}
-        data-testid="text-content"
+        data-testid={withTestId ? "text-content" : undefined}
         className="h-full w-full overflow-hidden whitespace-pre-wrap break-words"
         style={{
           fontFamily: fontStack(text.font.family),
@@ -79,7 +82,7 @@ function TextFrameNode({
       </div>
       {overflow && !editing && (
         <div
-          data-testid="overflow-badge"
+          data-testid={withTestId ? "overflow-badge" : undefined}
           title="Text overflows the frame"
           className="pointer-events-none absolute z-10 flex h-4 w-4 items-center justify-center rounded-[3px] bg-brand text-[10px] font-bold leading-none text-white"
           // right of bottom-center so the selection's south handle never hides it
@@ -97,6 +100,7 @@ export function ObjectNode({
   zoom,
   interactive,
   editing = false,
+  withTestId = true,
   onPointerDown,
   onDoubleClick,
 }: {
@@ -106,6 +110,8 @@ export function ObjectNode({
   interactive: boolean;
   /** This text frame has the edit overlay open — hide its static text. */
   editing?: boolean;
+  /** False in pane thumbnails, so mini-renders don't duplicate canvas testids (L6). */
+  withTestId?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
   /** Text frames: open the contentEditable overlay (plan L5). */
   onDoubleClick?: () => void;
@@ -117,6 +123,7 @@ export function ObjectNode({
         zoom={zoom}
         interactive={interactive}
         editing={editing}
+        withTestId={withTestId}
         onPointerDown={onPointerDown}
         onDoubleClick={onDoubleClick}
       />
@@ -130,7 +137,7 @@ export function ObjectNode({
     const h = inToPx(b.h, zoom);
     return (
       <svg
-        data-testid="object-line"
+        data-testid={withTestId ? "object-line" : undefined}
         className={`absolute overflow-visible ${interactive ? "cursor-move" : "pointer-events-none"}`}
         style={{
           left: inToPx(b.x, zoom) - pad,
@@ -166,7 +173,7 @@ export function ObjectNode({
   const strokePx = obj.stroke ? obj.stroke.width * zoom : 0;
   return (
     <div
-      data-testid={`object-${obj.type}`}
+      data-testid={withTestId ? `object-${obj.type}` : undefined}
       className={`absolute ${obj.type === "ellipse" ? "rounded-full" : ""} ${
         interactive ? "cursor-move" : "pointer-events-none"
       }`}

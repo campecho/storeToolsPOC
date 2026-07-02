@@ -3,6 +3,7 @@ import {
   useLayoutStore,
   TOOL_LABELS,
   createDefaultDocument,
+  surfaceObjects,
   type EditorTool,
 } from "./layout-store";
 import { LayoutDocumentSchema } from "@/schema";
@@ -446,6 +447,155 @@ describe("undo history (L4 invariants)", () => {
     expect(after.past).toHaveLength(0);
     expect(after.future).toHaveLength(0);
     expect(after.selectedIds).toEqual([]);
+  });
+});
+
+describe("pages & masters (L6)", () => {
+  function masterA() {
+    return useLayoutStore.getState().doc.masters.find((m) => m.id === "master-a")!;
+  }
+
+  it("addPage inserts a blank page after the active one, inheriting its master", () => {
+    const s = useLayoutStore.getState();
+    s.addPage();
+    const st = useLayoutStore.getState();
+    expect(st.doc.pages).toHaveLength(2);
+    expect(st.activePageId).toBe(st.doc.pages[1].id);
+    expect(st.doc.pages[1].masterId).toBe("master-a");
+    expect(st.doc.pages[1].objects).toEqual([]);
+
+    // from the first page, a new page lands in the middle — not at the end
+    s.setActivePage(st.doc.pages[0].id);
+    s.addPage();
+    const st2 = useLayoutStore.getState();
+    expect(st2.doc.pages).toHaveLength(3);
+    expect(st2.activePageId).toBe(st2.doc.pages[1].id);
+  });
+
+  it("addPage clears the selection and is one undo step", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1)); // selects the rect
+    s.addPage();
+    expect(useLayoutStore.getState().selectedIds).toEqual([]);
+    s.undo();
+    const st = useLayoutStore.getState();
+    expect(st.doc.pages).toHaveLength(1);
+    // the pointer at the vanished page resolved back to a real one
+    expect(st.activePageId).toBe("page-1");
+  });
+
+  it("removePage keeps at least one page and hands the slot to the neighbor", () => {
+    const s = useLayoutStore.getState();
+    s.removePage("page-1"); // guarded — last page stays
+    expect(useLayoutStore.getState().doc.pages).toHaveLength(1);
+
+    s.addPage();
+    s.addPage();
+    const [p1, n1, n2] = useLayoutStore.getState().doc.pages;
+    s.setActivePage(n1.id);
+    s.removePage(n1.id); // removing the active middle page
+    const st = useLayoutStore.getState();
+    expect(st.doc.pages.map((p) => p.id)).toEqual([p1.id, n2.id]);
+    expect(st.activePageId).toBe(n2.id);
+
+    s.removePage(p1.id); // removing a non-active page keeps the pointer
+    expect(useLayoutStore.getState().activePageId).toBe(n2.id);
+  });
+
+  it("setActivePage is session navigation: no history, selection cleared, master editing ends", () => {
+    const s = useLayoutStore.getState();
+    s.addPage();
+    const first = useLayoutStore.getState().doc.pages[0].id;
+    const depth = useLayoutStore.getState().past.length;
+    s.setMasterEditing("master-b");
+    s.setActivePage(first);
+    const st = useLayoutStore.getState();
+    expect(st.activePageId).toBe(first);
+    expect(st.masterEditingId).toBeNull();
+    expect(st.past).toHaveLength(depth);
+    s.setActivePage("nope"); // unknown ids are ignored
+    expect(useLayoutStore.getState().activePageId).toBe(first);
+  });
+
+  it("applyMaster rebinds a page (nullable) and is undoable; unknown masters are refused", () => {
+    const s = useLayoutStore.getState();
+    s.applyMaster("page-1", "master-b");
+    expect(useLayoutStore.getState().doc.pages[0].masterId).toBe("master-b");
+    s.applyMaster("page-1", "missing");
+    expect(useLayoutStore.getState().doc.pages[0].masterId).toBe("master-b");
+    s.applyMaster("page-1", null);
+    expect(useLayoutStore.getState().doc.pages[0].masterId).toBeNull();
+    s.undo();
+    s.undo();
+    expect(useLayoutStore.getState().doc.pages[0].masterId).toBe("master-a");
+  });
+
+  it("addMaster takes the next free letter and opens it for editing", () => {
+    const s = useLayoutStore.getState();
+    s.addMaster();
+    const st = useLayoutStore.getState();
+    expect(st.doc.masters.map((m) => m.label)).toEqual(["A", "B", "C"]);
+    expect(st.masterEditingId).toBe(st.doc.masters[2].id);
+    expect(st.doc.masters[2].objects).toEqual([]);
+  });
+
+  it("object edits route to the master being edited, leaving every page untouched", () => {
+    const s = useLayoutStore.getState();
+    s.setMasterEditing("master-a");
+    const r = createFrame("rect", 0.5, 10, 7.5, 0.4);
+    s.addObject(r);
+    expect(masterA().objects).toHaveLength(1);
+    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(0);
+
+    s.transformObject(r.id, { x: 1 });
+    s.duplicateSelection();
+    expect(masterA().objects).toHaveLength(2);
+    s.deleteSelection(); // the duplicate became the selection
+    expect(masterA().objects).toHaveLength(1);
+    expect(masterA().objects[0]).toMatchObject({ x: 1 });
+    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(0);
+  });
+
+  it("surfaceObjects resolves the editing surface", () => {
+    const s = useLayoutStore.getState();
+    expect(surfaceObjects(useLayoutStore.getState())).toBe(
+      useLayoutStore.getState().doc.pages[0].objects,
+    );
+    s.setMasterEditing("master-b");
+    expect(surfaceObjects(useLayoutStore.getState())).toBe(
+      useLayoutStore.getState().doc.masters[1].objects,
+    );
+  });
+
+  it("setMasterEditing guards unknown ids and clears the selection", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    s.setMasterEditing("missing");
+    expect(useLayoutStore.getState().masterEditingId).toBeNull();
+    s.setMasterEditing("master-b");
+    const st = useLayoutStore.getState();
+    expect(st.masterEditingId).toBe("master-b");
+    expect(st.selectedIds).toEqual([]);
+  });
+
+  it("undoing an Add master ends the dangling editing session", () => {
+    const s = useLayoutStore.getState();
+    s.addMaster(); // editing the new C
+    s.undo();
+    const st = useLayoutStore.getState();
+    expect(st.doc.masters).toHaveLength(2);
+    expect(st.masterEditingId).toBeNull();
+  });
+
+  it("resetDoc returns to the single-page pristine file", () => {
+    const s = useLayoutStore.getState();
+    s.addPage();
+    s.setMasterEditing("master-b");
+    s.resetDoc();
+    const st = useLayoutStore.getState();
+    expect(st.doc.pages).toHaveLength(1);
+    expect(st.activePageId).toBe("page-1");
+    expect(st.masterEditingId).toBeNull();
   });
 });
 
