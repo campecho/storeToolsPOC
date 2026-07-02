@@ -15,30 +15,33 @@ export function AppHeader() {
   const unread = useFeedbackStore(selectUnreadCount);
 
   return (
-    <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-[14px] border-b border-[#e0e0e0] bg-[#f0f0f0] px-4">
-      <div className="flex items-center gap-2">
+    <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-2 border-b border-[#e0e0e0] bg-[#f0f0f0] px-3 sm:gap-[14px] sm:px-4">
+      <div className="flex shrink-0 items-center gap-2">
         <div className="rounded-[3px] bg-brand px-2 py-1 text-[13px] font-bold text-white">Staples</div>
         <span className="text-[14px] font-bold text-[#333]">Print Studio</span>
       </div>
 
+      {/* Placeholder global search — collapses below md; the spacer keeps the
+          right-hand controls pinned to the edge on phones. */}
       <div className="flex flex-1 justify-center">
-        <div className="flex h-8 w-[440px] items-center gap-2 rounded-[6px] border border-[#d6d6d6] bg-white px-3">
+        <div className="hidden h-8 w-full max-w-[440px] items-center gap-2 rounded-[6px] border border-[#d6d6d6] bg-white px-3 md:flex">
           <Search size={15} strokeWidth={1.9} className="text-[#9a9a9a]" />
-          <span className="text-[12px] text-[#9a9a9a]">Open a file or pick a product…</span>
+          <span className="truncate text-[12px] text-[#9a9a9a]">Open a file or pick a product…</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <span className="text-[12px] text-[#777]">Store {store}</span>
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <span className="hidden text-[12px] text-[#777] sm:inline">Store {store}</span>
 
         <button
           type="button"
           onClick={openReport}
           data-testid="give-feedback"
-          className="flex cursor-pointer items-center gap-[7px] rounded-[7px] border border-brand-border-soft bg-white px-[11px] py-[6px] hover:bg-brand-tint"
+          aria-label="Give feedback"
+          className="flex cursor-pointer items-center gap-[7px] rounded-[7px] border border-brand-border-soft bg-white px-[9px] py-[6px] hover:bg-brand-tint sm:px-[11px]"
         >
           <MessageSquare size={15} strokeWidth={1.8} className="text-brand" />
-          <span className="text-[12px] font-semibold text-brand">Give feedback</span>
+          <span className="hidden text-[12px] font-semibold text-brand sm:inline">Give feedback</span>
         </button>
 
         <button

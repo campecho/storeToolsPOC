@@ -13,7 +13,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function IntakeColumn() {
   return (
-    <div className="flex w-[520px] shrink-0 flex-col gap-4 border-r border-[#ececec] p-[26px]">
+    <div className="flex w-full shrink-0 flex-col gap-4 border-b border-[#ececec] p-5 sm:p-[26px] lg:w-[520px] lg:border-b-0 lg:border-r">
       <SectionLabel>Bring in a file</SectionLabel>
 
       {/* dropzone */}

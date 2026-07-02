@@ -26,7 +26,7 @@ export function StepUpvoted() {
   };
 
   return (
-    <div className="px-[34px] py-10 text-center">
+    <div className="px-6 py-10 text-center sm:px-[34px]">
       <div className="relative mx-auto mb-[18px] flex h-[60px] w-[60px] items-center justify-center rounded-full bg-brand-tint">
         <div className="absolute inset-0 animate-ring-expand rounded-full border-2 border-brand" />
         <ChevronUp size={28} strokeWidth={2.4} className="text-brand" />

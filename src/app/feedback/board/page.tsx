@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { useFeedbackStore } from "@/store";
 import { filterItems, scopeLabel } from "@/lib/board";
 import { useFlip } from "@/lib/use-flip";
@@ -36,6 +36,9 @@ export default function BoardPage() {
   const ranked = filterItems(items, { fType, fStatus, fScope, query });
   const flipRef = useFlip();
 
+  // Below lg the rail is an off-canvas drawer opened from the header.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const clearFilters = () => {
     setTypeFilter("all");
     setStatusFilter("open");
@@ -50,29 +53,40 @@ export default function BoardPage() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <BoardRail />
+      <BoardRail open={filtersOpen} onClose={() => setFiltersOpen(false)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-[14px] border-b border-[#f0f0f0] px-[22px] pb-3 pt-4">
-          <div className="flex-1">
+        <div className="flex flex-col gap-3 border-b border-[#f0f0f0] px-4 pb-3 pt-4 sm:px-[22px] lg:flex-row lg:items-center lg:gap-[14px]">
+          <div className="min-w-0 flex-1">
             <div className="text-[17px] font-bold text-ink">What stores are asking for</div>
             <div data-testid="board-subline" className="mt-[2px] text-[12px] text-[#888]">
               {ranked.length} {noun} {plural} · {scopeLabel(fScope, store)} · ranked by store votes
             </div>
           </div>
-          <div className="flex h-[34px] w-[280px] items-center gap-2 rounded-[7px] border border-[#d6d6d6] bg-white px-[11px] focus-within:border-brand">
-            <Search size={15} strokeWidth={1.9} className="shrink-0 text-[#9a9a9a]" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search feedback…"
-              data-testid="board-search"
-              className="w-full border-none bg-transparent text-[12px] text-[#444] outline-none"
-            />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(true)}
+              data-testid="board-filters-toggle"
+              className="flex h-[34px] shrink-0 cursor-pointer items-center gap-2 rounded-[7px] border border-[#d6d6d6] bg-white px-3 text-[12px] font-semibold text-[#555] hover:bg-[#f6f6f6] lg:hidden"
+            >
+              <SlidersHorizontal size={15} strokeWidth={1.9} className="text-[#777]" />
+              Filters
+            </button>
+            <div className="flex h-[34px] min-w-0 flex-1 items-center gap-2 rounded-[7px] border border-[#d6d6d6] bg-white px-[11px] focus-within:border-brand lg:w-[280px] lg:flex-none">
+              <Search size={15} strokeWidth={1.9} className="shrink-0 text-[#9a9a9a]" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search feedback…"
+                data-testid="board-search"
+                className="w-full border-none bg-transparent text-[12px] text-[#444] outline-none"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col gap-[10px] overflow-auto px-[22px] pb-[26px] pt-[14px]">
+        <div className="flex flex-1 flex-col gap-[10px] overflow-auto px-4 pb-[26px] pt-[14px] sm:px-[22px]">
           <RecentlyShipped />
           {ranked.map((item) => (
             <ItemRow key={item.id} item={item} flipRef={flipRef(item.id)} />

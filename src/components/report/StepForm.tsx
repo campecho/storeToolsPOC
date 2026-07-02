@@ -23,7 +23,7 @@ export function StepForm() {
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-[#f0f0f0] px-7 py-[22px]">
+      <div className="flex items-center justify-between border-b border-[#f0f0f0] px-5 py-[18px] sm:px-7 sm:py-[22px]">
         <div className="flex items-center gap-[10px]">
           <button
             type="button"
@@ -45,7 +45,7 @@ export function StepForm() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto px-7 pb-1 pt-5">
+      <div className="flex-1 overflow-auto px-5 pb-1 pt-5 sm:px-7">
         <div className="mb-[7px] text-[12px] font-semibold text-[#555]">
           {isBug ? "What went wrong?" : "What do you want?"}
         </div>
@@ -100,7 +100,7 @@ export function StepForm() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-[#f0f0f0] px-7 py-4">
+      <div className="flex items-center gap-3 border-t border-[#f0f0f0] px-5 py-4 sm:px-7">
         <div className="flex-1" />
         <button
           type="button"

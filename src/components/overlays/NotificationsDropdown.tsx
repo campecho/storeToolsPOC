@@ -48,7 +48,7 @@ export function NotificationsDropdown() {
       {!closing && <div className="fixed inset-0 z-30" onClick={closeNotif} />}
       <div
         data-testid="notif-dropdown"
-        className={`fixed right-16 top-[56px] z-[31] w-[384px] overflow-hidden rounded-[11px] border border-[#e2e2e2] bg-white shadow-[0_16px_44px_rgba(0,0,0,.2)] ${
+        className={`fixed right-2 top-[56px] z-[31] w-[calc(100vw-16px)] max-w-[384px] overflow-hidden rounded-[11px] border border-[#e2e2e2] bg-white shadow-[0_16px_44px_rgba(0,0,0,.2)] sm:right-16 sm:w-[384px] ${
           closing ? "pointer-events-none animate-pop-out" : "animate-pop-in"
         }`}
       >

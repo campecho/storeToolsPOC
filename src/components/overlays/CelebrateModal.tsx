@@ -50,7 +50,7 @@ export function CelebrateModal() {
       />
       <div
         data-testid="celebrate-modal"
-        className={`fixed left-1/2 top-1/2 z-[61] w-[520px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[16px] bg-white text-center shadow-[0_28px_70px_rgba(0,0,0,.32)] ${
+        className={`fixed left-1/2 top-1/2 z-[61] max-h-[calc(100dvh-24px)] w-[calc(100vw-24px)] max-w-[520px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overflow-x-hidden rounded-[16px] bg-white text-center shadow-[0_28px_70px_rgba(0,0,0,.32)] ${
           closing ? "pointer-events-none animate-pop-out" : "animate-pop-in"
         }`}
       >
@@ -64,7 +64,7 @@ export function CelebrateModal() {
           </div>
         </div>
 
-        <div className="px-[34px] pb-8 pt-[6px]">
+        <div className="px-6 pb-8 pt-[6px] sm:px-[34px]">
           <div className="text-[11px] font-bold uppercase tracking-[.08em] text-brand">You asked, we delivered</div>
 
           {/* keyed by queue position so stepping the queue fades the item in */}
@@ -116,7 +116,7 @@ export function CelebrateModal() {
             </div>
           )}
 
-          <div className="mt-[18px] flex justify-center gap-3">
+          <div className="mt-[18px] flex flex-wrap justify-center gap-3">
             <button
               type="button"
               data-testid="celebrate-dismiss"

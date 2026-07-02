@@ -14,7 +14,7 @@ export default function ReleasesPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
-      <div className="mx-auto max-w-[860px] px-[30px] pb-11 pt-[26px]">
+      <div className="mx-auto max-w-[860px] px-4 pb-11 pt-[26px] sm:px-[30px]">
         <ReleaseBanner />
         {releases.map((r) => (
           <ReleaseCard key={r.version} release={r} />

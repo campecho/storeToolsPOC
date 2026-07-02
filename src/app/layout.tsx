@@ -17,10 +17,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      {/* Full-viewport desktop app (the wires' fixed 1440×900 frame is wireframe chrome).
-          h-screen + internal scrolling so the board's rail and list scroll independently.
+      {/* Responsive app shell. The wires target a 1440×900 desktop frame, but the
+          layout now reflows down to phone: the ≥lg desktop composition is preserved,
+          smaller breakpoints stack the surfaces. 100dvh (not 100vh) so mobile browser
+          chrome doesn't clip the header; internal scrolling keeps the board's rail and
+          list independent on desktop.
           suppressHydrationWarning: extensions (Grammarly et al.) stamp attributes on <body>. */}
-      <body suppressHydrationWarning className="flex h-screen min-w-[1200px] flex-col">
+      <body suppressHydrationWarning className="flex h-[100dvh] flex-col">
         <HydrationGuard />
         <StoreHydrator />
         <EscapeCloser />

@@ -23,8 +23,8 @@ const PRODUCTS = [
 
 export function ProductColumn() {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 p-[26px]">
-      <div className="flex items-center justify-between">
+    <div className="flex min-w-0 flex-1 flex-col gap-4 p-5 sm:p-[26px]">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-baseline gap-[10px]">
           <div className="text-[11px] font-bold uppercase tracking-[.05em] text-[#5f5f5f]">Pick a product</div>
           <span className="text-[11px] text-[#aaa]">Sorted by most used</span>
@@ -39,7 +39,7 @@ export function ProductColumn() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {PRODUCTS.map((label) => (
           <div key={label} className="overflow-hidden rounded-[8px] border border-[#e6e6e6]">
             <div className="h-20 bg-[#e4e4e4]" />

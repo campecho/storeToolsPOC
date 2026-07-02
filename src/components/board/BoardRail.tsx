@@ -1,12 +1,14 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useFeedbackStore } from "@/store";
 import type { TypeFilter, StatusFilter, ScopeFilter } from "@/lib/board";
 
 /**
  * Board left rail (wire: 272px, #fafafa, right border): the store-impact
  * recognition card, type/status/scope filters, and the non-ranked
- * "Stores behind v1.4" spotlight.
+ * "Stores behind v1.4" spotlight. A static sidebar at ≥lg; below lg it becomes
+ * an off-canvas drawer opened from the board header's "Filters" button.
  */
 
 const TYPE_OPTS: { value: TypeFilter; label: string }[] = [
@@ -40,7 +42,7 @@ function RailLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function BoardRail() {
+export function BoardRail({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const impact = useFeedbackStore((s) => s.impact);
   const store = useFeedbackStore((s) => s.store);
   const fType = useFeedbackStore((s) => s.fType);
@@ -61,7 +63,35 @@ export function BoardRail() {
     }`;
 
   return (
-    <div className="flex w-[272px] shrink-0 flex-col gap-4 overflow-auto border-r border-[#ececec] bg-[#fafafa] p-[18px]">
+    <>
+      {/* backdrop for the mobile off-canvas drawer */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 animate-fade-in bg-[rgba(20,20,20,.28)] lg:hidden"
+          onClick={onClose}
+        />
+      )}
+      <div
+        data-testid="board-rail"
+        className={`shrink-0 flex-col gap-4 overflow-auto bg-[#fafafa] lg:static lg:z-auto lg:flex lg:w-[272px] lg:max-w-none lg:animate-none lg:border-r lg:border-[#ececec] lg:p-[18px] lg:shadow-none ${
+          open
+            ? "flex fixed inset-y-0 left-0 z-50 w-[290px] max-w-[85vw] animate-slide-in-left border-r border-[#ececec] p-[18px] shadow-[8px_0_32px_rgba(0,0,0,.16)]"
+            : "hidden"
+        }`}
+      >
+        {/* mobile drawer header — hidden on the desktop static rail */}
+        <div className="flex items-center justify-between lg:hidden">
+          <span className="text-[13px] font-bold text-ink">Filters</span>
+          <button
+            type="button"
+            aria-label="Close filters"
+            onClick={onClose}
+            className="flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-[7px] border border-[#e0e0e0] bg-white hover:bg-[#f5f5f5]"
+          >
+            <X size={15} strokeWidth={2} className="text-[#777]" />
+          </button>
+        </div>
+
       {/* impact card */}
       <div className="rounded-[10px] border border-[#ecd7d7] bg-white p-[14px]">
         <div className="text-[11px] font-bold uppercase tracking-[.04em] text-[#b07c7c]">Your store's impact</div>
@@ -129,6 +159,7 @@ export function BoardRail() {
           })}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

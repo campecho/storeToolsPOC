@@ -19,7 +19,7 @@ export function StepConfirm() {
   };
 
   return (
-    <div className="px-[34px] py-10 text-center">
+    <div className="px-6 py-10 text-center sm:px-[34px]">
       <div className="relative mx-auto mb-[18px] flex h-[60px] w-[60px] items-center justify-center rounded-full bg-success-tint">
         <div className="absolute inset-0 animate-ring-expand rounded-full border-2 border-success" />
         <Check size={30} strokeWidth={2.4} className="text-success" />
@@ -28,7 +28,7 @@ export function StepConfirm() {
       <div className="mx-auto mt-2 max-w-[430px] text-[13px] leading-[1.5] text-[#777]">
         It's on the board now and following automatically — you'll get a ping on every status change.
       </div>
-      <div className="mt-[22px] flex justify-center gap-3">
+      <div className="mt-[22px] flex flex-wrap justify-center gap-3">
         <button
           type="button"
           onClick={closeReport}
