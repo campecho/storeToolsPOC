@@ -111,7 +111,8 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 
 ## Start here (docs)
 
-- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC.
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. Next up.
 
 ## Reference documents
 
@@ -120,4 +121,9 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   - `feedback-tracker-prototype.html` — runnable prototype; open in any browser, no setup. The behavioral source of truth.
   - `Feedback Tracker Prototype.dc.html` — readable source (markup + `Component` logic).
   - `FUNCTIONAL_DESIGN.md` — the tracker's product/functional design (v0.1).
-- `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early.
+- `docs/handoff/layout-editor/` — the layout-editor design handoff package:
+  - `README.md` — the design spec (regions, control groups, state model, tokens, growth scope).
+  - `Layout Editor (offline).html` — runnable prototype of the editor shell; the behavioral source of truth.
+  - `Layout Editor.dc.html` — readable source (markup + `Component` logic).
+- `docs/Desktop_Publisher_Design_Doc.md` — the desktop publishing application design doc (product vision, experience model, capability targets the editor serves).
+- `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early; the layout editor is Track B's custom-size layout core.

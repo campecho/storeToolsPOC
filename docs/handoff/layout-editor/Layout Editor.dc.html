@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<template id="__bundler_thumbnail" data-bg-color="#CC0000">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="330" y="150" width="540" height="440" rx="16" fill="#ffffff"/>
+    <rect x="330" y="150" width="540" height="60" rx="16" fill="#f0f0f0"/>
+    <rect x="330" y="204" width="540" height="34" fill="#f7f7f7"/>
+    <rect x="356" y="168" width="92" height="24" rx="5" fill="#CC0000"/>
+    <rect x="330" y="238" width="54" height="352" fill="#f4f4f4"/>
+    <rect x="756" y="238" width="114" height="352" fill="#ffffff"/>
+    <rect x="470" y="288" width="180" height="252" rx="4" fill="#ffffff" stroke="#CC0000" stroke-width="2" stroke-dasharray="7 6"/>
+    <text x="600" y="690" font-family="Arial, sans-serif" font-size="44" font-weight="700" fill="#ffffff" text-anchor="middle">Layout Editor</text>
+  </svg>
+</template>
+<link rel="stylesheet" href="_ds/staples-print-design-system-019e2687-1db4-7a98-aa24-6f47c5847cec/colors_and_type.css">
+<style>
+  body { background:#dedede; }
+  .wf-card { background:#fff; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.12); border:1px solid #e2e2e2; overflow:hidden; }
+  .wf-h { font-weight:700; font-size:11px; letter-spacing:.04em; color:#5f5f5f; text-transform:uppercase; }
+</style>
+</helmet>
+  <div class="wf-card" style="width:1460px; height:904px; display:flex; flex-direction:column;">
+
+    <!-- ============ 1 · TITLE BAR ============ -->
+    <div style="height:40px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 14px; gap:12px; flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:9px; min-width:0;">
+        <div style="background:#CC0000; color:#fff; font-weight:700; font-size:11px; padding:3px 6px; border-radius:3px;">Staples</div>
+        <span style="font-weight:600; font-size:13px; color:#333;">Untitled publication</span>
+        <span style="font-size:12px; color:#9a9a9a;">· Letter · 8.5 × 11 in</span>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:center; background:#e7e7e7; border-radius:6px; padding:2px; font-size:11px; color:#777;">
+        <span style="padding:3px 11px; border-radius:4px;">Simple</span>
+        <span style="padding:3px 11px; border-radius:4px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Standard</span>
+        <span style="padding:3px 11px; border-radius:4px;">Pro</span>
+      </div>
+      <span style="font-size:12px; color:#8a8a8a;">Store #1284</span>
+      <div style="width:18px; height:18px; border:1.5px solid #b6b6b6; border-radius:50%; color:#9a9a9a; font-size:11px; display:flex; align-items:center; justify-content:center;">?</div>
+      <div style="display:flex; gap:15px; color:#9a9a9a; font-size:11px; margin-left:2px;"><span>—</span><span>▢</span><span>✕</span></div>
+    </div>
+
+    <!-- ============ 2 · RIBBON ============ -->
+    <div style="height:32px; background:#f0f0f0; border-bottom:1px solid #e4e4e4; display:flex; align-items:flex-end; padding:0 6px; gap:2px; flex-shrink:0;">
+      <div style="padding:7px 15px 8px; font-size:12px; color:#CC0000; font-weight:600;">File</div>
+      <div style="position:relative; padding:7px 14px 8px; font-size:12px; color:#3d3d3d; cursor:pointer;" onClick="{{ h.ribHome }}">Home<div style="position:absolute; left:12px; right:12px; bottom:0; height:2px; background:#CC0000; display:{{ ribHomeUl }};"></div></div>
+      <div style="position:relative; padding:7px 14px 8px; font-size:12px; color:#3d3d3d; cursor:pointer;" onClick="{{ h.ribInsert }}">Insert<div style="position:absolute; left:12px; right:12px; bottom:0; height:2px; background:#CC0000; display:{{ ribInsertUl }};"></div></div>
+      <div style="position:relative; padding:7px 14px 8px; font-size:12px; color:#3d3d3d; cursor:pointer;" onClick="{{ h.ribLayout }}">Layout<div style="position:absolute; left:12px; right:12px; bottom:0; height:2px; background:#CC0000; display:{{ ribLayoutUl }};"></div></div>
+      <div style="position:relative; padding:7px 14px 8px; font-size:12px; color:#3d3d3d; cursor:pointer;" onClick="{{ h.ribText }}">Text<div style="position:absolute; left:12px; right:12px; bottom:0; height:2px; background:#CC0000; display:{{ ribTextUl }};"></div></div>
+      <div style="padding:7px 14px 8px; font-size:12px; color:#8f8f8f;">Arrange</div>
+      <div style="padding:7px 14px 8px; font-size:12px; color:#8f8f8f;">View</div>
+      <div style="padding:7px 14px 8px; font-size:12px; color:#8f8f8f;">Help</div>
+    </div>
+
+    <!-- ribbon command band -->
+    <div style="height:92px; background:#f7f7f7; border-bottom:1px solid #e6e6e6; position:relative; flex-shrink:0; overflow:hidden;">
+
+      <!-- HOME band -->
+      <sc-if value="{{ ribbonHome }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; align-items:stretch; height:100%;">
+          <!-- Clipboard -->
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <div style="width:46px; height:54px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round;"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-3"/></svg><span style="font-size:10px;">Paste</span></div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="height:24px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; gap:5px; padding:0 7px; font-size:10.5px; color:#666;"><svg width="12" height="12" viewBox="0 0 24 24" style="fill:none; stroke:#777; stroke-width:1.7;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/></svg>Cut</div>
+                <div style="height:24px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; gap:5px; padding:0 7px; font-size:10.5px; color:#666;"><svg width="12" height="12" viewBox="0 0 24 24" style="fill:none; stroke:#777; stroke-width:1.7;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy</div>
+              </div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Clipboard</div>
+          </div>
+          <!-- Font -->
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="display:flex; align-items:center; gap:5px;">
+              <div style="width:118px; height:24px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 8px; font-size:11px; color:#555;">Motiva Sans <span style="color:#b0b0b0;">▾</span></div>
+              <div style="width:44px; height:24px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 7px; font-size:11px; color:#555;">11 <span style="color:#b0b0b0;">▾</span></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#555;">B</div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-style:italic; color:#555;">I</div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; text-decoration:underline; color:#555;">U</div>
+              <div style="width:30px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; font-size:11px; font-weight:700; color:#555;">A<div style="width:15px; height:3px; background:#CC0000; border-radius:1px;"></div></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Font</div>
+          </div>
+          <!-- Paragraph -->
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="display:flex; align-items:center; gap:4px;">
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#666; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="13" y2="12"/></svg></div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#666; stroke-width:1.5; stroke-linecap:round;"><line x1="3" y1="4" x2="13" y2="4"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="4" y1="12" x2="12" y2="12"/></svg></div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#666; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="6" y1="8" x2="14" y2="8"/><line x1="3" y1="12" x2="14" y2="12"/></svg></div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#666; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/></svg></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#666; stroke-width:1.5; stroke-linecap:round;"><circle cx="3" cy="4" r="1" style="fill:#666;"/><circle cx="3" cy="12" r="1" style="fill:#666;"/><line x1="6" y1="4" x2="14" y2="4"/><line x1="6" y1="12" x2="14" y2="12"/></svg></div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#666;">1.<div style="width:1px;"></div></div>
+              <div style="width:26px; height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; color:#666;">¶</div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Paragraph</div>
+          </div>
+          <!-- Styles -->
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="width:130px; height:26px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#555;">Body · Normal <span style="color:#b0b0b0;">▾</span></div>
+            <div style="display:flex; gap:5px;">
+              <div style="height:22px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 8px; font-size:11px; font-weight:700; color:#555;">Heading</div>
+              <div style="height:22px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 8px; font-size:10px; color:#888;">+ New</div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Styles</div>
+          </div>
+          <!-- Editing -->
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <div style="height:24px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 8px; font-size:10.5px; color:#666;"><svg width="12" height="12" viewBox="0 0 24 24" style="fill:none; stroke:#777; stroke-width:1.8;"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Find</div>
+              <div style="height:24px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 8px; font-size:10.5px; color:#666;">Replace…</div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Editing</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- INSERT band -->
+      <sc-if value="{{ ribbonInsert }}">
+        <div style="display:flex; align-items:stretch; height:100%;">
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:6px 16px; border-right:1px solid #ececec;">
+            <div style="display:flex; gap:6px;">
+              <div style="width:52px; height:52px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg><span style="font-size:9.5px;">Add page</span></div>
+              <div style="width:52px; height:52px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/></svg><span style="font-size:9.5px;">Masters</span></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Pages</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:6px 16px; border-right:1px solid #ececec;">
+            <div style="display:flex; gap:6px;">
+              <div style="width:52px; height:52px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="4" y="5" width="16" height="14" rx="1.5"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="12.5" x2="14" y2="12.5"/></svg><span style="font-size:9.5px;">Text box</span></div>
+              <div style="width:52px; height:52px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg><span style="font-size:9.5px;">Picture</span></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Text &amp; media</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:6px 16px; border-right:1px solid #ececec;">
+            <div style="display:flex; gap:6px;">
+              <div style="width:52px; height:52px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="3" y="4" width="8" height="8" rx="1"/><circle cx="16.5" cy="8" r="4"/><path d="M4 20l4-6 4 6z"/></svg><span style="font-size:9.5px;">Shapes</span></div>
+              <div style="width:52px; height:52px; border:1px solid #dcdcdc; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:#555;"><svg width="18" height="18" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6;"><rect x="4" y="5" width="16" height="14" rx="1"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="4" y1="14.5" x2="20" y2="14.5"/><line x1="12" y1="5" x2="12" y2="19"/></svg><span style="font-size:9.5px;">Table</span></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Illustrations</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 16px;">
+            <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; gap:7px; padding:0 10px; font-size:11px; color:#666;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#777; stroke-width:1.7; stroke-linecap:round;"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>Hyperlink</div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Links</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- LAYOUT band -->
+      <sc-if value="{{ ribbonLayout }}">
+        <div style="display:flex; align-items:stretch; height:100%;">
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 16px; border-right:1px solid #ececec;">
+            <div style="width:150px; height:26px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#555;">Letter · 8.5 × 11 in <span style="color:#b0b0b0;">▾</span></div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Page size</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 16px; border-right:1px solid #ececec;">
+            <div style="display:flex; gap:5px;">
+              <div style="width:34px; height:40px; border:1.5px solid #CC0000; border-radius:5px; background:#FBEBEB; display:flex; align-items:center; justify-content:center;"><div style="width:16px; height:22px; border:1px solid #cc7a7a; border-radius:1px;"></div></div>
+              <div style="width:44px; height:40px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><div style="width:24px; height:16px; border:1px solid #c4c4c4; border-radius:1px;"></div></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Orientation</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 16px; border-right:1px solid #ececec;">
+            <div style="display:flex; gap:5px;">
+              <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#666;">Margins ▾</div>
+              <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#666;">Bleed 0.125</div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Guides &amp; bleed</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="width:60px; height:26px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 8px; font-size:11px; color:#555;">1 <span style="color:#b0b0b0;">▾</span></div>
+              <div style="display:flex; align-items:center; gap:6px;"><div style="width:28px; height:16px; border:1px solid #CC0000; border-radius:8px; background:#FBEBEB; position:relative;"><div style="position:absolute; right:2px; top:2px; width:12px; height:12px; background:#CC0000; border-radius:50%;"></div></div><span style="font-size:10.5px; color:#777;">Guides</span></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Columns</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- TEXT band -->
+      <sc-if value="{{ ribbonText }}">
+        <div style="display:flex; align-items:stretch; height:100%;">
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="display:flex; align-items:center; gap:5px;">
+              <div style="width:118px; height:24px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 8px; font-size:11px; color:#555;">Motiva Sans <span style="color:#b0b0b0;">▾</span></div>
+              <div style="width:44px; height:24px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 7px; font-size:11px; color:#555;">11 <span style="color:#b0b0b0;">▾</span></div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Character</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="width:150px; height:26px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#555;">Paragraph · Normal <span style="color:#b0b0b0;">▾</span></div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Styles</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px; border-right:1px solid #ececec;">
+            <div style="display:flex; gap:5px;">
+              <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#666;">Line 1.2 ▾</div>
+              <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#666;">Space ▾</div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Spacing</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:6px 14px;">
+            <div style="display:flex; gap:5px;">
+              <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 9px; font-size:11px; color:#666;">Link boxes <span style="color:#999;">⟶</span></div>
+              <div style="height:26px; border:1px solid #e0e0e0; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#666;">Wrap ▾</div>
+            </div>
+            <div style="font-size:9.5px; color:#a6a6a6;">Text flow</div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- ============ WORK AREA ============ -->
+    <div style="flex:1; display:flex; min-height:0;">
+
+      <!-- 3 · TOOL PALETTE -->
+      <div style="width:52px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:9px 0; gap:6px; flex-shrink:0;">
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tSelect }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:#555; stroke:none;"><path d="M4 2l16 7-6.6 2.2L10.4 20z"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rSelect }};"></div></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer; font-family:Georgia,serif; font-weight:700; font-size:16px;" onClick="{{ h.tText }}">T<div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rText }};"></div></div>
+        <div style="width:24px; height:1px; background:#e0e0e0; margin:2px 0;"></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tRect }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7;"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rRect }};"></div></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tEllipse }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7;"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rEllipse }};"></div></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tLine }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round;"><line x1="5" y1="18" x2="19" y2="6"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rLine }};"></div></div>
+        <div style="width:24px; height:1px; background:#e0e0e0; margin:2px 0;"></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tPic }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rPic }};"></div></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tTable }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6;"><rect x="4" y="5.5" width="16" height="13" rx="1"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="4" y1="14.5" x2="20" y2="14.5"/><line x1="12" y1="5.5" x2="12" y2="18.5"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rTable }};"></div></div>
+        <div style="width:24px; height:1px; background:#e0e0e0; margin:2px 0;"></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tZoom }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round;"><circle cx="10.5" cy="10.5" r="6"/><line x1="15" y1="15" x2="20" y2="20"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rZoom }};"></div></div>
+        <div style="position:relative; width:36px; height:34px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.tMove }}"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round;"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rMove }};"></div></div>
+      </div>
+
+      <!-- 4 · PAGES PANE -->
+      <div style="width:188px; border-right:1px solid #ececec; display:flex; flex-direction:column; flex-shrink:0;">
+        <div style="padding:12px 12px 10px; border-bottom:1px solid #efefef; display:flex; flex-direction:column; gap:10px;">
+          <div class="wf-h">Pages</div>
+          <div style="display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px;">
+            <div style="position:relative; flex:1; text-align:center; padding:4px 0; cursor:pointer; color:#555;" onClick="{{ h.pPages }}"><div style="position:absolute; inset:0; background:#fff; border-radius:5px; box-shadow:0 1px 2px rgba(0,0,0,.12); display:{{ segPagesBg }};"></div><span style="position:relative;">Pages</span></div>
+            <div style="position:relative; flex:1; text-align:center; padding:4px 0; cursor:pointer; color:#555;" onClick="{{ h.pMasters }}"><div style="position:absolute; inset:0; background:#fff; border-radius:5px; box-shadow:0 1px 2px rgba(0,0,0,.12); display:{{ segMastersBg }};"></div><span style="position:relative;">Master pages</span></div>
+          </div>
+        </div>
+        <div style="flex:1; padding:14px 12px; overflow:hidden;">
+          <!-- Pages list -->
+          <sc-if value="{{ showPages }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; flex-direction:column; gap:5px; align-items:center;">
+              <div style="position:relative; width:88px;">
+                <div style="width:88px; height:114px; background:#fff; border:1.5px solid #CC0000; border-radius:3px; box-shadow:0 1px 3px rgba(0,0,0,.14);"></div>
+                <div style="text-align:center; font-size:11px; color:#CC0000; font-weight:600; margin-top:4px;">1</div>
+              </div>
+              <div style="margin-top:6px; width:88px; height:114px; border:1.5px dashed #cfcfcf; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#b0b0b0; font-size:20px; cursor:pointer;">+</div>
+              <div style="font-size:10px; color:#a0a0a0;">Add page</div>
+            </div>
+          </sc-if>
+          <!-- Master pages list -->
+          <sc-if value="{{ showMasters }}">
+            <div style="display:flex; flex-direction:column; gap:14px; align-items:center;">
+              <div style="position:relative; width:88px;">
+                <div style="width:88px; height:114px; background:#fff; border:1.5px solid #CC0000; border-radius:3px; box-shadow:0 1px 3px rgba(0,0,0,.14); position:relative;"><div style="position:absolute; inset:8px; border:1px dashed #cdcdcd;"></div><div style="position:absolute; left:8px; right:8px; bottom:6px; height:6px; background:#eee;"></div></div>
+                <div style="text-align:center; font-size:11px; color:#666; margin-top:4px;">A · applied</div>
+              </div>
+              <div style="position:relative; width:88px;">
+                <div style="width:88px; height:114px; background:#fff; border:1px solid #dcdcdc; border-radius:3px; position:relative;"><div style="position:absolute; inset:8px; border:1px dashed #dcdcdc;"></div></div>
+                <div style="text-align:center; font-size:11px; color:#999; margin-top:4px;">B · blank</div>
+              </div>
+              <div style="font-size:10px; color:#a0a0a0;">+ New master</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <!-- 5 + 6 · CANVAS (rulers + publication page) -->
+      <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+        <!-- top ruler row -->
+        <div style="height:18px; display:flex; flex-shrink:0;">
+          <div style="width:18px; background:#ededed; border-right:1px solid #e0e0e0; border-bottom:1px solid #e0e0e0;"></div>
+          <div style="flex:1; background:#ededed; border-bottom:1px solid #e0e0e0; background-image:repeating-linear-gradient(90deg,#c4c4c4 0,#c4c4c4 1px,transparent 1px,transparent 24px);"></div>
+        </div>
+        <!-- ruler + pasteboard -->
+        <div style="flex:1; display:flex; min-height:0;">
+          <div style="width:18px; background:#ededed; border-right:1px solid #e0e0e0; background-image:repeating-linear-gradient(0deg,#c4c4c4 0,#c4c4c4 1px,transparent 1px,transparent 24px); flex-shrink:0;"></div>
+          <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+            <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); font-size:11px; color:#7a7a7a;">Untitled publication · Letter 8.5 × 11 in · 100%</div>
+            <!-- publication page -->
+            <div style="width:428px; height:554px; background:#fff; box-shadow:0 3px 16px rgba(0,0,0,.22); position:relative; outline:1.5px dashed #CC0000; outline-offset:9px;">
+              <!-- safe / margin box -->
+              <div style="position:absolute; inset:26px; border:1px dashed #9fb6df;"></div>
+              <!-- column + center guides -->
+              <div style="position:absolute; left:50%; top:26px; bottom:26px; width:1px; background:#9fb6df; opacity:.5;"></div>
+              <div style="position:absolute; top:50%; left:26px; right:26px; height:1px; background:#9fb6df; opacity:.35;"></div>
+              <!-- bleed corner marks -->
+              <div style="position:absolute; left:-15px; top:-15px; width:9px; height:9px; border-left:1px solid #b58686; border-top:1px solid #b58686;"></div>
+              <div style="position:absolute; right:-15px; top:-15px; width:9px; height:9px; border-right:1px solid #b58686; border-top:1px solid #b58686;"></div>
+              <div style="position:absolute; left:-15px; bottom:-15px; width:9px; height:9px; border-left:1px solid #b58686; border-bottom:1px solid #b58686;"></div>
+              <div style="position:absolute; right:-15px; bottom:-15px; width:9px; height:9px; border-right:1px solid #b58686; border-bottom:1px solid #b58686;"></div>
+            </div>
+            <!-- guide legend -->
+            <div style="position:absolute; right:16px; bottom:14px; background:#fff; border:1px solid #e2e2e2; border-radius:7px; padding:8px 11px; display:flex; flex-direction:column; gap:6px;">
+              <div style="display:flex; align-items:center; gap:7px;"><div style="width:16px; height:0; border-top:1.5px dashed #CC0000;"></div><span style="font-size:10px; color:#888;">Bleed 0.125 in</span></div>
+              <div style="display:flex; align-items:center; gap:7px;"><div style="width:16px; height:0; border-top:1px dashed #9fb6df;"></div><span style="font-size:10px; color:#888;">Margin 0.5 in</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7 · INSPECTOR -->
+      <div style="width:268px; border-left:1px solid #ececec; display:flex; flex-direction:column; flex-shrink:0;">
+        <!-- tab strip -->
+        <div style="height:38px; border-bottom:1px solid #ececec; display:flex; align-items:stretch; font-size:11.5px; flex-shrink:0;">
+          <div style="position:relative; flex:1; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.iProps }}">Properties<div style="position:absolute; left:14px; right:14px; bottom:0; height:2px; background:#CC0000; display:{{ ulProps }};"></div></div>
+          <div style="position:relative; flex:1; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.iText }}">Text<div style="position:absolute; left:14px; right:14px; bottom:0; height:2px; background:#CC0000; display:{{ ulText }};"></div></div>
+          <div style="position:relative; flex:1; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.iAlign }}">Align<div style="position:absolute; left:14px; right:14px; bottom:0; height:2px; background:#CC0000; display:{{ ulAlign }};"></div></div>
+          <div style="position:relative; flex:1; display:flex; align-items:center; justify-content:center; color:#555; cursor:pointer;" onClick="{{ h.iPage }}">Page<div style="position:absolute; left:14px; right:14px; bottom:0; height:2px; background:#CC0000; display:{{ ulPage }};"></div></div>
+        </div>
+        <div style="flex:1; padding:16px; overflow:hidden;">
+
+          <!-- PAGE tab (default) -->
+          <sc-if value="{{ inspPage }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Product</div>
+                <div style="border:1px solid #ececec; border-radius:7px; padding:10px 11px; display:flex; flex-direction:column; gap:6px;">
+                  <div style="font-size:12px; color:#555;">Custom size — not bound to a SKU</div>
+                  <div style="font-size:11px; color:#086DD2;">Choose a product to make it born-correct →</div>
+                </div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Page size</div>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">Width</div><div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#444;">8.5 in</div></div>
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">Height</div><div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#444;">11 in</div></div>
+                </div>
+                <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">Letter <span style="color:#b0b0b0;">▾</span></div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Orientation</div>
+                <div style="display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11.5px;">
+                  <div style="flex:1; text-align:center; padding:5px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Portrait</div>
+                  <div style="flex:1; text-align:center; padding:5px 0; color:#777;">Landscape</div>
+                </div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Bleed &amp; margins</div>
+                <div style="display:flex; gap:8px;">
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">Bleed</div><div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#444;">0.125 in</div></div>
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">Margin</div><div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#444;">0.5 in</div></div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- PROPERTIES tab -->
+          <sc-if value="{{ inspProps }}">
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <div style="border:1px dashed #d8d8d8; border-radius:8px; background:#fafafa; padding:16px; text-align:center;">
+                <div style="font-size:12px; color:#888;">Nothing selected</div>
+                <div style="font-size:11px; color:#aaa; margin-top:4px;">Select an object on the page to edit its position, size, fill, and stroke.</div>
+              </div>
+              <div style="opacity:.5;">
+                <div class="wf-h" style="margin-bottom:8px;">Transform</div>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">X</div><div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#999;">— in</div></div>
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">Y</div><div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#999;">— in</div></div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">W</div><div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#999;">— in</div></div>
+                  <div style="flex:1;"><div style="font-size:10px; color:#999; margin-bottom:3px;">H</div><div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 9px; font-size:12px; color:#999;">— in</div></div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- TEXT tab -->
+          <sc-if value="{{ inspText }}">
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Character</div>
+                <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555; margin-bottom:8px;">Motiva Sans <span style="color:#b0b0b0;">▾</span></div>
+                <div style="display:flex; gap:8px;">
+                  <div style="flex:1; height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">11 pt <span style="color:#b0b0b0;">▾</span></div>
+                  <div style="display:flex; gap:5px;"><div style="width:30px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; color:#555;">B</div><div style="width:30px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-style:italic; font-size:13px; color:#555;">I</div></div>
+                </div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Paragraph</div>
+                <div style="display:flex; gap:5px; margin-bottom:8px;">
+                  <div style="flex:1; height:30px; border:1px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#9a1818; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="13" y2="12"/></svg></div>
+                  <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="3" y1="4" x2="13" y2="4"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="4" y1="12" x2="12" y2="12"/></svg></div>
+                  <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="6" y1="8" x2="14" y2="8"/><line x1="3" y1="12" x2="14" y2="12"/></svg></div>
+                  <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="15" height="15" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/></svg></div>
+                </div>
+                <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">Line spacing 1.2 <span style="color:#b0b0b0;">▾</span></div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Style</div>
+                <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">Body · Normal <span style="color:#b0b0b0;">▾</span></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ALIGN tab -->
+          <sc-if value="{{ inspAlign }}">
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Align</div>
+                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><line x1="3" y1="3" x2="3" y2="21"/><rect x="6" y="6" width="9" height="4" style="fill:#d0d0d0; stroke:none;"/><rect x="6" y="14" width="13" height="4" style="fill:#d0d0d0; stroke:none;"/></svg></div>
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><line x1="12" y1="3" x2="12" y2="21"/><rect x="7" y="6" width="10" height="4" style="fill:#d0d0d0; stroke:none;"/><rect x="5" y="14" width="14" height="4" style="fill:#d0d0d0; stroke:none;"/></svg></div>
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><line x1="21" y1="3" x2="21" y2="21"/><rect x="9" y="6" width="9" height="4" style="fill:#d0d0d0; stroke:none;"/><rect x="5" y="14" width="13" height="4" style="fill:#d0d0d0; stroke:none;"/></svg></div>
+                </div>
+                <div style="display:flex; gap:5px;">
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><line x1="3" y1="3" x2="21" y2="3"/><rect x="6" y="6" width="4" height="9" style="fill:#d0d0d0; stroke:none;"/><rect x="14" y="6" width="4" height="13" style="fill:#d0d0d0; stroke:none;"/></svg></div>
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><line x1="3" y1="12" x2="21" y2="12"/><rect x="6" y="7" width="4" height="10" style="fill:#d0d0d0; stroke:none;"/><rect x="14" y="5" width="4" height="14" style="fill:#d0d0d0; stroke:none;"/></svg></div>
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><line x1="3" y1="21" x2="21" y2="21"/><rect x="6" y="9" width="4" height="9" style="fill:#d0d0d0; stroke:none;"/><rect x="14" y="5" width="4" height="13" style="fill:#d0d0d0; stroke:none;"/></svg></div>
+                </div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Distribute</div>
+                <div style="display:flex; gap:5px;">
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; color:#777;">Horizontal</div>
+                  <div style="flex:1; height:32px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; color:#777;">Vertical</div>
+                </div>
+              </div>
+              <div>
+                <div class="wf-h" style="margin-bottom:8px;">Relative to</div>
+                <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">Page <span style="color:#b0b0b0;">▾</span></div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 8 · STATUS BAR ============ -->
+    <div style="height:28px; background:#ececec; border-top:1px solid #e0e0e0; display:flex; align-items:center; padding:0 12px; gap:14px; flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:#777;"><span style="color:#aaa;">◀</span><span>Page 1 of 1</span><span style="color:#aaa;">▶</span></div>
+      <div style="width:1px; height:14px; background:#d4d4d4;"></div>
+      <span style="font-size:11px; color:#777;">Select tool · ready</span>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div style="width:22px; height:18px; border:1px solid #CC0000; border-radius:3px; background:#FBEBEB;"></div>
+        <div style="width:22px; height:18px; border:1px solid #cfcfcf; border-radius:3px; background:#fff; display:flex; gap:1px; align-items:center; justify-content:center;"><div style="width:7px; height:11px; border:1px solid #b0b0b0;"></div><div style="width:7px; height:11px; border:1px solid #b0b0b0;"></div></div>
+      </div>
+      <div style="width:1px; height:14px; background:#d4d4d4;"></div>
+      <div style="display:flex; align-items:center; gap:8px; font-size:11px; color:#777;">
+        <span style="color:#aaa;">−</span>
+        <div style="width:96px; height:4px; background:#d0d0d0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:11px; height:11px; background:#fff; border:1px solid #b0b0b0; border-radius:50%;"></div></div>
+        <span style="color:#aaa;">+</span>
+        <span style="min-width:34px;">100%</span>
+      </div>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1460,"height":904}}'>
+class Component extends DCLogic {
+  state = { ribbon: 'home', tool: 'select', insp: 'page', pages: 'pages' };
+  renderVals() {
+    const { ribbon, tool, insp, pages } = this.state;
+    const d = (c) => (c ? 'block' : 'none');
+    const set = (patch) => () => this.setState(patch);
+    return {
+      // ribbon tabs
+      ribbonHome: ribbon === 'home', ribbonInsert: ribbon === 'insert',
+      ribbonLayout: ribbon === 'layout', ribbonText: ribbon === 'text',
+      ribHomeUl: d(ribbon === 'home'), ribInsertUl: d(ribbon === 'insert'),
+      ribLayoutUl: d(ribbon === 'layout'), ribTextUl: d(ribbon === 'text'),
+      // tools
+      rSelect: d(tool === 'select'), rText: d(tool === 'text'), rRect: d(tool === 'rect'),
+      rEllipse: d(tool === 'ellipse'), rLine: d(tool === 'line'), rPic: d(tool === 'pic'),
+      rTable: d(tool === 'table'), rZoom: d(tool === 'zoom'), rMove: d(tool === 'move'),
+      // inspector tabs
+      inspProps: insp === 'props', inspText: insp === 'text',
+      inspAlign: insp === 'align', inspPage: insp === 'page',
+      ulProps: d(insp === 'props'), ulText: d(insp === 'text'),
+      ulAlign: d(insp === 'align'), ulPage: d(insp === 'page'),
+      // pages / masters
+      showPages: pages === 'pages', showMasters: pages === 'masters',
+      segPagesBg: d(pages === 'pages'), segMastersBg: d(pages === 'masters'),
+      // handlers
+      h: {
+        ribHome: set({ ribbon: 'home' }), ribInsert: set({ ribbon: 'insert' }),
+        ribLayout: set({ ribbon: 'layout' }), ribText: set({ ribbon: 'text' }),
+        tSelect: set({ tool: 'select' }), tText: set({ tool: 'text' }), tRect: set({ tool: 'rect' }),
+        tEllipse: set({ tool: 'ellipse' }), tLine: set({ tool: 'line' }), tPic: set({ tool: 'pic' }),
+        tTable: set({ tool: 'table' }), tZoom: set({ tool: 'zoom' }), tMove: set({ tool: 'move' }),
+        iProps: set({ insp: 'props' }), iText: set({ insp: 'text' }),
+        iAlign: set({ insp: 'align' }), iPage: set({ insp: 'page' }),
+        pPages: set({ pages: 'pages' }), pMasters: set({ pages: 'masters' }),
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>
