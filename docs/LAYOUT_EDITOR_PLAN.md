@@ -4,6 +4,8 @@
 
 The editor is explicitly **built over time**: the shell lands first, capability grows onto it in individually demoable steps, and not every feature is available immediately. Notably, the **Simple / Standard / Pro experience views arrive late in the sequence by design** — the editor ships Standard-only until step L8 (§4).
 
+**Revision (v1.1):** this plan now carries the technical design for the *functional* editor beyond the POC — a **Konva (Canvas 2D) render layer** (§8), the **document-model v2 deltas** it and import require (§9), the **`.pub` import & conversion pipeline** built on `libmspub` per `PUB_TO_IDML_RESEARCH.md` (§10), and the **K-/P-tranche build order** that grows both onto the L1–L9 POC (§11). L1–L9 are unchanged: the POC still ships DOM/SVG-rendered; the Konva swap and the `.pub` on-ramp are the tranches that make it a complete, functional Publisher replacement.
+
 **Inputs reviewed:**
 
 | Input | Where | Role |
@@ -12,6 +14,8 @@ The editor is explicitly **built over time**: the shell lands first, capability 
 | Desktop Publishing Application design doc (Draft v0.1, "Project Compose") | `docs/Desktop_Publisher_Design_Doc.md` | Product context: target users, the novice→pro experience model (§3.3), capability targets (§4), explicit non-goals |
 | Store Tools Suite implementation plan v0.1 | `docs/Store_Tools_Suite_Implementation_Plan.md` | Where this slice sits: Track B **custom-size layout/design core**, a Phase-2 vertical slice sequenced early for the **October 2026 Publisher retirement** |
 | Store Tools POC implementation plan (steps 0–7, built) | `docs/IMPLEMENTATION_PLAN.md` | The shell this slice mounts into; `/layout` was reserved for it (§3.1, §6) |
+| `.pub → IDML` converter research | `docs/PUB_TO_IDML_RESEARCH.md` | The parse/convert architecture §10 builds on: `libmspub` front end, intermediate layout model, conformance checklist |
+| Security considerations & threat model | `docs/SECURITY_CONSIDERATIONS.md` | The controls the import pipeline must satisfy — `libmspub` is flagged **[CRITICAL]** (undocumented C++ binary parser); §10.1 inherits its checklist |
 
 ---
 
@@ -54,7 +58,7 @@ The design doc frames the product this editor is the heart of: a Publisher repla
 - The wires are specified entirely in CSS terms (dashed outlines, inset guides, gradient ruler ticks); DOM keeps fidelity trivial and hover/selection chrome free.
 - Text editing stays native (`contentEditable` overlay) instead of the overlay gymnastics a canvas engine forces.
 - POC documents hold tens of objects, far below DOM performance limits on the store hardware profile.
-- The **document model is the durable artifact**: pure data (Zod schemas, geometry in inches, zero DOM coupling). If a later slice needs canvas/WebGL rendering (the sibling AI Design Studio's Konva/react-konva stack is the known alternate), that's a render-layer swap behind the same model and store — components above the canvas untouched.
+- The **document model is the durable artifact**: pure data (Zod schemas, geometry in inches, zero DOM coupling). The functional editor exercises exactly this bet: §8 specifies the **react-konva render layer** that replaces the DOM canvas behind the same model and store — components above the canvas untouched. The POC's DOM render is the L1–L9 vehicle; the Konva layer is the K-tranche (§11).
 - `@dnd-kit` (deferred in the tracker plan for "canvas/editor slices") turns out unnecessary here: canvas dragging is pointer math against the scaled surface, not sortable-list DnD. **No new runtime dependencies** for this whole plan.
 
 ---
@@ -258,10 +262,10 @@ Explicitly **not** in L1–L9, with where each lands later — the affordances s
 | Linked text frames, autoflow, story threading; text wrap | Editor, next tranche | Text band's "Link boxes ⟶ / Wrap" controls exist, stay static; the model's per-frame text is forward-compatible |
 | Tables | Editor, next tranche | Palette + Insert buttons present; status-bar "coming later in the beta" until then |
 | Rotation editing, groups, layers panel, effects | Editor, next tranche | `rotation` already in schema; Arrange ribbon tab is the natural home |
-| Real picture import + asset storage | With the intake slice | IndexedDB deferral carried over from the tracker plan |
-| Open/save/export, File tab, PDF & preflight | Print-production slice | Suite plan §8.7/§8.12 backbone; editor gains "Export" once the spine exists in the POC |
+| Real picture import + asset storage | **P-tranche (§11)** with the intake slice | Asset model specified in §9; `.pub` image extraction lands it first |
+| Open/save/export, File tab, PDF & preflight | Print-production slice | Suite plan §8.7/§8.12 backbone; editor gains "Export" once the spine exists in the POC; §8.6 defines the render-parity contract |
 | Catalog SKU binding ("born correct") | Catalog/spec-sync slice `[INT]` | Page tab's Product card + "Choose a product →" link render now, act later; ties to the homepage product grid |
-| `.pub` import | `.pub` on-ramp slice | Homepage callout already points there; its output opens as a `LayoutDocument` |
+| `.pub` import | **P-tranche (§10–§11, this plan)** | Pipeline now specified here: sandboxed `libmspub` → intermediate model → `LayoutDocument` + import report |
 | Facing pages/spreads, sections, mixed page sizes | Editor, later | Status bar's spread toggle stays static until then |
 | Data merge / VDP · AI-assisted creation & help | Their own suite slices | Design doc §4.7 / §3.3; AI assist is a suite-wide service |
 | Publisher-familiar shortcut map, savable workspaces | With experience-model deepening | A basic shortcut set ships in L4; the full veteran map is a deliberate later pass |
@@ -272,7 +276,7 @@ Explicitly **not** in L1–L9, with where each lands later — the affordances s
 ## 7. Open questions / assumptions (proceeding with the recommendation unless redirected)
 
 1. **Suite header + editor title bar** — keeping the persistent suite header and de-duplicating the editor title bar (deviation #1). An "immersive" full-screen toggle is a cheap later add if demos want the exact wire frame.
-2. **DOM/SVG rendering** for the POC (§1.4); the suite's real engine choice stays with Phase-0 spikes. react-konva is the known fallback if a future slice's object counts demand it — a render-layer swap behind the same model.
+2. **DOM/SVG rendering** for the POC (§1.4). For the functional editor, **react-konva is now the recommended render layer** (§8.1) — recorded here as the engine recommendation this slice feeds into the suite plan's Phase-0 spike, with the spike's pass/fail criteria defined in §8.1 so the decision is confirmed with evidence on the store hardware, not assumed.
 3. **Single working document**, autosaved to `stp-layout-v1`; opening a new size from Home replaces it (with a confirm when the current doc has content). Multi-document / open / save-as is backlog.
 4. **Desktop-minimum gate** below `lg` rather than a phone reflow — a precision canvas is a station tool; the gate card keeps small screens honest.
 5. **Simple/Pro disabled until L8** — per the built-over-time direction; the control renders from L1 so the title bar matches the wire.
@@ -281,4 +285,176 @@ Explicitly **not** in L1–L9, with where each lands later — the affordances s
 
 ---
 
-*This plan grows the POC's second product surface onto the shell the tracker build established: same stack, same fidelity contract, same step-per-commit rhythm — and it keeps the suite plan's sequencing promise that the layout core is field-demoable well ahead of the October 2026 Publisher retirement.*
+## 8. Functional-editor render architecture — Konva
+
+### 8.1 Decision: react-konva as the production render layer
+
+**Recommendation: adopt Konva (via react-konva) — a Canvas 2D scene graph — as the functional editor's render layer, swapped in behind the unchanged document model and store.**
+
+Why Konva specifically:
+
+- **Canvas 2D, not WebGL.** Konva renders through the plain 2D canvas API, which the store hardware profile (i5-8500, integrated UHD 630) handles comfortably; there is no GPU-feature dependency to gate on, unlike WebGL-first engines (PixiJS, Fabric's WebGL mode). This is the same hardware argument that drives the suite's server-side-rendering preference — Konva is the lightest client-side render commitment that still scales past DOM.
+- **Scales where DOM stops.** The POC's tens of objects are fine in DOM; a converted `.pub` newsletter is not — real Publisher files carry hundreds of shapes, images at print resolution, and multi-page furniture. A scene graph with layer-level caching, node-level hit graphs, and `toDataURL` export handles that class of document; per-object DOM reflow does not.
+- **Licensing is clean.** Konva and react-konva are MIT — no AGPL posture question (the recurring suite blocker), no commercial seat cost.
+- **Convergence, not divergence.** The sibling AI Design Studio already runs Konva/react-konva; the promo-product module plan's 2D imprint editor is the same class of surface. One canvas stack across the suite means shared interaction code, shared testing patterns, and one engine to security-patch.
+- **The swap validates §1.4's bet.** Nothing above the canvas changes: the Zod `LayoutDocument`, the Zustand store and its per-gesture history, `geometry.ts` / `snap.ts` / `arrange.ts` (pure math), the ribbon, inspector, and pages pane are all render-agnostic by construction. The K-tranche replaces `PageSurface`/`ObjectNode`/`SelectionOverlay` internals and nothing else.
+
+**Spike criteria (feeding the suite plan's Phase-0 engine decision — confirm with evidence, per the plan's own rule):** on the store hardware profile, (a) 60fps drag/marquee with **300+ objects** on a page including 10+ placed images; (b) live thumbnails for an 8-page document without jank; (c) zoom 10–400% with crisp text at devicePixelRatio; (d) memory stable across a 30-minute editing session. Fail any → PixiJS (WebGL w/ canvas fallback) is the named alternate; the model and store still don't change.
+
+### 8.2 Stage & layer architecture
+
+One `Stage` fills the canvas viewport region; **zoom is `stage.scale`, pan is `stage.position`** — `geometry.ts`'s `px = inches × 96 × zoom` becomes the stage transform, and object coordinates stay in canonical inches × 96 (zoom-independent), which keeps every store action and snap calculation untouched.
+
+Konva layers are separate `<canvas>` elements — keep to **four**, ordered:
+
+| Layer | Contents | Redraw cadence |
+|---|---|---|
+| **Furniture** | Pasteboard, page fill/shadow, bleed outline + corner marks, margin box, center/column guides, guide legend | Cached (`layer.cache()`); invalidated only on page-setup change or zoom |
+| **Content** | Master objects (non-listening) beneath page objects — rects, ellipses, lines, pictures, committed text | On document mutation; `batchDraw` per gesture frame |
+| **Overlay** | Selection frames + 8 handles, marquee, smart-guide snap lines, overflow badges | At interaction rate; `listening(false)` on the guide lines |
+| **Text-edit** *(DOM, not Konva)* | The `contentEditable` editing surface, absolutely positioned over the stage | Only while `editingTextId` is set |
+
+**Rulers stay DOM** — they're cheap, already zoom/pan-aware off shared viewport state, and gain nothing from canvas. The wire's chrome (ribbon, panes, inspector, status bar) is untouched.
+
+**HiDPI:** set layer `pixelRatio` to `devicePixelRatio` (cap 2 on the store profile) so text and hairlines stay crisp; thumbnails export at a reduced ratio (§8.5).
+
+### 8.3 Objects & interaction
+
+- `ObjectNode` maps 1:1 onto Konva primitives: `rect` → `Konva.Rect` (corner radii ready), `ellipse` → `Konva.Ellipse`, `line` → `Konva.Line`, `picture` → `Konva.Image` inside a clipping `Group` (fit modes: fill/fit/stretch as transform math), text → §8.4. Z-order remains array order; `locked` sets `listening(false)`.
+- **Interaction flows through the same store actions.** Konva's pointer events replace the POC's hand-rolled pointer math for hit-testing and drag deltas, but every gesture still commits via `transformObject` + one history snapshot at pointer-up — undo/redo invariants and their tests carry over verbatim.
+- **Keep the custom 8-handle `SelectionOverlay`, not `Konva.Transformer`.** The wire specifies the selection chrome exactly (frame color, handle size, marquee style), and the snap pipeline needs to intercept transforms mid-gesture; a custom overlay drawing on the overlay layer preserves both. Revisit `Transformer` only when rotation *editing* lands (§6) — it's the natural host for a rotation handle.
+- **Snapping is unchanged**: `snap.ts` stays pure inch-space math fed by the drag deltas; matched candidates render as lines on the overlay layer in the wire's guide colors.
+
+### 8.4 Text: hybrid canvas-render / DOM-edit
+
+Text is the one place a canvas engine costs something, and the design pays it deliberately:
+
+- **Committed text renders in Konva; editing stays `contentEditable`.** On `editingTextId`, the Konva text node hides and the DOM overlay appears at the frame's stage-transformed position — native caret, selection, IME, and spellcheck for free (the overlay gymnastics §1.4 warned about are confined to one well-defined swap). On commit, the store updates and Konva redraws.
+- **`text.ts` grows into a shared text-layout module** — the single source of truth for line breaking and metrics. It measures with the Canvas 2D `measureText` API only (no DOM dependency), takes a frame's text + style + width, and returns positioned **line boxes** consumed by three clients: (1) the Konva renderer (each line drawn as a `Konva.Text` node — sidestepping Konva's limited built-in wrapping control), (2) the **overflow indicator** (content height vs. frame height — same red badge, now computed from real metrics), and (3) any future server-side render (§8.6).
+- **Per-frame styling now, per-run ready.** The v1 layout module consumes the POC's per-frame text props; the v2 schema's paragraph/run structure (§9) slots in as richer input to the same module — `.pub` import (§10) is what forces that upgrade.
+- **Fonts gate measurement.** Layout runs only after `document.fonts.load()` resolves for the frame's family (curated list per §7.6); un-loaded families measure with the fallback and re-layout on load. The import pipeline's font-remap table (§10.4) maps foreign `.pub` fonts into this same curated list.
+
+### 8.5 Performance & thumbnails on the store profile
+
+- Furniture layer cached; content layer `batchDraw` throttled to animation frames; smart guides and marquee on the overlay layer so drags never repaint the document.
+- **Only the active page mounts a live stage.** Pages-pane thumbnails become `stage.toDataURL({ pixelRatio: ~0.15 })` snapshots taken on mutation debounce — replacing L6's mini-DOM renders with cheaper, pixel-accurate ones. Master editing renders the master's objects to the same stage with a mode banner, exactly as L6 specifies.
+- Placed images decode once into `ImageBitmap`s keyed by asset id (§9); downscaled draws let Konva's canvas smoothing handle print-resolution sources.
+- Budget check in L9's drag-performance pass moves to the K-tranche's exit gate with the §8.1 spike numbers.
+
+### 8.6 Print/export parity (forward pointer, honest scope)
+
+Print-grade output (PDF/X, preflight) remains the **print-production slice** on the suite's shared backbone — this editor does not grow its own PDF engine. The parity contract this plan *does* own: the **text-layout module and geometry math are isomorphic** (pure Canvas-2D-measure + pure math, no DOM), so the server render — whether Konva-under-Node (`konva` + `skia-canvas`) for raster proofs or the backbone's PDF path consuming `LayoutDocument` directly — reproduces the screen exactly. WYSIWYG is guaranteed by sharing the layout code, not by trusting two engines to agree.
+
+---
+
+## 9. Document model v2 — schema deltas for the functional editor
+
+Additive, versioned (`version: 2` with a v1→v2 loader migration; the POC's persisted docs keep opening). Each delta is pulled in by a named consumer — nothing speculative:
+
+| Delta | Pulled in by | Shape |
+|---|---|---|
+| **Asset store** | Picture import (P3), Konva image render | `assets: Record<id, { mime, width, height, source }>` — `source` is an IndexedDB blob ref client-side or a server asset URL for imported docs; document JSON stays small |
+| **Picture frame binding** | Same | `Frame(type:'picture')` gains `assetId: string \| null` (null = the POC's gray placeholder) + `fit: 'fill' \| 'fit' \| 'stretch'` |
+| **Path object** | `.pub` polygons/freeform shapes (P2) | `{ type:'path', x, y, w, h, rotation, d: PathSeg[], fill, stroke }` — normalized segment array, not raw SVG strings |
+| **Per-run text** | `.pub` character formatting (P2), Text band v2 | `text.paragraphs: { props: ParaProps, runs: { text, font, color }[] }[]` — supersedes the per-frame flat model; layout module (§8.4) consumes both during migration |
+| **Text color** | Per-run model, import fidelity | `color` joins the run/font props (the v1 schema styles the frame, not the ink) |
+| **Threading (schema only)** | `.pub` linked text boxes — *conversion deferred, model ready* | `Frame(type:'text')` gains `storyId?: string`, `prevFrameId?/nextFrameId?: string`; the editor ignores them until the threading tranche (§6), but import preserves the links losslessly |
+| **Per-page size override** | `.pub` mixed page sizes — *flag-only at import* | `Page.sizeOverride?: { w, h }`; editor renders it, Page tab edits stay document-level until §6's mixed-sizes tranche |
+
+Everything else — inches, array z-order, masters, `rotation` — already carries forward from §3.4 unchanged.
+
+---
+
+## 10. `.pub` import & conversion
+
+The pipeline is the `PUB_TO_IDML_RESEARCH.md` architecture with one substitution: **the generator target is `LayoutDocument`, not IDML.** The research doc's front half (`libmspub` parse → intermediate layout model) is adopted as-is; the intermediate model becomes the **shared hub** that can emit *both* outputs — `LayoutDocument` for this editor, IDML for the interchange/migration deliverable — so the parse investment is made once.
+
+### 10.1 Where it runs: server-side, sandboxed [CRITICAL]
+
+`libmspub` is the security doc's highest-parser-risk engine — C++ over an undocumented OLE2/Escher binary. Import therefore runs **server-side only**, in the POC's existing container (add `libmspub-tools` to the image; `docker run` still serves everything), as an out-of-process job behind a Next.js route handler, inheriting the `SECURITY_CONSIDERATIONS.md` checklist:
+
+- **Content-sniff, never trust the extension**: OLE2/CFBF magic for `.pub` (`E8 AC 22 00` / `E8 AC 2C 00` in the `Contents` stream; `E7 AC 2C 00` for the rare v1 blob), CAB magic for `.puz`.
+- **Sandbox the parse subprocess**: no network, temp-dir jail, dropped privileges, CPU/memory/wall-time rlimits (kill and report on breach — a hang *is* a finding).
+- **Harden `.puz` (CAB) extraction**: path canonicalization + confinement, entry-count/size/ratio caps, reject symlinks and absolute paths; the inner `.pub` re-enters the same pipeline.
+- **Per-file size cap + AV scan hook on ingest** (the suite's ClamAV-or-commercial decision applies here; the hook exists from P1 even if the engine lands later).
+- Imported assets are re-encoded (image transcode = content-disarm), never served back as original bytes.
+
+### 10.2 Pipeline
+
+```
+.pub / .puz upload
+  ▼  content-sniff → size cap → AV hook → (.puz: hardened CAB unpack → inner .pub)
+pub2raw  (sandboxed subprocess — Option A per the research doc; the
+  ▼       native librevenge generator remains the later fidelity upgrade)
+Trace parser  →  Intermediate Layout Model
+  ▼               (pages, frames, shapes, images, runs, threading links —
+  ▼                the research doc's model, verbatim)
+LayoutDocument mapper                    IDML generator (sibling consumer,
+  • schema-v2 doc + extracted assets       out of scope here)
+  • font remap against the curated list
+  • fidelity tiering + import report
+  ▼
+{ doc, assets[], report }  →  editor opens the doc; report panel shows alongside
+```
+
+`pub2xhtml` runs as a **cross-check render** in the test harness only (visual diff source + image-extraction verification), not in the serving path.
+
+### 10.3 Callback → `LayoutDocument` mapping
+
+| `libmspub` callback | `LayoutDocument` target | Tier |
+|---|---|---|
+| `startPage` (w, h) | `Page`; first page sets `doc.size`, deviations → `Page.sizeOverride` | 1 / 2 |
+| `startTextObject` (bbox) | `Frame(type:'text')` at the bbox | 1 |
+| `openParagraph` / `openSpan` / `insertText` | `paragraphs[].runs[]` (schema v2); font remapped per §10.4 | 1 |
+| `insertLineBreak` / `insertTab` | Run breaks / tab chars in the run text | 1 |
+| `drawRectangle` / `drawEllipse` | `Frame(type:'rect' \| 'ellipse')` + fill/stroke from `setStyle` | 1 |
+| `drawPolygon` / `drawPolyline` / `drawPath` | `path` object (§9); P1 fallback: bounding-box rect + report note | 1 (P2) / 2 (P1) |
+| `drawGraphicObject` (bytes + MIME) | Asset (transcoded) + `Frame(type:'picture', assetId)` | 1 |
+| Linked text boxes | Separate frames carrying `storyId`/`prev`/`next` (§9); rendered **unthreaded** + report note until the threading tranche | 2 |
+| `setStyle` gradients / effects | Nearest flat fill + report note | 2 |
+| `openTable…` | **Flag-only**: placeholder frame at the table's bbox + report entry ("table not converted") until the tables tranche | 3 |
+| Layers | Flattened into z-order + report note (editor has no layers panel yet, §6) | 2 |
+| WordArt-class objects | Text frame with nearest style, or picture fallback if libmspub emits a raster | 2 |
+
+**Tiers:** **1** convert clean · **2** degrade with a report note · **3** flag-only (visible placeholder + report; nothing silently dropped). The tiering rule is the design doc's import-report requirement (§5.1) made mechanical.
+
+### 10.4 Import report & font remap
+
+The response's `report` is structured JSON rendered as a panel when the converted doc opens (and stored with the doc):
+
+`{ fidelity: { converted, degraded, flagged }, fonts: [{ source, mappedTo, reason }], notes: [{ objectId, pageId, tier, message }], overset: [frameIds] }`
+
+- **Fonts:** every `.pub`-referenced family maps into the curated list (§7.6) via a maintained remap table (metric-compatible choices first: Arial↔Helvetica-class, Times-class, etc.); unmapped families fall to the default with a named entry. No font embedding — remap-and-report, mirroring the Markzware behavior the research doc endorses.
+- **Overset:** after mapping, the §8.4 layout module measures every text frame with the *remapped* fonts; overflowing frames are listed in the report and badged on canvas — remapped metrics are the #1 cause of post-conversion overflow, so this check is not optional.
+- Report items deep-link: clicking a note selects the object and navigates to its page.
+
+### 10.5 Acceptance & testing
+
+- **Corpus:** real store `.pub` files (flyers, signage, newsletters, the template library) — the suite plan's standing real-file corpus, plus adversarial samples (malformed OLE2, fuzzed Escher records, zip/CAB attack files) exercising §10.1's controls.
+- **Golden traces:** unit-test the trace parser and the mapper against checked-in `pub2raw` outputs — deterministic, no `libmspub` needed in the unit lane.
+- **Render diff:** converted doc rendered via the §8 stack vs. the `pub2xhtml` reference render; element-level fidelity scored against the design doc's **≥90%** target (§2.3), with the Markzware supported-elements list as the conformance checklist (page size · positioning · colors · fonts+remap · text attributes · flow · images; tables/threading/wrap tracked as tier-2/3 until their tranches).
+- **E2E:** upload a corpus file at the homepage's `.pub` callout (which finally goes live, replacing the inert placeholder noted in §1.2) → doc opens in the editor → report panel lists expected notes → edit + undo + persist hold.
+
+---
+
+## 11. Extended build order — K- and P-tranches
+
+Both tranches follow the L-steps' contract: one commit per step, demoable after each, the L1–L9 tests staying green throughout. **K before P** — import lands on the render layer that can actually carry a converted newsletter.
+
+| Step | Lands | Newly available |
+|---|---|---|
+| K1 | Konva stage + furniture/content layers, parity render | The document draws in canvas; every L-step e2e passes unchanged |
+| K2 | Interaction migration: draw/select/drag/resize/marquee/snap on Konva events | Full editing parity; DOM canvas components deleted |
+| K3 | Text-layout module + Konva text render + edit overlay swap | Text parity incl. overflow badge; schema-v2 migration ships |
+| K4 | Perf pass + `toDataURL` thumbnails; §8.1 spike numbers recorded on store-profile hardware | The engine decision is *evidenced*, closing §7.2 |
+| P1 | Sandboxed import service: sniff → `pub2raw` → trace parser → geometry-only mapping | A `.pub` opens as correctly-sized, correctly-placed frames (the research doc's Milestone-1 bar) |
+| P2 | Text runs + styles + font remap; paths | Real content: text in the right boxes, right sizes; polygons faithful |
+| P3 | Image extraction → assets + picture frames | Image-bearing publications convert; picture rendering exits placeholder-only |
+| P4 | Import report UI + overset check + `.puz` handling | The associate sees exactly what to review — the design doc's §5.1 report requirement |
+| P5 | Corpus + fidelity harness + adversarial security tests wired to CI | The ≥90% fidelity metric is measured, not asserted; §10.1 controls proven |
+
+*K-tranche exit gate:* L1–L9 e2e green on Konva; spike criteria met and recorded. *P-tranche exit gate:* corpus fidelity ≥90% element-level on tier-1 categories; every degradation reported, nothing silent; sandbox controls pass the adversarial set.
+
+---
+
+*This plan grows the POC's second product surface onto the shell the tracker build established — same stack, same fidelity contract, same step-per-commit rhythm — and now carries it to a functional Publisher replacement: a Konva-rendered editor proven on the store hardware, fed by a sandboxed `libmspub` import pipeline that opens real `.pub` files with an honest fidelity report, keeping the suite plan's sequencing promise well ahead of the October 2026 Publisher retirement.*
