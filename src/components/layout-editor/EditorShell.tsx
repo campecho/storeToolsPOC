@@ -6,6 +6,9 @@ import { useLayoutStore } from "@/store";
 import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
+import { InsertBand } from "./ribbon/InsertBand";
+import { LayoutBand } from "./ribbon/LayoutBand";
+import { TextBand } from "./ribbon/TextBand";
 import { ToolPalette } from "./palette/ToolPalette";
 import { PagesPane } from "./pages/PagesPane";
 import { CanvasViewport } from "./canvas/CanvasViewport";
@@ -50,11 +53,15 @@ export function EditorShell() {
       <div className="hidden min-h-0 flex-1 flex-col lg:flex" data-testid="layout-editor">
         <TitleBar />
         <RibbonTabs />
-        {/* Command band (wire 2b) — content swaps with the active ribbon tab.
-            Insert / Layout / Text band contents land in L2; until then those
-            tabs swap to an empty band. */}
-        <div className="flex h-[92px] shrink-0 items-stretch overflow-hidden border-b border-[#e6e6e6] bg-[#f7f7f7]">
+        {/* Command band (wire 2b) — content swaps with the active ribbon tab. */}
+        <div
+          data-testid={`band-${ribbon}`}
+          className="flex h-[92px] shrink-0 items-stretch overflow-hidden border-b border-[#e6e6e6] bg-[#f7f7f7]"
+        >
           {ribbon === "home" && <HomeBand />}
+          {ribbon === "insert" && <InsertBand />}
+          {ribbon === "layout" && <LayoutBand />}
+          {ribbon === "text" && <TextBand />}
         </div>
         <div className="flex min-h-0 flex-1">
           <ToolPalette />

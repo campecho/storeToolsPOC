@@ -12,11 +12,24 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
  * becomes an editable, unit-aware numeric input when the document model
  * lands (L3).
  */
-export function Field({ label, value }: { label: string; value: string }) {
+export function Field({
+  label,
+  value,
+  muted,
+}: {
+  label: string;
+  value: string;
+  /** Disabled look (Properties · Transform before anything is selected). */
+  muted?: boolean;
+}) {
   return (
     <div className="flex-1">
       <div className="mb-[3px] text-[10px] text-[#999]">{label}</div>
-      <div className="flex h-[30px] items-center rounded-[5px] border border-[#d6d6d6] bg-white px-[9px] text-[12px] text-[#444]">
+      <div
+        className={`flex h-[30px] items-center rounded-[5px] border bg-white px-[9px] text-[12px] ${
+          muted ? "border-[#dcdcdc] text-[#999]" : "border-[#d6d6d6] text-[#444]"
+        }`}
+      >
         {value}
       </div>
     </div>

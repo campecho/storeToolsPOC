@@ -108,6 +108,14 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   status bar. Desktop-only: below `lg` an honest "needs a bigger screen" gate shows instead.
   Build plan: [docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md).
 
+- **Layout editor — step L2, shell completion: every band, tab & pane:** the remaining
+  at-rest chrome — **Insert / Layout / Text** command bands (page & object tiles, page-size /
+  orientation / guides & bleed / columns controls, character & text-flow pills), the inspector's
+  **Properties** (no-selection empty state + disabled Transform), **Text**, and **Align**
+  bodies, and the pages pane's **Master pages** view (A · applied, B · blank, + New master).
+  Every ribbon tab, inspector tab, and the Pages/Masters toggle now matches the offline
+  prototype click-for-click; the controls themselves go live in L3–L7.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts
@@ -121,7 +129,7 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 ## Start here (docs)
 
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. Next up.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L2 shipped.
 
 ## Reference documents
 

@@ -2,9 +2,9 @@ import { useLayoutStore } from "@/store";
 
 /**
  * Pages navigator (wire region 4): PAGES header + Pages / Master pages
- * segmented control. L1 ships the Pages view (static single-page thumb +
- * Add-page tile); the Master-pages list body lands in L2, live page
- * management in L6.
+ * segmented control over the matching list. Both views are static in L2
+ * (single-page thumb + Add-page tile; masters A · applied and B · blank +
+ * New-master affordance); live page/master management lands in L6.
  */
 export function PagesPane() {
   const pages = useLayoutStore((s) => s.pages);
@@ -54,7 +54,25 @@ export function PagesPane() {
             <div className="text-[10px] text-[#a0a0a0]">Add page</div>
           </div>
         )}
-        {/* Master pages list (A · applied, B · blank, + New master) lands in L2. */}
+        {pages === "masters" && (
+          <div className="flex flex-col items-center gap-[14px]">
+            <div className="w-[88px]">
+              {/* A — applied to page 1 (mini master proxy: dashed frame + footer bar) */}
+              <div className="relative h-[114px] w-[88px] rounded-[3px] border-[1.5px] border-brand bg-white shadow-[0_1px_3px_rgba(0,0,0,.14)]">
+                <div className="absolute inset-2 border border-dashed border-[#cdcdcd]" />
+                <div className="absolute bottom-[6px] left-2 right-2 h-[6px] bg-[#eee]" />
+              </div>
+              <div className="mt-1 text-center text-[11px] text-[#666]">A · applied</div>
+            </div>
+            <div className="w-[88px]">
+              <div className="relative h-[114px] w-[88px] rounded-[3px] border border-[#dcdcdc] bg-white">
+                <div className="absolute inset-2 border border-dashed border-[#dcdcdc]" />
+              </div>
+              <div className="mt-1 text-center text-[11px] text-[#999]">B · blank</div>
+            </div>
+            <div className="cursor-pointer text-[10px] text-[#a0a0a0]">+ New master</div>
+          </div>
+        )}
       </div>
     </div>
   );
