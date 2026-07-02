@@ -348,6 +348,40 @@ test.describe("Persistence", () => {
   });
 });
 
+test.describe("Extension hydration guard", () => {
+  test("scrubs password-manager attributes so extensions don't break hydration", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") errors.push(m.text());
+    });
+
+    // Simulate a password manager (Dashlane) stamping data-* attributes onto
+    // form controls the moment they appear — i.e. before React hydrates, the
+    // timing that triggers the mismatch.
+    await page.addInitScript(() => {
+      const stamp = () =>
+        document.querySelectorAll("input,button").forEach((el, i) => {
+          el.setAttribute("data-dashlane-rid", "rid" + i);
+          el.setAttribute("data-dashlane-label", "true");
+        });
+      new MutationObserver(stamp).observe(document.documentElement, { childList: true, subtree: true });
+    });
+
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.waitForTimeout(1200);
+
+    // app hydrated and interactive
+    await expect(page.getByText("Drop a customer file to start")).toBeVisible();
+    await page.getByTestId("give-feedback").click();
+    await expect(page.getByText("One sentence from you — we capture the rest.")).toBeVisible();
+
+    // the guard removed the injected attributes while it was active…
+    expect(await page.locator("[data-dashlane-rid], [data-dashlane-label]").count()).toBe(0);
+    // …and no hydration mismatch was logged
+    expect(errors.filter((e) => /hydration|didn't match|data-dashlane/i.test(e))).toEqual([]);
+  });
+});
+
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
     await page.goto("/");

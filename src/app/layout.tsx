@@ -5,6 +5,7 @@ import { NotificationsDropdown } from "@/components/overlays/NotificationsDropdo
 import { CelebrateModal } from "@/components/overlays/CelebrateModal";
 import { StoreHydrator } from "@/components/chrome/StoreHydrator";
 import { EscapeCloser } from "@/components/chrome/EscapeCloser";
+import { HydrationGuard } from "@/components/chrome/HydrationGuard";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,8 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       {/* Full-viewport desktop app (the wires' fixed 1440×900 frame is wireframe chrome).
-          h-screen + internal scrolling so the board's rail and list scroll independently. */}
-      <body className="flex h-screen min-w-[1200px] flex-col">
+          h-screen + internal scrolling so the board's rail and list scroll independently.
+          suppressHydrationWarning: extensions (Grammarly et al.) stamp attributes on <body>. */}
+      <body suppressHydrationWarning className="flex h-screen min-w-[1200px] flex-col">
+        <HydrationGuard />
         <StoreHydrator />
         <EscapeCloser />
         <AppHeader />
