@@ -1,6 +1,8 @@
 "use client";
 
+import { Suspense, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, PanelsTopLeft } from "lucide-react";
 import { useLayoutStore } from "@/store";
 import { TitleBar } from "./TitleBar";
@@ -16,6 +18,38 @@ import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
 
 /**
+ * Home deep links (plan L3): `/layout?preset=…` starts a fresh document at
+ * that size; `/layout?custom=1` starts fresh with the Page tab's width field
+ * focused. Rehydration runs first so the link wins over the saved document,
+ * then the query is cleaned off the URL.
+ */
+function DeepLinkInit() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const applied = useRef(false);
+
+  useEffect(() => {
+    if (applied.current) return;
+    const preset = params.get("preset");
+    const custom = params.get("custom");
+    if (!preset && !custom) return;
+    applied.current = true;
+    void Promise.resolve(useLayoutStore.persist.rehydrate()).then(() => {
+      const s = useLayoutStore.getState();
+      s.resetDoc();
+      if (preset) s.applyPreset(preset);
+      if (custom) {
+        s.setInsp("page");
+        s.setFocusPageSize(true);
+      }
+      router.replace("/layout");
+    });
+  }, [params, router]);
+
+  return null;
+}
+
+/**
  * The layout-editor frame (handoff regions 1–8): title bar, ribbon, work-area
  * row (tool palette · pages pane · canvas · inspector), status bar. Fills the
  * viewport under the persistent suite header; every fixed region is shrink-0
@@ -26,6 +60,11 @@ export function EditorShell() {
 
   return (
     <>
+      {/* useSearchParams requires a Suspense boundary under a static route */}
+      <Suspense fallback={null}>
+        <DeepLinkInit />
+      </Suspense>
+
       {/* Desktop-minimum gate (plan §2, deviation 2): a precision canvas is a
           station tool — below lg we gate honestly instead of reflowing. */}
       <div className="flex flex-1 items-center justify-center p-6 lg:hidden">

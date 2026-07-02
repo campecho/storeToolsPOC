@@ -95,3 +95,5 @@ export function statusMeta(type: ItemType, status: ItemStatus): { label: string;
   if (status === "done") return { label: type === "bug" ? "Fixed" : "Shipped", dot: "#2e8b3d" };
   return { label: type === "bug" ? "Closed" : "Declined", dot: "#bcbcbc" };
 }
+
+export * from "./layout";

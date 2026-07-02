@@ -1,14 +1,22 @@
+"use client";
+
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { useLayoutStore } from "@/store";
+import { formatIn, sizeLabel } from "@/lib/layout/presets";
 
 /**
  * Editor title bar (wire region 1). Deviation #1 (plan §2): the persistent
  * suite header above already carries the Staples badge, store label, and the
  * global actions — so this bar swaps the wire's duplicated chrome and window
  * controls for a back link, keeping the doc name, size hint, experience
- * switch, and help glyph.
+ * switch, and help glyph. Name and hint are live against the document (L3).
  */
 export function TitleBar() {
+  const name = useLayoutStore((s) => s.doc.name);
+  const size = useLayoutStore((s) => s.doc.size);
+  const setName = useLayoutStore((s) => s.setName);
+
   return (
     <div className="flex h-10 shrink-0 items-center gap-3 border-b border-[#e0e0e0] bg-[#f0f0f0] px-[14px]">
       <Link
@@ -21,10 +29,17 @@ export function TitleBar() {
       </Link>
       <div className="h-5 w-px shrink-0 bg-[#dcdcdc]" />
 
-      {/* Doc name + size hint are static until the document model lands (L3). */}
       <div className="flex min-w-0 items-center gap-[9px]">
-        <span className="truncate text-[13px] font-semibold text-[#333]">Untitled publication</span>
-        <span className="shrink-0 text-[12px] text-[#9a9a9a]">· Letter · 8.5 × 11 in</span>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          data-testid="doc-name"
+          aria-label="Publication name"
+          className="w-[190px] truncate rounded-[3px] bg-transparent px-1 text-[13px] font-semibold text-[#333] outline-none hover:bg-[#e9e9e9] focus:bg-white focus:ring-1 focus:ring-[#d0d0d0]"
+        />
+        <span className="shrink-0 text-[12px] text-[#9a9a9a]" data-testid="size-hint">
+          · {sizeLabel(size.w, size.h)} · {formatIn(size.w)} × {formatIn(size.h)} in
+        </span>
       </div>
 
       <div className="flex-1" />

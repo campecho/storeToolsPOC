@@ -116,6 +116,18 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   Every ribbon tab, inspector tab, and the Pages/Masters toggle now matches the offline
   prototype click-for-click; the controls themselves go live in L3–L7.
 
+- **Layout editor — step L3, document model & the true-scale page:** the editor becomes a
+  real tool — a Zod-validated `LayoutDocument` (inches-canonical) behind a persisted store
+  (`stp-layout-v1`, schema-validated on load, **Reset** in the status bar). The page renders
+  **true-scale** (`in × 96 × zoom`) with fit-zoom on mount; the status-bar **zoom**
+  slider/±/%, the **Zoom** tool (Alt-click reverses), the **Move/pan** tool, and
+  Ctrl/Cmd+scroll are live; rulers are real — inch-numbered, density-adaptive, tracking zoom
+  and pan from the page's origin. The **Page tab and Layout band edit the document**: presets
+  (Letter/Legal/Ledger/posters), custom W/H up to large format, orientation, bleed, margin,
+  columns + the Guides toggle (gutter guides derive from the model). The title-bar name is
+  editable and the size hint/caption/legend track the file. Homepage **size tiles deep-link**
+  (`/layout?preset=…`, `?custom=1` lands in the width field) into fresh documents.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts

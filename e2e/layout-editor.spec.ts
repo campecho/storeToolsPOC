@@ -12,18 +12,16 @@ test.describe("Layout editor shell (L1)", () => {
     await expect(page).toHaveURL(/\/layout$/);
 
     // editor title bar + suite header coexist ("one shared surface")
-    await expect(page.getByText("Untitled publication", { exact: true })).toBeVisible();
-    await expect(page.getByText("· Letter · 8.5 × 11 in", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
     await expect(page.getByTestId("give-feedback")).toBeVisible();
 
     // experience switch shows Standard active (Simple/Pro disabled until L8)
     await expect(page.getByTestId("experience-switch")).toContainText("Standard");
 
-    // page proxy + pasteboard caption + guide legend
+    // true-scale page + pasteboard caption (zoom = computed fit) + guide legend
     await expect(page.getByTestId("publication-page")).toBeVisible();
-    await expect(
-      page.getByText("Untitled publication · Letter 8.5 × 11 in · 100%"),
-    ).toBeVisible();
+    await expect(page.getByText(/Untitled publication · Letter 8\.5 × 11 in · \d+%/)).toBeVisible();
     await expect(page.getByText("Bleed 0.125 in")).toBeVisible();
     await expect(page.getByText("Margin 0.5 in")).toBeVisible();
 
@@ -81,7 +79,8 @@ test.describe("Layout editor shell (L2)", () => {
 
     await page.getByTestId("ribbon-layout").click();
     const layout = page.getByTestId("band-layout");
-    await expect(layout.getByText("Letter · 8.5 × 11 in")).toBeVisible();
+    // .first(): the pill face — the text also appears in the picker's option list
+    await expect(layout.getByText("Letter · 8.5 × 11 in").first()).toBeVisible();
     await expect(layout.getByText("Bleed 0.125")).toBeVisible();
     await expect(layout.getByText("Guides", { exact: true })).toBeVisible();
 
@@ -130,5 +129,147 @@ test.describe("Layout editor shell (L2)", () => {
     await expect(page.getByTestId("pane-pages")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("Add page")).toBeVisible();
     await expect(page.getByText("A · applied")).toBeHidden();
+  });
+});
+
+/**
+ * Document model & the true-scale page (plan step L3): page-setup edits
+ * reflect live everywhere, zoom/pan are real, the document persists under
+ * stp-layout-v1, and the homepage size tiles deep-link into fresh documents.
+ */
+test.describe("Document model & true-scale page (L3)", () => {
+  test("page setup edits reflect live in page, hint, and caption", async ({ page }) => {
+    await page.goto("/layout");
+
+    // preset → Ledger (inspector Page tab is the default)
+    await page.getByTestId("preset-select").selectOption("ledger");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 11 × 17 in");
+    await expect(page.getByText(/· Ledger 11 × 17 in · \d+%/)).toBeVisible();
+
+    // the page is true-scale: aspect ratio follows the model
+    await expect
+      .poll(async () => {
+        const box = await page.getByTestId("publication-page").boundingBox();
+        return box ? box.height / box.width : 0;
+      })
+      .toBeCloseTo(17 / 11, 1);
+
+    // orientation swaps the effective dimensions
+    await page.getByTestId("orient-landscape").click();
+    await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 17 × 11 in");
+
+    // custom W/H — large-format sizes are legal (20 × 30 matches no preset)
+    await page.getByTestId("page-w").fill("20");
+    await page.getByTestId("page-w").press("Enter");
+    await page.getByTestId("page-h").fill("30");
+    await page.getByTestId("page-h").press("Enter");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Custom · 20 × 30 in");
+  });
+
+  test("bleed & margin edits reflect in the legend, from both surfaces", async ({ page }) => {
+    await page.goto("/layout");
+
+    await page.getByTestId("page-bleed").fill("0.25");
+    await page.getByTestId("page-bleed").press("Enter");
+    await expect(page.getByText("Bleed 0.25 in")).toBeVisible();
+
+    await page.getByTestId("page-margin").fill("1");
+    await page.getByTestId("page-margin").press("Enter");
+    await expect(page.getByText("Margin 1 in")).toBeVisible();
+
+    // the Layout band edits the same model
+    await page.getByTestId("ribbon-layout").click();
+    await page.getByTestId("band-bleed").selectOption("0.125");
+    await expect(page.getByText("Bleed 0.125 in")).toBeVisible();
+    await page.getByTestId("band-margins").selectOption("0.5");
+    await expect(page.getByText("Margin 0.5 in")).toBeVisible();
+  });
+
+  test("columns render gutter guides; the Guides toggle governs them", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("ribbon-layout").click();
+
+    await page.getByTestId("band-columns").selectOption("3");
+    await expect(page.getByTestId("column-guide")).toHaveCount(4); // 2 gutters × 2 edges
+    await expect(page.getByTestId("center-guide-v")).toBeHidden(); // yields to gutters
+
+    await page.getByTestId("band-guides").click();
+    await expect(page.getByTestId("column-guide")).toHaveCount(0);
+    await expect(page.getByTestId("center-guide-h")).toBeHidden();
+
+    await page.getByTestId("band-guides").click();
+    await expect(page.getByTestId("column-guide")).toHaveCount(4);
+  });
+
+  test("zoom controls drive the true-scale page", async ({ page }) => {
+    await page.goto("/layout");
+
+    // slider → exactly 100%: Letter renders at 8.5in × 96dpi = 816px
+    await page.getByTestId("zoom-slider").evaluate((el, value) => {
+      const input = el as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, "100");
+    await expect(page.getByTestId("zoom-percent")).toHaveText("100%");
+    const box = await page.getByTestId("publication-page").boundingBox();
+    expect(Math.abs((box?.width ?? 0) - 816)).toBeLessThan(2);
+
+    // ± step through the zoom table
+    await page.getByTestId("zoom-in").click();
+    await expect(page.getByTestId("zoom-percent")).toHaveText("125%");
+    await page.getByTestId("zoom-out").click();
+    await expect(page.getByTestId("zoom-percent")).toHaveText("100%");
+
+    // Zoom tool: click in, Alt-click out
+    await page.getByTestId("tool-zoom").click();
+    await page.getByTestId("pasteboard").click({ position: { x: 40, y: 40 } });
+    await expect(page.getByTestId("zoom-percent")).toHaveText("125%");
+    await page.getByTestId("pasteboard").click({ position: { x: 40, y: 40 }, modifiers: ["Alt"] });
+    await expect(page.getByTestId("zoom-percent")).toHaveText("100%");
+  });
+
+  test("document persists across reload; Reset restores pristine", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("doc-name").fill("Spring sale flyer");
+    await page.getByTestId("preset-select").selectOption("legal");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Legal · 8.5 × 14 in");
+
+    await page.reload();
+    await expect(page.getByTestId("doc-name")).toHaveValue("Spring sale flyer");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Legal · 8.5 × 14 in");
+
+    await page.getByTestId("editor-reset").click();
+    await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
+
+    await page.reload();
+    await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
+  });
+
+  test("homepage size tiles deep-link into fresh documents", async ({ page }) => {
+    // a saved document must not survive a deep link — the link wins
+    await page.goto("/layout");
+    await page.getByTestId("doc-name").fill("Old work");
+    await page.getByTestId("editor-back").click();
+
+    await page.getByTestId("size-tile-ledger").click();
+    await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 11 × 17 in");
+    await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
+    await expect(page).toHaveURL(/\/layout$/); // query cleaned off
+
+    // custom tile lands in the width field, ready to type
+    await page.getByTestId("editor-back").click();
+    await page.getByTestId("size-tile-custom").click();
+    await expect(page.getByTestId("page-w")).toBeFocused();
+    await expect(page).toHaveURL(/\/layout$/);
+
+    // direct URL form works too
+    await page.goto("/layout?preset=legal");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Legal · 8.5 × 14 in");
   });
 });
