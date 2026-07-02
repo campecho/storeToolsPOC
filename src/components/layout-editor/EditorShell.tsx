@@ -1,16 +1,54 @@
 "use client";
 
+import { Suspense, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, PanelsTopLeft } from "lucide-react";
 import { useLayoutStore } from "@/store";
+import { useEditorKeyboard } from "./useEditorKeyboard";
 import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
+import { InsertBand } from "./ribbon/InsertBand";
+import { LayoutBand } from "./ribbon/LayoutBand";
+import { TextBand } from "./ribbon/TextBand";
 import { ToolPalette } from "./palette/ToolPalette";
 import { PagesPane } from "./pages/PagesPane";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
+
+/**
+ * Home deep links (plan L3): `/layout?preset=…` starts a fresh document at
+ * that size; `/layout?custom=1` starts fresh with the Page tab's width field
+ * focused. Rehydration runs first so the link wins over the saved document,
+ * then the query is cleaned off the URL.
+ */
+function DeepLinkInit() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const applied = useRef(false);
+
+  useEffect(() => {
+    if (applied.current) return;
+    const preset = params.get("preset");
+    const custom = params.get("custom");
+    if (!preset && !custom) return;
+    applied.current = true;
+    void Promise.resolve(useLayoutStore.persist.rehydrate()).then(() => {
+      const s = useLayoutStore.getState();
+      s.resetDoc();
+      if (preset) s.applyPreset(preset);
+      if (custom) {
+        s.setInsp("page");
+        s.setFocusPageSize(true);
+      }
+      router.replace("/layout");
+    });
+  }, [params, router]);
+
+  return null;
+}
 
 /**
  * The layout-editor frame (handoff regions 1–8): title bar, ribbon, work-area
@@ -20,9 +58,15 @@ import { StatusBar } from "./StatusBar";
  */
 export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
+  useEditorKeyboard();
 
   return (
     <>
+      {/* useSearchParams requires a Suspense boundary under a static route */}
+      <Suspense fallback={null}>
+        <DeepLinkInit />
+      </Suspense>
+
       {/* Desktop-minimum gate (plan §2, deviation 2): a precision canvas is a
           station tool — below lg we gate honestly instead of reflowing. */}
       <div className="flex flex-1 items-center justify-center p-6 lg:hidden">
@@ -50,11 +94,15 @@ export function EditorShell() {
       <div className="hidden min-h-0 flex-1 flex-col lg:flex" data-testid="layout-editor">
         <TitleBar />
         <RibbonTabs />
-        {/* Command band (wire 2b) — content swaps with the active ribbon tab.
-            Insert / Layout / Text band contents land in L2; until then those
-            tabs swap to an empty band. */}
-        <div className="flex h-[92px] shrink-0 items-stretch overflow-hidden border-b border-[#e6e6e6] bg-[#f7f7f7]">
+        {/* Command band (wire 2b) — content swaps with the active ribbon tab. */}
+        <div
+          data-testid={`band-${ribbon}`}
+          className="flex h-[92px] shrink-0 items-stretch overflow-hidden border-b border-[#e6e6e6] bg-[#f7f7f7]"
+        >
           {ribbon === "home" && <HomeBand />}
+          {ribbon === "insert" && <InsertBand />}
+          {ribbon === "layout" && <LayoutBand />}
+          {ribbon === "text" && <TextBand />}
         </div>
         <div className="flex min-h-0 flex-1">
           <ToolPalette />

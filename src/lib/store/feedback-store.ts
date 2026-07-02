@@ -1,7 +1,16 @@
 import { create } from "zustand";
+import { z } from "zod";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { FeedbackItem, ItemType, Release, AppNotification } from "@/schema";
+import {
+  AppNotificationSchema,
+  FeedbackItemSchema,
+  type FeedbackItem,
+  type ItemType,
+  type Release,
+  type AppNotification,
+} from "@/schema";
 import type { TypeFilter, StatusFilter, ScopeFilter } from "@/lib/board";
+import { getCurrentStation } from "@/lib/identity";
 import { seedItems, seedReleases, seedNotifications } from "@/data";
 
 /**
@@ -9,8 +18,6 @@ import { seedItems, seedReleases, seedNotifications } from "@/data";
  * Names are kept aligned with the prototype so the .dc.html source stays a usable
  * reference. The prototype's `view` state is replaced by Next.js routes; navigation
  * happens in components, the store only owns data + overlay/UI state.
- *
- * In-memory only for now — localStorage persistence + demo reset land in Step 7.
  */
 
 export type ReportStep = "choose" | "bug" | "feature" | "upvoted" | "confirm";
@@ -159,10 +166,18 @@ const noopStorage: Storage = {
   setItem: () => {},
 };
 
+/** The persisted slice (see `partialize` below) — validates what rehydrates. */
+const PersistedFeedbackSchema = z.object({
+  items: z.array(FeedbackItemSchema),
+  notifications: z.array(AppNotificationSchema),
+  impact: z.number(),
+  nextId: z.number(),
+});
+
 export const useFeedbackStore = create<FeedbackState>()(
   persist(
     (set, get) => ({
-      store: "#1284",
+      store: getCurrentStation().id,
       ...initialData(),
       ...initialUi,
 
@@ -339,13 +354,21 @@ export const useFeedbackStore = create<FeedbackState>()(
       resetDemo: () => set({ ...initialData(), ...initialUi }),
     }),
     {
+      // CONTRACT: the storage key + PersistedFeedbackSchema shape are the
+      // station's saved tracker state — a real backend persists this shape
+      // per store, keyed by station identity (src/lib/identity.ts).
       name: "stp-feedback-v1",
       // Bumped when the persisted item shape changes (e.g. shippedDaysAgo /
       // recentShipAcked) — mismatched stored state is discarded for the seed.
+      // PROD-TODO: production migrates old shapes instead of dropping them;
+      // the prototype may drop-and-reseed.
       version: 1,
       storage: createJSONStorage(() =>
         typeof window === "undefined" ? noopStorage : window.localStorage,
       ),
+      // PROD-TODO: a failed write (quota, private mode) only logs to the
+      // console — the UI keeps looking saved. Production needs a visible
+      // "changes aren't being saved" state.
       // SSR and the first client render use the seed; StoreHydrator rehydrates
       // from localStorage after mount so server and client markup match.
       skipHydration: true,
@@ -356,6 +379,14 @@ export const useFeedbackStore = create<FeedbackState>()(
         impact: s.impact,
         nextId: s.nextId,
       }),
+      // Validate what came out of storage — corrupt or foreign-shaped state
+      // falls back to the pristine seed instead of poisoning the tracker
+      // (same guard the layout store applies to its document).
+      merge: (persisted, current) => {
+        const parsed = PersistedFeedbackSchema.safeParse(persisted);
+        if (!parsed.success) return current;
+        return { ...current, ...parsed.data };
+      },
     },
   ),
 );

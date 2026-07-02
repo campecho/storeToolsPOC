@@ -45,6 +45,20 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 
 ## What's built so far
 
+Status at a glance (✅ done · 🟡 partial · ❌ stubbed / not started — details in the build log
+below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
+
+| Surface | Status |
+|---|---|
+| Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
+| Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap (L1–L7) | ✅ shipped |
+| Layout editor — experience levels, hardening (L8–L9) | ❌ next in plan |
+| Product/SKU catalog binding | ❌ inert affordance; schema field exists |
+| `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
+| Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
+| Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
+
 - **Step 0 — scaffold:** Next.js 15 (App Router) + React 19 + TypeScript strict, Tailwind v4
   design tokens from the wires, motion keyframes, Zustand store, Zod schemas, Vitest + Playwright.
   Persistent app header (Staples badge, search, store ID, **Give feedback**, notification bell
@@ -108,6 +122,78 @@ the tracker sub-bar on board/releases) restores the pristine seed.
   status bar. Desktop-only: below `lg` an honest "needs a bigger screen" gate shows instead.
   Build plan: [docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md).
 
+- **Layout editor — step L2, shell completion: every band, tab & pane:** the remaining
+  at-rest chrome — **Insert / Layout / Text** command bands (page & object tiles, page-size /
+  orientation / guides & bleed / columns controls, character & text-flow pills), the inspector's
+  **Properties** (no-selection empty state + disabled Transform), **Text**, and **Align**
+  bodies, and the pages pane's **Master pages** view (A · applied, B · blank, + New master).
+  Every ribbon tab, inspector tab, and the Pages/Masters toggle now matches the offline
+  prototype click-for-click; the controls themselves go live in L3–L7.
+
+- **Layout editor — step L3, document model & the true-scale page:** the editor becomes a
+  real tool — a Zod-validated `LayoutDocument` (inches-canonical) behind a persisted store
+  (`stp-layout-v1`, schema-validated on load, **Reset** in the status bar). The page renders
+  **true-scale** (`in × 96 × zoom`) with fit-zoom on mount; the status-bar **zoom**
+  slider/±/%, the **Zoom** tool (Alt-click reverses), the **Move/pan** tool, and
+  Ctrl/Cmd+scroll are live; rulers are real — inch-numbered, density-adaptive, tracking zoom
+  and pan from the page's origin. The **Page tab and Layout band edit the document**: presets
+  (Letter/Legal/Ledger/posters), custom W/H up to large format, orientation, bleed, margin,
+  columns + the Guides toggle (gutter guides derive from the model). The title-bar name is
+  editable and the size hint/caption/legend track the file. Homepage **size tiles deep-link**
+  (`/layout?preset=…`, `?custom=1` lands in the width field) into fresh documents.
+
+- **Layout editor — step L4, objects: draw, select, transform:** the first editing
+  capability — **Rect / Ellipse / Line / Picture drag-to-draw** (dashed preview, Picture as
+  the gray placeholder frame, tool auto-returns to Select), **click-select / drag-move /
+  8-handle resize** (Shift preserves aspect) with line endpoint handles, and the **Properties
+  tab live**: Transform X/Y/W/H round-trip plus Fill/Stroke rows (grayscale ramp + brand red
+  + none). Full keyboard: Delete, Cmd/Ctrl+D duplicate, arrow nudge 1/32 in (Shift ×10),
+  **Cmd/Ctrl+Z / Shift+Z undo/redo** (bounded per-gesture snapshots — one entry per completed
+  drag or input commit), Cmd/Ctrl+]/[ z-order, Esc deselect (yields to suite overlays). The
+  status bar tracks tool + selection ("Rectangle tool · drag to draw", "Select tool · 2
+  objects", "Table tool · coming later in the beta"), and the Insert band's Text box/Picture
+  tiles arm their tools. Drawn objects persist with the document.
+
+- **Layout editor — step L5, text frames & typography:** the novice promo-sign use case works
+  end-to-end. The **Text tool draws a frame that opens ready to type** (Publisher behavior);
+  **double-click re-edits** via a contentEditable overlay with identical metrics at the
+  current zoom — each session commits as **one undo step**, and Cmd/Ctrl+B/I/U toggle real
+  document props while editing. The **Home band Font/Paragraph/Styles**, the **Text band**,
+  and the **Text inspector tab** go live against the text target (editing frame or selected
+  text frame; disabled with the wire's at-rest faces otherwise): curated family list (Motiva
+  Sans leading with system fallback until licensing, per `public/fonts/README`), point sizes,
+  B/I/U, L/C/R/J alignment, line spacing, and the two minimal style bundles — **Body · Normal
+  / Heading** ("+ New" stays static). Text renders true-scale (pt × 96/72 × zoom), clips like
+  a print frame, and raises the **red overflow badge** at the bottom edge when content
+  exceeds it. Empty frames keep a faint dashed affordance so they stay findable.
+
+- **Layout editor — step L6, multi-page & masters:** publications grow past one page.
+  **Add page** (pages-pane tile + Insert band) inserts after the active page, inheriting its
+  master; the pane's thumbnails are **live mini-renders** of each page's model (the same
+  ObjectNode tree, CSS-scaled — they can't drift from the canvas), with the red active border,
+  click-to-switch, and a hover ✕ (last page guarded); the status bar's **◀ Page N of M ▶ nav
+  is live**. **Master pages:** each page binds a master (`A` seeded applied, `B` blank);
+  master objects render **beneath page objects, non-selectable** from the page. Click a
+  master in the Masters view to **edit it on the canvas** — a brand banner ("Editing master A
+  — changes apply to every page that uses it" + Done) marks the mode, every L4/L5 tool works
+  on the master surface, and edits **propagate to every applied page**. "Apply to this page"
+  rebinds per page; **+ New master** creates blank C/D/… and opens it. Page/master ops are
+  undoable with the session pointers resolved across undo (e.g. undoing Add page steps back
+  to the neighbor); multi-page files persist and rehydrate onto page 1.
+
+- **Layout editor — step L7, multi-select, align & snapping:** measurement-driven precision
+  layout. **Shift-click** toggles selection membership, an empty-canvas drag **rubber-bands a
+  marquee**, and grabbing any member **drags the group** (a dragless click collapses back to
+  the one object); multi-selections outline every member, with resize handles staying
+  single-object. The **Align inspector tab goes live**: six aligns and Distribute H/V
+  (equal-gap, ends anchored) against a "Relative to" choice of Page or Selection, with honest
+  disabled states (selection-relative needs 2, distribute needs 3) — each action is one undo
+  step. **Snapping** engages during move/resize/draw/endpoint drags: page margins, page
+  centers, column guides (only while the Guides toggle is on), and other objects'
+  edges/centers, within a 6px screen radius at any zoom; the engaged targets render as
+  brand-red **smart guides** that clear on release, and snapped geometry lands exactly (the
+  e2e proves edge-to-edge equality numerically). Group moves snap as one union box.
+
 ## Where things live
 
 - `src/app/` — routes: `/` (home), `/feedback/board`, `/feedback/releases`; root layout hosts
@@ -120,8 +206,9 @@ the tracker sub-bar on board/releases) restores the pristine seed.
 
 ## Start here (docs)
 
+- **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. Next up.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L7 shipped.
 
 ## Reference documents
 

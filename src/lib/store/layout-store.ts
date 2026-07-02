@@ -1,13 +1,44 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import {
+  LayoutDocumentSchema,
+  type LayoutDocument,
+  type LayoutObject,
+  type MasterPage,
+  type Orientation,
+  type Stroke,
+} from "@/schema";
+import {
+  clampPageDim,
+  clampZoom,
+  zoomInStep,
+  zoomOutStep,
+} from "@/lib/layout/geometry";
+import { getPreset } from "@/lib/layout/presets";
+import { DUPLICATE_OFFSET_IN, MIN_OBJECT_IN, translated } from "@/lib/layout/objects";
+import {
+  alignObjects,
+  distributeObjects,
+  unionBBox,
+  type AlignKind,
+  type AlignRelativeTo,
+  type DistributeAxis,
+} from "@/lib/layout/align";
 
 /**
- * Layout-editor UI state, ported from the handoff prototype's Component class
- * (docs/handoff/layout-editor/Layout Editor.dc.html). State names are kept
- * aligned with the prototype — `ribbon` / `tool` / `insp` / `pages` — so the
- * .dc.html source stays a usable reference (plan §3.3).
+ * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
+ * — `ribbon` / `tool` / `insp` / `pages` — so the handoff's .dc.html source
+ * stays a usable reference.
  *
- * L1 scope: the four UI toggles only. The document model, selection, viewport,
- * history, and persistence (`stp-layout-v1`) land in step L3.
+ * Slices: document (persisted under `stp-layout-v1`, beside the tracker's
+ * `stp-feedback-v1`), experience level (persisted), viewport zoom/pan/guides
+ * (session), selection (session), and bounded per-gesture undo history
+ * (session, cap 50 — snapshots push on completed gestures and input commits,
+ * never per pointer-move).
+ *
+ * Editing surface (plan L6): object actions target the master being edited
+ * when `masterEditingId` is set, else the active page — one code path for
+ * both, so every L4/L5 gesture works inside a master unchanged.
  */
 
 export type RibbonTab = "home" | "insert" | "layout" | "text";
@@ -23,6 +54,7 @@ export type EditorTool =
   | "move";
 export type InspectorTab = "props" | "text" | "align" | "page";
 export type PagesPaneView = "pages" | "masters";
+export type ExperienceLevel = "simple" | "standard" | "pro";
 
 /** Status-bar readout per tool — the handoff asks the label to track the active tool. */
 export const TOOL_LABELS: Record<EditorTool, string> = {
@@ -37,27 +69,752 @@ export const TOOL_LABELS: Record<EditorTool, string> = {
   move: "Move tool",
 };
 
+/** Geometry-only edit to one object — frame x/y/w/h or line endpoints. */
+export type TransformPatch = {
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+};
+
+export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
+
+/** Flattened text edit — font fields, alignment, and line spacing (plan L5). */
+export type TextPropsPatch = {
+  family?: string;
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: "left" | "center" | "right" | "justify";
+  lineSpacing?: number;
+};
+
+// ASSUMPTION: 50 undo steps matches desktop-publishing norms — confirm with
+// associates once real documents exist.
+const HISTORY_CAP = 50;
+
+/** Spread into a set() patch: push a snapshot, clear the redo stack. */
+function pushed(s: Pick<LayoutEditorState, "past">, snapshot: LayoutDocument) {
+  return { past: [...s.past, snapshot].slice(-HISTORY_CAP), future: [] as LayoutDocument[] };
+}
+
+type EditSurface = { doc: LayoutDocument; activePageId: string; masterEditingId: string | null };
+
+/** Objects on the editing surface — the master being edited, else the active page (L6). */
+export function surfaceObjects(s: EditSurface): LayoutObject[] {
+  if (s.masterEditingId) {
+    return s.doc.masters.find((m) => m.id === s.masterEditingId)?.objects ?? [];
+  }
+  return s.doc.pages.find((p) => p.id === s.activePageId)?.objects ?? [];
+}
+
+function mapSurfaceObjects(
+  s: EditSurface,
+  fn: (objects: LayoutObject[]) => LayoutObject[],
+): LayoutDocument {
+  const { doc } = s;
+  if (s.masterEditingId) {
+    return {
+      ...doc,
+      masters: doc.masters.map((m) =>
+        m.id === s.masterEditingId ? { ...m, objects: fn(m.objects) } : m,
+      ),
+    };
+  }
+  return {
+    ...doc,
+    pages: doc.pages.map((p) =>
+      p.id === s.activePageId ? { ...p, objects: fn(p.objects) } : p,
+    ),
+  };
+}
+
+/** Selection filtered to objects that still exist (after undo/redo). */
+function pruneSelection(ids: string[], target: EditSurface): string[] {
+  const alive = new Set(surfaceObjects(target).map((o) => o.id));
+  return ids.filter((id) => alive.has(id));
+}
+
+/**
+ * Undo/redo can restore a document without the page or master the session
+ * points at (e.g. undoing an Add page). A vanished page falls back to the
+ * same list position; a vanished master ends master editing.
+ */
+function resolveSurface(
+  s: Pick<LayoutEditorState, "doc" | "activePageId" | "masterEditingId">,
+  next: LayoutDocument,
+): Pick<LayoutEditorState, "activePageId" | "masterEditingId"> {
+  let activePageId = s.activePageId;
+  if (!next.pages.some((p) => p.id === activePageId)) {
+    const wasAt = s.doc.pages.findIndex((p) => p.id === s.activePageId);
+    activePageId = next.pages[Math.min(Math.max(wasAt, 0), next.pages.length - 1)].id;
+  }
+  const masterEditingId =
+    s.masterEditingId && next.masters.some((m) => m.id === s.masterEditingId)
+      ? s.masterEditingId
+      : null;
+  return { activePageId, masterEditingId };
+}
+
+function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
+  if (o.type === "line") {
+    return {
+      ...o,
+      x1: patch.x1 ?? o.x1,
+      y1: patch.y1 ?? o.y1,
+      x2: patch.x2 ?? o.x2,
+      y2: patch.y2 ?? o.y2,
+    };
+  }
+  return {
+    ...o,
+    x: patch.x ?? o.x,
+    y: patch.y ?? o.y,
+    w: Math.max(MIN_OBJECT_IN, patch.w ?? o.w),
+    h: Math.max(MIN_OBJECT_IN, patch.h ?? o.h),
+  };
+}
+
+function applyTextProps(o: LayoutObject, patch: TextPropsPatch): LayoutObject {
+  if (o.type !== "text" || !o.text) return o;
+  return {
+    ...o,
+    text: {
+      ...o.text,
+      font: {
+        family: patch.family ?? o.text.font.family,
+        size: patch.size ?? o.text.font.size,
+        bold: patch.bold ?? o.text.font.bold,
+        italic: patch.italic ?? o.text.font.italic,
+        underline: patch.underline ?? o.text.font.underline,
+      },
+      align: patch.align ?? o.text.align,
+      lineSpacing: patch.lineSpacing ?? o.text.lineSpacing,
+    },
+  };
+}
+
+function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
+  if (o.type === "line") {
+    // a line always keeps a stroke (schema) — fill and stroke-none don't apply
+    return patch.stroke ? { ...o, stroke: patch.stroke } : o;
+  }
+  return {
+    ...o,
+    ...(patch.fill !== undefined ? { fill: patch.fill } : {}),
+    ...(patch.stroke !== undefined ? { stroke: patch.stroke } : {}),
+  };
+}
+
+/** The pristine document — Letter, wire defaults, master A applied (§3.4). */
+export function createDefaultDocument(): LayoutDocument {
+  return {
+    version: 1,
+    name: "Untitled publication",
+    product: null,
+    size: { w: 8.5, h: 11 },
+    orientation: "portrait",
+    bleed: 0.125,
+    margin: 0.5,
+    columns: 1,
+    pages: [{ id: "page-1", masterId: "master-a", objects: [] }],
+    masters: [
+      { id: "master-a", label: "A", objects: [] },
+      { id: "master-b", label: "B", objects: [] },
+    ],
+  };
+}
+
 export interface LayoutEditorState {
+  // UI toggles (prototype names)
   ribbon: RibbonTab;
   tool: EditorTool;
   insp: InspectorTab;
   pages: PagesPaneView;
 
+  // document (persisted) + session pointers
+  doc: LayoutDocument;
+  activePageId: string;
+  masterEditingId: string | null;
+
+  // selection (session)
+  selectedIds: string[];
+  /** Text frame with the contentEditable overlay open (plan L5). */
+  editingTextId: string | null;
+  /** Align tab's "Relative to" choice (plan L7) — session UI, not persisted. */
+  alignRel: AlignRelativeTo;
+
+  // history (session): bounded per-gesture snapshots of the document slice
+  past: LayoutDocument[];
+  future: LayoutDocument[];
+
+  // experience (persisted; switching arrives in L8)
+  level: ExperienceLevel;
+
+  // viewport (session)
+  /** CanvasViewport replaces this with the computed fit on mount (§3.5). */
+  zoom: number;
+  pan: { x: number; y: number };
+  guidesVisible: boolean;
+  /** Bumped by page-geometry mutations — CanvasViewport re-fits when it moves. */
+  fitRequestId: number;
+  /** One-shot deep-link cue (`/layout?custom=1`): focus the Page tab's width field. */
+  focusPageSize: boolean;
+
   setRibbon: (ribbon: RibbonTab) => void;
   setTool: (tool: EditorTool) => void;
   setInsp: (insp: InspectorTab) => void;
   setPages: (pages: PagesPaneView) => void;
+
+  // page setup
+  setName: (name: string) => void;
+  /** Applies preset dimensions, keeping the document's current orientation. */
+  applyPreset: (presetId: string) => void;
+  /** Clamps to the size bounds and derives orientation from the shape. */
+  setPageSize: (w: number, h: number) => void;
+  /** Changing orientation swaps the effective dimensions. */
+  setOrientation: (orientation: Orientation) => void;
+  setBleed: (bleed: number) => void;
+  setMargin: (margin: number) => void;
+  setColumns: (columns: number) => void;
+
+  // pages & masters (plan L6)
+  /** Inserts a blank page after the active one, inheriting its master. */
+  addPage: () => void;
+  /** Guarded — a publication keeps at least one page. */
+  removePage: (id: string) => void;
+  /** Session navigation, not an undo step; ends master editing. */
+  setActivePage: (id: string) => void;
+  applyMaster: (pageId: string, masterId: string | null) => void;
+  /** Blank master with the next free letter, opened for editing (Publisher behavior). */
+  addMaster: () => void;
+  /** Session-only: the canvas edits this master instead of the active page. */
+  setMasterEditing: (id: string | null) => void;
+
+  // viewport
+  setZoom: (zoom: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  setPan: (pan: { x: number; y: number }) => void;
+  toggleGuides: () => void;
+  setFocusPageSize: (v: boolean) => void;
+
+  // selection & objects (the editing surface — active page or edited master)
+  setSelection: (ids: string[]) => void;
+  /** Shift-click: add/remove one object, keeping the rest (plan L7). */
+  toggleSelected: (id: string) => void;
+  /** Replace the surface's object array wholesale — group drags write this
+      transiently from the gesture's start array; commitGesture closes them. */
+  setSurfaceObjects: (objects: LayoutObject[], transient?: boolean) => void;
+  setAlignRel: (v: AlignRelativeTo) => void;
+  /** Align the selection to the page box or the selection union (plan L7). */
+  alignSelection: (kind: AlignKind) => void;
+  /** Equal-gap distribution — needs three or more objects. */
+  distributeSelection: (axis: DistributeAxis) => void;
+  setEditingText: (id: string | null) => void;
+  /** Typing is transient — the edit session commits one snapshot at close. */
+  setTextContent: (id: string, content: string) => void;
+  /** Styling clicks are discrete input commits — each pushes history. */
+  setTextProps: (id: string, patch: TextPropsPatch) => void;
+  /** Appends, selects, and returns the tool to Select (Publisher behavior). */
+  addObject: (obj: LayoutObject) => void;
+  /** Geometry edit; `transient` skips history (live drags — commitGesture ends them). */
+  transformObject: (id: string, patch: TransformPatch, transient?: boolean) => void;
+  setObjectProps: (id: string, patch: ObjectPropsPatch) => void;
+  deleteSelection: () => void;
+  /** Copies land 0.25 in right+down and become the selection. */
+  duplicateSelection: () => void;
+  reorder: (dir: "forward" | "backward") => void;
+  nudgeSelection: (dx: number, dy: number) => void;
+
+  // history
+  /** Push the pre-gesture snapshot, once, if the gesture changed the doc. */
+  commitGesture: (before: LayoutDocument) => void;
+  undo: () => void;
+  redo: () => void;
+
+  /** Start over: pristine document, guides on, view re-fit. */
+  resetDoc: () => void;
 }
 
-export const useLayoutStore = create<LayoutEditorState>()((set) => ({
-  // Prototype defaults: Home ribbon, Select tool, Page inspector tab, Pages view.
-  ribbon: "home",
-  tool: "select",
-  insp: "page",
-  pages: "pages",
+// SSR/tests have no localStorage — persistence becomes a silent no-op there.
+const noopStorage: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+};
 
-  setRibbon: (ribbon) => set({ ribbon }),
-  setTool: (tool) => set({ tool }),
-  setInsp: (insp) => set({ insp }),
-  setPages: (pages) => set({ pages }),
-}));
+export const useLayoutStore = create<LayoutEditorState>()(
+  persist(
+    (set) => ({
+      // Prototype defaults: Home ribbon, Select tool, Page inspector tab, Pages view.
+      ribbon: "home",
+      tool: "select",
+      insp: "page",
+      pages: "pages",
+
+      doc: createDefaultDocument(),
+      activePageId: "page-1",
+      masterEditingId: null,
+      level: "standard",
+
+      selectedIds: [],
+      editingTextId: null,
+      alignRel: "page",
+      past: [],
+      future: [],
+
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      guidesVisible: true,
+      fitRequestId: 0,
+      focusPageSize: false,
+
+      setRibbon: (ribbon) => set({ ribbon }),
+      // Switching tools ends a text-editing session (the overlay commits on unmount)
+      setTool: (tool) => set({ tool, editingTextId: null }),
+      setInsp: (insp) => set({ insp }),
+      setPages: (pages) => set({ pages }),
+
+      // Name typing is per-keystroke — kept out of the undo history so it
+      // doesn't flood the gesture-grained stack.
+      setName: (name) => set((s) => ({ doc: { ...s.doc, name } })),
+
+      applyPreset: (presetId) => {
+        const preset = getPreset(presetId);
+        if (!preset) return;
+        set((s) => {
+          const landscape = s.doc.orientation === "landscape";
+          const size = landscape ? { w: preset.h, h: preset.w } : { w: preset.w, h: preset.h };
+          if (size.w === s.doc.size.w && size.h === s.doc.size.h) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, size },
+            fitRequestId: s.fitRequestId + 1,
+          };
+        });
+      },
+
+      setPageSize: (w, h) =>
+        set((s) => {
+          const cw = clampPageDim(w);
+          const ch = clampPageDim(h);
+          if (cw === s.doc.size.w && ch === s.doc.size.h) return s;
+          const orientation: Orientation =
+            cw === ch ? s.doc.orientation : cw > ch ? "landscape" : "portrait";
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, size: { w: cw, h: ch }, orientation },
+            fitRequestId: s.fitRequestId + 1,
+          };
+        }),
+
+      setOrientation: (orientation) =>
+        set((s) => {
+          if (s.doc.orientation === orientation) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              orientation,
+              size: { w: s.doc.size.h, h: s.doc.size.w },
+            },
+            fitRequestId: s.fitRequestId + 1,
+          };
+        }),
+
+      setBleed: (bleed) =>
+        set((s) => {
+          const next = Math.min(0.5, Math.max(0, bleed));
+          if (next === s.doc.bleed) return s;
+          return { ...pushed(s, s.doc), doc: { ...s.doc, bleed: next } };
+        }),
+
+      setMargin: (margin) =>
+        set((s) => {
+          const max = Math.min(s.doc.size.w, s.doc.size.h) / 2;
+          const next = Math.min(max, Math.max(0, margin));
+          if (next === s.doc.margin) return s;
+          return { ...pushed(s, s.doc), doc: { ...s.doc, margin: next } };
+        }),
+
+      setColumns: (columns) =>
+        set((s) => {
+          const next = Math.min(6, Math.max(1, Math.round(columns)));
+          if (next === s.doc.columns) return s;
+          return { ...pushed(s, s.doc), doc: { ...s.doc, columns: next } };
+        }),
+
+      addPage: () =>
+        set((s) => {
+          const at = Math.max(
+            s.doc.pages.findIndex((p) => p.id === s.activePageId),
+            0,
+          );
+          const page = {
+            id: crypto.randomUUID(),
+            masterId: s.doc.pages[at]?.masterId ?? null,
+            objects: [],
+          };
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              pages: [...s.doc.pages.slice(0, at + 1), page, ...s.doc.pages.slice(at + 1)],
+            },
+            activePageId: page.id,
+            masterEditingId: null,
+            selectedIds: [],
+            editingTextId: null,
+          };
+        }),
+
+      removePage: (id) =>
+        set((s) => {
+          if (s.doc.pages.length <= 1) return s;
+          const at = s.doc.pages.findIndex((p) => p.id === id);
+          if (at < 0) return s;
+          const pages = s.doc.pages.filter((p) => p.id !== id);
+          const removingActive = s.activePageId === id;
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, pages },
+            // the neighbor that slid into the removed page's slot takes over
+            activePageId: removingActive
+              ? pages[Math.min(at, pages.length - 1)].id
+              : s.activePageId,
+            ...(removingActive ? { selectedIds: [], editingTextId: null } : {}),
+          };
+        }),
+
+      setActivePage: (id) =>
+        set((s) => {
+          if (!s.doc.pages.some((p) => p.id === id)) return s;
+          if (id === s.activePageId && !s.masterEditingId) return s;
+          return { activePageId: id, masterEditingId: null, selectedIds: [], editingTextId: null };
+        }),
+
+      applyMaster: (pageId, masterId) =>
+        set((s) => {
+          const page = s.doc.pages.find((p) => p.id === pageId);
+          if (!page || page.masterId === masterId) return s;
+          if (masterId !== null && !s.doc.masters.some((m) => m.id === masterId)) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              pages: s.doc.pages.map((p) => (p.id === pageId ? { ...p, masterId } : p)),
+            },
+          };
+        }),
+
+      addMaster: () =>
+        set((s) => {
+          const used = new Set(s.doc.masters.map((m) => m.label));
+          let label = `M${s.doc.masters.length + 1}`;
+          for (let i = 0; i < 26; i++) {
+            const letter = String.fromCharCode(65 + i);
+            if (!used.has(letter)) {
+              label = letter;
+              break;
+            }
+          }
+          const master: MasterPage = { id: crypto.randomUUID(), label, objects: [] };
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, masters: [...s.doc.masters, master] },
+            masterEditingId: master.id,
+            selectedIds: [],
+            editingTextId: null,
+          };
+        }),
+
+      setMasterEditing: (id) =>
+        set((s) => {
+          if (id === s.masterEditingId) return s;
+          if (id !== null && !s.doc.masters.some((m) => m.id === id)) return s;
+          return { masterEditingId: id, selectedIds: [], editingTextId: null };
+        }),
+
+      setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
+      zoomIn: () => set((s) => ({ zoom: zoomInStep(s.zoom) })),
+      zoomOut: () => set((s) => ({ zoom: zoomOutStep(s.zoom) })),
+      setPan: (pan) => set({ pan }),
+      toggleGuides: () => set((s) => ({ guidesVisible: !s.guidesVisible })),
+      setFocusPageSize: (v) => set({ focusPageSize: v }),
+
+      setSelection: (ids) => set({ selectedIds: ids }),
+
+      toggleSelected: (id) =>
+        set((s) => ({
+          selectedIds: s.selectedIds.includes(id)
+            ? s.selectedIds.filter((i) => i !== id)
+            : [...s.selectedIds, id],
+          // adjusting the selection ends a text session, like any other grab
+          editingTextId: null,
+        })),
+
+      setSurfaceObjects: (objects, transient = false) =>
+        set((s) => {
+          const doc = mapSurfaceObjects(s, () => objects);
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      setAlignRel: (v) => set({ alignRel: v }),
+
+      alignSelection: (kind) =>
+        set((s) => {
+          const objs = surfaceObjects(s);
+          const selSet = new Set(s.selectedIds);
+          const sel = objs.filter((o) => selSet.has(o.id));
+          if (sel.length < (s.alignRel === "selection" ? 2 : 1)) return s;
+          const ref =
+            s.alignRel === "page"
+              ? { x: 0, y: 0, w: s.doc.size.w, h: s.doc.size.h }
+              : unionBBox(sel)!;
+          const moved = new Map(alignObjects(sel, kind, ref).map((o) => [o.id, o]));
+          const next = objs.map((o) => moved.get(o.id) ?? o);
+          if (JSON.stringify(next) === JSON.stringify(objs)) return s;
+          return { ...pushed(s, s.doc), doc: mapSurfaceObjects(s, () => next) };
+        }),
+
+      distributeSelection: (axis) =>
+        set((s) => {
+          const objs = surfaceObjects(s);
+          const selSet = new Set(s.selectedIds);
+          const sel = objs.filter((o) => selSet.has(o.id));
+          if (sel.length < 3) return s;
+          const ref =
+            s.alignRel === "page"
+              ? { x: 0, y: 0, w: s.doc.size.w, h: s.doc.size.h }
+              : unionBBox(sel)!;
+          const moved = new Map(distributeObjects(sel, axis, ref).map((o) => [o.id, o]));
+          const next = objs.map((o) => moved.get(o.id) ?? o);
+          if (JSON.stringify(next) === JSON.stringify(objs)) return s;
+          return { ...pushed(s, s.doc), doc: mapSurfaceObjects(s, () => next) };
+        }),
+
+      setEditingText: (id) => set({ editingTextId: id }),
+
+      setTextContent: (id, content) =>
+        set((s) => ({
+          doc: mapSurfaceObjects(s, (objs) =>
+            objs.map((o) =>
+              o.id === id && o.type === "text" && o.text
+                ? { ...o, text: { ...o.text, content } }
+                : o,
+            ),
+          ),
+        })),
+
+      setTextProps: (id, patch) =>
+        set((s) => {
+          const target = surfaceObjects(s).find((o) => o.id === id);
+          if (!target || target.type !== "text" || !target.text) return s;
+          const next = applyTextProps(target, patch);
+          if (JSON.stringify(next) === JSON.stringify(target)) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) => objs.map((o) => (o.id === id ? next : o))),
+          };
+        }),
+
+      addObject: (obj) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: mapSurfaceObjects(s, (objs) => [...objs, obj]),
+          selectedIds: [obj.id],
+          // Publisher behavior: a completed draw returns to Select
+          tool: "select",
+        })),
+
+      transformObject: (id, patch, transient = false) =>
+        set((s) => {
+          const doc = mapSurfaceObjects(s, (objs) =>
+            objs.map((o) => (o.id === id ? applyTransform(o, patch) : o)),
+          );
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      setObjectProps: (id, patch) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: mapSurfaceObjects(s, (objs) =>
+            objs.map((o) => (o.id === id ? applyProps(o, patch) : o)),
+          ),
+        })),
+
+      deleteSelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const drop = new Set(s.selectedIds);
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) => objs.filter((o) => !drop.has(o.id))),
+            selectedIds: [],
+            editingTextId:
+              s.editingTextId && drop.has(s.editingTextId) ? null : s.editingTextId,
+          };
+        }),
+
+      duplicateSelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const copies = surfaceObjects(s)
+            .filter((o) => sel.has(o.id))
+            .map((o) => ({
+              ...translated(o, DUPLICATE_OFFSET_IN, DUPLICATE_OFFSET_IN),
+              id: crypto.randomUUID(),
+            }));
+          if (!copies.length) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) => [...objs, ...copies]),
+            selectedIds: copies.map((c) => c.id),
+          };
+        }),
+
+      reorder: (dir) =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const current = surfaceObjects(s);
+          const sel = new Set(s.selectedIds);
+          const next = [...current];
+          if (dir === "forward") {
+            // z-order is array order: swap selected items toward the top
+            for (let i = next.length - 2; i >= 0; i--) {
+              if (sel.has(next[i].id) && !sel.has(next[i + 1].id)) {
+                [next[i], next[i + 1]] = [next[i + 1], next[i]];
+              }
+            }
+          } else {
+            for (let i = 1; i < next.length; i++) {
+              if (sel.has(next[i].id) && !sel.has(next[i - 1].id)) {
+                [next[i], next[i - 1]] = [next[i - 1], next[i]];
+              }
+            }
+          }
+          if (next.every((o, i) => o === current[i])) return s; // already at the edge
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, () => next),
+          };
+        }),
+
+      nudgeSelection: (dx, dy) =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) =>
+              objs.map((o) => (sel.has(o.id) ? translated(o, dx, dy) : o)),
+            ),
+          };
+        }),
+
+      commitGesture: (before) =>
+        set((s) =>
+          s.doc === before
+            ? s
+            : { past: [...s.past, before].slice(-HISTORY_CAP), future: [] },
+        ),
+
+      undo: () =>
+        set((s) => {
+          const prev = s.past[s.past.length - 1];
+          if (!prev) return s;
+          const surface = resolveSurface(s, prev);
+          const target = { doc: prev, ...surface };
+          return {
+            past: s.past.slice(0, -1),
+            future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
+            doc: prev,
+            ...surface,
+            selectedIds: pruneSelection(s.selectedIds, target),
+            editingTextId:
+              s.editingTextId && pruneSelection([s.editingTextId], target).length
+                ? s.editingTextId
+                : null,
+          };
+        }),
+
+      redo: () =>
+        set((s) => {
+          const next = s.future[0];
+          if (!next) return s;
+          const surface = resolveSurface(s, next);
+          const target = { doc: next, ...surface };
+          return {
+            past: [...s.past, s.doc].slice(-HISTORY_CAP),
+            future: s.future.slice(1),
+            doc: next,
+            ...surface,
+            selectedIds: pruneSelection(s.selectedIds, target),
+            editingTextId:
+              s.editingTextId && pruneSelection([s.editingTextId], target).length
+                ? s.editingTextId
+                : null,
+          };
+        }),
+
+      resetDoc: () =>
+        set((s) => ({
+          doc: createDefaultDocument(),
+          activePageId: "page-1",
+          masterEditingId: null,
+          guidesVisible: true,
+          pan: { x: 0, y: 0 },
+          selectedIds: [],
+          editingTextId: null,
+          past: [],
+          future: [],
+          fitRequestId: s.fitRequestId + 1,
+        })),
+    }),
+    {
+      // CONTRACT: the storage key + LayoutDocumentSchema are the saved-file
+      // format — a real backend persists the same shape per publication.
+      name: "stp-layout-v1",
+      // Bumped when the persisted document shape changes beyond what the
+      // schema-validating merge below can absorb.
+      // PROD-TODO: production migrates old documents (v1→v2 per plan §9);
+      // the prototype may drop-and-reseed. A failed write (quota, private
+      // mode) only logs — production needs a visible "not saved" state.
+      version: 1,
+      storage: createJSONStorage(() =>
+        typeof window === "undefined" ? noopStorage : window.localStorage,
+      ),
+      // SSR and the first client render use the pristine document; the
+      // StoreHydrator rehydrates after mount so server and client markup match.
+      skipHydration: true,
+      // Only the file + experience level persist (§3.3) — selection, history,
+      // and viewport stay session-scoped.
+      partialize: (s) => ({ doc: s.doc, level: s.level }),
+      // Validate what came out of storage — a corrupt or foreign-shaped doc
+      // falls back to pristine instead of poisoning the editor.
+      merge: (persisted, current) => {
+        const p = persisted as { doc?: unknown; level?: unknown } | undefined;
+        const parsed = LayoutDocumentSchema.safeParse(p?.doc);
+        const level: ExperienceLevel =
+          p?.level === "simple" || p?.level === "pro" ? p.level : "standard";
+        if (!parsed.success) return { ...current, level };
+        return {
+          ...current,
+          level,
+          doc: parsed.data,
+          activePageId: parsed.data.pages[0].id,
+        };
+      },
+    },
+  ),
+);
