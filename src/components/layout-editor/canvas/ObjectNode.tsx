@@ -3,17 +3,79 @@ import type { FrameObject, LayoutObject } from "@/schema";
 import { inToPx } from "@/lib/layout/geometry";
 import { bboxOf } from "@/lib/layout/objects";
 import { fontStack, isOverflowing, ptToPx } from "@/lib/layout/text";
+import { useAssetUrl } from "@/lib/assets/use-asset-url";
 
 /**
  * One document object at true scale (plan §3.2): rect / ellipse / picture /
  * text frames as positioned divs, lines as an SVG spanning their bbox.
- * Stroke widths and type scale with zoom (they're page ink, not chrome); the
- * picture frame is the gray placeholder with a mountain glyph. Text frames
- * clip like print frames and raise the red overflow badge (plan L5) when
- * content exceeds them; an empty frame shows a faint dashed affordance so
- * it stays findable. The pane thumbnails reuse this component with
- * `withTestId={false}` so mini-renders never duplicate the canvas testids.
+ * Stroke widths and type scale with zoom (they're page ink, not chrome); a
+ * picture frame renders its bound asset (L8) or the gray placeholder with a
+ * mountain glyph — and a visible missing-asset state when the bytes are gone.
+ * Text frames clip like print frames and raise the red overflow badge (plan
+ * L5) when content exceeds them; an empty frame shows a faint dashed
+ * affordance so it stays findable. The pane thumbnails reuse this component
+ * with `withTestId={false}` so mini-renders never duplicate canvas testids.
  */
+
+function MountainGlyph({ px }: { px: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#9a9a9a"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+      style={{ width: px, height: px }}
+    >
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <circle cx="8.5" cy="10" r="1.5" />
+      <path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3" />
+    </svg>
+  );
+}
+
+/**
+ * Picture frame content (L8): the bound image cover-fit (ASSUMPTION — the
+ * `fit` mode field is a schema-v2 delta), the placeholder glyph when unbound,
+ * or the missing-asset state when the id has no bytes behind it.
+ */
+function PictureFill({
+  assetId,
+  glyphPx,
+  withTestId,
+}: {
+  assetId?: string;
+  glyphPx: number;
+  withTestId: boolean;
+}) {
+  const url = useAssetUrl(assetId);
+  if (!assetId) return <MountainGlyph px={glyphPx} />;
+  if (url === undefined) return null; // resolving — never flash the placeholder
+  if (url === null) {
+    return (
+      <div
+        data-testid={withTestId ? "picture-missing" : undefined}
+        className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center overflow-hidden bg-[#f3f3f3]"
+      >
+        <div className="relative" style={{ width: glyphPx, height: glyphPx }}>
+          <MountainGlyph px={glyphPx} />
+        </div>
+        <span className="text-[9px] text-[#9a9a9a]">Image missing</span>
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- object URLs can't go through next/image
+    <img
+      src={url}
+      alt=""
+      draggable={false}
+      data-testid={withTestId ? "picture-image" : undefined}
+      className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+    />
+  );
+}
 
 function TextFrameNode({
   obj,
@@ -189,22 +251,11 @@ export function ObjectNode({
       onPointerDown={interactive ? onPointerDown : undefined}
     >
       {obj.type === "picture" && (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#9a9a9a"
-          strokeWidth="1.4"
-          strokeLinejoin="round"
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-          style={{
-            width: Math.min(inToPx(obj.w, zoom), inToPx(obj.h, zoom)) * 0.35,
-            height: Math.min(inToPx(obj.w, zoom), inToPx(obj.h, zoom)) * 0.35,
-          }}
-        >
-          <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
-          <circle cx="8.5" cy="10" r="1.5" />
-          <path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3" />
-        </svg>
+        <PictureFill
+          assetId={obj.assetId}
+          glyphPx={Math.min(inToPx(obj.w, zoom), inToPx(obj.h, zoom)) * 0.35}
+          withTestId={withTestId}
+        />
       )}
     </div>
   );

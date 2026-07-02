@@ -45,7 +45,8 @@ export function TitleBar() {
       <div className="flex-1" />
 
       {/* Experience levels (design doc §3.3) — surface-only, never the file.
-          Standard-only until plan step L8; Simple/Pro render disabled. */}
+          Two levels since plan v1.3 (Pro dropped); Simple renders disabled
+          until switching lands in plan step L9. */}
       <div
         data-testid="experience-switch"
         className="flex shrink-0 items-center rounded-[6px] bg-[#e7e7e7] p-[2px] text-[11px] text-[#777]"
@@ -55,9 +56,6 @@ export function TitleBar() {
         </span>
         <span className="rounded-[4px] bg-white px-[11px] py-[3px] text-[#333] shadow-[0_1px_2px_rgba(0,0,0,.12)]">
           Standard
-        </span>
-        <span className="cursor-not-allowed rounded-[4px] px-[11px] py-[3px] opacity-60" title="Coming later in the beta">
-          Pro
         </span>
       </div>
 

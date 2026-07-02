@@ -13,7 +13,7 @@ import { InsertBand } from "./ribbon/InsertBand";
 import { LayoutBand } from "./ribbon/LayoutBand";
 import { TextBand } from "./ribbon/TextBand";
 import { ToolPalette } from "./palette/ToolPalette";
-import { PagesPane } from "./pages/PagesPane";
+import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
@@ -106,7 +106,7 @@ export function EditorShell() {
         </div>
         <div className="flex min-h-0 flex-1">
           <ToolPalette />
-          <PagesPane />
+          <SidePanel />
           <CanvasViewport />
           <Inspector />
         </div>

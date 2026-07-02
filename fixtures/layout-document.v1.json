@@ -40,7 +40,8 @@
           "rotation": 0,
           "locked": false,
           "fill": "#e8e8e8",
-          "stroke": { "color": "#b0b0b0", "width": 1 }
+          "stroke": { "color": "#b0b0b0", "width": 1 },
+          "assetId": "asset-hero"
         }
       ]
     },
@@ -98,5 +99,16 @@
       ]
     },
     { "id": "master-b", "label": "B", "objects": [] }
-  ]
+  ],
+  "assets": {
+    "asset-hero": {
+      "id": "asset-hero",
+      "name": "storefront.png",
+      "kind": "image",
+      "mime": "image/png",
+      "width": 1200,
+      "height": 800,
+      "bytes": 245760
+    }
+  }
 }

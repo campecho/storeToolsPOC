@@ -43,7 +43,6 @@
   /* layout-editor canvas (handoff token table: docs/handoff/layout-editor/README.md) */
   --color-pasteboard: #d3d3d3;
   --color-guide: #9fb6df;
-  --color-bleed-mark: #b58686;
 
   /* motion (handoff README — "Motion" table; plain ease, no spring) */
   --animate-pulse-count: pulseCount 0.6s ease;

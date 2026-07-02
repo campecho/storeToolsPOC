@@ -5,7 +5,7 @@ import { surfaceObjects, useLayoutStore } from "@/store";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
 import { DPI, clampZoom, fitZoom, inToPx, pxToIn, rulerTicks } from "@/lib/layout/geometry";
-import { formatIn, sizeLabel } from "@/lib/layout/presets";
+import { formatIn } from "@/lib/layout/presets";
 import {
   DRAW_THRESHOLD_IN,
   bboxOf,
@@ -617,16 +617,13 @@ export function CanvasViewport() {
             else s.zoomIn();
           }}
         >
-          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 whitespace-nowrap text-[11px] text-[#7a7a7a]">
-            {doc.name} · {sizeLabel(doc.size.w, doc.size.h)} {formatIn(doc.size.w)} ×{" "}
-            {formatIn(doc.size.h)} in · {Math.round(zoom * 100)}%
-          </div>
-
-          {/* master-editing mode banner (plan L6) */}
+          {/* master-editing mode banner (plan L6). The wire's name/size/zoom
+              caption that sat here came out in L8 — the title bar and status
+              bar already carry all three. */}
           {editingMaster && (
             <div
               data-testid="master-banner"
-              className="absolute left-1/2 top-[34px] z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
+              className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
             >
               <span>
                 Editing master {editingMaster.label} — changes apply to every page that uses it

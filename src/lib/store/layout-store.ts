@@ -2,12 +2,15 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import {
   LayoutDocumentSchema,
+  type Asset,
   type LayoutDocument,
   type LayoutObject,
   type MasterPage,
   type Orientation,
   type Stroke,
 } from "@/schema";
+import { clearAssetBlobs, deleteAssetBlob } from "@/lib/assets/blob-store";
+import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
 import {
   clampPageDim,
   clampZoom,
@@ -54,7 +57,10 @@ export type EditorTool =
   | "move";
 export type InspectorTab = "props" | "text" | "align" | "page";
 export type PagesPaneView = "pages" | "masters";
-export type ExperienceLevel = "simple" | "standard" | "pro";
+/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip. */
+export type PanelTab = "pages" | "assets" | "layers";
+/** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
+export type ExperienceLevel = "simple" | "standard";
 
 /** Status-bar readout per tool — the handoff asks the label to track the active tool. */
 export const TOOL_LABELS: Record<EditorTool, string> = {
@@ -227,6 +233,7 @@ export function createDefaultDocument(): LayoutDocument {
       { id: "master-a", label: "A", objects: [] },
       { id: "master-b", label: "B", objects: [] },
     ],
+    assets: {},
   };
 }
 
@@ -236,6 +243,10 @@ export interface LayoutEditorState {
   tool: EditorTool;
   insp: InspectorTab;
   pages: PagesPaneView;
+
+  // side panel (session, plan L8)
+  panelTab: PanelTab;
+  panelOpen: boolean;
 
   // document (persisted) + session pointers
   doc: LayoutDocument;
@@ -253,7 +264,7 @@ export interface LayoutEditorState {
   past: LayoutDocument[];
   future: LayoutDocument[];
 
-  // experience (persisted; switching arrives in L8)
+  // experience (persisted; switching arrives in L9 — two levels since v1.3)
   level: ExperienceLevel;
 
   // viewport (session)
@@ -270,6 +281,8 @@ export interface LayoutEditorState {
   setTool: (tool: EditorTool) => void;
   setInsp: (insp: InspectorTab) => void;
   setPages: (pages: PagesPaneView) => void;
+  /** Open the side panel to a tab; clicking the open tab collapses it (L8). */
+  togglePanelTab: (tab: PanelTab) => void;
 
   // page setup
   setName: (name: string) => void;
@@ -330,7 +343,17 @@ export interface LayoutEditorState {
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
   reorder: (dir: "forward" | "backward") => void;
+  /** Move one object to an absolute z-index on the surface (Layers drag, L8). */
+  reorderObject: (id: string, to: number) => void;
   nudgeSelection: (dx: number, dy: number) => void;
+
+  // asset library (plan L8) — document data, deliberately not an undo step;
+  // undo/redo carry the current library forward (see undo/redo)
+  addAsset: (asset: Asset) => void;
+  /** Drops metadata + bytes; placed frames keep the id and show the missing state. */
+  removeAsset: (id: string) => void;
+  /** Image assets only: bind to the selected picture frame, else place centered. */
+  placeAsset: (id: string) => void;
 
   // history
   /** Push the pre-gesture snapshot, once, if the gesture changed the doc. */
@@ -360,6 +383,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       tool: "select",
       insp: "page",
       pages: "pages",
+      panelTab: "pages",
+      panelOpen: true,
 
       doc: createDefaultDocument(),
       activePageId: "page-1",
@@ -383,6 +408,13 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setTool: (tool) => set({ tool, editingTextId: null }),
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
+
+      togglePanelTab: (tab) =>
+        set((s) =>
+          s.panelOpen && s.panelTab === tab
+            ? { panelOpen: false }
+            : { panelOpen: true, panelTab: tab },
+        ),
 
       // Name typing is per-keystroke — kept out of the undo history so it
       // doesn't flood the gesture-grained stack.
@@ -683,6 +715,64 @@ export const useLayoutStore = create<LayoutEditorState>()(
           };
         }),
 
+      reorderObject: (id, to) =>
+        set((s) => {
+          const objs = surfaceObjects(s);
+          const from = objs.findIndex((o) => o.id === id);
+          if (from < 0) return s;
+          const target = Math.max(0, Math.min(objs.length - 1, Math.round(to)));
+          if (target === from) return s;
+          const next = [...objs];
+          const [moved] = next.splice(from, 1);
+          next.splice(target, 0, moved);
+          return { ...pushed(s, s.doc), doc: mapSurfaceObjects(s, () => next) };
+        }),
+
+      addAsset: (asset) =>
+        set((s) => ({
+          doc: { ...s.doc, assets: { ...s.doc.assets, [asset.id]: asset } },
+        })),
+
+      removeAsset: (id) =>
+        set((s) => {
+          if (!s.doc.assets[id]) return s;
+          const assets = { ...s.doc.assets };
+          delete assets[id];
+          void deleteAssetBlob(id); // bytes go with the metadata
+          return { doc: { ...s.doc, assets } };
+        }),
+
+      placeAsset: (id) =>
+        set((s) => {
+          const asset = s.doc.assets[id];
+          // PDFs are library-only until the print pipeline can rasterize (L8)
+          if (!asset || asset.kind !== "image") return s;
+          // a single selected picture frame takes the image instead of a new frame
+          const sel =
+            s.selectedIds.length === 1
+              ? surfaceObjects(s).find((o) => o.id === s.selectedIds[0])
+              : undefined;
+          if (sel && sel.type === "picture") {
+            if (sel.assetId === id) return s;
+            return {
+              ...pushed(s, s.doc),
+              doc: mapSurfaceObjects(s, (objs) =>
+                objs.map((o) => (o.id === sel.id ? { ...o, assetId: id } : o)),
+              ),
+            };
+          }
+          const obj = createPlacedPicture(
+            asset,
+            placedPictureRect(asset.width, asset.height, s.doc),
+          );
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) => [...objs, obj]),
+            selectedIds: [obj.id],
+            tool: "select",
+          };
+        }),
+
       reorder: (dir) =>
         set((s) => {
           if (!s.selectedIds.length) return s;
@@ -738,7 +828,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             past: s.past.slice(0, -1),
             future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
-            doc: prev,
+            // the asset library is not an undo step — the current one carries forward
+            doc: { ...prev, assets: s.doc.assets },
             ...surface,
             selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
@@ -757,7 +848,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             past: [...s.past, s.doc].slice(-HISTORY_CAP),
             future: s.future.slice(1),
-            doc: next,
+            doc: { ...next, assets: s.doc.assets },
             ...surface,
             selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
@@ -768,18 +859,21 @@ export const useLayoutStore = create<LayoutEditorState>()(
         }),
 
       resetDoc: () =>
-        set((s) => ({
-          doc: createDefaultDocument(),
-          activePageId: "page-1",
-          masterEditingId: null,
-          guidesVisible: true,
-          pan: { x: 0, y: 0 },
-          selectedIds: [],
-          editingTextId: null,
-          past: [],
-          future: [],
-          fitRequestId: s.fitRequestId + 1,
-        })),
+        set((s) => {
+          void clearAssetBlobs(); // the library resets with the document
+          return {
+            doc: createDefaultDocument(),
+            activePageId: "page-1",
+            masterEditingId: null,
+            guidesVisible: true,
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            editingTextId: null,
+            past: [],
+            future: [],
+            fitRequestId: s.fitRequestId + 1,
+          };
+        }),
     }),
     {
       // CONTRACT: the storage key + LayoutDocumentSchema are the saved-file
@@ -805,8 +899,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       merge: (persisted, current) => {
         const p = persisted as { doc?: unknown; level?: unknown } | undefined;
         const parsed = LayoutDocumentSchema.safeParse(p?.doc);
-        const level: ExperienceLevel =
-          p?.level === "simple" || p?.level === "pro" ? p.level : "standard";
+        // two levels since v1.3 — a persisted legacy "pro" coerces to "standard"
+        const level: ExperienceLevel = p?.level === "simple" ? "simple" : "standard";
         if (!parsed.success) return { ...current, level };
         return {
           ...current,

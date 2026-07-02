@@ -52,8 +52,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 |---|---|
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
-| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap (L1–L7) | ✅ shipped |
-| Layout editor — experience levels, hardening (L8–L9) | ❌ next in plan |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers (L1–L8) | ✅ shipped |
+| Layout editor — experience levels (Simple/Standard), hardening (L9–L10) | ❌ next in plan |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
@@ -193,6 +193,19 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   edges/centers, within a 6px screen radius at any zoom; the engaged targets render as
   brand-red **smart guides** that clear on release, and snapped geometry lands exactly (the
   e2e proves edge-to-edge equality numerically). Group moves snap as one union box.
+- **Layout editor — step L8, side panel with Assets & Layers (plan v1.3):** the pages pane
+  grows into a **collapsible side panel** with vertical Pages / Assets / Layers tabs (titles
+  rotated 90°; clicking the open tab collapses to the strip). The **Assets tab imports
+  content** — file picker or drag-drop, images and PDFs: metadata lives in the document
+  (`doc.assets`, the §9 asset model pulled forward additively), bytes in an IndexedDB blob
+  store behind a one-file seam. **Clicking an image places it** at natural size (96 DPI,
+  scaled to a 2 in working minimum, fit inside the margins, centered) — or fills the selected
+  picture frame; frames render their image cover-fit, survive reload, and show a visible
+  **"Image missing"** state if the bytes are gone. PDFs join the library but stay honestly
+  un-placeable until print tooling lands. The **Layers tab lists the surface top-to-bottom**
+  — click selects, **drag restacks** (one undo step, verified against canvas paint order).
+  The canvas dropped the wire's name/size/zoom caption and bleed corner marks, and the title
+  bar dropped the Pro segment (two experience levels since plan v1.3).
 
 ## Where things live
 
@@ -208,7 +221,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 
 - **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L7 shipped.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L8 shipped.
 
 ## Reference documents
 
