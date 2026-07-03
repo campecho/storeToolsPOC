@@ -209,10 +209,11 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 - **Design revision — single-row ribbon (user-directed):** every command band lays its
   groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
   and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge
-  onto one line) — with the section dividers and labels kept. Controls **wrap within their
-  section** as the viewport narrows, so the band grows down instead of clipping; band height
-  is auto (min 64px) instead of the wire's fixed 92px. Recorded as fidelity deviation #5
-  (plan §2).
+  onto one line) — with the section dividers kept but the section titles (Clipboard, Font, …)
+  dropped as self-explanatory (the name survives as each group's `aria-label`). Controls
+  **wrap within their section** as the viewport narrows, so the band grows down instead of
+  clipping; band height is auto (min 64px) instead of the wire's fixed 92px. Recorded as
+  fidelity deviation #5 (plan §2).
 
 ## Where things live
 

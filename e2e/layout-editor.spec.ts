@@ -74,7 +74,7 @@ test.describe("Layout editor shell (L2)", () => {
     await page.getByTestId("ribbon-insert").click();
     const insert = page.getByTestId("band-insert");
     await expect(insert.getByText("Add page")).toBeVisible();
-    await expect(insert.getByText("Text & media")).toBeVisible();
+    await expect(insert.getByText("Picture")).toBeVisible();
     await expect(insert.getByText("Hyperlink")).toBeVisible();
 
     await page.getByTestId("ribbon-layout").click();
