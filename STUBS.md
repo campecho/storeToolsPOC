@@ -69,6 +69,6 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 | Zoom 10–400%, page 1–240 in | `src/lib/layout/geometry.ts` | Working-range guesses (large-format friendly) |
 | Snap radius 6px (screen) | `src/lib/layout/snap.ts` | Feel-based; confirm on store hardware |
 | Placed images: 96 DPI sizing, 2 in minimum, cover-fit | `src/lib/assets/placement.ts`, `canvas/ObjectNode.tsx` | CSS-pixel mapping; no embedded print-DPI read; `fit` modes are schema-v2 (plan §9) |
-| Rotated-object snapping/align by axis-aligned bounds | `src/lib/layout/snap.ts`, `canvas/CanvasViewport.tsx` | Honest simplification (plan L10): a rotated object snaps/aligns by its AABB, and edge-snapping is off while resizing a rotated frame. True rotated-edge snapping is a later refinement. |
+| Rotated-object bounds by axis-aligned box (AABB) | `src/lib/layout/snap.ts`, `canvas/CanvasViewport.tsx` | Honest simplification (plan L10): a rotated object snaps/aligns and is hit-tested (marquee select, asset drop) by its AABB, and edge-snapping is off while resizing a rotated frame. True rotated-edge snapping / polygon hit-testing is a later refinement. |
 | Curated font list | `src/lib/layout/text.ts` | In-store set TBD; Motiva licensing pending |
 | Recently-shipped band window (7 days) | board logic / seeds | Product to confirm |

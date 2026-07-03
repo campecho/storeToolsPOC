@@ -1196,4 +1196,40 @@ test.describe("Rotation & Arrange (L10)", () => {
     await page.keyboard.press("ControlOrMeta+z");
     await expect(inked.first()).toHaveAttribute("data-testid", "object-ellipse");
   });
+
+  test("an asset drops onto a rotated frame by its visual bounds, not its unrotated box", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+
+    // a wide picture frame (≈160×60 on screen), then rotate it 90° so it stands tall
+    await page.getByTestId("tool-pic").click();
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + 60, box.y + 110);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 220, box.y + 170, { steps: 8 });
+    await page.mouse.up();
+    await page.getByTestId("ribbon-arrange").click();
+    await page.getByTestId("arrange-rotate-right").click();
+
+    // the element's box is now the rotated AABB (≈60 wide × 160 tall); a point
+    // 55px above center is INSIDE the tall visual but OUTSIDE the old 60px-tall
+    // unrotated box — so this drop only lands with the rotated hit-test
+    const frame = (await page.getByTestId("object-picture").boundingBox())!;
+    const cx = frame.x + frame.width / 2;
+    const cy = frame.y + frame.height / 2;
+    const dt = await page.evaluateHandle(() => new DataTransfer());
+    await page.getByTestId("asset-tile-0").dispatchEvent("dragstart", { dataTransfer: dt });
+    await page
+      .getByTestId("pasteboard")
+      .dispatchEvent("dragover", { dataTransfer: dt, clientX: cx, clientY: cy - 55 });
+    await expect(page.getByTestId("drop-target")).toBeVisible();
+    await page
+      .getByTestId("pasteboard")
+      .dispatchEvent("drop", { dataTransfer: dt, clientX: cx, clientY: cy - 55 });
+
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+  });
 });

@@ -373,7 +373,8 @@ export function CanvasViewport() {
     for (let i = objs.length - 1; i >= 0; i--) {
       const o = objs[i];
       if (o.type !== "picture") continue;
-      const b = bboxOf(o);
+      // rotated frames hit-test by their visual footprint (AABB), like snapping (L10)
+      const b = rotatedBBox(o);
       if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) return o.id;
     }
     return null;
@@ -582,6 +583,7 @@ export function CanvasViewport() {
       // the moving group snaps as one union box — by each object's rotated
       // footprint (axis-aligned bounds), the honest simplification of L10
       const moving = g.startSurface.filter((o) => g.movingIds.has(o.id));
+      if (!moving.length) return; // nothing to move — don't feed empty min/max a NaN box
       const boxes = moving.map(rotatedBBox);
       const minX = Math.min(...boxes.map((b) => b.x));
       const minY = Math.min(...boxes.map((b) => b.y));
@@ -686,7 +688,8 @@ export function CanvasViewport() {
       const rh = Math.abs(g.curY - g.startY);
       const hit = surfaceObjects(s)
         .filter((o) => {
-          const b = bboxOf(o);
+          // marquee tests each object's visual footprint (AABB when rotated, L10)
+          const b = rotatedBBox(o);
           return b.x < rx + rw && b.x + b.w > rx && b.y < ry + rh && b.y + b.h > ry;
         })
         .map((o) => o.id);
