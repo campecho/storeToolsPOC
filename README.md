@@ -52,8 +52,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 |---|---|
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
-| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in, rotation & Arrange (L1–L10) | ✅ shipped |
-| Layout editor — toolset build-out: ruler guides & units, spreads & mixed sizes, clipboard (L11–L13) | ❌ next in plan (v1.4) |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in, rotation & Arrange, ruler guides & units (L1–L11) | ✅ shipped |
+| Layout editor — toolset build-out: spreads & mixed sizes, clipboard (L12–L13) | ❌ next in plan (v1.4) |
 | Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
@@ -225,6 +225,19 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   **Arrange ribbon tab goes live**: Order (bring to front / forward / backward / to back),
   Rotate (90° left / right / reset), and Align (the L7 actions) — all against the selection,
   verified against real canvas paint order. Grouping and effects stay in the backlog.
+- **Layout editor — step L11, ruler guides & units (plan v1.4):** **drag a guide out of
+  either ruler** — top ruler for horizontal, left for vertical — a live line follows the
+  pointer and drops into the model; **grab a placed guide to reposition it**, or **drag it
+  back onto the ruler to delete**. Objects **snap to guides** just like margins and page
+  centers (the engaged guide shows a brand-red smart line). Guides are visual-only
+  (`pointer-events: none`) and grabbed by a board-level hit-test, so an **object on top of a
+  guide always wins the click** — objects take priority. The whole canvas **suppresses native
+  HTML drag** (`onDragStart` → `preventDefault`): guide drags run on window listeners without
+  pointer capture, and without this a press would start a browser drag and fire
+  `pointercancel`, killing the gesture after one move. A **unit toggle** in the status bar
+  (`in` / `mm` / `px` / `pt`) relabels the rulers, every length field (Page W/H, bleed,
+  margin, X/Y/W/H), and the bleed/margin legend, round-trips typed input, and **persists**
+  with the document. Guides and the chosen unit both survive reload.
 - **Design revision — single-row ribbon (user-directed):** every command band lays its
   groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
   and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge

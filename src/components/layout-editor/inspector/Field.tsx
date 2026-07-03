@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { formatIn } from "@/lib/layout/presets";
+import { useLayoutStore } from "@/store";
+import { formatLen, parseLen } from "@/lib/layout/units";
 
 /** Inspector section label — the wire's `.wf-h` style. */
 export function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -41,10 +42,14 @@ export function Field({
 }
 
 /**
- * Editable, unit-aware numeric inspector row. Shows the model value until the
- * user types; commits on Enter/blur (Escape reverts). Clamping is the store
- * action's job — the committed value re-renders as clamped. Defaults to
- * inches; pass `suffix`/`format`/`ariaUnit` for other units (e.g. degrees, L10).
+ * Editable numeric inspector row. Shows the model value until the user types;
+ * commits on Enter/blur (Escape reverts). Clamping is the store action's job —
+ * the committed value re-renders as clamped.
+ *
+ * Length fields (the default) are **unit-aware** (plan L11): the model value is
+ * always inches, but the row displays and parses the active display unit. Pass
+ * `raw` for a non-length value (e.g. rotation degrees) with its own
+ * `suffix`/`format`/`ariaUnit`.
  */
 export function NumberField({
   label,
@@ -52,26 +57,35 @@ export function NumberField({
   onCommit,
   testId,
   inputRef,
-  suffix = "in",
-  ariaUnit = "inches",
-  format = formatIn,
+  raw = false,
+  suffix,
+  ariaUnit,
+  format,
 }: {
   label: string;
   value: number;
   onCommit: (v: number) => void;
   testId?: string;
   inputRef?: React.Ref<HTMLInputElement>;
-  /** Unit shown at the row's right edge. */
+  /** Non-length field — skip unit conversion, use the props below verbatim. */
+  raw?: boolean;
+  /** Unit shown at the row's right edge (raw fields only). */
   suffix?: string;
-  /** Unit word for the aria-label. */
+  /** Unit word for the aria-label (raw fields only). */
   ariaUnit?: string;
-  /** Display formatter for the model value. */
+  /** Display formatter for the model value (raw fields only). */
   format?: (v: number) => string;
 }) {
+  const unit = useLayoutStore((s) => s.unit);
   const [draft, setDraft] = useState<string | null>(null);
   // Escape blurs before the cleared draft re-renders — the flag stops the
   // blur-commit from reading the stale draft.
   const escaped = useRef(false);
+
+  // length fields convert inches↔unit; raw fields pass the value through
+  const display = raw ? (format ?? String)(value) : formatLen(value, unit);
+  const unitSuffix = raw ? (suffix ?? "") : unit;
+  const unitWord = raw ? (ariaUnit ?? "") : unit;
 
   const commit = () => {
     if (escaped.current) {
@@ -79,7 +93,7 @@ export function NumberField({
       return;
     }
     if (draft === null) return;
-    const v = Number(draft);
+    const v = raw ? Number(draft) : parseLen(draft, unit);
     if (Number.isFinite(v)) onCommit(v);
     setDraft(null);
   };
@@ -90,7 +104,7 @@ export function NumberField({
       <div className="flex h-[30px] items-center rounded-[5px] border border-[#d6d6d6] bg-white px-[9px] text-[12px] text-[#444] focus-within:border-[#b0b0b0]">
         <input
           ref={inputRef}
-          value={draft ?? format(value)}
+          value={draft ?? display}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
@@ -102,11 +116,11 @@ export function NumberField({
             }
           }}
           inputMode="decimal"
-          aria-label={`${label} (${ariaUnit})`}
+          aria-label={unitWord ? `${label} (${unitWord})` : label}
           data-testid={testId}
           className="w-full min-w-0 bg-transparent outline-none"
         />
-        <span className="pl-1 text-[#999]">{suffix}</span>
+        <span className="pl-1 text-[#999]">{unitSuffix}</span>
       </div>
     </div>
   );

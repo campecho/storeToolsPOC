@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { surfaceObjects, useLayoutStore, TOOL_LABELS } from "@/store";
 import { clampZoom, ZOOM_MAX, ZOOM_MIN } from "@/lib/layout/geometry";
+import { UNITS } from "@/lib/layout/units";
 
 /**
  * Status bar (wire region 8): page nav · live tool + selection readout ·
@@ -40,6 +41,8 @@ export function StatusBar() {
     s.masterEditingId ? s.doc.masters.find((m) => m.id === s.masterEditingId)?.label : undefined,
   );
   const setActivePage = useLayoutStore((s) => s.setActivePage);
+  const unit = useLayoutStore((s) => s.unit);
+  const setUnit = useLayoutStore((s) => s.setUnit);
   const zoomIn = useLayoutStore((s) => s.zoomIn);
   const zoomOut = useLayoutStore((s) => s.zoomOut);
   const setZoom = useLayoutStore((s) => s.setZoom);
@@ -98,6 +101,27 @@ export function StatusBar() {
           <div className="h-[11px] w-[7px] border border-[#b0b0b0]" />
           <div className="h-[11px] w-[7px] border border-[#b0b0b0]" />
         </div>
+      </div>
+      <div className="h-[14px] w-px bg-[#d4d4d4]" />
+
+      {/* display unit (L11) — presentation only; geometry stays inches */}
+      <div className="relative">
+        <div className="flex h-[18px] items-center gap-[3px] rounded-[3px] border border-[#cfcfcf] bg-white px-[6px] text-[11px] text-[#666]">
+          {unit} <span className="text-[#b0b0b0]">▾</span>
+        </div>
+        <select
+          value={unit}
+          onChange={(e) => setUnit(e.target.value as (typeof UNITS)[number])}
+          data-testid="unit-select"
+          aria-label="Display unit"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        >
+          {UNITS.map((u) => (
+            <option key={u} value={u}>
+              {u}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="h-[14px] w-px bg-[#d4d4d4]" />
 

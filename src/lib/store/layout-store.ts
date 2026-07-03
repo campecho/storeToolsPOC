@@ -18,6 +18,7 @@ import {
   zoomOutStep,
 } from "@/lib/layout/geometry";
 import { getPreset } from "@/lib/layout/presets";
+import { isUnit, type Unit } from "@/lib/layout/units";
 import {
   DUPLICATE_OFFSET_IN,
   MIN_OBJECT_IN,
@@ -242,6 +243,7 @@ export function createDefaultDocument(): LayoutDocument {
       { id: "master-b", label: "B", objects: [] },
     ],
     assets: {},
+    guides: { v: [], h: [] },
   };
 }
 
@@ -274,6 +276,8 @@ export interface LayoutEditorState {
 
   // experience (persisted; switching arrives in L14 — two levels since v1.3)
   level: ExperienceLevel;
+  // display unit (persisted, L11) — presentation only, geometry stays inches
+  unit: Unit;
 
   // viewport (session)
   /** CanvasViewport replaces this with the computed fit on mount (§3.5). */
@@ -303,6 +307,15 @@ export interface LayoutEditorState {
   setBleed: (bleed: number) => void;
   setMargin: (margin: number) => void;
   setColumns: (columns: number) => void;
+  setUnit: (unit: Unit) => void;
+
+  // ruler guides (plan L11) — document data, undoable, persisted
+  /** Drop a new guide at a page-inch position; one undo step. */
+  addGuide: (axis: "v" | "h", at: number) => void;
+  /** Reposition guide `index`; `transient` skips history (live drag). */
+  setGuide: (axis: "v" | "h", index: number, at: number, transient?: boolean) => void;
+  /** Remove guide `index` (dragged back onto the ruler). */
+  removeGuide: (axis: "v" | "h", index: number) => void;
 
   // pages & masters (plan L6)
   /** Inserts a blank page after the active one, inheriting its master. */
@@ -404,6 +417,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       activePageId: "page-1",
       masterEditingId: null,
       level: "standard",
+      unit: "in",
 
       selectedIds: [],
       editingTextId: null,
@@ -497,6 +511,33 @@ export const useLayoutStore = create<LayoutEditorState>()(
           const next = Math.min(6, Math.max(1, Math.round(columns)));
           if (next === s.doc.columns) return s;
           return { ...pushed(s, s.doc), doc: { ...s.doc, columns: next } };
+        }),
+
+      setUnit: (unit) => set({ unit }),
+
+      addGuide: (axis, at) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: { ...s.doc, guides: { ...s.doc.guides, [axis]: [...s.doc.guides[axis], at] } },
+        })),
+
+      setGuide: (axis, index, at, transient = false) =>
+        set((s) => {
+          const arr = s.doc.guides[axis];
+          if (index < 0 || index >= arr.length || arr[index] === at) return s;
+          const nextArr = arr.map((v, i) => (i === index ? at : v));
+          const doc = { ...s.doc, guides: { ...s.doc.guides, [axis]: nextArr } };
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      removeGuide: (axis, index) =>
+        set((s) => {
+          const arr = s.doc.guides[axis];
+          if (index < 0 || index >= arr.length) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, guides: { ...s.doc.guides, [axis]: arr.filter((_, i) => i !== index) } },
+          };
         }),
 
       addPage: () =>
@@ -947,20 +988,30 @@ export const useLayoutStore = create<LayoutEditorState>()(
       // SSR and the first client render use the pristine document; the
       // StoreHydrator rehydrates after mount so server and client markup match.
       skipHydration: true,
-      // Only the file + experience level persist (§3.3) — selection, history,
-      // and viewport stay session-scoped.
-      partialize: (s) => ({ doc: s.doc, level: s.level }),
+      // Only the file + experience level + display unit persist (§3.3, L11) —
+      // selection, history, and viewport stay session-scoped.
+      partialize: (s) => ({ doc: s.doc, level: s.level, unit: s.unit }),
       // Validate what came out of storage — a corrupt or foreign-shaped doc
       // falls back to pristine instead of poisoning the editor.
       merge: (persisted, current) => {
-        const p = persisted as { doc?: unknown; level?: unknown } | undefined;
+        const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
         const parsed = LayoutDocumentSchema.safeParse(p?.doc);
-        // two levels since v1.3 — a persisted legacy "pro" coerces to "standard"
-        const level: ExperienceLevel = p?.level === "simple" ? "simple" : "standard";
-        if (!parsed.success) return { ...current, level };
+        // Only override from a *present, valid* persisted value; otherwise keep
+        // `current`. Rehydration runs after mount, so forcing a default here
+        // would clobber a preference the user changed in that window (and the
+        // legacy v1.3 "pro" still coerces to "standard").
+        const level: ExperienceLevel =
+          p?.level === "simple" || p?.level === "standard"
+            ? p.level
+            : p?.level === "pro"
+              ? "standard"
+              : current.level;
+        const unit: Unit = isUnit(p?.unit) ? p.unit : current.unit;
+        if (!parsed.success) return { ...current, level, unit };
         return {
           ...current,
           level,
+          unit,
           doc: parsed.data,
           activePageId: parsed.data.pages[0].id,
         };

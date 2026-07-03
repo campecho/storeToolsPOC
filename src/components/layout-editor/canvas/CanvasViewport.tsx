@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { surfaceObjects, useLayoutStore } from "@/store";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
 import { DPI, clampZoom, fitZoom, inToPx, pxToIn, rulerTicks } from "@/lib/layout/geometry";
-import { formatIn } from "@/lib/layout/presets";
+import { formatLen, type Unit } from "@/lib/layout/units";
 import {
   DRAW_THRESHOLD_IN,
   angleFromCenter,
@@ -143,21 +143,23 @@ function Ruler({
   originPx,
   lengthPx,
   zoom,
+  unit,
 }: {
   axis: "x" | "y";
   originPx: number;
   lengthPx: number;
   zoom: number;
+  unit: Unit;
 }) {
   if (lengthPx <= 0) return null;
-  const ticks = rulerTicks(originPx, lengthPx, zoom);
+  const ticks = rulerTicks(originPx, lengthPx, zoom, unit);
   const tickStart = { major: 6, mid: 10, minor: 13 };
 
   return (
     <svg
       width={axis === "x" ? lengthPx : RULER_BREADTH}
       height={axis === "x" ? RULER_BREADTH : lengthPx}
-      className="block"
+      className="pointer-events-none block"
       aria-hidden
     >
       {ticks.map((t) =>
@@ -264,6 +266,7 @@ export function CanvasViewport() {
   const fitRequestId = useLayoutStore((s) => s.fitRequestId);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const editingTextId = useLayoutStore((s) => s.editingTextId);
+  const unit = useLayoutStore((s) => s.unit);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
@@ -287,6 +290,22 @@ export function CanvasViewport() {
   // L9 fill-on-click: the frame awaiting the file the device picker returns.
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingFrame = useRef<string | null>(null);
+  // L11 ruler guides: the active drag (create from a ruler, or move a placed
+  // guide) and its live axis position. Guide drags run on window listeners with
+  // no pointer capture. Capturing a mouse pointer whose down-target sits in the
+  // page subtree and then re-rendering that subtree makes Chromium fire
+  // `pointercancel` and abort the drag after one move (object drags escape this
+  // only because their down-target is a leaf that never mutates). Window
+  // pointermove/up bubble regardless of what's under the cursor, so no capture
+  // is needed and there's nothing for the browser to cancel.
+  const [guideDrag, setGuideDrag] = useState<
+    | { mode: "create"; axis: "v" | "h" }
+    | { mode: "move"; axis: "v" | "h"; index: number }
+    | null
+  >(null);
+  const [guideLive, setGuideLive] = useState<{ at: number; del: boolean } | null>(null);
+  // origin/zoom snapshot the window drag reads without re-subscribing per render
+  const geomRef = useRef({ originX: 0, originY: 0, zoom: 1 });
 
   // measure the pasteboard
   useEffect(() => {
@@ -341,6 +360,7 @@ export function CanvasViewport() {
   const pageH = inToPx(doc.size.h, zoom);
   const originX = vp.w / 2 + pan.x - pageW / 2;
   const originY = vp.h / 2 + pan.y - pageH / 2;
+  geomRef.current = { originX, originY, zoom };
 
   /** Pointer event → page-space inches. */
   const toPageIn = (e: { clientX: number; clientY: number }) => {
@@ -362,6 +382,7 @@ export function CanvasViewport() {
       targets: snapTargets(s.doc, surfaceObjects(s), {
         exclude,
         columnGuidesOn: s.guidesVisible && s.doc.columns >= 2,
+        guidesOn: s.guidesVisible, // objects snap to ruler-dragged guides (L11)
       }),
       thresholdIn: SNAP_THRESHOLD_PX / (DPI * s.zoom),
     };
@@ -378,6 +399,91 @@ export function CanvasViewport() {
       if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) return o.id;
     }
     return null;
+  };
+
+  /* ── Ruler guides (plan L11) ── */
+
+  /** A client point → the guide's page-inch position along its axis. */
+  const clientToPageAxis = useCallback((axis: "v" | "h", clientX: number, clientY: number) => {
+    const rect = boardRef.current!.getBoundingClientRect();
+    const { originX: ox, originY: oy, zoom: z } = geomRef.current;
+    return axis === "v" ? pxToIn(clientX - rect.left - ox, z) : pxToIn(clientY - rect.top - oy, z);
+  }, []);
+
+  /** Dragged back over the originating ruler → create cancels / move deletes. */
+  const overRuler = useCallback((axis: "v" | "h", clientX: number, clientY: number) => {
+    const rect = boardRef.current!.getBoundingClientRect();
+    return axis === "v" ? clientX < rect.left : clientY < rect.top;
+  }, []);
+
+  // While a guide drag is live, track the pointer on `window` — see the
+  // `guideDrag` note: no capture, so the page subtree can re-render freely and
+  // the browser never cancels the stream. The listeners rebind once per drag.
+  useEffect(() => {
+    if (!guideDrag) return;
+    let moved = false;
+    const onMove = (e: PointerEvent) => {
+      moved = true;
+      setGuideLive({
+        at: clientToPageAxis(guideDrag.axis, e.clientX, e.clientY),
+        del: overRuler(guideDrag.axis, e.clientX, e.clientY),
+      });
+    };
+    const onUp = (e: PointerEvent) => {
+      const s = useLayoutStore.getState();
+      const at = clientToPageAxis(guideDrag.axis, e.clientX, e.clientY);
+      const del = overRuler(guideDrag.axis, e.clientX, e.clientY);
+      if (guideDrag.mode === "create") {
+        if (moved && !del) s.addGuide(guideDrag.axis, at); // dropped on the ruler → discard
+      } else if (moved) {
+        if (del) s.removeGuide(guideDrag.axis, guideDrag.index); // onto the ruler → delete
+        else s.setGuide(guideDrag.axis, guideDrag.index, at);
+      }
+      setGuideDrag(null);
+      setGuideLive(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [guideDrag, clientToPageAxis, overRuler]);
+
+  /**
+   * Pull a fresh guide out of a ruler (top ruler → horizontal, left → vertical).
+   * A window drag takes over from here (no pointer capture); the ruler press
+   * just seeds the gesture and the initial draft position.
+   */
+  const startGuideCreate = (axis: "v" | "h") => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    setGuideDrag({ mode: "create", axis });
+    setGuideLive({ at: clientToPageAxis(axis, e.clientX, e.clientY), del: false });
+  };
+
+  /**
+   * A placed guide near a page-space point, within a screen-px tolerance.
+   * Hit-tested from the board's pointerdown (not the guide element) so an object
+   * on top of a guide — whose own pointerdown stops propagation — wins the grab.
+   */
+  const guideAt = (p: { x: number; y: number }): { axis: "v" | "h"; index: number } | null => {
+    const s = useLayoutStore.getState();
+    if (!s.guidesVisible) return null;
+    const tol = 5 / (DPI * zoom); // ~5px grab radius, in inches
+    const cands: { axis: "v" | "h"; index: number; d: number }[] = [];
+    s.doc.guides.v.forEach((gx, index) => {
+      const d = Math.abs(gx - p.x);
+      if (d <= tol) cands.push({ axis: "v", index, d });
+    });
+    s.doc.guides.h.forEach((gy, index) => {
+      const d = Math.abs(gy - p.y);
+      if (d <= tol) cands.push({ axis: "h", index, d });
+    });
+    if (!cands.length) return null;
+    const best = cands.reduce((a, b) => (b.d < a.d ? b : a));
+    return { axis: best.axis, index: best.index };
   };
 
   /** Open the device picker to fill an empty picture frame (L9 fill-on-click). */
@@ -535,12 +641,22 @@ export function CanvasViewport() {
       setDraft({ x1: sp.x, y1: sp.y, x2: sp.x, y2: sp.y });
       setSnapLines(sp.lines);
     } else if (tool === "select") {
+      const s = useLayoutStore.getState();
+      const p = toPageIn(e);
+      // grab a nearby ruler guide (plan L11). Only reached when no object caught
+      // the pointerdown (objects stop propagation), so objects win the grab. A
+      // window drag takes over — no capture, and native drag is suppressed on
+      // the board, so re-rendering the page can't cancel it.
+      const hit = guideAt(p);
+      if (hit) {
+        setGuideDrag({ mode: "move", axis: hit.axis, index: hit.index });
+        setGuideLive({ at: hit.axis === "v" ? p.x : p.y, del: false });
+        return;
+      }
       // reached the pasteboard itself — nothing was hit; a drag from here
       // rubber-bands a marquee selection (plan L7)
-      const s = useLayoutStore.getState();
       if (s.editingTextId) s.setEditingText(null);
       if (selectedIds.length) s.setSelection([]);
-      const p = toPageIn(e);
       gesture.current = {
         kind: "marquee",
         pointerId: e.pointerId,
@@ -724,18 +840,26 @@ export function CanvasViewport() {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {/* top ruler row: corner box + horizontal ruler */}
+      {/* top ruler row: corner box + horizontal ruler (drag down for a guide) */}
       <div className="flex h-[18px] shrink-0">
         <div className="w-[18px] shrink-0 border-b border-r border-[#e0e0e0] bg-[#ededed]" />
-        <div className="flex-1 overflow-hidden border-b border-[#e0e0e0] bg-[#ededed]">
-          <Ruler axis="x" originPx={originX} lengthPx={vp.w} zoom={zoom} />
+        <div
+          data-testid="ruler-x"
+          onPointerDown={startGuideCreate("h")}
+          className="flex-1 cursor-ns-resize overflow-hidden border-b border-[#e0e0e0] bg-[#ededed]"
+        >
+          <Ruler axis="x" originPx={originX} lengthPx={vp.w} zoom={zoom} unit={unit} />
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* left ruler */}
-        <div className="w-[18px] shrink-0 overflow-hidden border-r border-[#e0e0e0] bg-[#ededed]">
-          <Ruler axis="y" originPx={originY} lengthPx={vp.h} zoom={zoom} />
+        {/* left ruler (drag right for a guide) */}
+        <div
+          data-testid="ruler-y"
+          onPointerDown={startGuideCreate("v")}
+          className="w-[18px] shrink-0 cursor-ew-resize overflow-hidden border-r border-[#e0e0e0] bg-[#ededed]"
+        >
+          <Ruler axis="y" originPx={originY} lengthPx={vp.h} zoom={zoom} unit={unit} />
         </div>
 
         {/* pasteboard */}
@@ -746,6 +870,13 @@ export function CanvasViewport() {
           onPointerDown={onBoardPointerDown}
           onPointerMove={onBoardPointerMove}
           onPointerUp={onBoardPointerUp}
+          // Suppress native HTML drag inside the canvas. Object/pan/draw gestures
+          // grab a pointer capture, which implicitly blocks native drag; guide
+          // drags run on window listeners with no capture, so without this a
+          // press on a guide starts a native drag and the browser fires
+          // pointercancel — killing the gesture after one move (plan L11). Asset
+          // drops still work: those drags originate in the panel, not here.
+          onDragStart={(e) => e.preventDefault()}
           onDragOver={onBoardDragOver}
           onDrop={onBoardDrop}
           onDragLeave={() => setDropTargetId(null)}
@@ -808,6 +939,60 @@ export function CanvasViewport() {
                   onDoubleClick={startTextEdit(o)}
                 />
               ))}
+              {/* ruler-dragged guides (plan L11) — visual only (pointer-events
+                  none), so objects on top of a guide stay clickable. Grabbing a
+                  guide to move it is hit-tested at the board level, where an
+                  object's own pointerdown (which stops propagation) has already
+                  won — objects take priority over the guide underneath. */}
+              {guidesVisible && (
+                <>
+                  {doc.guides.v.map((x, i) => {
+                    const moving =
+                      guideDrag?.mode === "move" && guideDrag.axis === "v" && guideDrag.index === i;
+                    if (moving && guideLive?.del) return null; // over the ruler → will delete
+                    const at = moving && guideLive ? guideLive.at : x;
+                    return (
+                      <div
+                        key={`gv-${i}`}
+                        data-testid="guide-v"
+                        className="pointer-events-none absolute inset-y-0 w-px bg-guide"
+                        style={{ left: inToPx(at, zoom), height: inToPx(doc.size.h, zoom) }}
+                      />
+                    );
+                  })}
+                  {doc.guides.h.map((y, i) => {
+                    const moving =
+                      guideDrag?.mode === "move" && guideDrag.axis === "h" && guideDrag.index === i;
+                    if (moving && guideLive?.del) return null;
+                    const at = moving && guideLive ? guideLive.at : y;
+                    return (
+                      <div
+                        key={`gh-${i}`}
+                        data-testid="guide-h"
+                        className="pointer-events-none absolute inset-x-0 h-px bg-guide"
+                        style={{ top: inToPx(at, zoom), width: inToPx(doc.size.w, zoom) }}
+                      />
+                    );
+                  })}
+                  {/* provisional line while dragging a fresh guide out of a ruler */}
+                  {guideDrag?.mode === "create" &&
+                    guideLive &&
+                    !guideLive.del &&
+                    (guideDrag.axis === "v" ? (
+                      <div
+                        data-testid="guide-draft"
+                        className="pointer-events-none absolute w-px bg-guide"
+                        style={{ left: inToPx(guideLive.at, zoom), top: -12, height: inToPx(doc.size.h, zoom) + 24 }}
+                      />
+                    ) : (
+                      <div
+                        data-testid="guide-draft"
+                        className="pointer-events-none absolute h-px bg-guide"
+                        style={{ top: inToPx(guideLive.at, zoom), left: -12, width: inToPx(doc.size.w, zoom) + 24 }}
+                      />
+                    ))}
+                </>
+              )}
               {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}
               {selected && tool === "select" && (
                 <SelectionOverlay
@@ -919,11 +1104,11 @@ export function CanvasViewport() {
           <div className="pointer-events-none absolute bottom-[14px] right-4 z-10 flex flex-col gap-[6px] rounded-[7px] border border-[#e2e2e2] bg-white px-[11px] py-2">
             <div className="flex items-center gap-[7px]">
               <div className="w-4 border-t-[1.5px] border-dashed border-brand" />
-              <span className="text-[10px] text-[#888]">Bleed {formatIn(doc.bleed)} in</span>
+              <span className="text-[10px] text-[#888]">Bleed {formatLen(doc.bleed, unit)} {unit}</span>
             </div>
             <div className="flex items-center gap-[7px]">
               <div className="w-4 border-t border-dashed border-guide" />
-              <span className="text-[10px] text-[#888]">Margin {formatIn(doc.margin)} in</span>
+              <span className="text-[10px] text-[#888]">Margin {formatLen(doc.margin, unit)} {unit}</span>
             </div>
           </div>
         </div>

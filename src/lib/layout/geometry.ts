@@ -1,4 +1,5 @@
 import type { LayoutDocument } from "@/schema";
+import { UNIT_PER_IN, type Unit } from "./units";
 
 /**
  * Canvas geometry (plan §3.5): canonical inches everywhere, one scale factor —
@@ -81,34 +82,62 @@ export interface RulerTick {
   /** Position along the ruler in px. */
   px: number;
   level: "major" | "mid" | "minor";
-  /** Inch number, present on labeled majors only. */
+  /** Value in the active unit, present on labeled majors only. */
   label?: string;
 }
 
+/** Minor ticks stay ≥ this many px apart; a major must be ≥ the label width. */
+const MIN_MINOR_PX = 6;
+const MIN_LABEL_PX = 40;
+
 /**
- * Ruler scale (plan §3.5): ticks every 1/8 in, heavier every 1 in, numbered
- * when spacing permits; the origin is the page's top-left corner. `originPx`
- * is that corner's position along the ruler; ticks cover [0, lengthPx].
- * Sub-divisions coarsen as zoom drops so ticks stay ≥ ~5px apart.
+ * "Nice" tick increments per unit, coarse→fine — the ruler picks the finest
+ * that keeps minor ticks readable, then a coarser multiple to label. Values
+ * are in the display unit (inches include the customary 1/8 subdivisions).
  */
-export function rulerTicks(originPx: number, lengthPx: number, zoom: number): RulerTick[] {
+const TICK_LADDER: Record<Unit, number[]> = {
+  in: [10, 5, 2, 1, 0.5, 0.25, 0.125],
+  mm: [100, 50, 20, 10, 5, 2, 1],
+  px: [1000, 500, 200, 100, 50, 20, 10],
+  pt: [720, 360, 144, 72, 36, 12, 6],
+};
+
+/**
+ * Ruler scale (plan §3.5, unit-aware since L11): ticks at a nice increment in
+ * the active unit, numbered on a coarser multiple, mirrored either side of the
+ * page's top-left origin. `originPx` is that corner's position along the
+ * ruler; ticks cover [0, lengthPx]. Increments coarsen as zoom drops so ticks
+ * stay ≥ ~6px apart.
+ */
+export function rulerTicks(
+  originPx: number,
+  lengthPx: number,
+  zoom: number,
+  unit: Unit = "in",
+): RulerTick[] {
   if (lengthPx <= 0) return [];
-  const inchPx = DPI * zoom;
-  const sub = inchPx / 8 >= 5 ? 8 : inchPx / 4 >= 5 ? 4 : inchPx / 2 >= 5 ? 2 : 1;
-  const step = inchPx / sub;
-  const labelEvery = inchPx >= 28 ? 1 : inchPx >= 14 ? 2 : 5;
+  const unitPx = (DPI * zoom) / UNIT_PER_IN[unit]; // px per 1 display unit
+  const asc = [...TICK_LADDER[unit]].reverse(); // fine → coarse
+  const isMultiple = (a: number, b: number) => Math.abs(a / b - Math.round(a / b)) < 1e-9;
+
+  // finest increment whose ticks are still ≥ MIN_MINOR_PX apart
+  const minor = asc.find((s) => s * unitPx >= MIN_MINOR_PX) ?? asc[asc.length - 1];
+  // smallest increment wide enough to carry a number, kept a whole multiple of minor
+  const major =
+    asc.find((s) => s >= minor && isMultiple(s, minor) && s * unitPx >= MIN_LABEL_PX) ?? minor;
+  const ratio = Math.max(1, Math.round(major / minor));
+  const stepPx = minor * unitPx;
 
   const ticks: RulerTick[] = [];
-  const first = Math.ceil((0 - originPx) / step - 1e-9);
-  const last = Math.floor((lengthPx - originPx) / step + 1e-9);
+  const first = Math.ceil((0 - originPx) / stepPx - 1e-9);
+  const last = Math.floor((lengthPx - originPx) / stepPx + 1e-9);
   for (let k = first; k <= last; k++) {
-    const px = originPx + k * step;
-    if (k % sub === 0) {
-      const inches = k / sub;
-      const labeled = inches % labelEvery === 0;
-      // Numbers mirror on both sides of the origin, Publisher-style.
-      ticks.push({ px, level: "major", ...(labeled ? { label: String(Math.abs(inches)) } : {}) });
-    } else if (sub >= 2 && k % (sub / 2) === 0) {
+    const px = originPx + k * stepPx;
+    if (((k % ratio) + ratio) % ratio === 0) {
+      // numbers mirror on both sides of the origin, Publisher-style
+      const value = Math.abs(k * minor);
+      ticks.push({ px, level: "major", label: Number(value.toFixed(4)).toString() });
+    } else if (ratio % 2 === 0 && ((k % (ratio / 2)) + ratio) % (ratio / 2) === 0) {
       ticks.push({ px, level: "mid" });
     } else {
       ticks.push({ px, level: "minor" });

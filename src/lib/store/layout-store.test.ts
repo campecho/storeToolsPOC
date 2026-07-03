@@ -958,6 +958,63 @@ describe("rotation & arrange (L10)", () => {
   });
 });
 
+describe("ruler guides & units (L11)", () => {
+  it("addGuide drops a guide as one undo step; undo removes it", () => {
+    const s = useLayoutStore.getState();
+    const depth = useLayoutStore.getState().past.length;
+    s.addGuide("v", 2.5);
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([2.5]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo();
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([]);
+  });
+
+  it("setGuide repositions — transient skips history, committed is one step", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("h", 1);
+    const depth = useLayoutStore.getState().past.length;
+    s.setGuide("h", 0, 3, true); // live drag
+    expect(useLayoutStore.getState().doc.guides.h).toEqual([3]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth); // transient
+    s.setGuide("h", 0, 4); // commit on drop
+    expect(useLayoutStore.getState().doc.guides.h).toEqual([4]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+  });
+
+  it("setGuide guards an out-of-range index and a no-op move", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("v", 2);
+    const before = useLayoutStore.getState().doc;
+    s.setGuide("v", 5, 3); // no such index
+    s.setGuide("v", 0, 2); // already there
+    expect(useLayoutStore.getState().doc).toBe(before);
+  });
+
+  it("removeGuide deletes one and is undoable", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("v", 1);
+    s.addGuide("v", 2);
+    s.removeGuide("v", 0);
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([2]);
+    s.undo();
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([1, 2]);
+  });
+
+  it("guides ride the document through reset (pristine has none)", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("v", 3);
+    s.resetDoc();
+    expect(useLayoutStore.getState().doc.guides).toEqual({ v: [], h: [] });
+  });
+
+  it("setUnit switches the display unit", () => {
+    const s = useLayoutStore.getState();
+    expect(useLayoutStore.getState().unit).toBe("in");
+    s.setUnit("mm");
+    expect(useLayoutStore.getState().unit).toBe("mm");
+  });
+});
+
 describe("persisted-state validation (the merge guard)", () => {
   it("accepts a valid stored document", () => {
     const doc = createDefaultDocument();
@@ -993,5 +1050,13 @@ describe("persisted-state validation (the merge guard)", () => {
     const parsed = LayoutDocumentSchema.safeParse(doc);
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.assets).toEqual({});
+  });
+
+  it("pre-L11 documents (no guides key) parse with empty guides — additive delta", () => {
+    const doc: Record<string, unknown> = { ...createDefaultDocument() };
+    delete doc.guides;
+    const parsed = LayoutDocumentSchema.safeParse(doc);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.guides).toEqual({ v: [], h: [] });
   });
 });

@@ -140,6 +140,9 @@ test.describe("Layout editor shell (L2)", () => {
 test.describe("Document model & true-scale page (L3)", () => {
   test("page setup edits reflect live in page and hint", async ({ page }) => {
     await page.goto("/layout");
+    // wait out the post-mount rehydrate before mutating persisted state, else
+    // the late rehydrate restores the stored default over the preset just picked
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
 
     // preset → Ledger (inspector Page tab is the default; the pasteboard
     // caption that also echoed this came out in L8)
@@ -168,6 +171,7 @@ test.describe("Document model & true-scale page (L3)", () => {
 
   test("bleed & margin edits reflect in the legend, from both surfaces", async ({ page }) => {
     await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
 
     await page.getByTestId("page-bleed").fill("0.25");
     await page.getByTestId("page-bleed").press("Enter");
@@ -1231,5 +1235,107 @@ test.describe("Rotation & Arrange (L10)", () => {
       .dispatchEvent("drop", { dataTransfer: dt, clientX: cx, clientY: cy - 55 });
 
     await expect(page.getByTestId("picture-image")).toBeVisible();
+  });
+});
+
+/**
+ * Ruler guides & units (plan step L11): guides pulled from the rulers land,
+ * objects snap to them, they move and delete, and the in/mm/px/pt toggle
+ * relabels fields and round-trips input. Guides + unit survive reload.
+ */
+test.describe("Ruler guides & units (L11)", () => {
+  test("guides drag out of each ruler, an object snaps to one, and they persist", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    // wait out the post-mount rehydrate before mutating persisted state
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+
+    // pull a vertical guide out of the left ruler; it lands at the drop x
+    const ry = (await page.getByTestId("ruler-y").boundingBox())!;
+    await page.mouse.move(ry.x + ry.width / 2, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 130, box.y + 150, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("guide-v")).toHaveCount(1);
+
+    // and a horizontal guide out of the top ruler
+    const rx = (await page.getByTestId("ruler-x").boundingBox())!;
+    await page.mouse.move(box.x + 150, rx.y + rx.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 150, box.y + 120, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("guide-h")).toHaveCount(1);
+
+    // draw a rect whose left edge is ~50px right of the vertical guide
+    await page.getByTestId("tool-rect").click();
+    await page.mouse.move(box.x + 180, box.y + 80);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 250, box.y + 150, { steps: 8 });
+    await page.mouse.up();
+
+    // drag it left so its left edge lands ~5px off the guide → inside the 6px
+    // snap radius, it locks onto the guide (a smart guide shows during the drag)
+    await page.mouse.move(box.x + 215, box.y + 115);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 170, box.y + 115, { steps: 10 });
+    await expect(page.getByTestId("smart-guide").first()).toBeVisible();
+    await page.mouse.up();
+
+    // the rect's left edge now aligns with the guide line (within 2px)
+    const guide = (await page.getByTestId("guide-v").boundingBox())!;
+    const rect = (await page.getByTestId("object-rect").boundingBox())!;
+    expect(Math.abs(rect.x - (guide.x + guide.width / 2))).toBeLessThan(2);
+
+    // both guides survive a reload
+    await page.reload();
+    await expect(page.getByTestId("guide-v")).toHaveCount(1);
+    await expect(page.getByTestId("guide-h")).toHaveCount(1);
+  });
+
+  test("dragging a guide back onto the ruler removes it", async ({ page }) => {
+    await page.goto("/layout");
+    // wait out the post-mount rehydrate before mutating persisted state
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    const ry = (await page.getByTestId("ruler-y").boundingBox())!;
+
+    // create a vertical guide
+    await page.mouse.move(ry.x + ry.width / 2, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 140, box.y + 150, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("guide-v")).toHaveCount(1);
+
+    // grab it and drag it left onto the ruler → deleted
+    await page.mouse.move(box.x + 140, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(ry.x + ry.width / 2, box.y + 150, { steps: 10 });
+    await page.mouse.up();
+    await expect(page.getByTestId("guide-v")).toHaveCount(0);
+  });
+
+  test("the unit toggle relabels fields, round-trips input, and persists", async ({ page }) => {
+    await page.goto("/layout");
+    // wait out the post-mount rehydrate before mutating persisted state
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    // Page tab is the default inspector — Width shows inches
+    await expect(page.getByTestId("page-w")).toHaveValue("8.5");
+
+    await page.getByTestId("unit-select").selectOption("mm");
+    await expect(page.getByTestId("page-w")).toHaveValue("215.9"); // 8.5 in → mm
+
+    // typing in mm commits back to inches; the field re-shows the mm value
+    await page.getByTestId("page-w").fill("254");
+    await page.getByTestId("page-w").press("Enter");
+    await expect(page.getByTestId("page-w")).toHaveValue("254");
+    await page.getByTestId("unit-select").selectOption("in");
+    await expect(page.getByTestId("page-w")).toHaveValue("10"); // 254 mm → 10 in
+
+    // the chosen unit persists across reload
+    await page.getByTestId("unit-select").selectOption("pt");
+    await page.reload();
+    await expect(page.getByTestId("unit-select")).toHaveValue("pt");
   });
 });

@@ -134,5 +134,10 @@ export const LayoutDocumentSchema = z.object({
   masters: z.array(MasterPageSchema),
   /** Asset library metadata (L8) — defaulted so pre-L8 documents keep parsing. */
   assets: z.record(AssetSchema).default({}),
+  /** Ruler-dragged guides (L11), inches: `v` = x-positions, `h` = y-positions.
+      Additive/defaulted so pre-L11 documents keep parsing. */
+  guides: z
+    .object({ v: z.array(z.number()), h: z.array(z.number()) })
+    .default({ v: [], h: [] }),
 });
 export type LayoutDocument = z.infer<typeof LayoutDocumentSchema>;

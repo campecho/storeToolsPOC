@@ -119,6 +119,7 @@ export function PropertiesTab() {
               value={obj.rotation}
               onCommit={(v) => transformObject(obj.id, { rotation: v })}
               testId="prop-rotation"
+              raw
               suffix="°"
               ariaUnit="degrees"
               format={(v) => String(Math.round(v))}

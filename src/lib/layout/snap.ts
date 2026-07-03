@@ -30,7 +30,7 @@ function dedupeSorted(list: number[]): number[] {
 export function snapTargets(
   doc: LayoutDocument,
   objects: LayoutObject[],
-  opts: { exclude?: Set<string>; columnGuidesOn?: boolean } = {},
+  opts: { exclude?: Set<string>; columnGuidesOn?: boolean; guidesOn?: boolean } = {},
 ): SnapTargets {
   const { w, h } = doc.size;
   const m = doc.margin;
@@ -38,6 +38,11 @@ export function snapTargets(
   const hh: number[] = [m, h / 2, h - m];
   if (opts.columnGuidesOn) {
     for (const [a, b] of columnGuides(doc)) v.push(a, b);
+  }
+  if (opts.guidesOn) {
+    // ruler-dragged guides (plan L11) — v guides are x-positions, h are y
+    for (const x of doc.guides.v) v.push(x);
+    for (const y of doc.guides.h) hh.push(y);
   }
   for (const o of objects) {
     if (opts.exclude?.has(o.id)) continue;

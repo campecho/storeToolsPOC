@@ -42,7 +42,7 @@ export function PageSurface({
       {/* margin / safe area */}
       <div
         data-testid="margin-box"
-        className="absolute border border-dashed border-guide"
+        className="pointer-events-none absolute border border-dashed border-guide"
         style={{ inset: marginPx }}
       />
 
@@ -52,25 +52,25 @@ export function PageSurface({
           {doc.columns < 2 && (
             <div
               data-testid="center-guide-v"
-              className="absolute w-px bg-guide opacity-50"
+              className="pointer-events-none absolute w-px bg-guide opacity-50"
               style={{ left: w / 2, top: marginPx, bottom: marginPx }}
             />
           )}
           <div
             data-testid="center-guide-h"
-            className="absolute h-px bg-guide opacity-[.35]"
+            className="pointer-events-none absolute h-px bg-guide opacity-[.35]"
             style={{ top: h / 2, left: marginPx, right: marginPx }}
           />
           {gutters.map(([left, right], i) => (
             <Fragment key={i}>
               <div
                 data-testid="column-guide"
-                className="absolute w-px bg-guide opacity-50"
+                className="pointer-events-none absolute w-px bg-guide opacity-50"
                 style={{ left: inToPx(left, zoom), top: marginPx, bottom: marginPx }}
               />
               <div
                 data-testid="column-guide"
-                className="absolute w-px bg-guide opacity-50"
+                className="pointer-events-none absolute w-px bg-guide opacity-50"
                 style={{ left: inToPx(right, zoom), top: marginPx, bottom: marginPx }}
               />
             </Fragment>

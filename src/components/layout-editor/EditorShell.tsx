@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, PanelsTopLeft } from "lucide-react";
@@ -61,6 +61,15 @@ export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
   useEditorKeyboard();
 
+  // Expose when the persisted store has rehydrated (skipHydration runs it after
+  // mount). Interacting before then can be clobbered by the late rehydrate, so
+  // tests wait on `data-hydrated` and it's a useful readiness signal generally.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (useLayoutStore.persist.hasHydrated()) setHydrated(true);
+    return useLayoutStore.persist.onFinishHydration(() => setHydrated(true));
+  }, []);
+
   return (
     <>
       {/* useSearchParams requires a Suspense boundary under a static route */}
@@ -92,7 +101,11 @@ export function EditorShell() {
         </div>
       </div>
 
-      <div className="hidden min-h-0 flex-1 flex-col lg:flex" data-testid="layout-editor">
+      <div
+        className="hidden min-h-0 flex-1 flex-col lg:flex"
+        data-testid="layout-editor"
+        data-hydrated={hydrated ? "true" : "false"}
+      >
         <TitleBar />
         <RibbonTabs />
         {/* Command band (wire 2b) — content swaps with the active ribbon tab.

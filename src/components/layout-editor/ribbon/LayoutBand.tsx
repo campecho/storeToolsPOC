@@ -2,6 +2,7 @@
 
 import { useLayoutStore } from "@/store";
 import { PAGE_PRESETS, formatIn, matchPreset, sizeLabel } from "@/lib/layout/presets";
+import { formatLen } from "@/lib/layout/units";
 import { RibbonGroup } from "./RibbonGroup";
 
 /**
@@ -16,6 +17,7 @@ const BLEED_OPTIONS = [0, 0.125, 0.25];
 
 export function LayoutBand() {
   const doc = useLayoutStore((s) => s.doc);
+  const unit = useLayoutStore((s) => s.unit);
   const guidesVisible = useLayoutStore((s) => s.guidesVisible);
   const applyPreset = useLayoutStore((s) => s.applyPreset);
   const setOrientation = useLayoutStore((s) => s.setOrientation);
@@ -34,7 +36,7 @@ export function LayoutBand() {
         <div className="relative">
           <div className="flex h-[26px] w-[150px] items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-[9px] text-[11px] text-[#555]">
             <span className="truncate">
-              {sizeLabel(w, h)} · {formatIn(w)} × {formatIn(h)} in
+              {sizeLabel(w, h)} · {formatLen(w, unit)} × {formatLen(h, unit)} {unit}
             </span>
             <span className="text-[#b0b0b0]">▾</span>
           </div>
