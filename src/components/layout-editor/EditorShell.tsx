@@ -94,10 +94,12 @@ export function EditorShell() {
       <div className="hidden min-h-0 flex-1 flex-col lg:flex" data-testid="layout-editor">
         <TitleBar />
         <RibbonTabs />
-        {/* Command band (wire 2b) — content swaps with the active ribbon tab. */}
+        {/* Command band (wire 2b) — content swaps with the active ribbon tab.
+            Single-row sections (plan §2, deviation #5): auto height, controls
+            wrap within their group on narrow viewports. */}
         <div
           data-testid={`band-${ribbon}`}
-          className="flex h-[92px] shrink-0 items-stretch overflow-hidden border-b border-[#e6e6e6] bg-[#f7f7f7]"
+          className="flex min-h-[64px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-[#f7f7f7]"
         >
           {ribbon === "home" && <HomeBand />}
           {ribbon === "insert" && <InsertBand />}

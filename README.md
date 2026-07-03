@@ -206,6 +206,13 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   — click selects, **drag restacks** (one undo step, verified against canvas paint order).
   The canvas dropped the wire's name/size/zoom caption and bleed corner marks, and the title
   bar dropped the Pro segment (two experience levels since plan v1.3).
+- **Design revision — single-row ribbon (user-directed):** every command band lays its
+  groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
+  and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge
+  onto one line) — with the section dividers and labels kept. Controls **wrap within their
+  section** as the viewport narrows, so the band grows down instead of clipping; band height
+  is auto (min 64px) instead of the wire's fixed 92px. Recorded as fidelity deviation #5
+  (plan §2).
 
 ## Where things live
 
