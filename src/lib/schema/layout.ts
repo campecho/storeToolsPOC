@@ -81,6 +81,10 @@ export const LayoutPageSchema = z.object({
   id: z.string(),
   masterId: z.string().nullable(),
   objects: z.array(LayoutObjectSchema),
+  /** Per-page size override (L12), inches — the §9 v2 delta pulled forward
+      additively/optional so pre-L12 documents keep parsing. Absent = the
+      document `size`; set = this page renders at its own effective size. */
+  sizeOverride: z.object({ w: z.number().positive(), h: z.number().positive() }).optional(),
 });
 export type LayoutPage = z.infer<typeof LayoutPageSchema>;
 

@@ -4,7 +4,15 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { surfaceObjects, useLayoutStore } from "@/store";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
-import { DPI, clampZoom, fitZoom, inToPx, pxToIn, rulerTicks } from "@/lib/layout/geometry";
+import {
+  DPI,
+  clampZoom,
+  effectivePageSize,
+  fitZoom,
+  inToPx,
+  pxToIn,
+  rulerTicks,
+} from "@/lib/layout/geometry";
 import { formatLen, type Unit } from "@/lib/layout/units";
 import {
   DRAW_THRESHOLD_IN,
@@ -263,6 +271,7 @@ export function CanvasViewport() {
   const pan = useLayoutStore((s) => s.pan);
   const tool = useLayoutStore((s) => s.tool);
   const guidesVisible = useLayoutStore((s) => s.guidesVisible);
+  const spread = useLayoutStore((s) => s.spread);
   const fitRequestId = useLayoutStore((s) => s.fitRequestId);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const selectedGuide = useLayoutStore((s) => s.selectedGuide);
@@ -327,7 +336,24 @@ export function CanvasViewport() {
     if (fittedFor.current === fitRequestId) return;
     fittedFor.current = fitRequestId;
     const s = useLayoutStore.getState();
-    s.setZoom(fitZoom(s.doc.size.w, s.doc.size.h, s.doc.bleed, vp.w, vp.h));
+    // fit the active page's effective size (plan L12); masters follow the doc size
+    const idx = s.doc.pages.findIndex((p) => p.id === s.activePageId);
+    const pg = s.doc.pages[idx];
+    const size = s.masterEditingId ? s.doc.size : effectivePageSize(s.doc, pg);
+    let fitW = size.w;
+    let fitH = size.h;
+    // in spread view, reserve room for the partner on either side of the
+    // centered active page (symmetric worst case) so both stay in frame (L12)
+    if (s.spread && !s.masterEditingId && idx > 0) {
+      const n = idx + 1; // 1-based page number
+      const partner = s.doc.pages[n % 2 === 0 ? idx + 1 : idx - 1];
+      if (partner) {
+        const psize = effectivePageSize(s.doc, partner);
+        fitW = size.w + 2 * psize.w;
+        fitH = Math.max(size.h, psize.h);
+      }
+    }
+    s.setZoom(fitZoom(fitW, fitH, s.doc.bleed, vp.w, vp.h));
     s.setPan({ x: 0, y: 0 });
   }, [vp, fitRequestId]);
 
@@ -359,11 +385,28 @@ export function CanvasViewport() {
   const selected =
     selectedIds.length === 1 ? surface.find((o) => o.id === selectedIds[0]) : undefined;
 
-  const pageW = inToPx(doc.size.w, zoom);
-  const pageH = inToPx(doc.size.h, zoom);
+  // the active surface's effective size (plan L12): the page's override, else
+  // the doc size; a master being edited always draws at the document size
+  const pageSize = editingMaster ? doc.size : effectivePageSize(doc, page);
+  const pageW = inToPx(pageSize.w, zoom);
+  const pageH = inToPx(pageSize.h, zoom);
   const originX = vp.w / 2 + pan.x - pageW / 2;
   const originY = vp.h / 2 + pan.y - pageH / 2;
   geomRef.current = { originX, originY, zoom };
+
+  // Two-page spread partner (plan L12) — Publisher pairing: page 1 stands
+  // alone, then (2|3), (4|5), … The active page stays centered and its partner
+  // renders alongside; a click activates the partner, editing never leaves the
+  // active page. Masters have no spread.
+  const pageIndex = doc.pages.findIndex((p) => p.id === activePageId);
+  const spreadPartner = (() => {
+    if (!spread || editingMaster || pageIndex < 0) return null;
+    const n = pageIndex + 1; // 1-based page number
+    if (n === 1) return null; // the first page has no partner
+    const partner = doc.pages[n % 2 === 0 ? pageIndex + 1 : pageIndex - 1];
+    if (!partner) return null; // an even last page has no right-hand partner
+    return { page: partner, side: n % 2 === 0 ? ("right" as const) : ("left" as const) };
+  })();
 
   /** Pointer event → page-space inches. */
   const toPageIn = (e: { clientX: number; clientY: number }) => {
@@ -381,11 +424,14 @@ export function CanvasViewport() {
   /** Snap targets + threshold for a gesture starting now (zoom is stable mid-drag). */
   const gestureSnap = (exclude?: Set<string>) => {
     const s = useLayoutStore.getState();
+    const pg = s.doc.pages.find((p) => p.id === s.activePageId);
+    const size = s.masterEditingId ? s.doc.size : effectivePageSize(s.doc, pg);
     return {
       targets: snapTargets(s.doc, surfaceObjects(s), {
         exclude,
         columnGuidesOn: s.guidesVisible && s.doc.columns >= 2,
         guidesOn: s.guidesVisible, // objects snap to ruler-dragged guides (L11)
+        size, // margins/centers/columns follow the page's effective size (L12)
       }),
       thresholdIn: SNAP_THRESHOLD_PX / (DPI * s.zoom),
     };
@@ -953,12 +999,51 @@ export function CanvasViewport() {
             </div>
           )}
 
+          {/* two-page spread partner (plan L12) — a static, click-to-activate
+              page beside the active one, positioned in board space so it tracks
+              pan/zoom with the active page. Rendered before the active page so
+              the page you're editing sits on top at the spine. */}
+          {spreadPartner &&
+            (() => {
+              const pSize = effectivePageSize(doc, spreadPartner.page);
+              const partnerW = inToPx(pSize.w, zoom);
+              const left =
+                spreadPartner.side === "left" ? originX - partnerW : originX + pageW;
+              const pMaster = spreadPartner.page.masterId
+                ? doc.masters.find((m) => m.id === spreadPartner.page.masterId)
+                : undefined;
+              return (
+                <div
+                  data-testid="spread-partner"
+                  className="absolute cursor-pointer"
+                  style={{ left, top: originY }}
+                  title="Click to edit this page"
+                  // don't start a canvas gesture on the partner — just activate it
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() =>
+                    useLayoutStore.getState().setActivePage(spreadPartner.page.id)
+                  }
+                >
+                  <PageSurface doc={doc} size={pSize} zoom={zoom} guidesVisible={false} withTestId={false}>
+                    {pMaster?.objects.map((o) => (
+                      <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} withTestId={false} />
+                    ))}
+                    {spreadPartner.page.objects.map((o) => (
+                      <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} withTestId={false} />
+                    ))}
+                  </PageSurface>
+                  {/* faint veil marks it as the inactive page you can click into */}
+                  <div className="pointer-events-none absolute inset-0 bg-[rgba(120,120,120,.06)]" />
+                </div>
+              );
+            })()}
+
           {/* publication page — centered, offset by the pan */}
           <div
             className="absolute left-1/2 top-1/2"
             style={{ transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))` }}
           >
-            <PageSurface doc={doc} zoom={zoom} guidesVisible={guidesVisible}>
+            <PageSurface doc={doc} size={pageSize} zoom={zoom} guidesVisible={guidesVisible}>
               {/* master furniture first — beneath page objects, never selectable here */}
               {appliedMaster?.objects.map((o) => (
                 <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} />

@@ -43,7 +43,7 @@ export function MasterThumb({
             : "border border-[#dcdcdc] hover:border-[#b8b8b8]"
         }`}
       >
-        <MiniRender doc={doc} objects={master.objects} />
+        <MiniRender size={doc.size} objects={master.objects} />
         {master.objects.length === 0 && (
           <div className="pointer-events-none absolute inset-2 border border-dashed border-[#dcdcdc]" />
         )}

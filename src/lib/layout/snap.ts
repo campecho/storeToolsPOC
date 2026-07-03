@@ -32,9 +32,15 @@ function dedupeSorted(list: number[]): number[] {
 export function snapTargets(
   doc: LayoutDocument,
   objects: LayoutObject[],
-  opts: { exclude?: Set<string>; columnGuidesOn?: boolean; guidesOn?: boolean } = {},
+  opts: {
+    exclude?: Set<string>;
+    columnGuidesOn?: boolean;
+    guidesOn?: boolean;
+    /** The active page's effective size (plan L12) — defaults to the doc size. */
+    size?: { w: number; h: number };
+  } = {},
 ): SnapTargets {
-  const { w, h } = doc.size;
+  const { w, h } = opts.size ?? doc.size;
   const m = doc.margin;
   const v: number[] = [m, w / 2, w - m];
   const hh: number[] = [m, h / 2, h - m];
@@ -44,7 +50,9 @@ export function snapTargets(
     hh.push(-doc.bleed, h + doc.bleed);
   }
   if (opts.columnGuidesOn) {
-    for (const [a, b] of columnGuides(doc)) v.push(a, b);
+    // column guides span the effective width too
+    for (const [a, b] of columnGuides({ size: opts.size ?? doc.size, margin: m, columns: doc.columns }))
+      v.push(a, b);
   }
   if (opts.guidesOn) {
     // ruler-dragged guides (plan L11) — v guides are x-positions, h are y

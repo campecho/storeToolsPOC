@@ -1,4 +1,4 @@
-import type { LayoutDocument } from "@/schema";
+import type { LayoutDocument, LayoutPage } from "@/schema";
 import { UNIT_PER_IN, type Unit } from "./units";
 
 /**
@@ -21,6 +21,19 @@ export const COLUMN_GUTTER_IN = 0.2;
 /** Custom-size bounds — the ceiling is deliberately large-format friendly. */
 export const MIN_PAGE_IN = 1;
 export const MAX_PAGE_IN = 240;
+
+/**
+ * A page's effective size (plan L12): its own `sizeOverride` if set, else the
+ * document size. Canvas, rulers, thumbnails, spreads, guides, and snap targets
+ * all size the page through this so an override reads true everywhere. Masters
+ * carry no override — they always render at the document size.
+ */
+export function effectivePageSize(
+  doc: Pick<LayoutDocument, "size">,
+  page: Pick<LayoutPage, "sizeOverride"> | undefined,
+): { w: number; h: number } {
+  return page?.sizeOverride ?? doc.size;
+}
 
 export function inToPx(inches: number, zoom: number): number {
   return inches * DPI * zoom;

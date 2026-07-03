@@ -1034,6 +1034,94 @@ describe("ruler guides & units (L11)", () => {
   });
 });
 
+describe("spreads & mixed page sizes (L12)", () => {
+  it("setActivePageSize pins the active page, re-fits, and is one undo step", () => {
+    const s = useLayoutStore.getState();
+    const fit0 = useLayoutStore.getState().fitRequestId;
+    s.setActivePageSize(11, 17);
+    const st = useLayoutStore.getState();
+    expect(st.doc.pages[0].sizeOverride).toEqual({ w: 11, h: 17 });
+    // the document size stays put — the override is per page
+    expect(st.doc.size).toEqual({ w: 8.5, h: 11 });
+    expect(st.fitRequestId).toBe(fit0 + 1);
+    s.undo();
+    expect(useLayoutStore.getState().doc.pages[0].sizeOverride).toBeUndefined();
+  });
+
+  it("setActivePageSize clamps to the large-format bounds", () => {
+    const s = useLayoutStore.getState();
+    s.setActivePageSize(999, 0.2);
+    expect(useLayoutStore.getState().doc.pages[0].sizeOverride).toEqual({ w: MAX_PAGE_IN, h: 1 });
+  });
+
+  it("an override is per page — the others keep following the document size", () => {
+    const s = useLayoutStore.getState();
+    s.addPage(); // page 2 becomes active
+    s.setActivePageSize(17, 11);
+    const st = useLayoutStore.getState();
+    expect(st.doc.pages[0].sizeOverride).toBeUndefined();
+    expect(st.doc.pages[1].sizeOverride).toEqual({ w: 17, h: 11 });
+  });
+
+  it("setActivePageSize is a no-op when the override already matches", () => {
+    const s = useLayoutStore.getState();
+    s.setActivePageSize(11, 17);
+    const before = useLayoutStore.getState().doc;
+    s.setActivePageSize(11, 17);
+    expect(useLayoutStore.getState().doc).toBe(before);
+  });
+
+  it("clearActivePageSize drops the override (no-op without one) and is undoable", () => {
+    const s = useLayoutStore.getState();
+    s.setActivePageSize(11, 17);
+    s.clearActivePageSize();
+    expect(useLayoutStore.getState().doc.pages[0].sizeOverride).toBeUndefined();
+    // a page with no override doesn't churn the doc or the history
+    const before = useLayoutStore.getState().doc;
+    s.clearActivePageSize();
+    expect(useLayoutStore.getState().doc).toBe(before);
+    // undo restores the override
+    s.undo();
+    expect(useLayoutStore.getState().doc.pages[0].sizeOverride).toEqual({ w: 11, h: 17 });
+  });
+
+  it("pageSizeScope is a session UI toggle, defaulting to the whole document", () => {
+    const s = useLayoutStore.getState();
+    expect(useLayoutStore.getState().pageSizeScope).toBe("document");
+    s.setPageSizeScope("page");
+    expect(useLayoutStore.getState().pageSizeScope).toBe("page");
+  });
+
+  it("setSpread toggles the view and re-fits only on a real change", () => {
+    const s = useLayoutStore.getState();
+    expect(useLayoutStore.getState().spread).toBe(false);
+    const fit0 = useLayoutStore.getState().fitRequestId;
+    s.setSpread(true);
+    expect(useLayoutStore.getState().spread).toBe(true);
+    expect(useLayoutStore.getState().fitRequestId).toBe(fit0 + 1);
+    s.setSpread(true); // same value — no re-fit
+    expect(useLayoutStore.getState().fitRequestId).toBe(fit0 + 1);
+  });
+
+  it("reset clears the spread view and the size scope", () => {
+    const s = useLayoutStore.getState();
+    s.setSpread(true);
+    s.setPageSizeScope("page");
+    s.resetDoc();
+    const st = useLayoutStore.getState();
+    expect(st.spread).toBe(false);
+    expect(st.pageSizeScope).toBe("document");
+  });
+
+  it("an overridden page survives a schema round-trip (persistence)", () => {
+    const s = useLayoutStore.getState();
+    s.setActivePageSize(11, 17);
+    const parsed = LayoutDocumentSchema.safeParse(useLayoutStore.getState().doc);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.pages[0].sizeOverride).toEqual({ w: 11, h: 17 });
+  });
+});
+
 describe("persisted-state validation (the merge guard)", () => {
   it("accepts a valid stored document", () => {
     const doc = createDefaultDocument();
@@ -1077,5 +1165,11 @@ describe("persisted-state validation (the merge guard)", () => {
     const parsed = LayoutDocumentSchema.safeParse(doc);
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.guides).toEqual({ v: [], h: [] });
+  });
+
+  it("pre-L12 pages (no sizeOverride) parse unchanged — additive delta", () => {
+    const parsed = LayoutDocumentSchema.safeParse(createDefaultDocument());
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.pages[0].sizeOverride).toBeUndefined();
   });
 });

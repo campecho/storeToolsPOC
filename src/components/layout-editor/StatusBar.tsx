@@ -11,8 +11,8 @@ import { UNITS } from "@/lib/layout/units";
  * §3.2's component map). Draw tools hint "drag to draw", Select reports the
  * selection, Table is honest about being deferred (plan L4). Page nav is
  * live (◀ Page N of M ▶, plan L6) and reads "Master X" with the arrows
- * parked while a master is being edited; the spread view toggle stays
- * static until facing pages land (§6).
+ * parked while a master is being edited; the single-page / two-page spread
+ * toggle is live since L12.
  */
 function statusText(tool: ReturnType<typeof useLayoutStore.getState>["tool"], count: number) {
   if (tool === "select") {
@@ -43,6 +43,8 @@ export function StatusBar() {
   const setActivePage = useLayoutStore((s) => s.setActivePage);
   const unit = useLayoutStore((s) => s.unit);
   const setUnit = useLayoutStore((s) => s.setUnit);
+  const spread = useLayoutStore((s) => s.spread);
+  const setSpread = useLayoutStore((s) => s.setSpread);
   const zoomIn = useLayoutStore((s) => s.zoomIn);
   const zoomOut = useLayoutStore((s) => s.zoomOut);
   const setZoom = useLayoutStore((s) => s.setZoom);
@@ -93,14 +95,31 @@ export function StatusBar() {
 
       <div className="flex-1" />
 
-      {/* PROTOTYPE-ONLY: view toggles — single page (active) · two-page
-          spread, inert until facing pages land (plan §6) */}
+      {/* view toggles (plan L12): single page · two-page spread — live */}
       <div className="flex items-center gap-2">
-        <div className="h-[18px] w-[22px] rounded-[3px] border border-brand bg-brand-tint" />
-        <div className="flex h-[18px] w-[22px] items-center justify-center gap-[1px] rounded-[3px] border border-[#cfcfcf] bg-white">
-          <div className="h-[11px] w-[7px] border border-[#b0b0b0]" />
-          <div className="h-[11px] w-[7px] border border-[#b0b0b0]" />
-        </div>
+        <button
+          type="button"
+          data-testid="view-single"
+          aria-label="Single page view"
+          aria-pressed={!spread}
+          onClick={() => setSpread(false)}
+          className={`h-[18px] w-[22px] cursor-pointer rounded-[3px] border ${
+            !spread ? "border-brand bg-brand-tint" : "border-[#cfcfcf] bg-white"
+          }`}
+        />
+        <button
+          type="button"
+          data-testid="view-spread"
+          aria-label="Two-page spread view"
+          aria-pressed={spread}
+          onClick={() => setSpread(true)}
+          className={`flex h-[18px] w-[22px] cursor-pointer items-center justify-center gap-[1px] rounded-[3px] border ${
+            spread ? "border-brand bg-brand-tint" : "border-[#cfcfcf] bg-white"
+          }`}
+        >
+          <div className={`h-[11px] w-[7px] border ${spread ? "border-[#cc7a7a]" : "border-[#b0b0b0]"}`} />
+          <div className={`h-[11px] w-[7px] border ${spread ? "border-[#cc7a7a]" : "border-[#b0b0b0]"}`} />
+        </button>
       </div>
       <div className="h-[14px] w-px bg-[#d4d4d4]" />
 

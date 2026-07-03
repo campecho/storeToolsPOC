@@ -47,6 +47,16 @@ describe("snapTargets", () => {
     expect(t.v.filter((x) => x === 0.5)).toHaveLength(1);
   });
 
+  it("sizes margins and centers from a per-page effective size (L12)", () => {
+    // Ledger-wide override (17 × 11) shifts the vertical margins/center; the
+    // horizontal ones follow the override height (still 11)
+    const t = snapTargets(doc(2), [], { size: { w: 17, h: 11 }, columnGuidesOn: true });
+    expect(t.v).toEqual(expect.arrayContaining([0.5, 8.5, 16.5])); // margin · center · margin
+    expect(t.h).toEqual([0.5, 5.5, 10.5]);
+    // the columns span the wider effective width, straddling its center (8.5)
+    expect(t.v.some((x) => x > 8 && x < 9)).toBe(true);
+  });
+
   it("includes the bleed line — offset outside the trim on every side", () => {
     const d = doc();
     d.bleed = 0.125;

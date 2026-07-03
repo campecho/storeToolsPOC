@@ -9,28 +9,40 @@ import { columnGuides, inToPx } from "@/lib/layout/geometry";
  * the model. Objects render inside it from L4. Dash weights stay fixed-px
  * chrome — they mark positions, they aren't page geometry. (The wire's four
  * bleed corner marks came out in the L8 declutter.)
+ *
+ * The size is passed in (plan L12) as the page's *effective* size, so an
+ * overridden page draws true-scale. `withTestId={false}` renders a second
+ * surface — the spread partner (L12) — without duplicating the active page's
+ * testids.
  */
 export function PageSurface({
   doc,
+  size,
   zoom,
   guidesVisible,
+  withTestId = true,
   children,
 }: {
   doc: LayoutDocument;
+  /** The page's effective size in inches (plan L12) — its override or the doc size. */
+  size: { w: number; h: number };
   zoom: number;
   guidesVisible: boolean;
+  /** False for the spread partner — keeps its chrome out of the canvas testid namespace. */
+  withTestId?: boolean;
   /** The object layer + selection chrome, positioned in page coordinates. */
   children?: React.ReactNode;
 }) {
-  const w = inToPx(doc.size.w, zoom);
-  const h = inToPx(doc.size.h, zoom);
+  const w = inToPx(size.w, zoom);
+  const h = inToPx(size.h, zoom);
   const bleedPx = inToPx(doc.bleed, zoom);
   const marginPx = inToPx(doc.margin, zoom);
-  const gutters = columnGuides(doc);
+  // column/center guides span the effective size, not the document default
+  const gutters = columnGuides({ size, margin: doc.margin, columns: doc.columns });
 
   return (
     <div
-      data-testid="publication-page"
+      data-testid={withTestId ? "publication-page" : undefined}
       className="relative bg-white shadow-[0_3px_16px_rgba(0,0,0,.22)]"
       style={{
         width: w,
@@ -41,7 +53,7 @@ export function PageSurface({
     >
       {/* margin / safe area */}
       <div
-        data-testid="margin-box"
+        data-testid={withTestId ? "margin-box" : undefined}
         className="pointer-events-none absolute border border-dashed border-guide"
         style={{ inset: marginPx }}
       />
@@ -51,25 +63,25 @@ export function PageSurface({
           {/* center guides — the vertical one yields to column gutters at 2+ columns */}
           {doc.columns < 2 && (
             <div
-              data-testid="center-guide-v"
+              data-testid={withTestId ? "center-guide-v" : undefined}
               className="pointer-events-none absolute w-px bg-guide opacity-50"
               style={{ left: w / 2, top: marginPx, bottom: marginPx }}
             />
           )}
           <div
-            data-testid="center-guide-h"
+            data-testid={withTestId ? "center-guide-h" : undefined}
             className="pointer-events-none absolute h-px bg-guide opacity-[.35]"
             style={{ top: h / 2, left: marginPx, right: marginPx }}
           />
           {gutters.map(([left, right], i) => (
             <Fragment key={i}>
               <div
-                data-testid="column-guide"
+                data-testid={withTestId ? "column-guide" : undefined}
                 className="pointer-events-none absolute w-px bg-guide opacity-50"
                 style={{ left: inToPx(left, zoom), top: marginPx, bottom: marginPx }}
               />
               <div
-                data-testid="column-guide"
+                data-testid={withTestId ? "column-guide" : undefined}
                 className="pointer-events-none absolute w-px bg-guide opacity-50"
                 style={{ left: inToPx(right, zoom), top: marginPx, bottom: marginPx }}
               />
