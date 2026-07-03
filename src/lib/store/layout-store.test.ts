@@ -1122,6 +1122,125 @@ describe("spreads & mixed page sizes (L12)", () => {
   });
 });
 
+describe("clipboard: copy, cut & paste (L13)", () => {
+  it("copySelection fills the clipboard without touching the document or history", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1)); // selects it
+    const id = pageObjects()[0].id;
+    const depth = useLayoutStore.getState().past.length;
+    s.copySelection();
+    const st = useLayoutStore.getState();
+    expect(st.clipboard.map((o) => o.id)).toEqual([id]);
+    expect(st.past).toHaveLength(depth); // copy is not an undo step
+    expect(pageObjects()).toHaveLength(1); // document unchanged
+  });
+
+  it("paste drops a fresh-id copy at the duplicate offset, selects it, one undo step", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    const origId = pageObjects()[0].id;
+    s.copySelection();
+    const depth = useLayoutStore.getState().past.length;
+    s.pasteClipboard();
+    const objs = pageObjects();
+    expect(objs).toHaveLength(2);
+    const pasted = objs[1];
+    expect(pasted.id).not.toBe(origId); // fresh id
+    expect(pasted.type !== "line" && pasted.x).toBeCloseTo(1 + DUPLICATE_OFFSET_IN, 10);
+    expect(pasted.type !== "line" && pasted.y).toBeCloseTo(1 + DUPLICATE_OFFSET_IN, 10);
+    expect(useLayoutStore.getState().selectedIds).toEqual([pasted.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo();
+    expect(pageObjects()).toHaveLength(1);
+  });
+
+  it("repeated pastes cascade; a fresh copy restarts the cascade", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    s.copySelection();
+    s.pasteClipboard();
+    s.pasteClipboard();
+    const objs = pageObjects();
+    expect(objs).toHaveLength(3);
+    const xs = objs.filter((o) => o.type !== "line").map((o) => (o as { x: number }).x);
+    expect(xs).toEqual(expect.arrayContaining([1, 1.25, 1.5])); // +0.25, +0.5 from the original
+    // copying again resets the cascade back to the first offset
+    s.setSelection([objs[0].id]);
+    s.copySelection();
+    s.pasteClipboard();
+    const after = pageObjects();
+    expect((after[after.length - 1] as { x: number }).x).toBeCloseTo(1.25, 10);
+  });
+
+  it("cut removes the selection and stashes it in one undo step", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    const id = pageObjects()[0].id;
+    const depth = useLayoutStore.getState().past.length;
+    s.cutSelection();
+    const st = useLayoutStore.getState();
+    expect(pageObjects()).toHaveLength(0);
+    expect(st.clipboard.map((o) => o.id)).toEqual([id]);
+    expect(st.selectedIds).toEqual([]);
+    expect(st.past).toHaveLength(depth + 1);
+    s.undo(); // one step brings it back
+    expect(pageObjects()).toHaveLength(1);
+    s.pasteClipboard(); // the cut objects are still pasteable
+    expect(pageObjects()).toHaveLength(2);
+  });
+
+  it("pastes onto the current surface — the clipboard survives navigation", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    s.copySelection();
+    s.addPage(); // page 2 becomes active and empty
+    expect(pageObjects()).toHaveLength(0);
+    s.pasteClipboard();
+    expect(pageObjects()).toHaveLength(1); // landed on page 2
+    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(1); // page 1 intact
+  });
+
+  it("a copied picture keeps its assetId so the image travels with it", () => {
+    const s = useLayoutStore.getState();
+    s.addObject({ ...createFrame("picture", 1, 1, 2, 2), assetId: "asset-1" });
+    s.copySelection();
+    s.pasteClipboard();
+    const pasted = pageObjects()[1];
+    expect(pasted.type).toBe("picture");
+    expect((pasted as { assetId?: string }).assetId).toBe("asset-1");
+  });
+
+  it("copy/cut no-op without a selection; paste no-ops with an empty clipboard", () => {
+    const s = useLayoutStore.getState();
+    const before = useLayoutStore.getState();
+    s.copySelection();
+    s.cutSelection();
+    s.pasteClipboard();
+    const after = useLayoutStore.getState();
+    expect(after.clipboard).toEqual([]);
+    expect(after.doc).toBe(before.doc);
+  });
+
+  it("multi-selection copies and pastes as a group", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    s.addObject(createFrame("ellipse", 4, 4, 1, 1));
+    s.setSelection(pageObjects().map((o) => o.id));
+    s.copySelection();
+    s.pasteClipboard();
+    expect(pageObjects()).toHaveLength(4);
+    expect(useLayoutStore.getState().selectedIds).toHaveLength(2);
+  });
+
+  it("reset clears the clipboard", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 1));
+    s.copySelection();
+    s.resetDoc();
+    expect(useLayoutStore.getState().clipboard).toEqual([]);
+  });
+});
+
 describe("persisted-state validation (the merge guard)", () => {
   it("accepts a valid stored document", () => {
     const doc = createDefaultDocument();

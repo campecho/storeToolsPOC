@@ -1493,3 +1493,92 @@ test.describe("Spreads & mixed page sizes (L12)", () => {
     await expect(page.getByTestId("size-override-note")).toHaveCount(0);
   });
 });
+
+/**
+ * Clipboard (plan step L13): Cmd/Ctrl+C / X / V and the Home band's Clipboard
+ * pills copy, cut, and paste objects — fresh ids, a cascading offset, the
+ * clipboard surviving page navigation, and pill states tracking selection and
+ * clipboard content.
+ */
+test.describe("Clipboard: copy, cut & paste (L13)", () => {
+  async function dragOnPage(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  test("keyboard copy/paste offsets the copy and cascades; the pills track state", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    // nothing selected, empty clipboard → every pill is disabled
+    await expect(page.getByTestId("clip-copy")).toBeDisabled();
+    await expect(page.getByTestId("clip-cut")).toBeDisabled();
+    await expect(page.getByTestId("clip-paste")).toBeDisabled();
+
+    // draw a rectangle (auto-selected)
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, { x: 40, y: 40 }, { x: 150, y: 120 });
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+
+    // a selection enables Copy/Cut; Paste waits for a copy
+    await expect(page.getByTestId("clip-copy")).toBeEnabled();
+    await expect(page.getByTestId("clip-cut")).toBeEnabled();
+    await expect(page.getByTestId("clip-paste")).toBeDisabled();
+
+    // Cmd/Ctrl+C then +V → a second rect, offset down-right, now selected
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect(page.getByTestId("clip-paste")).toBeEnabled();
+    await page.keyboard.press("ControlOrMeta+v");
+    await expect(page.getByTestId("object-rect")).toHaveCount(2);
+
+    const rects = await page.getByTestId("object-rect").all();
+    const b0 = (await rects[0].boundingBox())!;
+    const b1 = (await rects[1].boundingBox())!;
+    expect(b1.x).toBeGreaterThan(b0.x);
+    expect(b1.y).toBeGreaterThan(b0.y);
+
+    // a second paste cascades further still
+    await page.keyboard.press("ControlOrMeta+v");
+    await expect(page.getByTestId("object-rect")).toHaveCount(3);
+
+    // pastes write to the document — they persist across a reload
+    await page.reload();
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await expect(page.getByTestId("object-rect")).toHaveCount(3);
+  });
+
+  test("cut from the ribbon removes the object; paste lands it on another page", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    // draw a rect on page 1, then cut it from the ribbon pill
+    await page.getByTestId("tool-rect").click();
+    await dragOnPage(page, { x: 40, y: 40 }, { x: 150, y: 120 });
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await page.getByTestId("clip-cut").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(0); // gone from page 1
+
+    // add a page and paste there — the clipboard survived the navigation
+    await page.getByTestId("page-add").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
+    await expect(page.getByTestId("clip-paste")).toBeEnabled();
+    await page.getByTestId("clip-paste").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(1); // now on page 2
+
+    // page 1 is still empty (the object moved with cut → paste)
+    await page.getByTestId("page-thumb-1").click();
+    await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 2");
+    await expect(page.getByTestId("object-rect")).toHaveCount(0);
+  });
+});

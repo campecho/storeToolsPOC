@@ -4,10 +4,12 @@ import { NUDGE_IN } from "@/lib/layout/objects";
 
 /**
  * Editor-wide keyboard (plan L4): Delete/Backspace, Cmd/Ctrl+D duplicate,
- * arrow nudge 1/32 in (Shift ×10), Cmd/Ctrl+Z / Shift+Z undo/redo,
- * Cmd/Ctrl+]/[ z-order, Esc deselect. Typing surfaces keep their keys, and
- * per §3.1 the suite overlays (report modal, notifications, celebrate) own
- * the keyboard while open — the editor yields entirely.
+ * Cmd/Ctrl+C/X/V copy/cut/paste (plan L13), arrow nudge 1/32 in (Shift ×10),
+ * Cmd/Ctrl+Z / Shift+Z undo/redo, Cmd/Ctrl+]/[ z-order, Esc deselect. Typing
+ * surfaces keep their keys — the contentEditable guard below yields the
+ * clipboard shortcuts to the browser inside a text session — and per §3.1 the
+ * suite overlays (report modal, notifications, celebrate) own the keyboard
+ * while open, so the editor yields entirely.
  */
 export function useEditorKeyboard() {
   useEffect(() => {
@@ -37,6 +39,29 @@ export function useEditorKeyboard() {
       if (mod && e.key.toLowerCase() === "d" && s.selectedIds.length) {
         e.preventDefault();
         s.duplicateSelection();
+        return;
+      }
+      // clipboard (plan L13) — only claim the keystroke when there's something
+      // to act on, so an empty editor never swallows a native copy/paste
+      if (mod && e.key.toLowerCase() === "c") {
+        if (s.selectedIds.length) {
+          e.preventDefault();
+          s.copySelection();
+        }
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "x") {
+        if (s.selectedIds.length) {
+          e.preventDefault();
+          s.cutSelection();
+        }
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "v") {
+        if (s.clipboard.length) {
+          e.preventDefault();
+          s.pasteClipboard();
+        }
         return;
       }
       if (mod && e.key === "]") {

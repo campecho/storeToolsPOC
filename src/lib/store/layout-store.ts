@@ -279,6 +279,12 @@ export interface LayoutEditorState {
   past: LayoutDocument[];
   future: LayoutDocument[];
 
+  // clipboard (session, plan L13): copied objects survive page/master
+  // navigation and are never persisted; pasteCount cascades repeated pastes
+  // and resets on the next copy/cut.
+  clipboard: LayoutObject[];
+  pasteCount: number;
+
   // experience (persisted; switching arrives in L14 — two levels since v1.3)
   level: ExperienceLevel;
   // display unit (persisted, L11) — presentation only, geometry stays inches
@@ -383,6 +389,13 @@ export interface LayoutEditorState {
   deleteSelection: () => void;
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
+  /** Copy the selection to the session clipboard (plan L13) — not an undo step. */
+  copySelection: () => void;
+  /** Cut = copy the selection, then delete it, in one undo step (plan L13). */
+  cutSelection: () => void;
+  /** Paste the clipboard onto the current surface — fresh ids, cascading offset,
+      selects the pasted objects; one undo step (plan L13). */
+  pasteClipboard: () => void;
   /** Step selection up/down the z-order, or jump it to the very front/back (Arrange, L10). */
   reorder: (dir: "forward" | "backward" | "front" | "back") => void;
   /** Move one object to an absolute z-index on the surface (Layers drag, L8). */
@@ -445,6 +458,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       alignRel: "page",
       past: [],
       future: [],
+      clipboard: [],
+      pasteCount: 0,
 
       zoom: 1,
       pan: { x: 0, y: 0 },
@@ -848,6 +863,53 @@ export const useLayoutStore = create<LayoutEditorState>()(
           };
         }),
 
+      copySelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const picked = surfaceObjects(s).filter((o) => sel.has(o.id));
+          if (!picked.length) return s;
+          // copy doesn't touch the document — no history push; reset the cascade
+          return { clipboard: picked, pasteCount: 0 };
+        }),
+
+      cutSelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const picked = surfaceObjects(s).filter((o) => sel.has(o.id));
+          if (!picked.length) return s;
+          // copy + delete land in one undo step
+          return {
+            ...pushed(s, s.doc),
+            clipboard: picked,
+            pasteCount: 0,
+            doc: mapSurfaceObjects(s, (objs) => objs.filter((o) => !sel.has(o.id))),
+            selectedIds: [],
+            editingTextId:
+              s.editingTextId && sel.has(s.editingTextId) ? null : s.editingTextId,
+          };
+        }),
+
+      pasteClipboard: () =>
+        set((s) => {
+          if (!s.clipboard.length) return s;
+          // cascade: each paste steps one duplicate-offset further than the last
+          const k = s.pasteCount + 1;
+          const off = DUPLICATE_OFFSET_IN * k;
+          const copies = s.clipboard.map((o) => ({
+            ...translated(o, off, off),
+            id: crypto.randomUUID(), // fresh ids; a picture keeps its assetId via the spread
+          }));
+          return {
+            ...pushed(s, s.doc),
+            // lands on the current editing surface — master or active page (L6)
+            doc: mapSurfaceObjects(s, (objs) => [...objs, ...copies]),
+            selectedIds: copies.map((c) => c.id),
+            pasteCount: k,
+          };
+        }),
+
       reorderObject: (id, to) =>
         set((s) => {
           const objs = surfaceObjects(s);
@@ -1048,6 +1110,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
             editingTextId: null,
             past: [],
             future: [],
+            clipboard: [],
+            pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
           };
         }),
