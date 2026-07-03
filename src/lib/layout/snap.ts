@@ -5,10 +5,12 @@ import { rotatedBBox, type BBox } from "./objects";
 /**
  * Snapping (plan L7): candidate detection + resolution, pure and in inches so
  * it's testable away from the DOM. Targets are the page margins, page
- * centers, column guides (when the Guides toggle is on), and other objects'
+ * centers, the bleed line (the outline offset outside the trim), column guides
+ * (when the Guides toggle is on), ruler guides, and other objects'
  * edges/centers. The canvas converts the fixed px radius to inches at the
  * current zoom, feeds gestures through snapBBox/snapPoint, and renders the
- * returned lines as smart guides. Nearest target wins; ties resolve to the
+ * returned lines as smart guides. Move, resize, draw, and line-endpoint
+ * gestures all share these targets. Nearest target wins; ties resolve to the
  * lower coordinate (targets are sorted), so resolution is deterministic.
  */
 
@@ -36,6 +38,11 @@ export function snapTargets(
   const m = doc.margin;
   const v: number[] = [m, w / 2, w - m];
   const hh: number[] = [m, h / 2, h - m];
+  // the bleed line — the outline offset `bleed` outside the trim on every side
+  if (doc.bleed > 0) {
+    v.push(-doc.bleed, w + doc.bleed);
+    hh.push(-doc.bleed, h + doc.bleed);
+  }
   if (opts.columnGuidesOn) {
     for (const [a, b] of columnGuides(doc)) v.push(a, b);
   }

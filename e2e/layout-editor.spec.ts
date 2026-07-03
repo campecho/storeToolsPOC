@@ -875,6 +875,33 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await page.getByTestId("object-rect").nth(1).click();
     await expect(page.getByTestId("prop-x")).toHaveValue(ax);
   });
+
+  test("resizing an object's edge snaps to the bleed line", async ({ page }) => {
+    await page.goto("/layout");
+    // this test maps an exact inch coordinate to screen, so wait for the
+    // post-mount rehydrate + re-fit to settle before measuring the page
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    const pxPerIn = box.width / 8.5; // Letter trim width
+    const bleedRightX = box.x + box.width + 0.125 * pxPerIn; // right bleed line, page-x 8.625
+
+    // a rect whose right edge sits well short of the bleed line; it stays selected
+    await drawRect(page, { x: 40, y: 260 }, { x: 200, y: 340 });
+    await page.getByTestId("insp-props").click();
+
+    // drag the east handle to ~4px shy of the right bleed line → it snaps onto it
+    const e = (await page.getByTestId("handle-e").boundingBox())!;
+    await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bleedRightX - 4, e.y + e.height / 2, { steps: 12 });
+    await expect(page.getByTestId("smart-guide").first()).toBeVisible();
+    await page.mouse.up();
+
+    // the frame's right edge (x + w) lands on the bleed line: 8.5 + 0.125 in
+    const x = Number(await page.getByTestId("prop-x").inputValue());
+    const w = Number(await page.getByTestId("prop-w").inputValue());
+    expect(Math.abs(x + w - 8.625)).toBeLessThan(0.02);
+  });
 });
 
 /**

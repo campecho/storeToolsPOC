@@ -189,11 +189,13 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   single-object. The **Align inspector tab goes live**: six aligns and Distribute H/V
   (equal-gap, ends anchored) against a "Relative to" choice of Page or Selection, with honest
   disabled states (selection-relative needs 2, distribute needs 3) — each action is one undo
-  step. **Snapping** engages during move/resize/draw/endpoint drags: page margins, page
-  centers, column guides (only while the Guides toggle is on), and other objects'
-  edges/centers, within a 6px screen radius at any zoom; the engaged targets render as
-  brand-red **smart guides** that clear on release, and snapped geometry lands exactly (the
-  e2e proves edge-to-edge equality numerically). Group moves snap as one union box.
+  step. **Snapping** engages during move/resize/draw/endpoint drags — the same target set for
+  all four — against page margins, page centers, the **bleed line**, column guides and
+  ruler guides (while the Guides toggle is on), and other objects' edges/centers, within a 6px
+  screen radius at any zoom (ruler guides and the bleed line joined the set in L11 and after);
+  the engaged targets render as brand-red **smart guides** that clear on release, and snapped
+  geometry lands exactly (the e2e proves edge-to-edge equality numerically). Group moves snap
+  as one union box.
 - **Layout editor — step L8, side panel with Assets & Layers (plan v1.3):** the pages pane
   grows into a **collapsible side panel** with vertical Pages / Assets / Layers tabs (titles
   rotated 90°; clicking the open tab collapses to the strip). The **Assets tab imports
