@@ -227,17 +227,20 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   verified against real canvas paint order. Grouping and effects stay in the backlog.
 - **Layout editor — step L11, ruler guides & units (plan v1.4):** **drag a guide out of
   either ruler** — top ruler for horizontal, left for vertical — a live line follows the
-  pointer and drops into the model; **grab a placed guide to reposition it**, or **drag it
-  back onto the ruler to delete**. Objects **snap to guides** just like margins and page
-  centers (the engaged guide shows a brand-red smart line). Guides are visual-only
-  (`pointer-events: none`) and grabbed by a board-level hit-test, so an **object on top of a
-  guide always wins the click** — objects take priority. The whole canvas **suppresses native
-  HTML drag** (`onDragStart` → `preventDefault`): guide drags run on window listeners without
-  pointer capture, and without this a press would start a browser drag and fire
-  `pointercancel`, killing the gesture after one move. A **unit toggle** in the status bar
-  (`in` / `mm` / `px` / `pt`) relabels the rulers, every length field (Page W/H, bleed,
-  margin, X/Y/W/H), and the bleed/margin legend, round-trips typed input, and **persists**
-  with the document. Guides and the chosen unit both survive reload.
+  pointer and drops into the model, spanning the **full workspace** (the whole pasteboard,
+  not just the page). Guides are **selectable**: a plain click selects one (it turns
+  **brand-red**) without nudging it, then **Delete** removes it — or **drag** it to reposition,
+  or drag it back onto the ruler to delete. Guide and object selection are mutually exclusive,
+  so Delete is unambiguous. Objects **snap to guides** just like margins and page centers (the
+  engaged guide shows a brand-red smart line). Guides are visual-only (`pointer-events: none`)
+  and grabbed by a board-level hit-test, so an **object on top of a guide always wins the
+  click** — objects take priority. The whole canvas column **suppresses native HTML drag**
+  (`onDragStart` → `preventDefault`, rulers included): guide drags run on window listeners
+  (attached at pointer-down, no capture), and without the guard a press would start a browser
+  drag and fire `pointercancel` mid-gesture. A **unit toggle** in the status bar (`in` / `mm` /
+  `px` / `pt`) relabels the rulers, every length field (Page W/H, bleed, margin, X/Y/W/H), and
+  the bleed/margin legend, round-trips typed input, and **persists** with the document. Guides
+  and the chosen unit both survive reload.
 - **Design revision — single-row ribbon (user-directed):** every command band lays its
   groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
   and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge

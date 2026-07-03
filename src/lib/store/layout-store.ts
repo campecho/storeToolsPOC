@@ -265,6 +265,9 @@ export interface LayoutEditorState {
 
   // selection (session)
   selectedIds: string[];
+  /** The selected ruler guide (plan L11) — mutually exclusive with object
+      selection so Delete is unambiguous; null when none is selected. */
+  selectedGuide: { axis: "v" | "h"; index: number } | null;
   /** Text frame with the contentEditable overlay open (plan L5). */
   editingTextId: string | null;
   /** Align tab's "Relative to" choice (plan L7) — session UI, not persisted. */
@@ -340,6 +343,9 @@ export interface LayoutEditorState {
 
   // selection & objects (the editing surface — active page or edited master)
   setSelection: (ids: string[]) => void;
+  /** Select a ruler guide (or clear with null); clears object selection so the
+      two never coexist (plan L11). */
+  selectGuide: (sel: { axis: "v" | "h"; index: number } | null) => void;
   /** Shift-click: add/remove one object, keeping the rest (plan L7). */
   toggleSelected: (id: string) => void;
   /** Replace the surface's object array wholesale — group drags write this
@@ -420,6 +426,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       unit: "in",
 
       selectedIds: [],
+      selectedGuide: null,
       editingTextId: null,
       alignRel: "page",
       past: [],
@@ -534,9 +541,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
         set((s) => {
           const arr = s.doc.guides[axis];
           if (index < 0 || index >= arr.length) return s;
+          // clear the selection — the surviving guides' indices shift under it
           return {
             ...pushed(s, s.doc),
             doc: { ...s.doc, guides: { ...s.doc.guides, [axis]: arr.filter((_, i) => i !== index) } },
+            selectedGuide: null,
           };
         }),
 
@@ -638,13 +647,17 @@ export const useLayoutStore = create<LayoutEditorState>()(
       toggleGuides: () => set((s) => ({ guidesVisible: !s.guidesVisible })),
       setFocusPageSize: (v) => set({ focusPageSize: v }),
 
-      setSelection: (ids) => set({ selectedIds: ids }),
+      setSelection: (ids) => set({ selectedIds: ids, selectedGuide: null }),
+
+      selectGuide: (sel) =>
+        set(sel ? { selectedGuide: sel, selectedIds: [], editingTextId: null } : { selectedGuide: null }),
 
       toggleSelected: (id) =>
         set((s) => ({
           selectedIds: s.selectedIds.includes(id)
             ? s.selectedIds.filter((i) => i !== id)
             : [...s.selectedIds, id],
+          selectedGuide: null,
           // adjusting the selection ends a text session, like any other grab
           editingTextId: null,
         })),

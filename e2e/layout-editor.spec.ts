@@ -1338,4 +1338,46 @@ test.describe("Ruler guides & units (L11)", () => {
     await page.reload();
     await expect(page.getByTestId("unit-select")).toHaveValue("pt");
   });
+
+  test("a guide spans the workspace, click-selects (red, no nudge), and Delete removes it", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    const board = (await page.getByTestId("pasteboard").boundingBox())!;
+    const ry = (await page.getByTestId("ruler-y").boundingBox())!;
+
+    // pull a vertical guide out of the left ruler
+    await page.mouse.move(ry.x + ry.width / 2, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 140, box.y + 150, { steps: 8 });
+    await page.mouse.up();
+    const guide = (await page.getByTestId("guide-v").boundingBox())!;
+
+    // it spans the whole workspace (pasteboard height), well past the page
+    expect(guide.height).toBeGreaterThan(box.height + 20);
+    expect(Math.abs(guide.height - board.height)).toBeLessThan(2);
+
+    // a plain click selects it (turns brand-red) without nudging its position
+    await page.mouse.click(guide.x + guide.width / 2, box.y + 240);
+    await expect(page.getByTestId("guide-v")).toHaveAttribute("data-selected", "true");
+    await expect(page.getByTestId("guide-v")).toHaveCSS("background-color", "rgb(204, 0, 0)");
+    const after = (await page.getByTestId("guide-v").boundingBox())!;
+    expect(Math.abs(after.x - guide.x)).toBeLessThan(1);
+
+    // Delete removes the selected guide
+    await page.keyboard.press("Delete");
+    await expect(page.getByTestId("guide-v")).toHaveCount(0);
+
+    // a fresh guide clicked then deselected (empty pasteboard) drops the red
+    await page.mouse.move(ry.x + ry.width / 2, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 140, box.y + 150, { steps: 8 });
+    await page.mouse.up();
+    await page.mouse.click(box.x + 140, box.y + 240);
+    await expect(page.getByTestId("guide-v")).toHaveAttribute("data-selected", "true");
+    await page.mouse.click(box.x + 300, box.y + 300); // empty pasteboard
+    await expect(page.getByTestId("guide-v")).not.toHaveAttribute("data-selected", "true");
+  });
 });

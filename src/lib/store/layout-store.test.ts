@@ -1000,6 +1000,25 @@ describe("ruler guides & units (L11)", () => {
     expect(useLayoutStore.getState().doc.guides.v).toEqual([1, 2]);
   });
 
+  it("selecting a guide and an object are mutually exclusive; removeGuide clears the selection", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 2));
+    const id = pageObjects()[0].id;
+    s.setSelection([id]);
+    // selecting a guide drops the object selection
+    s.selectGuide({ axis: "v", index: 0 });
+    expect(useLayoutStore.getState().selectedGuide).toEqual({ axis: "v", index: 0 });
+    expect(useLayoutStore.getState().selectedIds).toEqual([]);
+    // and selecting an object drops the guide selection
+    s.setSelection([id]);
+    expect(useLayoutStore.getState().selectedGuide).toBeNull();
+    // removing the selected guide clears the selection (indices shift under it)
+    s.addGuide("v", 1);
+    s.selectGuide({ axis: "v", index: 0 });
+    s.removeGuide("v", 0);
+    expect(useLayoutStore.getState().selectedGuide).toBeNull();
+  });
+
   it("guides ride the document through reset (pristine has none)", () => {
     const s = useLayoutStore.getState();
     s.addGuide("v", 3);

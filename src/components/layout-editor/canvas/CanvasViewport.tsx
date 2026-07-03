@@ -265,6 +265,7 @@ export function CanvasViewport() {
   const guidesVisible = useLayoutStore((s) => s.guidesVisible);
   const fitRequestId = useLayoutStore((s) => s.fitRequestId);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
+  const selectedGuide = useLayoutStore((s) => s.selectedGuide);
   const editingTextId = useLayoutStore((s) => s.editingTextId);
   const unit = useLayoutStore((s) => s.unit);
 
@@ -300,9 +301,11 @@ export function CanvasViewport() {
   // is needed and there's nothing for the browser to cancel.
   const [guideDrag, setGuideDrag] = useState<
     | { mode: "create"; axis: "v" | "h" }
-    | { mode: "move"; axis: "v" | "h"; index: number }
+    | { mode: "move"; axis: "v" | "h"; index: number; grabX: number; grabY: number }
     | null
   >(null);
+  // Set only once a move crosses the drag threshold — a plain click on a guide
+  // selects it without nudging, so `at` stays the stored position until then.
   const [guideLive, setGuideLive] = useState<{ at: number; del: boolean } | null>(null);
   // origin/zoom snapshot the window drag reads without re-subscribing per render
   const geomRef = useRef({ originX: 0, originY: 0, zoom: 1 });
@@ -416,41 +419,64 @@ export function CanvasViewport() {
     return axis === "v" ? clientX < rect.left : clientY < rect.top;
   }, []);
 
-  // While a guide drag is live, track the pointer on `window` — see the
-  // `guideDrag` note: no capture, so the page subtree can re-render freely and
-  // the browser never cancels the stream. The listeners rebind once per drag.
-  useEffect(() => {
-    if (!guideDrag) return;
+  // A guide drag tracks the pointer on `window` with no pointer capture — see
+  // the `guideDrag` note: the page subtree can re-render freely and the browser
+  // never cancels the stream. Listeners attach imperatively at pointer-down (not
+  // via an effect), so a fast pointermove right after the press is never missed.
+  const guideCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => guideCleanup.current?.(), []); // detach if unmounted mid-drag
+
+  const beginGuideDrag = (
+    drag:
+      | { mode: "create"; axis: "v" | "h" }
+      | { mode: "move"; axis: "v" | "h"; index: number; grabX: number; grabY: number },
+  ) => {
+    setGuideDrag(drag);
     let moved = false;
     const onMove = (e: PointerEvent) => {
+      if (!moved && drag.mode === "move") {
+        // a plain click selects the guide; only a real drag (past 3px, in screen
+        // pixels) moves it, so the guide never jumps to the click point
+        if (Math.hypot(e.clientX - drag.grabX, e.clientY - drag.grabY) < 3) return;
+      }
       moved = true;
       setGuideLive({
-        at: clientToPageAxis(guideDrag.axis, e.clientX, e.clientY),
-        del: overRuler(guideDrag.axis, e.clientX, e.clientY),
+        at: clientToPageAxis(drag.axis, e.clientX, e.clientY),
+        del: overRuler(drag.axis, e.clientX, e.clientY),
       });
     };
-    const onUp = (e: PointerEvent) => {
-      const s = useLayoutStore.getState();
-      const at = clientToPageAxis(guideDrag.axis, e.clientX, e.clientY);
-      const del = overRuler(guideDrag.axis, e.clientX, e.clientY);
-      if (guideDrag.mode === "create") {
-        if (moved && !del) s.addGuide(guideDrag.axis, at); // dropped on the ruler → discard
-      } else if (moved) {
-        if (del) s.removeGuide(guideDrag.axis, guideDrag.index); // onto the ruler → delete
-        else s.setGuide(guideDrag.axis, guideDrag.index, at);
-      }
-      setGuideDrag(null);
-      setGuideLive(null);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
+    const detach = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      guideCleanup.current = null;
     };
-  }, [guideDrag, clientToPageAxis, overRuler]);
+    const onUp = (e: PointerEvent) => {
+      detach();
+      // pointercancel carries no useful position (clientX 0) — abort cleanly
+      // rather than misread it as a drop over the ruler and wrongly delete.
+      if (e.type !== "pointercancel") {
+        const s = useLayoutStore.getState();
+        const at = clientToPageAxis(drag.axis, e.clientX, e.clientY);
+        const del = overRuler(drag.axis, e.clientX, e.clientY);
+        if (drag.mode === "create") {
+          if (moved && !del) s.addGuide(drag.axis, at); // dropped on the ruler → discard
+        } else if (moved) {
+          // a real drag repositioned (or, over the ruler, deletes) the guide
+          if (del) s.removeGuide(drag.axis, drag.index);
+          else s.setGuide(drag.axis, drag.index, at);
+        }
+      }
+      // a plain click (no move) or a cancel leaves the guide where it is
+      setGuideDrag(null);
+      setGuideLive(null);
+    };
+    guideCleanup.current?.(); // end any prior drag cleanly
+    guideCleanup.current = detach;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
 
   /**
    * Pull a fresh guide out of a ruler (top ruler → horizontal, left → vertical).
@@ -459,7 +485,7 @@ export function CanvasViewport() {
    */
   const startGuideCreate = (axis: "v" | "h") => (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    setGuideDrag({ mode: "create", axis });
+    beginGuideDrag({ mode: "create", axis });
     setGuideLive({ at: clientToPageAxis(axis, e.clientX, e.clientY), del: false });
   };
 
@@ -627,11 +653,14 @@ export function CanvasViewport() {
   const onBoardPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     if (pickNote) setPickNote(null); // dismiss the last skip note on the next action
+    const s = useLayoutStore.getState();
     if (tool === "move") {
+      if (s.selectedGuide) s.selectGuide(null);
       capture(e);
       gesture.current = { kind: "pan", fromX: e.clientX, fromY: e.clientY, panX: pan.x, panY: pan.y };
       setPanning(true);
     } else if (DRAW_TOOLS.has(tool)) {
+      if (s.selectedGuide) s.selectGuide(null); // starting a draw clears the guide
       capture(e);
       const p = toPageIn(e);
       const snap = gestureSnap();
@@ -641,20 +670,27 @@ export function CanvasViewport() {
       setDraft({ x1: sp.x, y1: sp.y, x2: sp.x, y2: sp.y });
       setSnapLines(sp.lines);
     } else if (tool === "select") {
-      const s = useLayoutStore.getState();
       const p = toPageIn(e);
       // grab a nearby ruler guide (plan L11). Only reached when no object caught
-      // the pointerdown (objects stop propagation), so objects win the grab. A
-      // window drag takes over — no capture, and native drag is suppressed on
-      // the board, so re-rendering the page can't cancel it.
+      // the pointerdown (objects stop propagation), so objects win the grab. The
+      // press selects the guide (turns it red); a window drag past the threshold
+      // then repositions it, while a plain click just leaves it selected — no
+      // capture, and native drag is suppressed, so re-rendering can't cancel it.
       const hit = guideAt(p);
       if (hit) {
-        setGuideDrag({ mode: "move", axis: hit.axis, index: hit.index });
-        setGuideLive({ at: hit.axis === "v" ? p.x : p.y, del: false });
+        s.selectGuide(hit);
+        beginGuideDrag({
+          mode: "move",
+          axis: hit.axis,
+          index: hit.index,
+          grabX: e.clientX,
+          grabY: e.clientY,
+        });
         return;
       }
-      // reached the pasteboard itself — nothing was hit; a drag from here
-      // rubber-bands a marquee selection (plan L7)
+      // reached the pasteboard itself — nothing was hit; clear any guide/object
+      // selection and rubber-band a marquee from here (plan L7)
+      if (s.selectedGuide) s.selectGuide(null);
       if (s.editingTextId) s.setEditingText(null);
       if (selectedIds.length) s.setSelection([]);
       gesture.current = {
@@ -839,7 +875,12 @@ export function CanvasViewport() {
           : "";
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    // Suppress native HTML drag across the whole canvas column — including the
+    // rulers, where a guide-create drag starts. Without it the browser can begin
+    // a native drag and fire pointercancel mid-gesture (plan L11); guide drags
+    // run on window listeners with no pointer capture, which would otherwise
+    // block it. Asset drops still work — those drags originate in the panel.
+    <div className="flex min-w-0 flex-1 flex-col" onDragStart={(e) => e.preventDefault()}>
       {/* top ruler row: corner box + horizontal ruler (drag down for a guide) */}
       <div className="flex h-[18px] shrink-0">
         <div className="w-[18px] shrink-0 border-b border-r border-[#e0e0e0] bg-[#ededed]" />
@@ -870,13 +911,7 @@ export function CanvasViewport() {
           onPointerDown={onBoardPointerDown}
           onPointerMove={onBoardPointerMove}
           onPointerUp={onBoardPointerUp}
-          // Suppress native HTML drag inside the canvas. Object/pan/draw gestures
-          // grab a pointer capture, which implicitly blocks native drag; guide
-          // drags run on window listeners with no capture, so without this a
-          // press on a guide starts a native drag and the browser fires
-          // pointercancel — killing the gesture after one move (plan L11). Asset
-          // drops still work: those drags originate in the panel, not here.
-          onDragStart={(e) => e.preventDefault()}
+          // native drag is suppressed on the whole canvas column (see the wrapper)
           onDragOver={onBoardDragOver}
           onDrop={onBoardDrop}
           onDragLeave={() => setDropTargetId(null)}
@@ -939,60 +974,8 @@ export function CanvasViewport() {
                   onDoubleClick={startTextEdit(o)}
                 />
               ))}
-              {/* ruler-dragged guides (plan L11) — visual only (pointer-events
-                  none), so objects on top of a guide stay clickable. Grabbing a
-                  guide to move it is hit-tested at the board level, where an
-                  object's own pointerdown (which stops propagation) has already
-                  won — objects take priority over the guide underneath. */}
-              {guidesVisible && (
-                <>
-                  {doc.guides.v.map((x, i) => {
-                    const moving =
-                      guideDrag?.mode === "move" && guideDrag.axis === "v" && guideDrag.index === i;
-                    if (moving && guideLive?.del) return null; // over the ruler → will delete
-                    const at = moving && guideLive ? guideLive.at : x;
-                    return (
-                      <div
-                        key={`gv-${i}`}
-                        data-testid="guide-v"
-                        className="pointer-events-none absolute inset-y-0 w-px bg-guide"
-                        style={{ left: inToPx(at, zoom), height: inToPx(doc.size.h, zoom) }}
-                      />
-                    );
-                  })}
-                  {doc.guides.h.map((y, i) => {
-                    const moving =
-                      guideDrag?.mode === "move" && guideDrag.axis === "h" && guideDrag.index === i;
-                    if (moving && guideLive?.del) return null;
-                    const at = moving && guideLive ? guideLive.at : y;
-                    return (
-                      <div
-                        key={`gh-${i}`}
-                        data-testid="guide-h"
-                        className="pointer-events-none absolute inset-x-0 h-px bg-guide"
-                        style={{ top: inToPx(at, zoom), width: inToPx(doc.size.w, zoom) }}
-                      />
-                    );
-                  })}
-                  {/* provisional line while dragging a fresh guide out of a ruler */}
-                  {guideDrag?.mode === "create" &&
-                    guideLive &&
-                    !guideLive.del &&
-                    (guideDrag.axis === "v" ? (
-                      <div
-                        data-testid="guide-draft"
-                        className="pointer-events-none absolute w-px bg-guide"
-                        style={{ left: inToPx(guideLive.at, zoom), top: -12, height: inToPx(doc.size.h, zoom) + 24 }}
-                      />
-                    ) : (
-                      <div
-                        data-testid="guide-draft"
-                        className="pointer-events-none absolute h-px bg-guide"
-                        style={{ top: inToPx(guideLive.at, zoom), left: -12, width: inToPx(doc.size.w, zoom) + 24 }}
-                      />
-                    ))}
-                </>
-              )}
+              {/* ruler guides render as a full-workspace layer over the
+                  pasteboard (below), not clipped to the page. */}
               {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}
               {selected && tool === "select" && (
                 <SelectionOverlay
@@ -1089,6 +1072,66 @@ export function CanvasViewport() {
               })()}
             </PageSurface>
           </div>
+
+          {/* ruler guides — a full-workspace layer over the whole pasteboard
+              (plan L11), not clipped to the page. Positioned in board space
+              (origin + page offset) so they track pan/zoom with the page.
+              Visual only: grabbing is a board-level hit-test so objects win the
+              click; a selected guide turns red (Delete or a drag to the ruler
+              removes it), and the moving one follows the pointer. */}
+          {guidesVisible && (
+            <div className="pointer-events-none absolute inset-0">
+              {doc.guides.v.map((x, i) => {
+                const moving =
+                  guideDrag?.mode === "move" && guideDrag.axis === "v" && guideDrag.index === i;
+                if (moving && guideLive?.del) return null; // over the ruler → will delete
+                const at = moving && guideLive ? guideLive.at : x;
+                const sel = selectedGuide?.axis === "v" && selectedGuide.index === i;
+                return (
+                  <div
+                    key={`gv-${i}`}
+                    data-testid="guide-v"
+                    data-selected={sel ? "true" : undefined}
+                    className={`absolute inset-y-0 w-px ${sel ? "bg-brand" : "bg-guide"}`}
+                    style={{ left: originX + inToPx(at, zoom) }}
+                  />
+                );
+              })}
+              {doc.guides.h.map((y, i) => {
+                const moving =
+                  guideDrag?.mode === "move" && guideDrag.axis === "h" && guideDrag.index === i;
+                if (moving && guideLive?.del) return null;
+                const at = moving && guideLive ? guideLive.at : y;
+                const sel = selectedGuide?.axis === "h" && selectedGuide.index === i;
+                return (
+                  <div
+                    key={`gh-${i}`}
+                    data-testid="guide-h"
+                    data-selected={sel ? "true" : undefined}
+                    className={`absolute inset-x-0 h-px ${sel ? "bg-brand" : "bg-guide"}`}
+                    style={{ top: originY + inToPx(at, zoom) }}
+                  />
+                );
+              })}
+              {/* provisional line while dragging a fresh guide out of a ruler */}
+              {guideDrag?.mode === "create" &&
+                guideLive &&
+                !guideLive.del &&
+                (guideDrag.axis === "v" ? (
+                  <div
+                    data-testid="guide-draft"
+                    className="absolute inset-y-0 w-px bg-guide"
+                    style={{ left: originX + inToPx(guideLive.at, zoom) }}
+                  />
+                ) : (
+                  <div
+                    data-testid="guide-draft"
+                    className="absolute inset-x-0 h-px bg-guide"
+                    style={{ top: originY + inToPx(guideLive.at, zoom) }}
+                  />
+                ))}
+            </div>
+          )}
 
           {/* L9: transient note when a picked file wasn't an image */}
           {pickNote && (

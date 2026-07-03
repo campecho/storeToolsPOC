@@ -50,13 +50,22 @@ export function useEditorKeyboard() {
         return;
       }
       if (e.key === "Escape") {
+        if (s.selectedGuide) s.selectGuide(null);
         if (s.selectedIds.length) s.setSelection([]);
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && s.selectedIds.length) {
-        e.preventDefault();
-        s.deleteSelection();
-        return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // a selected ruler guide deletes first (plan L11), else the objects
+        if (s.selectedGuide) {
+          e.preventDefault();
+          s.removeGuide(s.selectedGuide.axis, s.selectedGuide.index);
+          return;
+        }
+        if (s.selectedIds.length) {
+          e.preventDefault();
+          s.deleteSelection();
+          return;
+        }
       }
       const arrows: Record<string, [number, number]> = {
         ArrowLeft: [-1, 0],
