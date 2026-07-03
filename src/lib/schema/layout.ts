@@ -54,6 +54,9 @@ export const FrameObjectSchema = z.object({
   fill: z.string().nullable(),
   stroke: StrokeSchema.nullable(),
   text: TextPropsSchema.optional(),
+  /** Pictures only (L8): key into the document's `assets`; absent = the gray
+      placeholder frame. The blob behind it lives in the IndexedDB store. */
+  assetId: z.string().optional(),
 });
 export type FrameObject = z.infer<typeof FrameObjectSchema>;
 
@@ -95,6 +98,27 @@ export const ProductBindingSchema = z.object({
 });
 export type ProductBinding = z.infer<typeof ProductBindingSchema>;
 
+/**
+ * Imported-asset metadata (L8) — the §9 asset-store delta pulled forward
+ * additively into v1. Only metadata lives in the document; the bytes live in
+ * the client-side IndexedDB blob store (src/lib/assets/blob-store.ts), keyed
+ * by the same id, so the document JSON stays small.
+ */
+export const AssetSchema = z.object({
+  id: z.string(),
+  /** Original filename — the library label. */
+  name: z.string(),
+  /** PDFs join the library but are placeable only once print tooling lands. */
+  kind: z.enum(["image", "pdf"]),
+  mime: z.string(),
+  /** Natural pixel dimensions — images only. */
+  width: z.number().optional(),
+  height: z.number().optional(),
+  /** Size in bytes, for the library listing. */
+  bytes: z.number(),
+});
+export type Asset = z.infer<typeof AssetSchema>;
+
 export const LayoutDocumentSchema = z.object({
   version: z.literal(1),
   name: z.string(),
@@ -108,5 +132,12 @@ export const LayoutDocumentSchema = z.object({
   columns: z.number().int().min(1),
   pages: z.array(LayoutPageSchema).min(1),
   masters: z.array(MasterPageSchema),
+  /** Asset library metadata (L8) — defaulted so pre-L8 documents keep parsing. */
+  assets: z.record(AssetSchema).default({}),
+  /** Ruler-dragged guides (L11), inches: `v` = x-positions, `h` = y-positions.
+      Additive/defaulted so pre-L11 documents keep parsing. */
+  guides: z
+    .object({ v: z.array(z.number()), h: z.array(z.number()) })
+    .default({ v: [], h: [] }),
 });
 export type LayoutDocument = z.infer<typeof LayoutDocumentSchema>;

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { useLayoutStore } from "@/store";
-import { formatIn, sizeLabel } from "@/lib/layout/presets";
+import { sizeLabel } from "@/lib/layout/presets";
+import { formatLen } from "@/lib/layout/units";
 
 /**
  * Editor title bar (wire region 1). Deviation #1 (plan §2): the persistent
@@ -15,6 +16,7 @@ import { formatIn, sizeLabel } from "@/lib/layout/presets";
 export function TitleBar() {
   const name = useLayoutStore((s) => s.doc.name);
   const size = useLayoutStore((s) => s.doc.size);
+  const unit = useLayoutStore((s) => s.unit);
   const setName = useLayoutStore((s) => s.setName);
 
   return (
@@ -38,14 +40,15 @@ export function TitleBar() {
           className="w-[190px] truncate rounded-[3px] bg-transparent px-1 text-[13px] font-semibold text-[#333] outline-none hover:bg-[#e9e9e9] focus:bg-white focus:ring-1 focus:ring-[#d0d0d0]"
         />
         <span className="shrink-0 text-[12px] text-[#9a9a9a]" data-testid="size-hint">
-          · {sizeLabel(size.w, size.h)} · {formatIn(size.w)} × {formatIn(size.h)} in
+          · {sizeLabel(size.w, size.h)} · {formatLen(size.w, unit)} × {formatLen(size.h, unit)} {unit}
         </span>
       </div>
 
       <div className="flex-1" />
 
       {/* Experience levels (design doc §3.3) — surface-only, never the file.
-          Standard-only until plan step L8; Simple/Pro render disabled. */}
+          Two levels since plan v1.3 (Pro dropped); Simple renders disabled
+          until switching lands in plan step L14. */}
       <div
         data-testid="experience-switch"
         className="flex shrink-0 items-center rounded-[6px] bg-[#e7e7e7] p-[2px] text-[11px] text-[#777]"
@@ -55,9 +58,6 @@ export function TitleBar() {
         </span>
         <span className="rounded-[4px] bg-white px-[11px] py-[3px] text-[#333] shadow-[0_1px_2px_rgba(0,0,0,.12)]">
           Standard
-        </span>
-        <span className="cursor-not-allowed rounded-[4px] px-[11px] py-[3px] opacity-60" title="Coming later in the beta">
-          Pro
         </span>
       </div>
 

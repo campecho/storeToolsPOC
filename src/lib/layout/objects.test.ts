@@ -2,11 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   MIN_OBJECT_IN,
   NUDGE_IN,
+  angleFromCenter,
   bboxOf,
   createFrame,
   createLine,
   createTextFrame,
+  normalizeAngle,
   resizeBBox,
+  resizeRotatedBBox,
+  rotatePoint,
+  rotatedBBox,
+  snapAngle,
   translated,
   withBBox,
 } from "./objects";
@@ -108,5 +114,69 @@ describe("resizeBBox", () => {
     expect(b.w / b.h).toBeCloseTo(2, 10);
     expect(b.x + b.w).toBeCloseTo(start.x + start.w, 10);
     expect(b.y + b.h).toBeCloseTo(start.y + start.h, 10);
+  });
+});
+
+describe("rotation geometry (L10)", () => {
+  it("normalizeAngle folds into [0, 360)", () => {
+    expect(normalizeAngle(0)).toBe(0);
+    expect(normalizeAngle(370)).toBe(10);
+    expect(normalizeAngle(-90)).toBe(270);
+    expect(normalizeAngle(720)).toBe(0);
+  });
+
+  it("snapAngle rounds to the 15° increment", () => {
+    expect(snapAngle(7)).toBe(0);
+    expect(snapAngle(8)).toBe(15);
+    expect(snapAngle(88)).toBe(90);
+  });
+
+  it("rotatePoint spins about the center (CSS clockwise, y-down)", () => {
+    // a point due north of center, rotated +90°, lands due east
+    const p = rotatePoint(5, 0, 5, 5, 90);
+    expect(p.x).toBeCloseTo(10, 10);
+    expect(p.y).toBeCloseTo(5, 10);
+  });
+
+  it("angleFromCenter reads 0 up, 90 right, 180 down, -90 left", () => {
+    expect(angleFromCenter(5, 5, 5, 0)).toBeCloseTo(0, 10);
+    expect(angleFromCenter(5, 5, 10, 5)).toBeCloseTo(90, 10);
+    expect(angleFromCenter(5, 5, 5, 10)).toBeCloseTo(180, 10);
+    expect(angleFromCenter(5, 5, 0, 5)).toBeCloseTo(-90, 10);
+  });
+
+  it("rotatedBBox is the unrotated bbox at 0°, grows on the diagonal, swaps at 90°", () => {
+    const sq = { ...createFrame("rect", 0, 0, 2, 2), rotation: 0 };
+    expect(rotatedBBox(sq)).toMatchObject({ x: 0, y: 0, w: 2, h: 2 });
+
+    const spun = { ...createFrame("rect", 0, 0, 4, 2), rotation: 90 };
+    const bb = rotatedBBox(spun); // 4×2 rotated 90° → 2×4 about the same center (2,1)
+    expect(bb.w).toBeCloseTo(2, 10);
+    expect(bb.h).toBeCloseTo(4, 10);
+    expect(bb.x).toBeCloseTo(1, 10);
+    expect(bb.y).toBeCloseTo(-1, 10);
+
+    const diag = { ...createFrame("rect", 0, 0, 2, 2), rotation: 45 };
+    expect(rotatedBBox(diag).w).toBeCloseTo(2 * Math.SQRT2, 6);
+  });
+
+  it("resizeRotatedBBox equals resizeBBox at 0° (fixed corner unmoved)", () => {
+    const start = { x: 1, y: 1, w: 4, h: 2 };
+    const plain = resizeBBox(start, "se", 2, 1);
+    const rot0 = resizeRotatedBBox(start, "se", 2, 1, 0);
+    expect(rot0).toMatchObject(plain);
+  });
+
+  it("resizeRotatedBBox keeps the anchor corner fixed in page space when rotated", () => {
+    const start = { x: 2, y: 2, w: 4, h: 2 };
+    const rotation = 90;
+    // the nw corner (anchor for an se drag) in page space, before…
+    const c = { x: start.x + start.w / 2, y: start.y + start.h / 2 };
+    const anchorBefore = rotatePoint(start.x, start.y, c.x, c.y, rotation);
+    const next = resizeRotatedBBox(start, "se", 1.5, 0.5, rotation);
+    const c2 = { x: next.x + next.w / 2, y: next.y + next.h / 2 };
+    const anchorAfter = rotatePoint(next.x, next.y, c2.x, c2.y, rotation);
+    expect(anchorAfter.x).toBeCloseTo(anchorBefore.x, 6);
+    expect(anchorAfter.y).toBeCloseTo(anchorBefore.y, 6);
   });
 });

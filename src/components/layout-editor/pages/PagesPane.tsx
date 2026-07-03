@@ -3,13 +3,14 @@ import { PageThumb } from "./PageThumb";
 import { MasterThumb } from "./MasterThumb";
 
 /**
- * Pages navigator (wire region 4): PAGES header + Pages / Master pages
- * segmented control over the matching list — live from L6. Pages view:
- * mini-render thumbnails (click to switch, hover ✕ to remove, red active
- * border) + the Add-page tile. Masters view: each master's mini-render
- * (click to edit on the canvas, "Apply to this page" to bind it) and
- * "+ New master". The wire's caption grammar is kept: "A · applied",
- * "B · blank".
+ * Pages navigator (wire region 4, a SidePanel tab since L8): the Pages /
+ * Master pages segmented control over the matching list — live from L6.
+ * Pages view: mini-render thumbnails (click to switch, hover ✕ to remove,
+ * red active border) + the Add-page tile. Masters view: each master's
+ * mini-render (click to edit on the canvas, "Apply to this page" to bind it)
+ * and "+ New master". The wire's caption grammar is kept: "A · applied",
+ * "B · blank". The SidePanel owns the width, border, and the "Pages" title
+ * (its vertical tab).
  */
 export function PagesPane() {
   const view = useLayoutStore((s) => s.pages);
@@ -32,9 +33,8 @@ export function PagesPane() {
     }`;
 
   return (
-    <div className="flex w-[188px] shrink-0 flex-col border-r border-[#ececec]">
-      <div className="flex shrink-0 flex-col gap-[10px] border-b border-[#efefef] px-3 pb-[10px] pt-3">
-        <div className="text-[11px] font-bold uppercase tracking-[.04em] text-[#5f5f5f]">Pages</div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-[#efefef] px-3 pb-[10px] pt-3">
         <div className="flex rounded-[6px] bg-[#ececec] p-[2px] text-[11px]">
           <button
             type="button"

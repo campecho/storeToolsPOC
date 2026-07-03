@@ -88,35 +88,29 @@ export function InsertBand() {
   return (
     <>
       <RibbonGroup label="Pages" wide gap7>
-        <div className="flex gap-[6px]">
-          <Tile label="Add page" icon={<AddPageIcon />} onClick={addPage} testId="insert-addpage" />
-          <Tile label="Masters" icon={<MastersIcon />} />
-        </div>
+        <Tile label="Add page" icon={<AddPageIcon />} onClick={addPage} testId="insert-addpage" />
+        <Tile label="Masters" icon={<MastersIcon />} />
       </RibbonGroup>
 
       <RibbonGroup label="Text & media" wide gap7>
-        <div className="flex gap-[6px]">
-          {/* arm the matching tools (plan L4) — the palette shows the armed state */}
-          <Tile
-            label="Text box"
-            icon={<TextBoxIcon />}
-            onClick={() => setTool("text")}
-            testId="insert-textbox"
-          />
-          <Tile
-            label="Picture"
-            icon={<ImageIcon size={18} strokeWidth={1.6} />}
-            onClick={() => setTool("pic")}
-            testId="insert-picture"
-          />
-        </div>
+        {/* arm the matching tools (plan L4) — the palette shows the armed state */}
+        <Tile
+          label="Text box"
+          icon={<TextBoxIcon />}
+          onClick={() => setTool("text")}
+          testId="insert-textbox"
+        />
+        <Tile
+          label="Picture"
+          icon={<ImageIcon size={18} strokeWidth={1.6} />}
+          onClick={() => setTool("pic")}
+          testId="insert-picture"
+        />
       </RibbonGroup>
 
       <RibbonGroup label="Illustrations" wide gap7>
-        <div className="flex gap-[6px]">
-          <Tile label="Shapes" icon={<Shapes size={18} strokeWidth={1.6} />} />
-          <Tile label="Table" icon={<Table size={18} strokeWidth={1.6} />} />
-        </div>
+        <Tile label="Shapes" icon={<Shapes size={18} strokeWidth={1.6} />} />
+        <Tile label="Table" icon={<Table size={18} strokeWidth={1.6} />} />
       </RibbonGroup>
 
       <RibbonGroup label="Links" wide last>

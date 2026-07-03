@@ -1,21 +1,25 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { surfaceObjects, useLayoutStore } from "@/store";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
 import { DPI, clampZoom, fitZoom, inToPx, pxToIn, rulerTicks } from "@/lib/layout/geometry";
-import { formatIn, sizeLabel } from "@/lib/layout/presets";
+import { formatLen, type Unit } from "@/lib/layout/units";
 import {
   DRAW_THRESHOLD_IN,
+  angleFromCenter,
   bboxOf,
   createFrame,
   createLine,
   createTextFrame,
   resizeBBox,
+  resizeRotatedBBox,
+  rotatedBBox,
+  snapAngle,
   translated,
 } from "@/lib/layout/objects";
-import { unionBBox } from "@/lib/layout/align";
+import { ASSET_DND_TYPE, importAssetFile } from "@/lib/assets/import";
 import {
   SNAP_THRESHOLD_PX,
   snapBBox,
@@ -47,6 +51,10 @@ import { TextEditOverlay } from "./TextEditOverlay";
  * resize/draw/endpoint gestures snap to margins, page centers, column guides
  * (while the Guides toggle is on), and other objects' edges/centers — the
  * engaged targets render as brand-red smart guides and clear on release.
+ *
+ * Pictures (L9): a dragless click on an empty picture frame opens the device
+ * file picker and fills it; an image dragged from the Assets panel highlights
+ * the picture frame under the cursor and binds on drop (empty or filled).
  */
 
 const RULER_BREADTH = 18;
@@ -94,8 +102,26 @@ type Gesture =
       startX: number;
       startY: number;
       startBBox: BBox;
+      /** Frame rotation at grab — nonzero switches to local-axis resize (L10). */
+      rotation: number;
       targets: SnapTargets;
       thresholdIn: number;
+      before: LayoutDocument;
+    }
+  | {
+      kind: "rotate";
+      id: string;
+      pointerId: number;
+      captured?: boolean;
+      /** Grab point (page inches) — only the capture threshold reads it. */
+      startX: number;
+      startY: number;
+      /** Frame center, page inches — the pivot the angle is read against. */
+      cx: number;
+      cy: number;
+      startRotation: number;
+      /** Pointer angle at grab, so we rotate by the delta, not the absolute. */
+      grabAngle: number;
       before: LayoutDocument;
     }
   | {
@@ -117,21 +143,23 @@ function Ruler({
   originPx,
   lengthPx,
   zoom,
+  unit,
 }: {
   axis: "x" | "y";
   originPx: number;
   lengthPx: number;
   zoom: number;
+  unit: Unit;
 }) {
   if (lengthPx <= 0) return null;
-  const ticks = rulerTicks(originPx, lengthPx, zoom);
+  const ticks = rulerTicks(originPx, lengthPx, zoom, unit);
   const tickStart = { major: 6, mid: 10, minor: 13 };
 
   return (
     <svg
       width={axis === "x" ? lengthPx : RULER_BREADTH}
       height={axis === "x" ? RULER_BREADTH : lengthPx}
-      className="block"
+      className="pointer-events-none block"
       aria-hidden
     >
       {ticks.map((t) =>
@@ -237,7 +265,9 @@ export function CanvasViewport() {
   const guidesVisible = useLayoutStore((s) => s.guidesVisible);
   const fitRequestId = useLayoutStore((s) => s.fitRequestId);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
+  const selectedGuide = useLayoutStore((s) => s.selectedGuide);
   const editingTextId = useLayoutStore((s) => s.editingTextId);
+  const unit = useLayoutStore((s) => s.unit);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
@@ -252,8 +282,33 @@ export function CanvasViewport() {
     y2: number;
   } | null>(null);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
+  // L9: the picture frame highlighted under a dragged asset, and a transient
+  // note when a picked file wasn't an image.
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [pickNote, setPickNote] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const fittedFor = useRef<number | null>(null);
+  // L9 fill-on-click: the frame awaiting the file the device picker returns.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingFrame = useRef<string | null>(null);
+  // L11 ruler guides: the active drag (create from a ruler, or move a placed
+  // guide) and its live axis position. Guide drags run on window listeners with
+  // no pointer capture. Capturing a mouse pointer whose down-target sits in the
+  // page subtree and then re-rendering that subtree makes Chromium fire
+  // `pointercancel` and abort the drag after one move (object drags escape this
+  // only because their down-target is a leaf that never mutates). Window
+  // pointermove/up bubble regardless of what's under the cursor, so no capture
+  // is needed and there's nothing for the browser to cancel.
+  const [guideDrag, setGuideDrag] = useState<
+    | { mode: "create"; axis: "v" | "h" }
+    | { mode: "move"; axis: "v" | "h"; index: number; grabX: number; grabY: number }
+    | null
+  >(null);
+  // Set only once a move crosses the drag threshold — a plain click on a guide
+  // selects it without nudging, so `at` stays the stored position until then.
+  const [guideLive, setGuideLive] = useState<{ at: number; del: boolean } | null>(null);
+  // origin/zoom snapshot the window drag reads without re-subscribing per render
+  const geomRef = useRef({ originX: 0, originY: 0, zoom: 1 });
 
   // measure the pasteboard
   useEffect(() => {
@@ -308,6 +363,7 @@ export function CanvasViewport() {
   const pageH = inToPx(doc.size.h, zoom);
   const originX = vp.w / 2 + pan.x - pageW / 2;
   const originY = vp.h / 2 + pan.y - pageH / 2;
+  geomRef.current = { originX, originY, zoom };
 
   /** Pointer event → page-space inches. */
   const toPageIn = (e: { clientX: number; clientY: number }) => {
@@ -329,9 +385,171 @@ export function CanvasViewport() {
       targets: snapTargets(s.doc, surfaceObjects(s), {
         exclude,
         columnGuidesOn: s.guidesVisible && s.doc.columns >= 2,
+        guidesOn: s.guidesVisible, // objects snap to ruler-dragged guides (L11)
       }),
       thresholdIn: SNAP_THRESHOLD_PX / (DPI * s.zoom),
     };
+  };
+
+  /** Topmost picture frame on the editing surface containing a page-space point (L9). */
+  const pictureAt = (pt: { x: number; y: number }) => {
+    const objs = surfaceObjects(useLayoutStore.getState());
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i];
+      if (o.type !== "picture") continue;
+      // rotated frames hit-test by their visual footprint (AABB), like snapping (L10)
+      const b = rotatedBBox(o);
+      if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) return o.id;
+    }
+    return null;
+  };
+
+  /* ── Ruler guides (plan L11) ── */
+
+  /** A client point → the guide's page-inch position along its axis. */
+  const clientToPageAxis = useCallback((axis: "v" | "h", clientX: number, clientY: number) => {
+    const rect = boardRef.current!.getBoundingClientRect();
+    const { originX: ox, originY: oy, zoom: z } = geomRef.current;
+    return axis === "v" ? pxToIn(clientX - rect.left - ox, z) : pxToIn(clientY - rect.top - oy, z);
+  }, []);
+
+  /** Dragged back over the originating ruler → create cancels / move deletes. */
+  const overRuler = useCallback((axis: "v" | "h", clientX: number, clientY: number) => {
+    const rect = boardRef.current!.getBoundingClientRect();
+    return axis === "v" ? clientX < rect.left : clientY < rect.top;
+  }, []);
+
+  // A guide drag tracks the pointer on `window` with no pointer capture — see
+  // the `guideDrag` note: the page subtree can re-render freely and the browser
+  // never cancels the stream. Listeners attach imperatively at pointer-down (not
+  // via an effect), so a fast pointermove right after the press is never missed.
+  const guideCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => guideCleanup.current?.(), []); // detach if unmounted mid-drag
+
+  const beginGuideDrag = (
+    drag:
+      | { mode: "create"; axis: "v" | "h" }
+      | { mode: "move"; axis: "v" | "h"; index: number; grabX: number; grabY: number },
+  ) => {
+    setGuideDrag(drag);
+    let moved = false;
+    const onMove = (e: PointerEvent) => {
+      if (!moved && drag.mode === "move") {
+        // a plain click selects the guide; only a real drag (past 3px, in screen
+        // pixels) moves it, so the guide never jumps to the click point
+        if (Math.hypot(e.clientX - drag.grabX, e.clientY - drag.grabY) < 3) return;
+      }
+      moved = true;
+      setGuideLive({
+        at: clientToPageAxis(drag.axis, e.clientX, e.clientY),
+        del: overRuler(drag.axis, e.clientX, e.clientY),
+      });
+    };
+    const detach = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      guideCleanup.current = null;
+    };
+    const onUp = (e: PointerEvent) => {
+      detach();
+      // pointercancel carries no useful position (clientX 0) — abort cleanly
+      // rather than misread it as a drop over the ruler and wrongly delete.
+      if (e.type !== "pointercancel") {
+        const s = useLayoutStore.getState();
+        const at = clientToPageAxis(drag.axis, e.clientX, e.clientY);
+        const del = overRuler(drag.axis, e.clientX, e.clientY);
+        if (drag.mode === "create") {
+          if (moved && !del) s.addGuide(drag.axis, at); // dropped on the ruler → discard
+        } else if (moved) {
+          // a real drag repositioned (or, over the ruler, deletes) the guide
+          if (del) s.removeGuide(drag.axis, drag.index);
+          else s.setGuide(drag.axis, drag.index, at);
+        }
+      }
+      // a plain click (no move) or a cancel leaves the guide where it is
+      setGuideDrag(null);
+      setGuideLive(null);
+    };
+    guideCleanup.current?.(); // end any prior drag cleanly
+    guideCleanup.current = detach;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
+  /**
+   * Pull a fresh guide out of a ruler (top ruler → horizontal, left → vertical).
+   * A window drag takes over from here (no pointer capture); the ruler press
+   * just seeds the gesture and the initial draft position.
+   */
+  const startGuideCreate = (axis: "v" | "h") => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    beginGuideDrag({ mode: "create", axis });
+    setGuideLive({ at: clientToPageAxis(axis, e.clientX, e.clientY), del: false });
+  };
+
+  /**
+   * A placed guide near a page-space point, within a screen-px tolerance.
+   * Hit-tested from the board's pointerdown (not the guide element) so an object
+   * on top of a guide — whose own pointerdown stops propagation — wins the grab.
+   */
+  const guideAt = (p: { x: number; y: number }): { axis: "v" | "h"; index: number } | null => {
+    const s = useLayoutStore.getState();
+    if (!s.guidesVisible) return null;
+    const tol = 5 / (DPI * zoom); // ~5px grab radius, in inches
+    const cands: { axis: "v" | "h"; index: number; d: number }[] = [];
+    s.doc.guides.v.forEach((gx, index) => {
+      const d = Math.abs(gx - p.x);
+      if (d <= tol) cands.push({ axis: "v", index, d });
+    });
+    s.doc.guides.h.forEach((gy, index) => {
+      const d = Math.abs(gy - p.y);
+      if (d <= tol) cands.push({ axis: "h", index, d });
+    });
+    if (!cands.length) return null;
+    const best = cands.reduce((a, b) => (b.d < a.d ? b : a));
+    return { axis: best.axis, index: best.index };
+  };
+
+  /** Open the device picker to fill an empty picture frame (L9 fill-on-click). */
+  const openPicker = (frameId: string) => {
+    pendingFrame.current = frameId;
+    fileInputRef.current?.click();
+  };
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // re-picking the same file should re-fire
+    const frameId = pendingFrame.current;
+    pendingFrame.current = null;
+    if (!file || !frameId) return;
+    void importAssetFile(file).then((res) => {
+      if (!res.ok) {
+        setPickNote("That file isn't an image — pick a JPG, PNG, or similar.");
+        return;
+      }
+      const s = useLayoutStore.getState();
+      s.addAsset(res.asset); // joins the library (not an undo step)…
+      s.bindAsset(frameId, res.asset.id); // …and binds to the frame (one undo step)
+    });
+  };
+
+  // Asset drag from the panel: highlight the frame under the cursor, bind on drop.
+  const onBoardDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(ASSET_DND_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropTargetId(pictureAt(toPageIn(e)));
+  };
+
+  const onBoardDrop = (e: React.DragEvent) => {
+    setDropTargetId(null);
+    const assetId = e.dataTransfer.getData(ASSET_DND_TYPE);
+    if (!assetId) return;
+    e.preventDefault();
+    const frameId = pictureAt(toPageIn(e));
+    if (frameId) useLayoutStore.getState().bindAsset(frameId, assetId);
   };
 
   /**
@@ -387,7 +605,30 @@ export function CanvasViewport() {
       startX: p.x,
       startY: p.y,
       startBBox: bboxOf(obj),
+      rotation: obj.type === "line" ? 0 : obj.rotation,
       ...gestureSnap(new Set([obj.id])),
+      before: useLayoutStore.getState().doc,
+    };
+  };
+
+  /** Rotate-handle pointer-down (L10): read the angle by the delta from the grab. */
+  const startRotate = (obj: LayoutObject) => (e: React.PointerEvent) => {
+    if (e.button !== 0 || obj.type === "line") return;
+    e.stopPropagation();
+    const b = bboxOf(obj);
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const p = toPageIn(e);
+    gesture.current = {
+      kind: "rotate",
+      id: obj.id,
+      pointerId: e.pointerId,
+      startX: p.x,
+      startY: p.y,
+      cx,
+      cy,
+      startRotation: obj.rotation,
+      grabAngle: angleFromCenter(cx, cy, p.x, p.y),
       before: useLayoutStore.getState().doc,
     };
   };
@@ -411,11 +652,15 @@ export function CanvasViewport() {
 
   const onBoardPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    if (pickNote) setPickNote(null); // dismiss the last skip note on the next action
+    const s = useLayoutStore.getState();
     if (tool === "move") {
+      if (s.selectedGuide) s.selectGuide(null);
       capture(e);
       gesture.current = { kind: "pan", fromX: e.clientX, fromY: e.clientY, panX: pan.x, panY: pan.y };
       setPanning(true);
     } else if (DRAW_TOOLS.has(tool)) {
+      if (s.selectedGuide) s.selectGuide(null); // starting a draw clears the guide
       capture(e);
       const p = toPageIn(e);
       const snap = gestureSnap();
@@ -425,12 +670,29 @@ export function CanvasViewport() {
       setDraft({ x1: sp.x, y1: sp.y, x2: sp.x, y2: sp.y });
       setSnapLines(sp.lines);
     } else if (tool === "select") {
-      // reached the pasteboard itself — nothing was hit; a drag from here
-      // rubber-bands a marquee selection (plan L7)
-      const s = useLayoutStore.getState();
+      const p = toPageIn(e);
+      // grab a nearby ruler guide (plan L11). Only reached when no object caught
+      // the pointerdown (objects stop propagation), so objects win the grab. The
+      // press selects the guide (turns it red); a window drag past the threshold
+      // then repositions it, while a plain click just leaves it selected — no
+      // capture, and native drag is suppressed, so re-rendering can't cancel it.
+      const hit = guideAt(p);
+      if (hit) {
+        s.selectGuide(hit);
+        beginGuideDrag({
+          mode: "move",
+          axis: hit.axis,
+          index: hit.index,
+          grabX: e.clientX,
+          grabY: e.clientY,
+        });
+        return;
+      }
+      // reached the pasteboard itself — nothing was hit; clear any guide/object
+      // selection and rubber-band a marquee from here (plan L7)
+      if (s.selectedGuide) s.selectGuide(null);
       if (s.editingTextId) s.setEditingText(null);
       if (selectedIds.length) s.setSelection([]);
-      const p = toPageIn(e);
       gesture.current = {
         kind: "marquee",
         pointerId: e.pointerId,
@@ -470,11 +732,17 @@ export function CanvasViewport() {
       g.curY = p.y;
       setMarquee({ x1: g.startX, y1: g.startY, x2: p.x, y2: p.y });
     } else if (g.kind === "move") {
-      // the moving group's union box snaps as one (edges + centers)
+      // the moving group snaps as one union box — by each object's rotated
+      // footprint (axis-aligned bounds), the honest simplification of L10
       const moving = g.startSurface.filter((o) => g.movingIds.has(o.id));
-      const ub = unionBBox(moving)!;
+      if (!moving.length) return; // nothing to move — don't feed empty min/max a NaN box
+      const boxes = moving.map(rotatedBBox);
+      const minX = Math.min(...boxes.map((b) => b.x));
+      const minY = Math.min(...boxes.map((b) => b.y));
+      const maxX = Math.max(...boxes.map((b) => b.x + b.w));
+      const maxY = Math.max(...boxes.map((b) => b.y + b.h));
       const snap = snapBBox(
-        { x: ub.x + dx, y: ub.y + dy, w: ub.w, h: ub.h },
+        { x: minX + dx, y: minY + dy, w: maxX - minX, h: maxY - minY },
         g.targets,
         g.thresholdIn,
       );
@@ -485,27 +753,38 @@ export function CanvasViewport() {
         true,
       );
       setSnapLines(snap.lines);
+    } else if (g.kind === "rotate") {
+      // rotation reads by the delta from the grab; Shift snaps to 15°
+      const raw = g.startRotation + (angleFromCenter(g.cx, g.cy, p.x, p.y) - g.grabAngle);
+      s.transformObject(g.id, { rotation: e.shiftKey ? snapAngle(raw) : raw }, true);
     } else if (g.kind === "resize") {
-      // only the dragged edges snap — an east handle snaps x, never y
-      const movingX = g.dir.includes("e")
-        ? g.startBBox.x + g.startBBox.w + dx
-        : g.dir.includes("w")
-          ? g.startBBox.x + dx
-          : null;
-      const movingY = g.dir.includes("s")
-        ? g.startBBox.y + g.startBBox.h + dy
-        : g.dir.includes("n")
-          ? g.startBBox.y + dy
-          : null;
-      const sp = snapPoint(movingX ?? 0, movingY ?? 0, g.targets, g.thresholdIn, {
-        x: movingX !== null,
-        y: movingY !== null,
-      });
-      const sdx = movingX !== null ? dx + (sp.x - movingX) : dx;
-      const sdy = movingY !== null ? dy + (sp.y - movingY) : dy;
-      const b = resizeBBox(g.startBBox, g.dir, sdx, sdy, e.shiftKey);
-      s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
-      setSnapLines(sp.lines);
+      if (g.rotation) {
+        // rotated: resize in the object's local axes, no edge snapping (the
+        // dragged edge isn't axis-aligned, so axis snap targets don't apply)
+        const b = resizeRotatedBBox(g.startBBox, g.dir, dx, dy, g.rotation, e.shiftKey);
+        s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
+      } else {
+        // only the dragged edges snap — an east handle snaps x, never y
+        const movingX = g.dir.includes("e")
+          ? g.startBBox.x + g.startBBox.w + dx
+          : g.dir.includes("w")
+            ? g.startBBox.x + dx
+            : null;
+        const movingY = g.dir.includes("s")
+          ? g.startBBox.y + g.startBBox.h + dy
+          : g.dir.includes("n")
+            ? g.startBBox.y + dy
+            : null;
+        const sp = snapPoint(movingX ?? 0, movingY ?? 0, g.targets, g.thresholdIn, {
+          x: movingX !== null,
+          y: movingY !== null,
+        });
+        const sdx = movingX !== null ? dx + (sp.x - movingX) : dx;
+        const sdy = movingY !== null ? dy + (sp.y - movingY) : dy;
+        const b = resizeBBox(g.startBBox, g.dir, sdx, sdy, e.shiftKey);
+        s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
+        setSnapLines(sp.lines);
+      }
     } else {
       const ex = g.which === "p1" ? g.startObj.x1 : g.startObj.x2;
       const ey = g.which === "p1" ? g.startObj.y1 : g.startObj.y2;
@@ -561,15 +840,24 @@ export function CanvasViewport() {
       const rh = Math.abs(g.curY - g.startY);
       const hit = surfaceObjects(s)
         .filter((o) => {
-          const b = bboxOf(o);
+          // marquee tests each object's visual footprint (AABB when rotated, L10)
+          const b = rotatedBBox(o);
           return b.x < rx + rw && b.x + b.w > rx && b.y < ry + rh && b.y + b.h > ry;
         })
         .map((o) => o.id);
       s.setSelection(hit);
     } else if (g.kind !== "pan") {
-      // a dragless press on a group member collapses the selection to it
-      if (g.kind === "move" && !g.captured && g.movingIds.size > 1) {
-        s.setSelection([g.pressedId]);
+      if (g.kind === "move" && !g.captured) {
+        if (g.movingIds.size > 1) {
+          // a dragless press on a group member collapses the selection to it
+          s.setSelection([g.pressedId]);
+        } else {
+          // a dragless click on an empty picture frame opens the file picker (L9)
+          const pressed = surfaceObjects(s).find((o) => o.id === g.pressedId);
+          if (pressed && pressed.type === "picture" && !pressed.assetId) {
+            openPicker(g.pressedId);
+          }
+        }
       }
       s.commitGesture(g.before);
     }
@@ -587,19 +875,32 @@ export function CanvasViewport() {
           : "";
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
-      {/* top ruler row: corner box + horizontal ruler */}
+    // Suppress native HTML drag across the whole canvas column — including the
+    // rulers, where a guide-create drag starts. Without it the browser can begin
+    // a native drag and fire pointercancel mid-gesture (plan L11); guide drags
+    // run on window listeners with no pointer capture, which would otherwise
+    // block it. Asset drops still work — those drags originate in the panel.
+    <div className="flex min-w-0 flex-1 flex-col" onDragStart={(e) => e.preventDefault()}>
+      {/* top ruler row: corner box + horizontal ruler (drag down for a guide) */}
       <div className="flex h-[18px] shrink-0">
         <div className="w-[18px] shrink-0 border-b border-r border-[#e0e0e0] bg-[#ededed]" />
-        <div className="flex-1 overflow-hidden border-b border-[#e0e0e0] bg-[#ededed]">
-          <Ruler axis="x" originPx={originX} lengthPx={vp.w} zoom={zoom} />
+        <div
+          data-testid="ruler-x"
+          onPointerDown={startGuideCreate("h")}
+          className="flex-1 cursor-ns-resize overflow-hidden border-b border-[#e0e0e0] bg-[#ededed]"
+        >
+          <Ruler axis="x" originPx={originX} lengthPx={vp.w} zoom={zoom} unit={unit} />
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* left ruler */}
-        <div className="w-[18px] shrink-0 overflow-hidden border-r border-[#e0e0e0] bg-[#ededed]">
-          <Ruler axis="y" originPx={originY} lengthPx={vp.h} zoom={zoom} />
+        {/* left ruler (drag right for a guide) */}
+        <div
+          data-testid="ruler-y"
+          onPointerDown={startGuideCreate("v")}
+          className="w-[18px] shrink-0 cursor-ew-resize overflow-hidden border-r border-[#e0e0e0] bg-[#ededed]"
+        >
+          <Ruler axis="y" originPx={originY} lengthPx={vp.h} zoom={zoom} unit={unit} />
         </div>
 
         {/* pasteboard */}
@@ -610,6 +911,10 @@ export function CanvasViewport() {
           onPointerDown={onBoardPointerDown}
           onPointerMove={onBoardPointerMove}
           onPointerUp={onBoardPointerUp}
+          // native drag is suppressed on the whole canvas column (see the wrapper)
+          onDragOver={onBoardDragOver}
+          onDrop={onBoardDrop}
+          onDragLeave={() => setDropTargetId(null)}
           onClick={(e) => {
             if (tool !== "zoom") return;
             const s = useLayoutStore.getState();
@@ -617,16 +922,22 @@ export function CanvasViewport() {
             else s.zoomIn();
           }}
         >
-          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 whitespace-nowrap text-[11px] text-[#7a7a7a]">
-            {doc.name} · {sizeLabel(doc.size.w, doc.size.h)} {formatIn(doc.size.w)} ×{" "}
-            {formatIn(doc.size.h)} in · {Math.round(zoom * 100)}%
-          </div>
-
-          {/* master-editing mode banner (plan L6) */}
+          {/* device file picker for L9 fill-on-click — triggered from a frame click */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            data-testid="canvas-file-input"
+            onChange={onPickFile}
+          />
+          {/* master-editing mode banner (plan L6). The wire's name/size/zoom
+              caption that sat here came out in L8 — the title bar and status
+              bar already carry all three. */}
           {editingMaster && (
             <div
               data-testid="master-banner"
-              className="absolute left-1/2 top-[34px] z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
+              className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
             >
               <span>
                 Editing master {editingMaster.label} — changes apply to every page that uses it
@@ -663,24 +974,29 @@ export function CanvasViewport() {
                   onDoubleClick={startTextEdit(o)}
                 />
               ))}
+              {/* ruler guides render as a full-workspace layer over the
+                  pasteboard (below), not clipped to the page. */}
               {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}
               {selected && tool === "select" && (
                 <SelectionOverlay
                   obj={selected}
                   zoom={zoom}
                   onHandleDown={startResize(selected)}
+                  onRotateDown={startRotate(selected)}
                   onEndpointDown={
                     selected.type === "line" ? startEndpoint(selected) : () => undefined
                   }
                 />
               )}
-              {/* multi-selection: an outline per member — resize handles are single-only */}
+              {/* multi-selection: an outline per member (rotating with it) —
+                  resize/rotate handles stay single-selection only */}
               {tool === "select" &&
                 selectedIds.length > 1 &&
                 surface
                   .filter((o) => selectedIds.includes(o.id))
                   .map((o) => {
                     const b = bboxOf(o);
+                    const rot = o.type !== "line" && o.rotation ? o.rotation : 0;
                     return (
                       <div
                         key={`msel-${o.id}`}
@@ -691,10 +1007,30 @@ export function CanvasViewport() {
                           top: inToPx(b.y, zoom) - 1,
                           width: inToPx(b.w, zoom) + 2,
                           height: inToPx(b.h, zoom) + 2,
+                          transform: rot ? `rotate(${rot}deg)` : undefined,
                         }}
                       />
                     );
                   })}
+              {/* drop-target highlight — the picture frame under a dragged asset (L9) */}
+              {dropTargetId &&
+                (() => {
+                  const f = surface.find((o) => o.id === dropTargetId);
+                  if (!f || f.type !== "picture") return null;
+                  const b = bboxOf(f);
+                  return (
+                    <div
+                      data-testid="drop-target"
+                      className="pointer-events-none absolute z-20 border-2 border-brand bg-[rgba(204,0,0,.08)]"
+                      style={{
+                        left: inToPx(b.x, zoom),
+                        top: inToPx(b.y, zoom),
+                        width: inToPx(b.w, zoom),
+                        height: inToPx(b.h, zoom),
+                      }}
+                    />
+                  );
+                })()}
               {/* marquee rubber band, in page coordinates */}
               {marquee && (
                 <div
@@ -737,15 +1073,85 @@ export function CanvasViewport() {
             </PageSurface>
           </div>
 
+          {/* ruler guides — a full-workspace layer over the whole pasteboard
+              (plan L11), not clipped to the page. Positioned in board space
+              (origin + page offset) so they track pan/zoom with the page.
+              Visual only: grabbing is a board-level hit-test so objects win the
+              click; a selected guide turns red (Delete or a drag to the ruler
+              removes it), and the moving one follows the pointer. */}
+          {guidesVisible && (
+            <div className="pointer-events-none absolute inset-0">
+              {doc.guides.v.map((x, i) => {
+                const moving =
+                  guideDrag?.mode === "move" && guideDrag.axis === "v" && guideDrag.index === i;
+                if (moving && guideLive?.del) return null; // over the ruler → will delete
+                const at = moving && guideLive ? guideLive.at : x;
+                const sel = selectedGuide?.axis === "v" && selectedGuide.index === i;
+                return (
+                  <div
+                    key={`gv-${i}`}
+                    data-testid="guide-v"
+                    data-selected={sel ? "true" : undefined}
+                    className={`absolute inset-y-0 w-px ${sel ? "bg-brand" : "bg-guide"}`}
+                    style={{ left: originX + inToPx(at, zoom) }}
+                  />
+                );
+              })}
+              {doc.guides.h.map((y, i) => {
+                const moving =
+                  guideDrag?.mode === "move" && guideDrag.axis === "h" && guideDrag.index === i;
+                if (moving && guideLive?.del) return null;
+                const at = moving && guideLive ? guideLive.at : y;
+                const sel = selectedGuide?.axis === "h" && selectedGuide.index === i;
+                return (
+                  <div
+                    key={`gh-${i}`}
+                    data-testid="guide-h"
+                    data-selected={sel ? "true" : undefined}
+                    className={`absolute inset-x-0 h-px ${sel ? "bg-brand" : "bg-guide"}`}
+                    style={{ top: originY + inToPx(at, zoom) }}
+                  />
+                );
+              })}
+              {/* provisional line while dragging a fresh guide out of a ruler */}
+              {guideDrag?.mode === "create" &&
+                guideLive &&
+                !guideLive.del &&
+                (guideDrag.axis === "v" ? (
+                  <div
+                    data-testid="guide-draft"
+                    className="absolute inset-y-0 w-px bg-guide"
+                    style={{ left: originX + inToPx(guideLive.at, zoom) }}
+                  />
+                ) : (
+                  <div
+                    data-testid="guide-draft"
+                    className="absolute inset-x-0 h-px bg-guide"
+                    style={{ top: originY + inToPx(guideLive.at, zoom) }}
+                  />
+                ))}
+            </div>
+          )}
+
+          {/* L9: transient note when a picked file wasn't an image */}
+          {pickNote && (
+            <div
+              data-testid="pick-note"
+              className="pointer-events-none absolute bottom-[14px] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-brand bg-white px-3 py-1 text-[11px] text-brand shadow-[0_1px_4px_rgba(0,0,0,.12)]"
+            >
+              {pickNote}
+            </div>
+          )}
+
           {/* guide legend */}
           <div className="pointer-events-none absolute bottom-[14px] right-4 z-10 flex flex-col gap-[6px] rounded-[7px] border border-[#e2e2e2] bg-white px-[11px] py-2">
             <div className="flex items-center gap-[7px]">
               <div className="w-4 border-t-[1.5px] border-dashed border-brand" />
-              <span className="text-[10px] text-[#888]">Bleed {formatIn(doc.bleed)} in</span>
+              <span className="text-[10px] text-[#888]">Bleed {formatLen(doc.bleed, unit)} {unit}</span>
             </div>
             <div className="flex items-center gap-[7px]">
               <div className="w-4 border-t border-dashed border-guide" />
-              <span className="text-[10px] text-[#888]">Margin {formatIn(doc.margin)} in</span>
+              <span className="text-[10px] text-[#888]">Margin {formatLen(doc.margin, unit)} {unit}</span>
             </div>
           </div>
         </div>

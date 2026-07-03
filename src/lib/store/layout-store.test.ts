@@ -16,6 +16,7 @@ import {
   createLine,
   createTextFrame,
 } from "@/lib/layout/objects";
+import { placedPictureRect } from "@/lib/assets/placement";
 
 /** Objects on the active page, straight from the store. */
 function pageObjects() {
@@ -698,6 +699,341 @@ describe("multi-select, align & distribute (L7)", () => {
   });
 });
 
+describe("side panel, assets & layers (L8)", () => {
+  const photo = {
+    id: "asset-1",
+    name: "photo.png",
+    kind: "image" as const,
+    mime: "image/png",
+    width: 480,
+    height: 240,
+    bytes: 2117,
+  };
+  const pdf = {
+    id: "asset-2",
+    name: "flyer.pdf",
+    kind: "pdf" as const,
+    mime: "application/pdf",
+    bytes: 193,
+  };
+
+  it("togglePanelTab opens, switches, and collapses on the active tab", () => {
+    const s = useLayoutStore.getState();
+    expect(useLayoutStore.getState()).toMatchObject({ panelOpen: true, panelTab: "pages" });
+    s.togglePanelTab("assets");
+    expect(useLayoutStore.getState()).toMatchObject({ panelOpen: true, panelTab: "assets" });
+    s.togglePanelTab("assets"); // the active tab collapses the panel
+    expect(useLayoutStore.getState().panelOpen).toBe(false);
+    s.togglePanelTab("layers"); // any tab reopens to it
+    expect(useLayoutStore.getState()).toMatchObject({ panelOpen: true, panelTab: "layers" });
+  });
+
+  it("addAsset joins the library without an undo step", () => {
+    const s = useLayoutStore.getState();
+    const depth = useLayoutStore.getState().past.length;
+    s.addAsset(photo);
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toMatchObject({ name: "photo.png" });
+    expect(useLayoutStore.getState().past).toHaveLength(depth);
+  });
+
+  it("placeAsset lands a bound picture at the computed rect, selected, one undo step", () => {
+    const s = useLayoutStore.getState();
+    s.addAsset(photo);
+    s.placeAsset("asset-1");
+    const objs = pageObjects();
+    expect(objs).toHaveLength(1);
+    expect(objs[0]).toMatchObject({ type: "picture", assetId: "asset-1" });
+    expect(objs[0]).toMatchObject(placedPictureRect(480, 240, useLayoutStore.getState().doc));
+    expect(useLayoutStore.getState().selectedIds).toEqual([objs[0].id]);
+    s.undo();
+    expect(pageObjects()).toHaveLength(0);
+    // the library survives the undo
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
+  });
+
+  it("placeAsset fills the selected picture frame instead of adding a new one", () => {
+    const s = useLayoutStore.getState();
+    const frame = createFrame("picture", 1, 1, 2, 2);
+    s.addObject(frame);
+    s.addAsset(photo);
+    s.setSelection([frame.id]);
+    s.placeAsset("asset-1");
+    const objs = pageObjects();
+    expect(objs).toHaveLength(1);
+    expect(objs[0]).toMatchObject({ id: frame.id, assetId: "asset-1", x: 1, w: 2 });
+  });
+
+  it("placeAsset is a guarded no-op for PDFs and unknown ids", () => {
+    const s = useLayoutStore.getState();
+    s.addAsset(pdf);
+    const before = useLayoutStore.getState().doc;
+    s.placeAsset("asset-2");
+    s.placeAsset("no-such-asset");
+    expect(useLayoutStore.getState().doc).toBe(before);
+  });
+
+  it("removeAsset drops the metadata; placed frames keep the reference (missing state)", () => {
+    const s = useLayoutStore.getState();
+    s.addAsset(photo);
+    s.placeAsset("asset-1");
+    s.removeAsset("asset-1");
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeUndefined();
+    expect(pageObjects()[0]).toMatchObject({ assetId: "asset-1" });
+  });
+
+  it("bindAsset binds a library asset to a picture frame as one undo step (L9)", () => {
+    const s = useLayoutStore.getState();
+    const frame = createFrame("picture", 1, 1, 2, 2);
+    s.addObject(frame);
+    s.addAsset(photo);
+    const depth = useLayoutStore.getState().past.length;
+    s.bindAsset(frame.id, "asset-1");
+    expect(pageObjects()[0]).toMatchObject({ id: frame.id, assetId: "asset-1" });
+    expect(useLayoutStore.getState().selectedIds).toEqual([frame.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo(); // reverts the binding, keeps the asset in the library
+    expect((pageObjects()[0] as { assetId?: string }).assetId).toBeUndefined();
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
+  });
+
+  it("bindAsset swaps the image on a frame that already holds one (L9 drag-in)", () => {
+    const s = useLayoutStore.getState();
+    const frame = createFrame("picture", 1, 1, 2, 2);
+    s.addObject(frame);
+    s.addAsset(photo);
+    s.addAsset({ ...photo, id: "asset-2", name: "other.png" });
+    s.bindAsset(frame.id, "asset-1");
+    s.bindAsset(frame.id, "asset-2");
+    expect(pageObjects()[0]).toMatchObject({ assetId: "asset-2" });
+  });
+
+  it("bindAsset is a guarded no-op for non-pictures, unknown assets, and the same binding", () => {
+    const s = useLayoutStore.getState();
+    const rect = createFrame("rect", 0, 0, 1, 1);
+    const pic = createFrame("picture", 2, 2, 1, 1);
+    s.addObject(rect);
+    s.addObject(pic);
+    s.addAsset(photo);
+    const before = useLayoutStore.getState().doc;
+    s.bindAsset(rect.id, "asset-1"); // not a picture frame
+    s.bindAsset(pic.id, "missing"); // unknown asset
+    expect(useLayoutStore.getState().doc).toBe(before);
+    s.bindAsset(pic.id, "asset-1");
+    const after = useLayoutStore.getState().doc;
+    s.bindAsset(pic.id, "asset-1"); // already bound — no history churn
+    expect(useLayoutStore.getState().doc).toBe(after);
+  });
+
+  it("reorderObject moves one object to an absolute z-index as one undo step", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("ellipse", 1, 1, 1, 1);
+    const c = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.addObject(c);
+    const depth = useLayoutStore.getState().past.length;
+    s.reorderObject(c.id, 0); // topmost to the bottom
+    expect(pageObjects().map((o) => o.id)).toEqual([c.id, a.id, b.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo();
+    expect(pageObjects().map((o) => o.id)).toEqual([a.id, b.id, c.id]);
+  });
+
+  it("reorderObject clamps the target and no-ops in place", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 1, 1, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    const depth = useLayoutStore.getState().past.length;
+    s.reorderObject(a.id, 99); // clamps to the top
+    expect(pageObjects().map((o) => o.id)).toEqual([b.id, a.id]);
+    s.reorderObject(a.id, 1); // already there — no history entry
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+  });
+
+  it("reorderObject targets the edited master, like every object action", () => {
+    const s = useLayoutStore.getState();
+    s.setMasterEditing("master-a");
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 1, 1, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.reorderObject(b.id, 0);
+    const master = useLayoutStore.getState().doc.masters.find((m) => m.id === "master-a")!;
+    expect(master.objects.map((o) => o.id)).toEqual([b.id, a.id]);
+    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(0);
+  });
+
+  it("undo/redo carry the current asset library forward", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 0, 0, 1, 1)); // an undoable step first
+    s.addAsset(photo); // the library joins after that snapshot was taken
+    s.undo(); // restores a doc that predates the asset — the library must survive
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
+    expect(pageObjects()).toHaveLength(0);
+    s.redo();
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
+  });
+});
+
+describe("rotation & arrange (L10)", () => {
+  it("transformObject applies rotation, normalized into [0, 360)", () => {
+    const s = useLayoutStore.getState();
+    const r = createFrame("rect", 1, 1, 2, 2);
+    s.addObject(r);
+    s.transformObject(r.id, { rotation: 45 });
+    expect(pageObjects()[0]).toMatchObject({ rotation: 45 });
+    s.transformObject(r.id, { rotation: 405 }); // wraps to 45
+    expect(pageObjects()[0]).toMatchObject({ rotation: 45 });
+    s.transformObject(r.id, { rotation: -90 }); // wraps to 270
+    expect(pageObjects()[0]).toMatchObject({ rotation: 270 });
+  });
+
+  it("rotateSelection turns each selected frame about its own center, one undo step", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.setSelection([a.id, b.id]);
+    const depth = useLayoutStore.getState().past.length;
+    s.rotateSelection("right"); // +90 each
+    expect(pageObjects().map((o) => (o as { rotation: number }).rotation)).toEqual([90, 90]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.rotateSelection("left"); // back to 0
+    expect(pageObjects().map((o) => (o as { rotation: number }).rotation)).toEqual([0, 0]);
+    s.rotateSelection("right");
+    s.rotateSelection("reset"); // to 0 regardless
+    expect(pageObjects().map((o) => (o as { rotation: number }).rotation)).toEqual([0, 0]);
+  });
+
+  it("rotateSelection skips lines and no-ops when nothing changes", () => {
+    const s = useLayoutStore.getState();
+    const line = createLine(0, 0, 2, 2);
+    s.addObject(line);
+    s.setSelection([line.id]);
+    const before = useLayoutStore.getState().doc;
+    s.rotateSelection("right"); // a line can't rotate
+    expect(useLayoutStore.getState().doc).toBe(before);
+    const r = createFrame("rect", 1, 1, 1, 1);
+    s.addObject(r);
+    s.setSelection([r.id]);
+    const at0 = useLayoutStore.getState().doc;
+    s.rotateSelection("reset"); // already 0 — no history churn
+    expect(useLayoutStore.getState().doc).toBe(at0);
+  });
+
+  it("reorder front/back jumps the selection to the top/bottom, one undo step", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 1, 1, 1, 1);
+    const c = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.addObject(c); // order [a, b, c]
+    s.setSelection([a.id]);
+    const depth = useLayoutStore.getState().past.length;
+    s.reorder("front");
+    expect(pageObjects().map((o) => o.id)).toEqual([b.id, c.id, a.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.reorder("back");
+    expect(pageObjects().map((o) => o.id)).toEqual([a.id, b.id, c.id]);
+    s.reorder("back"); // already at the bottom — no-op
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 2);
+  });
+
+  it("reorder front keeps the relative order of a multi-selection", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 1, 1, 1, 1);
+    const c = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.addObject(c);
+    s.setSelection([a.id, b.id]); // pull a & b to the front, a still under b
+    s.reorder("front");
+    expect(pageObjects().map((o) => o.id)).toEqual([c.id, a.id, b.id]);
+  });
+});
+
+describe("ruler guides & units (L11)", () => {
+  it("addGuide drops a guide as one undo step; undo removes it", () => {
+    const s = useLayoutStore.getState();
+    const depth = useLayoutStore.getState().past.length;
+    s.addGuide("v", 2.5);
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([2.5]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo();
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([]);
+  });
+
+  it("setGuide repositions — transient skips history, committed is one step", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("h", 1);
+    const depth = useLayoutStore.getState().past.length;
+    s.setGuide("h", 0, 3, true); // live drag
+    expect(useLayoutStore.getState().doc.guides.h).toEqual([3]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth); // transient
+    s.setGuide("h", 0, 4); // commit on drop
+    expect(useLayoutStore.getState().doc.guides.h).toEqual([4]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+  });
+
+  it("setGuide guards an out-of-range index and a no-op move", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("v", 2);
+    const before = useLayoutStore.getState().doc;
+    s.setGuide("v", 5, 3); // no such index
+    s.setGuide("v", 0, 2); // already there
+    expect(useLayoutStore.getState().doc).toBe(before);
+  });
+
+  it("removeGuide deletes one and is undoable", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("v", 1);
+    s.addGuide("v", 2);
+    s.removeGuide("v", 0);
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([2]);
+    s.undo();
+    expect(useLayoutStore.getState().doc.guides.v).toEqual([1, 2]);
+  });
+
+  it("selecting a guide and an object are mutually exclusive; removeGuide clears the selection", () => {
+    const s = useLayoutStore.getState();
+    s.addObject(createFrame("rect", 1, 1, 2, 2));
+    const id = pageObjects()[0].id;
+    s.setSelection([id]);
+    // selecting a guide drops the object selection
+    s.selectGuide({ axis: "v", index: 0 });
+    expect(useLayoutStore.getState().selectedGuide).toEqual({ axis: "v", index: 0 });
+    expect(useLayoutStore.getState().selectedIds).toEqual([]);
+    // and selecting an object drops the guide selection
+    s.setSelection([id]);
+    expect(useLayoutStore.getState().selectedGuide).toBeNull();
+    // removing the selected guide clears the selection (indices shift under it)
+    s.addGuide("v", 1);
+    s.selectGuide({ axis: "v", index: 0 });
+    s.removeGuide("v", 0);
+    expect(useLayoutStore.getState().selectedGuide).toBeNull();
+  });
+
+  it("guides ride the document through reset (pristine has none)", () => {
+    const s = useLayoutStore.getState();
+    s.addGuide("v", 3);
+    s.resetDoc();
+    expect(useLayoutStore.getState().doc.guides).toEqual({ v: [], h: [] });
+  });
+
+  it("setUnit switches the display unit", () => {
+    const s = useLayoutStore.getState();
+    expect(useLayoutStore.getState().unit).toBe("in");
+    s.setUnit("mm");
+    expect(useLayoutStore.getState().unit).toBe("mm");
+  });
+});
+
 describe("persisted-state validation (the merge guard)", () => {
   it("accepts a valid stored document", () => {
     const doc = createDefaultDocument();
@@ -725,5 +1061,21 @@ describe("persisted-state validation (the merge guard)", () => {
     expect(LayoutDocumentSchema.safeParse(null).success).toBe(false);
     const noPages = { ...createDefaultDocument(), pages: [] };
     expect(LayoutDocumentSchema.safeParse(noPages).success).toBe(false);
+  });
+
+  it("pre-L8 documents (no assets key) parse with an empty library — additive delta", () => {
+    const doc: Record<string, unknown> = { ...createDefaultDocument() };
+    delete doc.assets;
+    const parsed = LayoutDocumentSchema.safeParse(doc);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.assets).toEqual({});
+  });
+
+  it("pre-L11 documents (no guides key) parse with empty guides — additive delta", () => {
+    const doc: Record<string, unknown> = { ...createDefaultDocument() };
+    delete doc.guides;
+    const parsed = LayoutDocumentSchema.safeParse(doc);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.guides).toEqual({ v: [], h: [] });
   });
 });

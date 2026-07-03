@@ -20,6 +20,7 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 | Station identity | `src/lib/identity.ts` | Hardcoded `#1284` behind `getCurrentStation()` | Real station/associate resolution (device registration or SSO). Swap touches only this file. |
 | Persistence — tracker | `src/lib/store/feedback-store.ts` | `localStorage` (`stp-feedback-v1`), schema-validated on rehydrate | Backend persists the `PersistedFeedbackSchema` shape per store, keyed by station identity. |
 | Persistence — layout docs | `src/lib/store/layout-store.ts` | `localStorage` (`stp-layout-v1`), schema-validated on rehydrate | Backend persists `LayoutDocument` per publication; v1→v2 migration per plan §9 (prototype drops-and-reseeds; production must migrate). |
+| Asset bytes (L8) | `src/lib/assets/blob-store.ts` | IndexedDB blobs keyed by the asset id in `doc.assets` (metadata stays in the document) | Real asset service: upload, dedupe, quotas, orphaned-blob GC. Swap touches only this file — the id → bytes mapping is the seam. |
 | Tracker demo data | `src/lib/data/seed-*.ts` | Seeded items/releases/notifications (authored wire content); "Reset demo data" restores it | Real feedback/release feeds; seeds become test fixtures. |
 | Captured bug context | `src/components/report/CapturedContextPanel.tsx` | Canned capture rows behind a **"Sample data" badge** | Tool surfaces publish live context (file, SKU, recent actions, environment) into the store; the panel reads it. |
 | Release participation | `src/components/board/BoardRail.tsx` (`TOP_STORES`) | Fixture store list | Query stores that backed items in the latest release. |
@@ -38,13 +39,18 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 - Status bar: two-page **spread** view toggle (facing pages, plan §6).
 - App header: global search face and the avatar circle (future suite surfaces).
 - Tool palette: the **Table** tool arms but reports "coming later in the beta" honestly.
+- Assets tab: **PDF assets are library-only** — the tile says so and placement is
+  disabled until the print pipeline can rasterize them (plan §6).
 
 ## Known gaps (`PROD-TODO:`)
 
 - **Storage migrations:** both stores drop-and-reseed on shape mismatch; production migrates
   (`src/lib/store/*.ts`, `src/lib/schema/layout.ts`).
 - **Storage write failures:** quota/private-mode write errors only log; needs a visible
-  "changes aren't being saved" state (both persist configs).
+  "changes aren't being saved" state (both persist configs, and the asset blob store).
+- **Orphaned asset blobs:** undoing a place (or clearing history) can leave bytes behind
+  in IndexedDB — no GC in the POC. A placed frame whose asset was *removed* shows the
+  visible "Image missing" state by design (`src/lib/assets/blob-store.ts`).
 - **PII:** associate names + free-prose report/comment text are unclassified
   (`src/lib/schema/index.ts`); set classification/retention before data leaves the browser.
 - **Referential integrity:** `page.masterId` is a guarded soft reference; a real store
@@ -62,5 +68,9 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 | Undo depth 50 | `src/lib/store/layout-store.ts` | Desktop-publishing norm |
 | Zoom 10–400%, page 1–240 in | `src/lib/layout/geometry.ts` | Working-range guesses (large-format friendly) |
 | Snap radius 6px (screen) | `src/lib/layout/snap.ts` | Feel-based; confirm on store hardware |
+| Placed images: 96 DPI sizing, 2 in minimum, cover-fit | `src/lib/assets/placement.ts`, `canvas/ObjectNode.tsx` | CSS-pixel mapping; no embedded print-DPI read; `fit` modes are schema-v2 (plan §9) |
+| Rotated-object bounds by axis-aligned box (AABB) | `src/lib/layout/snap.ts`, `canvas/CanvasViewport.tsx` | Honest simplification (plan L10): a rotated object snaps/aligns and is hit-tested (marquee select, asset drop) by its AABB, and edge-snapping is off while resizing a rotated frame. True rotated-edge snapping / polygon hit-testing is a later refinement. |
+| Guide grab radius 5px (screen); guides snap on with the Guides toggle | `canvas/CanvasViewport.tsx`, `src/lib/layout/snap.ts` | Feel-based (plan L11): a board-level hit-test grabs the nearest ruler guide within ~5px; objects on top win. Click selects a guide (Delete removes); guides span the whole workspace but are document-level — no per-spread or angled guides yet. |
+| Display units in/mm/px/pt at 96 DPI | `src/lib/layout/units.ts`, `StatusBar.tsx` | Geometry stays canonical inches; the unit is a display/parse layer (`px` = CSS px at DPI 96, not print-DPI). Per-region default (metric vs imperial) and a print-DPI read are later. |
 | Curated font list | `src/lib/layout/text.ts` | In-store set TBD; Motiva licensing pending |
 | Recently-shipped band window (7 days) | board logic / seeds | Product to confirm |

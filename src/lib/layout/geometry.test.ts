@@ -100,21 +100,21 @@ describe("columnGuides", () => {
 });
 
 describe("rulerTicks", () => {
-  it("at 100%: 1/8-in ticks, majors each inch, numbered every inch", () => {
+  it("at 100% inches: 1/8-in minors, numbered majors every 1/2 in, mids between", () => {
     const ticks = rulerTicks(0, 96, 1);
     // 0..96px at 12px steps → 9 ticks
     expect(ticks).toHaveLength(9);
     expect(ticks[0]).toMatchObject({ px: 0, level: "major", label: "0" });
+    expect(ticks[4]).toMatchObject({ px: 48, level: "major", label: "0.5" });
     expect(ticks[8]).toMatchObject({ px: 96, level: "major", label: "1" });
-    // half-inch tick is a mid, quarter-inch a minor
-    expect(ticks[4]).toMatchObject({ px: 48, level: "mid" });
-    expect(ticks[2]).toMatchObject({ px: 24, level: "minor" });
+    expect(ticks[2]).toMatchObject({ px: 24, level: "mid" });
+    expect(ticks[1]).toMatchObject({ px: 12, level: "minor" });
   });
 
   it("coarsens as zoom drops so ticks stay apart", () => {
-    // 10%: inch = 9.6px → whole-inch ticks only, numbered every 5 in
+    // 10%: inch = 9.6px → whole-inch minors, numbered every 5 in
     const ticks = rulerTicks(0, 96, 0.1);
-    expect(ticks.every((t) => t.level === "major")).toBe(true);
+    expect(ticks[1].px - ticks[0].px).toBeGreaterThanOrEqual(6); // minors stay readable
     const labeled = ticks.filter((t) => t.label !== undefined);
     expect(labeled.map((t) => t.label)).toEqual(["0", "5", "10"]);
   });
@@ -122,8 +122,23 @@ describe("rulerTicks", () => {
   it("covers the pasteboard left of the origin with mirrored numbers", () => {
     const ticks = rulerTicks(96, 192, 1);
     const majors = ticks.filter((t) => t.level === "major");
-    expect(majors.map((t) => t.label)).toEqual(["1", "0", "1"]);
-    expect(majors.map((t) => t.px)).toEqual([0, 96, 192]);
+    expect(majors.map((t) => t.label)).toEqual(["1", "0.5", "0", "0.5", "1"]);
+    expect(majors.map((t) => t.px)).toEqual([0, 48, 96, 144, 192]);
+  });
+
+  it("relabels in the active unit (mm) with nice increments", () => {
+    // at 100%, 1mm = 96/25.4 ≈ 3.78px → 2mm minors (~7.6px), numbered every 20mm
+    const ticks = rulerTicks(0, 96 * 2, 1, "mm");
+    const labeled = ticks.filter((t) => t.label !== undefined).map((t) => t.label);
+    expect(labeled).toEqual(["0", "20", "40"]); // 0..~48mm across 192px
+    expect(ticks.every((t) => t.px >= 0)).toBe(true);
+  });
+
+  it("relabels in points with half-inch (36-pt) majors", () => {
+    // 1pt = 96/72 ≈ 1.333px at 100% → 6pt minors, numbered every 36pt (½ in)
+    const ticks = rulerTicks(0, 96 * 2, 1, "pt");
+    const labeled = ticks.filter((t) => t.label !== undefined).map((t) => t.label);
+    expect(labeled.slice(0, 3)).toEqual(["0", "36", "72"]);
   });
 
   it("returns nothing for an unmeasured ruler", () => {

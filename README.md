@@ -52,8 +52,9 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 |---|---|
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
-| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap (L1–L7) | ✅ shipped |
-| Layout editor — experience levels, hardening (L8–L9) | ❌ next in plan |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in, rotation & Arrange, ruler guides & units (L1–L11) | ✅ shipped |
+| Layout editor — toolset build-out: spreads & mixed sizes, clipboard (L12–L13) | ❌ next in plan (v1.4) |
+| Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
@@ -188,11 +189,68 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   single-object. The **Align inspector tab goes live**: six aligns and Distribute H/V
   (equal-gap, ends anchored) against a "Relative to" choice of Page or Selection, with honest
   disabled states (selection-relative needs 2, distribute needs 3) — each action is one undo
-  step. **Snapping** engages during move/resize/draw/endpoint drags: page margins, page
-  centers, column guides (only while the Guides toggle is on), and other objects'
-  edges/centers, within a 6px screen radius at any zoom; the engaged targets render as
-  brand-red **smart guides** that clear on release, and snapped geometry lands exactly (the
-  e2e proves edge-to-edge equality numerically). Group moves snap as one union box.
+  step. **Snapping** engages during move/resize/draw/endpoint drags — the same target set for
+  all four — against page margins, page centers, the **bleed line**, column guides and
+  ruler guides (while the Guides toggle is on), and other objects' edges/centers, within a 6px
+  screen radius at any zoom (ruler guides and the bleed line joined the set in L11 and after);
+  the engaged targets render as brand-red **smart guides** that clear on release, and snapped
+  geometry lands exactly (the e2e proves edge-to-edge equality numerically). Group moves snap
+  as one union box.
+- **Layout editor — step L8, side panel with Assets & Layers (plan v1.3):** the pages pane
+  grows into a **collapsible side panel** with vertical Pages / Assets / Layers tabs (titles
+  rotated 90°; clicking the open tab collapses to the strip). The **Assets tab imports
+  content** — file picker or drag-drop, images and PDFs: metadata lives in the document
+  (`doc.assets`, the §9 asset model pulled forward additively), bytes in an IndexedDB blob
+  store behind a one-file seam. **Clicking an image places it** at natural size (96 DPI,
+  scaled to a 2 in working minimum, fit inside the margins, centered) — or fills the selected
+  picture frame; frames render their image cover-fit, survive reload, and show a visible
+  **"Image missing"** state if the bytes are gone. PDFs join the library but stay honestly
+  un-placeable until print tooling lands. The **Layers tab lists the surface top-to-bottom**
+  — click selects, **drag restacks** (one undo step, verified against canvas paint order).
+  The canvas dropped the wire's name/size/zoom caption and bleed corner marks, and the title
+  bar dropped the Pro segment (two experience levels since plan v1.3).
+- **Layout editor — step L9, pictures: fill-on-click & drag-in (plan v1.4):** image intake
+  moves onto the frame. The Picture tool still draws a gray image box; now a **dragless click
+  on an empty frame opens the device file picker** — the chosen file joins the Assets library
+  (same IndexedDB store) **and binds to that frame**. Image tiles in the Assets panel are
+  **draggable onto any picture frame**: the frame under the cursor highlights and the image
+  binds (or swaps) on drop, empty or filled. A frame that already holds an image just selects
+  on click; a non-image pick raises a visible note, never a silent fallback; both paths
+  persist through reload. The dragless-click detection reuses L7's 3px capture threshold, so
+  it never fires after a move or resize.
+- **Layout editor — step L10, rotation & Arrange (plan v1.4):** a **stemmed rotate handle**
+  above the selection turns a frame about its center (**Shift snaps to 15°**), the status bar
+  reads the live angle, and a **Rotation field** in Properties round-trips degrees — all one
+  undo step. The selection chrome (and the text-edit overlay) rotate with the object; a
+  rotated frame **resizes in its own local axes** (the fixed corner stays put in page space),
+  and rotated objects snap by their axis-aligned footprint (the honest simplification). The
+  **Arrange ribbon tab goes live**: Order (bring to front / forward / backward / to back),
+  Rotate (90° left / right / reset), and Align (the L7 actions) — all against the selection,
+  verified against real canvas paint order. Grouping and effects stay in the backlog.
+- **Layout editor — step L11, ruler guides & units (plan v1.4):** **drag a guide out of
+  either ruler** — top ruler for horizontal, left for vertical — a live line follows the
+  pointer and drops into the model, spanning the **full workspace** (the whole pasteboard,
+  not just the page). Guides are **selectable**: a plain click selects one (it turns
+  **brand-red**) without nudging it, then **Delete** removes it — or **drag** it to reposition,
+  or drag it back onto the ruler to delete. Guide and object selection are mutually exclusive,
+  so Delete is unambiguous. Objects **snap to guides** just like margins and page centers (the
+  engaged guide shows a brand-red smart line). Guides are visual-only (`pointer-events: none`)
+  and grabbed by a board-level hit-test, so an **object on top of a guide always wins the
+  click** — objects take priority. The whole canvas column **suppresses native HTML drag**
+  (`onDragStart` → `preventDefault`, rulers included): guide drags run on window listeners
+  (attached at pointer-down, no capture), and without the guard a press would start a browser
+  drag and fire `pointercancel` mid-gesture. A **unit toggle** in the status bar (`in` / `mm` /
+  `px` / `pt`) relabels the rulers, every length field (Page W/H, bleed, margin, X/Y/W/H), and
+  the bleed/margin legend, round-trips typed input, and **persists** with the document. Guides
+  and the chosen unit both survive reload.
+- **Design revision — single-row ribbon (user-directed):** every command band lays its
+  groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
+  and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge
+  onto one line) — with the section dividers kept but the section titles (Clipboard, Font, …)
+  dropped as self-explanatory (the name survives as each group's `aria-label`). Controls
+  **wrap within their section** as the viewport narrows, so the band grows down instead of
+  clipping; band height is auto (min 64px) instead of the wire's fixed 92px. Recorded as
+  fidelity deviation #5 (plan §2).
 
 ## Where things live
 
@@ -208,7 +266,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 
 - **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L7 shipped.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L8 shipped.
 
 ## Reference documents
 

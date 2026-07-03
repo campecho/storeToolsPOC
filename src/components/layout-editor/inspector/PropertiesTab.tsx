@@ -112,6 +112,21 @@ export function PropertiesTab() {
           <NumberField label="W" value={b.w} onCommit={(v) => commitBBox({ w: v })} testId="prop-w" />
           <NumberField label="H" value={b.h} onCommit={(v) => commitBBox({ h: v })} testId="prop-h" />
         </div>
+        {!line && (
+          <div className="mt-2 flex gap-2">
+            <NumberField
+              label="Rotation"
+              value={obj.rotation}
+              onCommit={(v) => transformObject(obj.id, { rotation: v })}
+              testId="prop-rotation"
+              raw
+              suffix="°"
+              ariaUnit="degrees"
+              format={(v) => String(Math.round(v))}
+            />
+            <div className="flex-1" />
+          </div>
+        )}
       </div>
 
       {!line && (

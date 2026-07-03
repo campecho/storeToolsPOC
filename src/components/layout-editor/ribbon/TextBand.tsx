@@ -17,7 +17,7 @@ import { RibbonGroup } from "./RibbonGroup";
 /** 26px white pill — static chrome. */
 function Pill({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-[26px] items-center rounded-[5px] border border-[#e0e0e0] bg-white px-[9px] text-[11px] text-[#666]">
+    <div className="flex h-[26px] items-center whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-[9px] text-[11px] text-[#666]">
       {children}
     </div>
   );
@@ -31,28 +31,26 @@ export function TextBand() {
   return (
     <>
       <RibbonGroup label="Character">
-        <div className="flex items-center gap-[5px]">
-          <FaceSelect
-            face={font?.family ?? "Motiva Sans"}
-            value={font?.family ?? ""}
-            options={FONT_FAMILIES.map((f) => ({ value: f.name, label: f.name }))}
-            onChange={(v) => apply({ family: v })}
-            disabled={!target}
-            testId="text-band-family"
-            label="Font family"
-            className="flex h-6 w-[118px] items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-2 text-[11px] text-[#555]"
-          />
-          <FaceSelect
-            face={String(font?.size ?? 11)}
-            value={String(font?.size ?? "")}
-            options={FONT_SIZES.map((s) => ({ value: String(s), label: String(s) }))}
-            onChange={(v) => apply({ size: Number(v) })}
-            disabled={!target}
-            testId="text-band-size"
-            label="Font size"
-            className="flex h-6 w-11 items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-[7px] text-[11px] text-[#555]"
-          />
-        </div>
+        <FaceSelect
+          face={font?.family ?? "Motiva Sans"}
+          value={font?.family ?? ""}
+          options={FONT_FAMILIES.map((f) => ({ value: f.name, label: f.name }))}
+          onChange={(v) => apply({ family: v })}
+          disabled={!target}
+          testId="text-band-family"
+          label="Font family"
+          className="flex h-6 w-[118px] items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-2 text-[11px] text-[#555]"
+        />
+        <FaceSelect
+          face={String(font?.size ?? 11)}
+          value={String(font?.size ?? "")}
+          options={FONT_SIZES.map((s) => ({ value: String(s), label: String(s) }))}
+          onChange={(v) => apply({ size: Number(v) })}
+          disabled={!target}
+          testId="text-band-size"
+          label="Font size"
+          className="flex h-6 w-11 items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-[7px] text-[11px] text-[#555]"
+        />
       </RibbonGroup>
 
       <RibbonGroup label="Styles">
@@ -72,28 +70,24 @@ export function TextBand() {
       </RibbonGroup>
 
       <RibbonGroup label="Spacing">
-        <div className="flex gap-[5px]">
-          <FaceSelect
-            face={`Line ${formatIn(target?.text.lineSpacing ?? 1.2)}`}
-            value={String(target?.text.lineSpacing ?? "")}
-            options={LINE_SPACINGS.map((v) => ({ value: String(v), label: String(v) }))}
-            onChange={(v) => apply({ lineSpacing: Number(v) })}
-            disabled={!target}
-            testId="text-band-line"
-            label="Line spacing"
-            className="flex h-[26px] items-center rounded-[5px] border border-[#e0e0e0] bg-white px-[9px] text-[11px] text-[#666]"
-          />
-          <Pill>Space ▾</Pill>
-        </div>
+        <FaceSelect
+          face={`Line ${formatIn(target?.text.lineSpacing ?? 1.2)}`}
+          value={String(target?.text.lineSpacing ?? "")}
+          options={LINE_SPACINGS.map((v) => ({ value: String(v), label: String(v) }))}
+          onChange={(v) => apply({ lineSpacing: Number(v) })}
+          disabled={!target}
+          testId="text-band-line"
+          label="Line spacing"
+          className="flex h-[26px] items-center rounded-[5px] border border-[#e0e0e0] bg-white px-[9px] text-[11px] text-[#666]"
+        />
+        <Pill>Space ▾</Pill>
       </RibbonGroup>
 
       <RibbonGroup label="Text flow" last>
-        <div className="flex gap-[5px]">
-          <div className="flex h-[26px] items-center gap-[6px] rounded-[5px] border border-[#e0e0e0] bg-white px-[9px] text-[11px] text-[#666]">
-            Link boxes <span className="text-[#999]">⟶</span>
-          </div>
-          <Pill>Wrap ▾</Pill>
+        <div className="flex h-[26px] items-center gap-[6px] whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-[9px] text-[11px] text-[#666]">
+          Link boxes <span className="text-[#999]">⟶</span>
         </div>
+        <Pill>Wrap ▾</Pill>
       </RibbonGroup>
     </>
   );

@@ -3,10 +3,15 @@ import { snapBBox, snapPoint, snapTargets } from "./snap";
 import { createDefaultDocument } from "@/store";
 import { createFrame } from "./objects";
 
-/** Letter document with margin 0.5 → v targets 0.5 · 4.25 · 8, h 0.5 · 5.5 · 10.5. */
+/**
+ * Letter document with margin 0.5 → v targets 0.5 · 4.25 · 8, h 0.5 · 5.5 · 10.5.
+ * Bleed is zeroed so these baseline cases stay about margins/centers/guides; the
+ * bleed line has its own test.
+ */
 function doc(columns = 1) {
   const d = createDefaultDocument();
   d.columns = columns;
+  d.bleed = 0;
   return d;
 }
 
@@ -40,6 +45,18 @@ describe("snapTargets", () => {
     const r = createFrame("rect", 0.5, 0.5, 2, 2); // left edge on the margin
     const t = snapTargets(doc(), [r]);
     expect(t.v.filter((x) => x === 0.5)).toHaveLength(1);
+  });
+
+  it("includes the bleed line — offset outside the trim on every side", () => {
+    const d = doc();
+    d.bleed = 0.125;
+    const t = snapTargets(d, []);
+    // -bleed and (w|h)+bleed join the margins/centers
+    expect(t.v).toEqual([-0.125, 0.5, 4.25, 8, 8.625]);
+    expect(t.h).toEqual([-0.125, 0.5, 5.5, 10.5, 11.125]);
+    // zero bleed adds nothing (the line would coincide with the trim)
+    d.bleed = 0;
+    expect(snapTargets(d, []).v).toEqual([0.5, 4.25, 8]);
   });
 });
 

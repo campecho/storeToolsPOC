@@ -5,13 +5,14 @@ const INTERACTIVE_TABS: { id: RibbonTab; label: string }[] = [
   { id: "insert", label: "Insert" },
   { id: "layout", label: "Layout" },
   { id: "text", label: "Text" },
+  { id: "arrange", label: "Arrange" },
 ];
 
 /**
- * Ribbon tab strip (wire region 2a). Home/Insert/Layout/Text switch the
- * command band.
+ * Ribbon tab strip (wire region 2a). Home/Insert/Layout/Text/Arrange switch
+ * the command band (Arrange went live in plan L10).
  * PROTOTYPE-ONLY: File (open/save/export lands with the print-production
- * slice) and Arrange/View/Help (plan §6) are inert, static-by-design labels.
+ * slice) and View/Help (plan §6) are inert, static-by-design labels.
  */
 export function RibbonTabs() {
   const ribbon = useLayoutStore((s) => s.ribbon);
@@ -33,7 +34,7 @@ export function RibbonTabs() {
           {ribbon === id && <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-brand" />}
         </button>
       ))}
-      {["Arrange", "View", "Help"].map((label) => (
+      {["View", "Help"].map((label) => (
         <div key={label} className="px-[14px] pb-2 pt-[7px] text-[12px] text-[#8f8f8f]">
           {label}
         </div>

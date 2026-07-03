@@ -2,11 +2,15 @@
 
 **Scope of this plan:** the **freeform page-layout editor** — the suite's Microsoft Publisher replacement and its most-requested capability — mounted at `/layout` behind the homepage's **Layout** quick-jump card, built at the **same mid-fidelity as the design-handoff wires**.
 
-The editor is explicitly **built over time**: the shell lands first, capability grows onto it in individually demoable steps, and not every feature is available immediately. Notably, the **Simple / Standard / Pro experience views arrive late in the sequence by design** — the editor ships Standard-only until step L8 (§4).
+The editor is explicitly **built over time**: the shell lands first, capability grows onto it in individually demoable steps, and not every feature is available immediately. Notably, the **Simple / Standard experience views arrive late in the sequence by design** — the editor ships Standard-only until step L14 (§4).
 
 **Revision (v1.1):** this plan now carries the technical design for the *functional* editor beyond the POC — a **Konva (Canvas 2D) render layer** (§8), the **document-model v2 deltas** it and import require (§9), the **`.pub` import & conversion pipeline** built on `libmspub` per `PUB_TO_IDML_RESEARCH.md` (§10), and the **K-/P-tranche build order** that grows both onto the L1–L9 POC (§11). L1–L9 are unchanged: the POC still ships DOM/SVG-rendered; the Konva swap and the `.pub` on-ramp are the tranches that make it a complete, functional Publisher replacement.
 
 **Revision (v1.2):** §10.1 now records the agreed **POC security posture** for the import pipeline. This is a *fully functional POC, not a production deployment*, and the threat model scales with what's wired in — so the security doc's controls split into **POC-enforced** (built in P1, tested in P5) vs. **production-deferred with recorded accepted risk**. The same section picks up the Debian-slim base-image requirement and a no-binary **fixture mode** for dev/CI.
+
+**Revision (v1.3):** two scope changes from build-along review. (1) The experience model narrows to **two levels — Simple and Standard**; Pro is dropped (Standard is already the everything-visible surface, so the third tier added nothing; the disabled Pro segment leaves the title bar). (2) A user-directed toolset step lands **before** the levels as the new **L8**: the pages pane becomes a **collapsible side panel with vertical Pages / Assets / Layers tabs** — asset upload/import (images + PDFs; §9's asset model pulled forward *additively* into v1), click-to-place pictures, and a z-order layers list with drag-reorder — plus a **canvas declutter** (the name/size/zoom caption above the page and the bleed corner marks are removed). The old L8/L9 renumber to **L9/L10**; §6, §9, and §11 references are updated in place.
+
+**Revision (v1.4):** the pre-Simple **toolset build-out** is planned as five user-directed steps, **L9–L13**, pulled from the §6 backlog with interaction updates: **L9** reworks picture import around the frame (the Picture tool draws an image box; clicking an empty box opens the device file picker; assets drag from the panel into any visible image container), **L10** rotation editing + a live Arrange tab, **L11** ruler-dragged guides + a unit toggle (in/mm/px/pt), **L12** facing-page spreads + per-page size overrides (§9's `sizeOverride` pulled forward), **L13** copy/cut/paste with keyboard shortcuts. Experience levels and hardening renumber to **L14/L15**. Each step stays independently demoable, one commit each; §6 and §9 rows are updated in place.
 
 **Inputs reviewed:**
 
@@ -46,7 +50,7 @@ The design doc frames the product this editor is the heart of: a Publisher repla
 | §4.1 Multi-page docs, master pages, custom sizes, bleed/margins as first-class properties | **This plan** (L3, L6) |
 | §4.2 Rulers, guides, snapping, smart alignment, distribution | **This plan** (L1, L3, L7) |
 | §4.3 Frame text, paragraph basics, minimal styles | **This plan** (L5) — threading/autoflow, text wrap, OpenType/variable fonts deferred |
-| §3.3 Simple / Standard / Pro experience layers | **This plan, deliberately last** (L8) — control visible from day one, Standard-only until then |
+| §3.3 experience layers (two levels since v1.3: Simple / Standard) | **This plan, deliberately last** (L14) — control visible from day one, Standard-only until then |
 | §4.5 Image frames with placeholder frames | **This plan** (L4, placeholder frames only; real image import deferred) |
 | §4.4 Tables · §4.5 pen/Bézier/booleans/effects · §4.6 CMYK/spot/preflight · §4.7 data merge | **Deferred** (§6) — print production and VDP are separate suite slices |
 | §5.1 `.pub` import | **Separate Track B slice** (`.pub` on-ramp); this editor eventually just opens its output |
@@ -60,7 +64,7 @@ The design doc frames the product this editor is the heart of: a Publisher repla
 - The wires are specified entirely in CSS terms (dashed outlines, inset guides, gradient ruler ticks); DOM keeps fidelity trivial and hover/selection chrome free.
 - Text editing stays native (`contentEditable` overlay) instead of the overlay gymnastics a canvas engine forces.
 - POC documents hold tens of objects, far below DOM performance limits on the store hardware profile.
-- The **document model is the durable artifact**: pure data (Zod schemas, geometry in inches, zero DOM coupling). The functional editor exercises exactly this bet: §8 specifies the **react-konva render layer** that replaces the DOM canvas behind the same model and store — components above the canvas untouched. The POC's DOM render is the L1–L9 vehicle; the Konva layer is the K-tranche (§11).
+- The **document model is the durable artifact**: pure data (Zod schemas, geometry in inches, zero DOM coupling). The functional editor exercises exactly this bet: §8 specifies the **react-konva render layer** that replaces the DOM canvas behind the same model and store — components above the canvas untouched. The POC's DOM render is the L1–L15 vehicle; the Konva layer is the K-tranche (§11).
 - `@dnd-kit` (deferred in the tracker plan for "canvas/editor slices") turns out unnecessary here: canvas dragging is pointer math against the scaled surface, not sortable-list DnD. **No new runtime dependencies** for this whole plan.
 
 ---
@@ -72,12 +76,13 @@ The design doc frames the product this editor is the heart of: a Publisher repla
 - **Follow exactly:** the information architecture, region layout and fixed dimensions, control grouping, the exact copy, the four prototype toggles, and the active-state patterns (red 2px underline on tabs, red ring + faint fill on tools/thumbnails, white pill on segmented controls).
 - **Reproduce as-is:** the grayscale wireframe styling — chrome grays, Staples red `#CC0000` for actions/active/selected, guide blue `#9fb6df`, bleed red-brown `#b58686`. We match the wires, not the production Staples design system.
 - **Handoff-sanctioned productionizations** (the README asks for these; they are not deviations): fluid work area with the canvas absorbing extra space; the page drawn at **true scale for the current zoom** (replacing the mock's 428×554 proxy); zoom-tracking rulers; hover states (~150ms ease, no spring); status-bar tool label tracking the active tool.
-- **Deliberate deviations (4):**
+- **Deliberate deviations (5):**
   1. **The suite header stays** above the editor (the "one shared surface" requirement — Give feedback + bell must work everywhere). The editor's title bar therefore drops the wire's duplicated Staples chip, store label, and decorative window controls (`— ▢ ✕` are native-app chrome), and gains a **← Back** affordance at its left edge (the tracker sub-bar's pattern). If demos ever want the full-screen wire look, an "immersive" toggle that hides the suite header is a cheap later add.
   2. **Desktop-minimum gate:** below `lg` the editor shows an honest "this tool needs a bigger screen" card instead of reflowing. The suite's responsive pass reflows every *browsing* surface to phone; a precision layout canvas is a station tool and a broken squeeze would be worse than a gate.
-  3. **Simple / Pro segments render but are disabled** (muted, tooltip "Coming later in the beta") until step L8 — per the built-over-time direction. Standard shows active from day one, matching the mock.
+  3. **The Simple segment renders but is disabled** (muted, tooltip "Coming later in the beta") until step L14 — per the built-over-time direction. Standard shows active from day one, matching the mock. (Pro rendered the same way until v1.3 dropped the third level; its segment came out in L8.)
   4. A small **"Reset demo document"** affordance at the status bar's right edge — a non-wire demo control, same pattern as the tracker's "Reset demo data".
-- **Static-by-design (as in the mock, until their slices land):** the File / Arrange / View / Help ribbon tabs; Find/Replace and Hyperlink controls; the font-color swatch; the status bar's two-page-spread toggle; the Page tab's "Choose a product" catalog link.
+  5. **Single-row command bands** (user-directed, post-L8): each ribbon group lays its controls in **one row** — the wire's stacked clusters (the big Paste tile, the Cut/Copy column, two-row Font/Paragraph) flatten to uniform inline controls — with the section dividers kept but the **9.5px section titles dropped** (Clipboard/Font/… are self-explanatory; the name survives as each group's `aria-label`); controls **wrap within their section** as the viewport narrows, so the band grows down instead of clipping (band height becomes auto, min 64px, replacing the wire's fixed 92px).
+- **Static-by-design (as in the mock, until their slices land):** the File / View / Help ribbon tabs (**Arrange goes live in L10**); Find/Replace and Hyperlink controls; the font-color swatch; the Clipboard pills (**live in L13**); the status bar's two-page-spread toggle (**live in L12**); the Page tab's "Choose a product" catalog link.
 
 ---
 
@@ -90,7 +95,7 @@ The design doc frames the product this editor is the heart of: a Publisher repla
 | `/layout` | The layout editor | `src/app/layout/page.tsx` — a route segment folder, distinct from the root `src/app/layout.tsx` file (worth a comment; Next.js is fine with it) |
 
 - The homepage **Layout** quick-jump card becomes a `Link` to `/layout` — the first quick-jump card with a real destination. The size tiles deep-link with a preset (`/layout?preset=legal`, `?custom=1`) in L3.
-- The editor fills the viewport under the 52px suite header (`100dvh − 52px`), owning its internal layout as a vertical flex: title bar 40 · tab strip 32 · command band 92 · work area `flex-1` · status bar 28. Every fixed region is `shrink-0`; the editor never scrolls the document body.
+- The editor fills the viewport under the 52px suite header (`100dvh − 52px`), owning its internal layout as a vertical flex: title bar 40 · tab strip 32 · command band auto-height (min 64, single-row wrapping sections per deviation #5) · work area `flex-1` · status bar 28. Every fixed region is `shrink-0`; the editor never scrolls the document body.
 - Work-area row: tool palette 52 · pages pane 188 · canvas `flex-1 min-w-0` · inspector 268, separators per the wire.
 - **Overlay coexistence:** the report modal, notifications dropdown, and celebrate moment already render from the root layout and must open over the editor. The root `EscapeCloser` owns Escape for overlays; the editor's own Escape handling (deselect, exit text editing) checks the feedback store first and yields when any overlay is open.
 
@@ -101,14 +106,17 @@ src/app/layout/page.tsx              // mounts <LayoutEditor /> (client-only sur
 src/components/layout-editor/
   EditorShell.tsx                    // vertical frame, work-area row, min-width gate
   TitleBar.tsx                       // back link · doc name (editable) · size hint ·
-                                     // Simple/Standard/Pro segmented · help glyph
+                                     // Simple/Standard segmented (v1.3) · help glyph
   ribbon/
     RibbonTabs.tsx                   // File(static) Home Insert Layout Text + muted rest
     RibbonGroup.tsx                  // [controls row] + [9.5px label] + right divider
     HomeBand.tsx  InsertBand.tsx  LayoutBand.tsx  TextBand.tsx
   palette/ToolPalette.tsx            // 9 tools, dividers, red active ring
+  panel/
+    SidePanel.tsx                    // collapsible panel + vertical Pages/Assets/Layers tabs (L8)
+    AssetsPane.tsx LayersPane.tsx    // asset library + z-order list (L8)
   pages/
-    PagesPane.tsx                    // PAGES header + Pages/Masters segmented
+    PagesPane.tsx                    // Pages/Masters segmented + lists (a SidePanel tab since L8)
     PageThumb.tsx MasterThumb.tsx    // live mini-renders (L6); AddPageTile
   canvas/
     CanvasViewport.tsx               // rulers + corner box, pasteboard, caption,
@@ -143,7 +151,7 @@ Production state per the handoff's own list:
 - **Selection** (session): `selectedIds: string[]`, `editingTextId: string | null` — drives the Properties/Text tabs exactly as the handoff describes ("populates when an object is selected").
 - **Viewport** (session, except zoom prefs): `zoom` (0.1–4, default = fit), `pan {x,y}`, `guidesVisible`. Unit is fixed to inches for now (§7.7).
 - **History** (session): bounded snapshot stacks (`past`/`future`, cap 50) of the document slice, pushed **once per completed gesture** (pointer-up, input commit) — never per pointer-move. `undo()` / `redo()`.
-- **Experience** (persisted): `level: 'simple' | 'standard' | 'pro'` — `'standard'` until L8 enables switching. Surface-only; never mutates the file (design doc §3.3's hard rule).
+- **Experience** (persisted): `level: 'simple' | 'standard'` (v1.3 dropped `'pro'`; legacy persisted values coerce to `'standard'`) — `'standard'` until L14 enables switching. Surface-only; never mutates the file (design doc §3.3's hard rule).
 - **Actions** grouped by domain: page setup (`setPageSize/setOrientation/setBleed/setMargin/setColumns`), objects (`addObject/transformObject/setObjectProps/deleteSelection/duplicateSelection/reorder`), text (`setTextContent/setTextProps`), pages & masters (`addPage/selectPage/removePage/applyMaster/addMaster`), selection, viewport, history, `resetDoc()`.
 
 Persistence: `localStorage` key **`stp-layout-v1`** (versioned, own key beside the tracker's `stp-feedback-v1`), storing `doc` + experience level. Selection, history, and viewport stay session-scoped.
@@ -200,8 +208,14 @@ Principle: **shell first, then the document model, then editing capability** —
 | L5 | Text frames & typography | "Make a sign": styled text on the right page size |
 | L6 | Multi-page & masters | Multi-page pubs with shared master furniture |
 | L7 | Multi-select, align & snapping | Measurement-driven precision layout |
-| L8 | Simple / Standard / Pro | The experience-level model, surface-only |
-| L9 | Hardening & ship shape | Full e2e + README demo script |
+| L8 | Side panel: Assets & Layers | Import images/PDFs and place them; drag-reorder z-order; decluttered canvas |
+| L9 | Pictures: fill-on-click & drag-in | Click an empty image box to pick a device file; drag assets from the panel into any frame |
+| L10 | Rotation & Arrange | Rotate handle + numeric field; the Arrange tab goes live (z-order, rotate 90°, align) |
+| L11 | Guides & units | Ruler-dragged snap guides; in/mm/px/pt display everywhere |
+| L12 | Spreads & mixed sizes | Two-page spread view; per-page size override |
+| L13 | Clipboard | Copy / Cut / Paste with keyboard shortcuts; ribbon pills go live |
+| L14 | Simple / Standard | The two-level experience model, surface-only |
+| L15 | Hardening & ship shape | Full e2e + README demo script |
 
 ### L1 — Editor shell: frame, chrome & Home band
 Route + desktop gate; the **Layout card wired** (first real quick-jump destination); title bar per deviation #1 (back link, doc name, size hint, experience segmented — Standard active, Simple/Pro disabled, help glyph); ribbon tab strip with working active-tab logic + the **Home** band (static controls); tool palette with single-select red ring and the status-bar tool label; pages pane (Pages view, static thumbs); rulers (static ticks), pasteboard, page proxy with bleed/margin/guides/corner marks/legend/caption; inspector frame + **Page** tab body (static); status bar.
@@ -231,16 +245,53 @@ Text tool draws a text frame; **double-click to edit** (contentEditable overlay 
 Shift-click + **marquee** multi-select, group drag. **Align inspector tab live**: 6 align buttons, Distribute H/V, "Relative to" Page/Selection. **Snapping** during draw/drag/resize: page margins, page centers, column guides, and other objects' edges/centers, with wire-colored smart guide lines; the Layout band's Guides toggle governs column guides and their snap targets.
 *Done when:* snap/align/distribute math is unit-tested; smart guides appear and clear correctly; e2e aligns two objects and verifies geometry.
 
-### L8 — Experience levels: Simple / Standard / Pro (the deferred views arrive)
-The title-bar segmented control goes fully live, **surface-only** per design doc §3.3 — switching never touches the file, and everything stays reachable (progressive disclosure, nothing permanently hidden):
+### L8 — Side panel: Assets & Layers, canvas declutter *(v1.3, user-directed)*
+The pages pane grows into a **collapsible side panel** with three **vertical tabs** (titles rotated 90° clockwise): **Pages** (the L6 navigator, unchanged), **Assets**, and **Layers**. Clicking a tab opens the panel to it; clicking the active tab collapses the panel to just the tab strip.
+- **Assets** — upload/import content to use in the layout: file picker + drag-drop for **images** (placed for real) and **PDFs** (library-only until the print pipeline can rasterize them — placement honestly disabled). Asset *metadata* lives in the document (`doc.assets` — the §9 asset-store delta pulled forward **additively** into v1, optional and `{}`-defaulted so existing docs keep parsing); asset *bytes* live in an IndexedDB blob store behind a one-file seam. Clicking an image asset places it on the active page at natural size fit within the margins — or binds it to the selected empty picture frame; picture frames render their bound image (cover-fit; the `fit` mode field stays v2) with a visible **missing-asset state** if the blob is gone.
+- **Layers** — the editing surface's objects listed **top-to-bottom** (topmost first): type icon + label, click to select, **drag to reorder** the z-order (array order; one undo step per drop).
+- **Canvas declutter** — the name/size/zoom caption above the page and the four bleed corner marks are removed (title bar and status bar already carry name, size, and zoom).
+*Done when:* an associate imports a photo and a PDF, places the photo, restacks objects from the Layers tab, and it all persists through reload; asset + reorder ops unit-tested; e2e covers upload → place → reorder → reload.
+
+### L9 — Pictures: fill-on-click & drag-in *(v1.4, user-directed)*
+Image intake moves to the frame itself, on top of L8's asset infrastructure:
+- **The Picture tool draws an image box** (as today — the gray placeholder frame).
+- **Click-to-fill:** with the Select tool, a *dragless click on an empty picture frame* opens the device file picker; the chosen image joins the Assets library (same IndexedDB blob store + `doc.assets` metadata) **and binds to that frame**. A frame that already holds an image just selects on click — swap it via drag-in or the Assets panel. Picker cancel is a no-op; a non-image choice raises the visible skip note, never a silent fallback.
+- **Drag-in from the Assets panel:** image asset tiles become draggable; picture frames on the canvas highlight as drop targets while an image asset is over them, and dropping binds (or swaps) that asset into the frame — empty or filled. PDF tiles don't drag (library-only, as before).
+- L8's fast paths stay: clicking a tile still places centered or fills the selected frame.
+*Done when:* e2e draws a frame → clicks it → picks a file → the image renders; drags a tile onto a second frame and the image lands there; both persist through reload; the dragless-click detection never fires after a move/resize gesture.
+
+### L10 — Rotation & Arrange *(v1.4)*
+- **Rotate handle** on a single selection (stemmed handle above the frame): drag rotates about the frame center, **Shift snaps to 15°**, per-gesture undo; the status bar reads the live angle. `rotation` already exists in the schema and renders — this adds the editing.
+- The **selection overlay and resize handles rotate with the object**; resize keeps operating in the object's local axes; the text-edit overlay inherits the transform. Lines don't rotate (their endpoints define them).
+- **Snapping with rotation** (honest simplification): a rotated object contributes and snaps by its axis-aligned bounds.
+- **Properties tab** gains a Rotation field (degrees, round-trip like X/Y/W/H).
+- **The Arrange ribbon tab goes live:** Order group (Bring to front / Bring forward / Send backward / Send to back — the store gains toFront/toBack beside L4's step-wise reorder), Rotate group (90° left / right / reset), and an Align group reusing the L7 actions. **Grouping and effects stay in the §6 backlog.**
+*Done when:* handle + numeric field round-trip incl. undo; Arrange order commands verified against canvas paint order; e2e rotates a rect with Shift-snap and resets it from the tab.
+
+### L11 — Ruler guides & units *(v1.4)*
+- **Ruler-dragged guides:** drag out of the horizontal ruler to drop a horizontal guide, vertical ruler for vertical; guides render in the wire's guide blue over the page, drag to reposition, drag back onto the ruler to delete. Stored document-level (`doc.guides: { v: number[], h: number[] }` — additive, `{v:[],h:[]}`-defaulted so existing docs keep parsing), undoable, persisted, governed by the existing Guides visibility toggle, and **joined into `snapTargets`** (snap.ts was built for this).
+- **Unit toggle** (status bar): **in / mm / px / pt**. Geometry stays canonical inches; rulers, the title-bar size hint, the Page tab, Properties/Transform fields, and status readouts display and parse the active unit (96 px/in · 25.4 mm/in · 72 pt/in). Persists per station beside the experience level.
+*Done when:* a guide dragged from each ruler lands, moves, deletes, and objects snap to it with smart-guide feedback; switching units relabels rulers and round-trips field input; guides + unit survive reload.
+
+### L12 — Spreads & mixed page sizes *(v1.4)*
+- **Two-page spread view** — the status bar's spread toggle goes live: Publisher pairing (page 1 alone, then 2|3, 4|5, …); the partner page renders beside the active one and a click activates it; editing gestures target the active page exactly as today. View state is session-only.
+- **Per-page size override** — `page.sizeOverride?: { w, h }` (§9's delta, pulled forward additively): the Page tab gains an **"Apply to: Whole document / This page"** choice; canvas, rulers, thumbnails, spreads, guides, and snap targets all use the page's *effective* size; clearing the override returns the page to the document size.
+*Done when:* spread pairing is correct including the lone first page; a page with an override renders true-size in canvas + thumbnail + spread; e2e toggles the spread, overrides one page's size, and reloads.
+
+### L13 — Clipboard: Copy, Cut & Paste *(v1.4)*
+- **In-app object clipboard** (session): **Cmd/Ctrl+C / X / V** and the Home band's Clipboard pills go live with real enabled/disabled states. Works on multi-selections; cut = copy + delete in one undo step; paste lands on the *current editing surface* (any page or master — the clipboard survives navigation) with the L4 duplicate offset, and repeated pastes cascade; pasted objects get fresh ids; a copied picture keeps its `assetId` (the library is document-level, so the image comes with it).
+- **Text sessions keep native behavior:** inside the contentEditable overlay the shortcuts stay the browser's — the object clipboard never intercepts them.
+*Done when:* copy/cut/paste chains are unit-tested (fresh ids, offsets, one-step cut undo, cross-page paste) and e2e-verified from both the keyboard and the ribbon pills; pill enabled states track selection and clipboard content.
+
+### L14 — Experience levels: Simple / Standard (the deferred view arrives)
+**Two levels since v1.3 — Pro is dropped**; Standard is already the everything-visible surface, and the title bar's disabled Pro segment came out in L8. The segmented control goes fully live, **surface-only** per design doc §3.3 — switching never touches the file, and everything stays reachable (progressive disclosure, nothing permanently hidden):
 - **Standard** — the wire as built (the default all previous steps shipped).
-- **Simple** — curated, task-first surface: palette trimmed to Select/Text/Picture; Home band reduced to Font/Paragraph with a "More options" affordance that expands the rest; Insert band reduced to Text box/Picture/Add page; inspector auto-follows selection (Properties on select, Text while editing, Page otherwise).
-- **Pro** — everything Standard exposes, always-dense: full palette and bands (Arrange/View tabs stay static — their slices haven't landed), no simplification affordances.
-Level persists per station.
+- **Simple** — curated, task-first surface: palette trimmed to Select/Text/Picture (whose fill-on-click flow from L9 is exactly the novice path); Home band reduced to Font/Paragraph with a "More options" affordance that expands the rest; Insert band reduced to Text box/Picture/Add page; inspector auto-follows selection (Properties on select, Text while editing, Page otherwise). The L8 side panel stays present — Pages and Assets are novice surfaces.
+Level persists per station; persisted legacy `"pro"` values coerce to `"standard"`.
 *Done when:* switching reflows the chrome instantly without mutating the document (assert doc-equality in tests); e2e sanity-checks each level's surface.
 
-### L9 — Hardening & ship shape
-Full **Playwright pass** as the demo script: home → Layout card → pick/custom size → draw shapes → styled text → add page + master → align/snap → reload persists → reset. Cross-surface polish against the offline prototype; a11y pass on the chrome (focus order, `aria-pressed` on toggles, keyboard reachability); drag-performance sanity on a modest machine; README update (run/demo/where the docs live).
+### L15 — Hardening & ship shape
+Full **Playwright pass** as the demo script: home → Layout card → pick/custom size → draw shapes → styled text → fill a picture frame from a file → rotate → drag a guide and snap to it → copy/paste → add page + master → spread view → align/snap → restack via Layers → reload persists → reset. Cross-surface polish against the offline prototype; a11y pass on the chrome (focus order, `aria-pressed` on toggles, keyboard reachability); drag-performance sanity on a modest machine; README update (run/demo/where the docs live).
 *Done when:* e2e green; `docker run` still serves the whole POC; the README demo script lets a teammate demo the editor cold.
 
 **Commit cadence:** one commit per step, each leaving the branch demoable — same convention as the tracker build.
@@ -250,28 +301,28 @@ Full **Playwright pass** as the demo script: home → Layout card → pick/custo
 ## 5. Testing strategy
 
 - **Unit (Vitest, colocated):** geometry (in↔px at zoom, fit-zoom, nudge math); preset table; snap-candidate detection and priority; align/distribute/z-order ops; object reducers (add/transform/props/duplicate/delete); undo/redo invariants (bounded, per-gesture, redo cleared on new edit); page/master operations incl. master propagation; overflow measurement; experience-level switching leaves the document byte-identical.
-- **E2E (Playwright, extending `e2e/smoke.spec.ts` patterns):** the L9 demo flows, accumulated step by step — they double as the stakeholder demo script, exactly as the tracker's do.
+- **E2E (Playwright, extending `e2e/smoke.spec.ts` patterns):** the L15 demo flows, accumulated step by step — they double as the stakeholder demo script, exactly as the tracker's do.
 - **Fidelity checks (manual):** side-by-side with `docs/handoff/layout-editor/Layout Editor (offline).html` per step — it runs in any browser and is the behavioral source of truth for the shell.
 
 ---
 
 ## 6. Deferred backlog (how the editor keeps growing)
 
-Explicitly **not** in L1–L9, with where each lands later — the affordances stay visible-but-static per the wire so the ceiling reads as reachable:
+Explicitly **not** in L1–L15, with where each lands later — the affordances stay visible-but-static per the wire so the ceiling reads as reachable:
 
 | Capability | Lands | Notes |
 |---|---|---|
 | Linked text frames, autoflow, story threading; text wrap | Editor, next tranche | Text band's "Link boxes ⟶ / Wrap" controls exist, stay static; the model's per-frame text is forward-compatible |
 | Tables | Editor, next tranche | Palette + Insert buttons present; status-bar "coming later in the beta" until then |
-| Rotation editing, groups, layers panel, effects | Editor, next tranche | `rotation` already in schema; Arrange ribbon tab is the natural home |
-| Real picture import + asset storage | **P-tranche (§11)** with the intake slice | Asset model specified in §9; `.pub` image extraction lands it first |
+| Groups, effects | Editor, later | **Rotation editing + the live Arrange tab land in L10 (v1.4)**; the layers panel landed in L8 (v1.3); grouping and effects stay here |
+| Real picture import + asset storage | **Landed in L8 (v1.3)** — the upload path; **L9 (v1.4)** adds fill-on-click and drag-into-frame; P3 still lands `.pub` image *extraction* into the same store | Asset model per §9, pulled forward additively; PDF assets stay library-only until the print pipeline can rasterize them |
 | Open/save/export, File tab, PDF & preflight | Print-production slice | Suite plan §8.7/§8.12 backbone; editor gains "Export" once the spine exists in the POC; §8.6 defines the render-parity contract |
 | Catalog SKU binding ("born correct") | Catalog/spec-sync slice `[INT]` | Page tab's Product card + "Choose a product →" link render now, act later; ties to the homepage product grid |
 | `.pub` import | **P-tranche (§10–§11, this plan)** | Pipeline now specified here: sandboxed `libmspub` → intermediate model → `LayoutDocument` + import report |
-| Facing pages/spreads, sections, mixed page sizes | Editor, later | Status bar's spread toggle stays static until then |
+| Sections (page ranges, numbering restarts) | Editor, later | **Spreads + mixed page sizes land in L12 (v1.4)** — the status bar's spread toggle goes live there; sections stay here |
 | Data merge / VDP · AI-assisted creation & help | Their own suite slices | Design doc §4.7 / §3.3; AI assist is a suite-wide service |
 | Publisher-familiar shortcut map, savable workspaces | With experience-model deepening | A basic shortcut set ships in L4; the full veteran map is a deliberate later pass |
-| Unit toggle (in/mm/px/pt), guides dragged from rulers | Editor, later | Geometry helpers are unit-ready; ruler-drag guides slot into `snap.ts` |
+| Unit toggle (in/mm/px/pt), guides dragged from rulers | **Lands in L11 (v1.4)** | Geometry helpers are unit-ready; ruler-drag guides slot into `snap.ts` exactly as designed |
 
 ---
 
@@ -281,7 +332,7 @@ Explicitly **not** in L1–L9, with where each lands later — the affordances s
 2. **DOM/SVG rendering** for the POC (§1.4). For the functional editor, **react-konva is now the recommended render layer** (§8.1) — recorded here as the engine recommendation this slice feeds into the suite plan's Phase-0 spike, with the spike's pass/fail criteria defined in §8.1 so the decision is confirmed with evidence on the store hardware, not assumed.
 3. **Single working document**, autosaved to `stp-layout-v1`; opening a new size from Home replaces it (with a confirm when the current doc has content). Multi-document / open / save-as is backlog.
 4. **Desktop-minimum gate** below `lg` rather than a phone reflow — a precision canvas is a station tool; the gate card keeps small screens honest.
-5. **Simple/Pro disabled until L8** — per the built-over-time direction; the control renders from L1 so the title bar matches the wire.
+5. **Simple disabled until L14** — per the built-over-time direction; the control renders from L1 so the title bar matches the wire. *(v1.3: the experience model is two levels — Pro dropped, its segment removed in L8.)*
 6. **Fonts** — system stack + a curated family list until Motiva Sans licensing is confirmed (same posture as `public/fonts/README`).
 7. **Inches only** at first; the unit toggle is handoff-mentioned and cheap to add later because all geometry is canonical-inches behind helpers.
 
@@ -341,7 +392,7 @@ Text is the one place a canvas engine costs something, and the design pays it de
 - Furniture layer cached; content layer `batchDraw` throttled to animation frames; smart guides and marquee on the overlay layer so drags never repaint the document.
 - **Only the active page mounts a live stage.** Pages-pane thumbnails become `stage.toDataURL({ pixelRatio: ~0.15 })` snapshots taken on mutation debounce — replacing L6's mini-DOM renders with cheaper, pixel-accurate ones. Master editing renders the master's objects to the same stage with a mode banner, exactly as L6 specifies.
 - Placed images decode once into `ImageBitmap`s keyed by asset id (§9); downscaled draws let Konva's canvas smoothing handle print-resolution sources.
-- Budget check in L9's drag-performance pass moves to the K-tranche's exit gate with the §8.1 spike numbers.
+- Budget check in L15's drag-performance pass moves to the K-tranche's exit gate with the §8.1 spike numbers.
 
 ### 8.6 Print/export parity (forward pointer, honest scope)
 
@@ -355,13 +406,14 @@ Additive, versioned (`version: 2` with a v1→v2 loader migration; the POC's per
 
 | Delta | Pulled in by | Shape |
 |---|---|---|
-| **Asset store** | Picture import (P3), Konva image render | `assets: Record<id, { mime, width, height, source }>` — `source` is an IndexedDB blob ref client-side or a server asset URL for imported docs; document JSON stays small |
-| **Picture frame binding** | Same | `Frame(type:'picture')` gains `assetId: string \| null` (null = the POC's gray placeholder) + `fit: 'fill' \| 'fit' \| 'stretch'` |
+| **Asset store** | Picture import (**upload path shipped early in L8**, v1.3; `.pub` extraction P3), Konva image render | `assets: Record<id, { mime, width, height, source }>` — `source` is an IndexedDB blob ref client-side or a server asset URL for imported docs; document JSON stays small. *L8 ships it additively in v1 (optional, `{}`-defaulted) so existing docs keep parsing* |
+| **Picture frame binding** | Same | `Frame(type:'picture')` gains `assetId: string \| null` (null = the POC's gray placeholder) + `fit: 'fill' \| 'fit' \| 'stretch'`. *`assetId` shipped in L8; `fit` remains v2 (L8 renders cover-fit)* |
 | **Path object** | `.pub` polygons/freeform shapes (P2) | `{ type:'path', x, y, w, h, rotation, d: PathSeg[], fill, stroke }` — normalized segment array, not raw SVG strings |
 | **Per-run text** | `.pub` character formatting (P2), Text band v2 | `text.paragraphs: { props: ParaProps, runs: { text, font, color }[] }[]` — supersedes the per-frame flat model; layout module (§8.4) consumes both during migration |
 | **Text color** | Per-run model, import fidelity | `color` joins the run/font props (the v1 schema styles the frame, not the ink) |
 | **Threading (schema only)** | `.pub` linked text boxes — *conversion deferred, model ready* | `Frame(type:'text')` gains `storyId?: string`, `prevFrameId?/nextFrameId?: string`; the editor ignores them until the threading tranche (§6), but import preserves the links losslessly |
-| **Per-page size override** | `.pub` mixed page sizes — *flag-only at import* | `Page.sizeOverride?: { w, h }`; editor renders it, Page tab edits stay document-level until §6's mixed-sizes tranche |
+| **Per-page size override** | `.pub` mixed page sizes; **pulled forward to L12 (v1.4)** with Page-tab editing | `Page.sizeOverride?: { w, h }` — additive/optional, so it ships in v1 the same way `assets` did |
+| **Ruler guides** | Guide editing (**L11, v1.4**) | `doc.guides: { v: number[], h: number[] }` — document-level in the POC (additive, defaulted); per-page guides can layer on later without breaking the shape |
 
 Everything else — inches, array z-order, masters, `rotation` — already carries forward from §3.4 unchanged.
 
@@ -456,7 +508,7 @@ The response's `report` is structured JSON rendered as a panel when the converte
 
 ## 11. Extended build order — K- and P-tranches
 
-Both tranches follow the L-steps' contract: one commit per step, demoable after each, the L1–L9 tests staying green throughout. **K before P** — import lands on the render layer that can actually carry a converted newsletter.
+Both tranches follow the L-steps' contract: one commit per step, demoable after each, the L1–L15 tests staying green throughout. **K before P** — import lands on the render layer that can actually carry a converted newsletter.
 
 | Step | Lands | Newly available |
 |---|---|---|
@@ -466,11 +518,11 @@ Both tranches follow the L-steps' contract: one commit per step, demoable after 
 | K4 | Perf pass + `toDataURL` thumbnails; §8.1 spike numbers recorded on store-profile hardware | The engine decision is *evidenced*, closing §7.2 |
 | P1 | Import service per §10.1's POC posture (Debian-slim image; fixture mode for binary-less dev/CI): sniff → `pub2raw` → trace parser → geometry-only mapping | A `.pub` opens as correctly-sized, correctly-placed frames (the research doc's Milestone-1 bar) |
 | P2 | Text runs + styles + font remap; paths | Real content: text in the right boxes, right sizes; polygons faithful |
-| P3 | Image extraction → assets + picture frames | Image-bearing publications convert; picture rendering exits placeholder-only |
+| P3 | Image extraction → assets + picture frames | Image-bearing publications convert — extracted images land in the same asset store L8's upload path ships |
 | P4 | Import report UI + overset check + `.puz` handling | The associate sees exactly what to review — the design doc's §5.1 report requirement |
 | P5 | Corpus + fidelity harness + adversarial security tests wired to CI | The ≥90% fidelity metric is measured, not asserted; §10.1 controls proven |
 
-*K-tranche exit gate:* L1–L9 e2e green on Konva; spike criteria met and recorded. *P-tranche exit gate:* corpus fidelity ≥90% element-level on tier-1 categories; every degradation reported, nothing silent; the §10.1 **POC-enforced** controls pass the adversarial set (the production-deferred controls remain launch gates for the production tranche, not this one).
+*K-tranche exit gate:* L1–L15 e2e green on Konva; spike criteria met and recorded. *P-tranche exit gate:* corpus fidelity ≥90% element-level on tier-1 categories; every degradation reported, nothing silent; the §10.1 **POC-enforced** controls pass the adversarial set (the production-deferred controls remain launch gates for the production tranche, not this one).
 
 ---
 

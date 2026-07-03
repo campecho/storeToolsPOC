@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, PanelsTopLeft } from "lucide-react";
@@ -12,8 +12,9 @@ import { HomeBand } from "./ribbon/HomeBand";
 import { InsertBand } from "./ribbon/InsertBand";
 import { LayoutBand } from "./ribbon/LayoutBand";
 import { TextBand } from "./ribbon/TextBand";
+import { ArrangeBand } from "./ribbon/ArrangeBand";
 import { ToolPalette } from "./palette/ToolPalette";
-import { PagesPane } from "./pages/PagesPane";
+import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
@@ -60,6 +61,15 @@ export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
   useEditorKeyboard();
 
+  // Expose when the persisted store has rehydrated (skipHydration runs it after
+  // mount). Interacting before then can be clobbered by the late rehydrate, so
+  // tests wait on `data-hydrated` and it's a useful readiness signal generally.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (useLayoutStore.persist.hasHydrated()) setHydrated(true);
+    return useLayoutStore.persist.onFinishHydration(() => setHydrated(true));
+  }, []);
+
   return (
     <>
       {/* useSearchParams requires a Suspense boundary under a static route */}
@@ -91,22 +101,29 @@ export function EditorShell() {
         </div>
       </div>
 
-      <div className="hidden min-h-0 flex-1 flex-col lg:flex" data-testid="layout-editor">
+      <div
+        className="hidden min-h-0 flex-1 flex-col lg:flex"
+        data-testid="layout-editor"
+        data-hydrated={hydrated ? "true" : "false"}
+      >
         <TitleBar />
         <RibbonTabs />
-        {/* Command band (wire 2b) — content swaps with the active ribbon tab. */}
+        {/* Command band (wire 2b) — content swaps with the active ribbon tab.
+            Single-row sections (plan §2, deviation #5): auto height, controls
+            wrap within their group on narrow viewports. */}
         <div
           data-testid={`band-${ribbon}`}
-          className="flex h-[92px] shrink-0 items-stretch overflow-hidden border-b border-[#e6e6e6] bg-[#f7f7f7]"
+          className="flex min-h-[64px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-[#f7f7f7]"
         >
           {ribbon === "home" && <HomeBand />}
           {ribbon === "insert" && <InsertBand />}
           {ribbon === "layout" && <LayoutBand />}
           {ribbon === "text" && <TextBand />}
+          {ribbon === "arrange" && <ArrangeBand />}
         </div>
         <div className="flex min-h-0 flex-1">
           <ToolPalette />
-          <PagesPane />
+          <SidePanel />
           <CanvasViewport />
           <Inspector />
         </div>

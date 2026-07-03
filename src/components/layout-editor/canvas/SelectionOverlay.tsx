@@ -4,12 +4,15 @@ import { bboxOf, type HandleDir } from "@/lib/layout/objects";
 
 /**
  * Selection chrome (plan §3.2): brand frame + 8 resize handles around a
- * frame's bbox, endpoint handles for a line. Handles are fixed-px chrome;
- * only they take pointer events — the frame itself lets drags fall through
- * to the object underneath.
+ * frame's bbox, endpoint handles for a line, and a stemmed rotate handle
+ * above the top edge (plan L10). The whole frame rotates with the object, so
+ * the handles track its rotation. Handles are fixed-px chrome; only they take
+ * pointer events — the frame itself lets drags fall through to the object.
  */
 
 const HANDLE = 9;
+/** How far the rotate handle floats above the frame's top edge, px. */
+const ROTATE_ARM = 20;
 
 const FRAME_HANDLES: { dir: HandleDir; fx: number; fy: number; cursor: string }[] = [
   { dir: "nw", fx: 0, fy: 0, cursor: "nwse-resize" },
@@ -26,11 +29,14 @@ export function SelectionOverlay({
   obj,
   zoom,
   onHandleDown,
+  onRotateDown,
   onEndpointDown,
 }: {
   obj: LayoutObject;
   zoom: number;
   onHandleDown: (dir: HandleDir, e: React.PointerEvent) => void;
+  /** Rotate-handle grab (frames only, plan L10). */
+  onRotateDown: (e: React.PointerEvent) => void;
   onEndpointDown: (which: "p1" | "p2", e: React.PointerEvent) => void;
 }) {
   if (obj.type === "line") {
@@ -60,14 +66,41 @@ export function SelectionOverlay({
   const y = inToPx(b.y, zoom);
   const w = inToPx(b.w, zoom);
   const h = inToPx(b.h, zoom);
+  const rotation = obj.rotation;
 
   return (
     <div
       data-testid="selection-frame"
       className="pointer-events-none absolute"
-      style={{ left: x - 1, top: y - 1, width: w + 2, height: h + 2 }}
+      style={{
+        left: x - 1,
+        top: y - 1,
+        width: w + 2,
+        height: h + 2,
+        // rotate the chrome about its center so handles track the object (L10)
+        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+      }}
     >
       <div className="absolute inset-0 border-[1.5px] border-brand" />
+
+      {/* rotate handle — a dot on a short stem above the top edge */}
+      <div
+        className="pointer-events-none absolute bg-brand"
+        style={{ left: (w + 2) / 2 - 0.5, top: -ROTATE_ARM, width: 1, height: ROTATE_ARM }}
+      />
+      <div
+        data-testid="handle-rotate"
+        onPointerDown={onRotateDown}
+        className="pointer-events-auto absolute rounded-full border border-brand bg-white"
+        style={{
+          width: HANDLE,
+          height: HANDLE,
+          left: (w + 2) / 2 - HANDLE / 2,
+          top: -ROTATE_ARM - HANDLE / 2,
+          cursor: "grab",
+        }}
+      />
+
       {FRAME_HANDLES.map(({ dir, fx, fy, cursor }) => (
         <div
           key={dir}

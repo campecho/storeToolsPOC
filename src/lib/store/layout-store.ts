@@ -2,12 +2,15 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import {
   LayoutDocumentSchema,
+  type Asset,
   type LayoutDocument,
   type LayoutObject,
   type MasterPage,
   type Orientation,
   type Stroke,
 } from "@/schema";
+import { clearAssetBlobs, deleteAssetBlob } from "@/lib/assets/blob-store";
+import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
 import {
   clampPageDim,
   clampZoom,
@@ -15,7 +18,13 @@ import {
   zoomOutStep,
 } from "@/lib/layout/geometry";
 import { getPreset } from "@/lib/layout/presets";
-import { DUPLICATE_OFFSET_IN, MIN_OBJECT_IN, translated } from "@/lib/layout/objects";
+import { isUnit, type Unit } from "@/lib/layout/units";
+import {
+  DUPLICATE_OFFSET_IN,
+  MIN_OBJECT_IN,
+  normalizeAngle,
+  translated,
+} from "@/lib/layout/objects";
 import {
   alignObjects,
   distributeObjects,
@@ -41,7 +50,7 @@ import {
  * both, so every L4/L5 gesture works inside a master unchanged.
  */
 
-export type RibbonTab = "home" | "insert" | "layout" | "text";
+export type RibbonTab = "home" | "insert" | "layout" | "text" | "arrange";
 export type EditorTool =
   | "select"
   | "text"
@@ -54,7 +63,10 @@ export type EditorTool =
   | "move";
 export type InspectorTab = "props" | "text" | "align" | "page";
 export type PagesPaneView = "pages" | "masters";
-export type ExperienceLevel = "simple" | "standard" | "pro";
+/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip. */
+export type PanelTab = "pages" | "assets" | "layers";
+/** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
+export type ExperienceLevel = "simple" | "standard";
 
 /** Status-bar readout per tool — the handoff asks the label to track the active tool. */
 export const TOOL_LABELS: Record<EditorTool, string> = {
@@ -69,12 +81,14 @@ export const TOOL_LABELS: Record<EditorTool, string> = {
   move: "Move tool",
 };
 
-/** Geometry-only edit to one object — frame x/y/w/h or line endpoints. */
+/** Geometry-only edit to one object — frame x/y/w/h(/rotation) or line endpoints. */
 export type TransformPatch = {
   x?: number;
   y?: number;
   w?: number;
   h?: number;
+  /** Frames only — degrees, normalized into [0, 360) on apply (plan L10). */
+  rotation?: number;
   x1?: number;
   y1?: number;
   x2?: number;
@@ -177,6 +191,7 @@ function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
     y: patch.y ?? o.y,
     w: Math.max(MIN_OBJECT_IN, patch.w ?? o.w),
     h: Math.max(MIN_OBJECT_IN, patch.h ?? o.h),
+    rotation: patch.rotation !== undefined ? normalizeAngle(patch.rotation) : o.rotation,
   };
 }
 
@@ -227,6 +242,8 @@ export function createDefaultDocument(): LayoutDocument {
       { id: "master-a", label: "A", objects: [] },
       { id: "master-b", label: "B", objects: [] },
     ],
+    assets: {},
+    guides: { v: [], h: [] },
   };
 }
 
@@ -237,6 +254,10 @@ export interface LayoutEditorState {
   insp: InspectorTab;
   pages: PagesPaneView;
 
+  // side panel (session, plan L8)
+  panelTab: PanelTab;
+  panelOpen: boolean;
+
   // document (persisted) + session pointers
   doc: LayoutDocument;
   activePageId: string;
@@ -244,6 +265,9 @@ export interface LayoutEditorState {
 
   // selection (session)
   selectedIds: string[];
+  /** The selected ruler guide (plan L11) — mutually exclusive with object
+      selection so Delete is unambiguous; null when none is selected. */
+  selectedGuide: { axis: "v" | "h"; index: number } | null;
   /** Text frame with the contentEditable overlay open (plan L5). */
   editingTextId: string | null;
   /** Align tab's "Relative to" choice (plan L7) — session UI, not persisted. */
@@ -253,8 +277,10 @@ export interface LayoutEditorState {
   past: LayoutDocument[];
   future: LayoutDocument[];
 
-  // experience (persisted; switching arrives in L8)
+  // experience (persisted; switching arrives in L14 — two levels since v1.3)
   level: ExperienceLevel;
+  // display unit (persisted, L11) — presentation only, geometry stays inches
+  unit: Unit;
 
   // viewport (session)
   /** CanvasViewport replaces this with the computed fit on mount (§3.5). */
@@ -270,6 +296,8 @@ export interface LayoutEditorState {
   setTool: (tool: EditorTool) => void;
   setInsp: (insp: InspectorTab) => void;
   setPages: (pages: PagesPaneView) => void;
+  /** Open the side panel to a tab; clicking the open tab collapses it (L8). */
+  togglePanelTab: (tab: PanelTab) => void;
 
   // page setup
   setName: (name: string) => void;
@@ -282,6 +310,15 @@ export interface LayoutEditorState {
   setBleed: (bleed: number) => void;
   setMargin: (margin: number) => void;
   setColumns: (columns: number) => void;
+  setUnit: (unit: Unit) => void;
+
+  // ruler guides (plan L11) — document data, undoable, persisted
+  /** Drop a new guide at a page-inch position; one undo step. */
+  addGuide: (axis: "v" | "h", at: number) => void;
+  /** Reposition guide `index`; `transient` skips history (live drag). */
+  setGuide: (axis: "v" | "h", index: number, at: number, transient?: boolean) => void;
+  /** Remove guide `index` (dragged back onto the ruler). */
+  removeGuide: (axis: "v" | "h", index: number) => void;
 
   // pages & masters (plan L6)
   /** Inserts a blank page after the active one, inheriting its master. */
@@ -306,6 +343,9 @@ export interface LayoutEditorState {
 
   // selection & objects (the editing surface — active page or edited master)
   setSelection: (ids: string[]) => void;
+  /** Select a ruler guide (or clear with null); clears object selection so the
+      two never coexist (plan L11). */
+  selectGuide: (sel: { axis: "v" | "h"; index: number } | null) => void;
   /** Shift-click: add/remove one object, keeping the rest (plan L7). */
   toggleSelected: (id: string) => void;
   /** Replace the surface's object array wholesale — group drags write this
@@ -329,8 +369,24 @@ export interface LayoutEditorState {
   deleteSelection: () => void;
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
-  reorder: (dir: "forward" | "backward") => void;
+  /** Step selection up/down the z-order, or jump it to the very front/back (Arrange, L10). */
+  reorder: (dir: "forward" | "backward" | "front" | "back") => void;
+  /** Move one object to an absolute z-index on the surface (Layers drag, L8). */
+  reorderObject: (id: string, to: number) => void;
+  /** Rotate every selected frame 90° left/right, or reset to 0 (Arrange, L10). */
+  rotateSelection: (kind: "left" | "right" | "reset") => void;
   nudgeSelection: (dx: number, dy: number) => void;
+
+  // asset library (plan L8) — document data, deliberately not an undo step;
+  // undo/redo carry the current library forward (see undo/redo)
+  addAsset: (asset: Asset) => void;
+  /** Drops metadata + bytes; placed frames keep the id and show the missing state. */
+  removeAsset: (id: string) => void;
+  /** Image assets only: bind to the selected picture frame, else place centered. */
+  placeAsset: (id: string) => void;
+  /** Bind an existing library asset to a specific picture frame (L9 fill/drag-in);
+      one undo step, guarded — undo reverts the binding, the asset stays in the library. */
+  bindAsset: (frameId: string, assetId: string) => void;
 
   // history
   /** Push the pre-gesture snapshot, once, if the gesture changed the doc. */
@@ -360,13 +416,17 @@ export const useLayoutStore = create<LayoutEditorState>()(
       tool: "select",
       insp: "page",
       pages: "pages",
+      panelTab: "pages",
+      panelOpen: true,
 
       doc: createDefaultDocument(),
       activePageId: "page-1",
       masterEditingId: null,
       level: "standard",
+      unit: "in",
 
       selectedIds: [],
+      selectedGuide: null,
       editingTextId: null,
       alignRel: "page",
       past: [],
@@ -383,6 +443,13 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setTool: (tool) => set({ tool, editingTextId: null }),
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
+
+      togglePanelTab: (tab) =>
+        set((s) =>
+          s.panelOpen && s.panelTab === tab
+            ? { panelOpen: false }
+            : { panelOpen: true, panelTab: tab },
+        ),
 
       // Name typing is per-keystroke — kept out of the undo history so it
       // doesn't flood the gesture-grained stack.
@@ -451,6 +518,35 @@ export const useLayoutStore = create<LayoutEditorState>()(
           const next = Math.min(6, Math.max(1, Math.round(columns)));
           if (next === s.doc.columns) return s;
           return { ...pushed(s, s.doc), doc: { ...s.doc, columns: next } };
+        }),
+
+      setUnit: (unit) => set({ unit }),
+
+      addGuide: (axis, at) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: { ...s.doc, guides: { ...s.doc.guides, [axis]: [...s.doc.guides[axis], at] } },
+        })),
+
+      setGuide: (axis, index, at, transient = false) =>
+        set((s) => {
+          const arr = s.doc.guides[axis];
+          if (index < 0 || index >= arr.length || arr[index] === at) return s;
+          const nextArr = arr.map((v, i) => (i === index ? at : v));
+          const doc = { ...s.doc, guides: { ...s.doc.guides, [axis]: nextArr } };
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      removeGuide: (axis, index) =>
+        set((s) => {
+          const arr = s.doc.guides[axis];
+          if (index < 0 || index >= arr.length) return s;
+          // clear the selection — the surviving guides' indices shift under it
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, guides: { ...s.doc.guides, [axis]: arr.filter((_, i) => i !== index) } },
+            selectedGuide: null,
+          };
         }),
 
       addPage: () =>
@@ -551,13 +647,17 @@ export const useLayoutStore = create<LayoutEditorState>()(
       toggleGuides: () => set((s) => ({ guidesVisible: !s.guidesVisible })),
       setFocusPageSize: (v) => set({ focusPageSize: v }),
 
-      setSelection: (ids) => set({ selectedIds: ids }),
+      setSelection: (ids) => set({ selectedIds: ids, selectedGuide: null }),
+
+      selectGuide: (sel) =>
+        set(sel ? { selectedGuide: sel, selectedIds: [], editingTextId: null } : { selectedGuide: null }),
 
       toggleSelected: (id) =>
         set((s) => ({
           selectedIds: s.selectedIds.includes(id)
             ? s.selectedIds.filter((i) => i !== id)
             : [...s.selectedIds, id],
+          selectedGuide: null,
           // adjusting the selection ends a text session, like any other grab
           editingTextId: null,
         })),
@@ -683,23 +783,104 @@ export const useLayoutStore = create<LayoutEditorState>()(
           };
         }),
 
+      reorderObject: (id, to) =>
+        set((s) => {
+          const objs = surfaceObjects(s);
+          const from = objs.findIndex((o) => o.id === id);
+          if (from < 0) return s;
+          const target = Math.max(0, Math.min(objs.length - 1, Math.round(to)));
+          if (target === from) return s;
+          const next = [...objs];
+          const [moved] = next.splice(from, 1);
+          next.splice(target, 0, moved);
+          return { ...pushed(s, s.doc), doc: mapSurfaceObjects(s, () => next) };
+        }),
+
+      addAsset: (asset) =>
+        set((s) => ({
+          doc: { ...s.doc, assets: { ...s.doc.assets, [asset.id]: asset } },
+        })),
+
+      removeAsset: (id) =>
+        set((s) => {
+          if (!s.doc.assets[id]) return s;
+          const assets = { ...s.doc.assets };
+          delete assets[id];
+          void deleteAssetBlob(id); // bytes go with the metadata
+          return { doc: { ...s.doc, assets } };
+        }),
+
+      placeAsset: (id) =>
+        set((s) => {
+          const asset = s.doc.assets[id];
+          // PDFs are library-only until the print pipeline can rasterize (L8)
+          if (!asset || asset.kind !== "image") return s;
+          // a single selected picture frame takes the image instead of a new frame
+          const sel =
+            s.selectedIds.length === 1
+              ? surfaceObjects(s).find((o) => o.id === s.selectedIds[0])
+              : undefined;
+          if (sel && sel.type === "picture") {
+            if (sel.assetId === id) return s;
+            return {
+              ...pushed(s, s.doc),
+              doc: mapSurfaceObjects(s, (objs) =>
+                objs.map((o) => (o.id === sel.id ? { ...o, assetId: id } : o)),
+              ),
+            };
+          }
+          const obj = createPlacedPicture(
+            asset,
+            placedPictureRect(asset.width, asset.height, s.doc),
+          );
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) => [...objs, obj]),
+            selectedIds: [obj.id],
+            tool: "select",
+          };
+        }),
+
+      bindAsset: (frameId, assetId) =>
+        set((s) => {
+          const frame = surfaceObjects(s).find((o) => o.id === frameId);
+          if (!frame || frame.type !== "picture") return s;
+          if (!s.doc.assets[assetId] || frame.assetId === assetId) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) =>
+              objs.map((o) => (o.id === frameId ? { ...o, assetId } : o)),
+            ),
+            selectedIds: [frameId],
+          };
+        }),
+
       reorder: (dir) =>
         set((s) => {
           if (!s.selectedIds.length) return s;
           const current = surfaceObjects(s);
           const sel = new Set(s.selectedIds);
-          const next = [...current];
-          if (dir === "forward") {
-            // z-order is array order: swap selected items toward the top
-            for (let i = next.length - 2; i >= 0; i--) {
-              if (sel.has(next[i].id) && !sel.has(next[i + 1].id)) {
-                [next[i], next[i + 1]] = [next[i + 1], next[i]];
-              }
-            }
+          let next: LayoutObject[];
+          if (dir === "front" || dir === "back") {
+            // z-order is array order — lift the selection out and re-slot it,
+            // keeping the selected items' relative order
+            const picked = current.filter((o) => sel.has(o.id));
+            const rest = current.filter((o) => !sel.has(o.id));
+            next = dir === "front" ? [...rest, ...picked] : [...picked, ...rest];
           } else {
-            for (let i = 1; i < next.length; i++) {
-              if (sel.has(next[i].id) && !sel.has(next[i - 1].id)) {
-                [next[i], next[i - 1]] = [next[i - 1], next[i]];
+            next = [...current];
+            if (dir === "forward") {
+              // swap selected items toward the top
+              for (let i = next.length - 2; i >= 0; i--) {
+                if (sel.has(next[i].id) && !sel.has(next[i + 1].id)) {
+                  [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                }
+              }
+            } else {
+              for (let i = 1; i < next.length; i++) {
+                if (sel.has(next[i].id) && !sel.has(next[i - 1].id)) {
+                  [next[i], next[i - 1]] = [next[i - 1], next[i]];
+                }
               }
             }
           }
@@ -708,6 +889,25 @@ export const useLayoutStore = create<LayoutEditorState>()(
             ...pushed(s, s.doc),
             doc: mapSurfaceObjects(s, () => next),
           };
+        }),
+
+      rotateSelection: (kind) =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const delta = kind === "left" ? -90 : kind === "right" ? 90 : 0;
+          let changed = false;
+          const doc = mapSurfaceObjects(s, (objs) =>
+            objs.map((o) => {
+              if (!sel.has(o.id) || o.type === "line") return o; // lines have no rotation
+              const next = kind === "reset" ? 0 : normalizeAngle(o.rotation + delta);
+              if (next === o.rotation) return o;
+              changed = true;
+              return { ...o, rotation: next };
+            }),
+          );
+          if (!changed) return s;
+          return { ...pushed(s, s.doc), doc };
         }),
 
       nudgeSelection: (dx, dy) =>
@@ -738,7 +938,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             past: s.past.slice(0, -1),
             future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
-            doc: prev,
+            // the asset library is not an undo step — the current one carries forward
+            doc: { ...prev, assets: s.doc.assets },
             ...surface,
             selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
@@ -757,7 +958,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             past: [...s.past, s.doc].slice(-HISTORY_CAP),
             future: s.future.slice(1),
-            doc: next,
+            doc: { ...next, assets: s.doc.assets },
             ...surface,
             selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
@@ -768,18 +969,21 @@ export const useLayoutStore = create<LayoutEditorState>()(
         }),
 
       resetDoc: () =>
-        set((s) => ({
-          doc: createDefaultDocument(),
-          activePageId: "page-1",
-          masterEditingId: null,
-          guidesVisible: true,
-          pan: { x: 0, y: 0 },
-          selectedIds: [],
-          editingTextId: null,
-          past: [],
-          future: [],
-          fitRequestId: s.fitRequestId + 1,
-        })),
+        set((s) => {
+          void clearAssetBlobs(); // the library resets with the document
+          return {
+            doc: createDefaultDocument(),
+            activePageId: "page-1",
+            masterEditingId: null,
+            guidesVisible: true,
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            editingTextId: null,
+            past: [],
+            future: [],
+            fitRequestId: s.fitRequestId + 1,
+          };
+        }),
     }),
     {
       // CONTRACT: the storage key + LayoutDocumentSchema are the saved-file
@@ -797,20 +1001,30 @@ export const useLayoutStore = create<LayoutEditorState>()(
       // SSR and the first client render use the pristine document; the
       // StoreHydrator rehydrates after mount so server and client markup match.
       skipHydration: true,
-      // Only the file + experience level persist (§3.3) — selection, history,
-      // and viewport stay session-scoped.
-      partialize: (s) => ({ doc: s.doc, level: s.level }),
+      // Only the file + experience level + display unit persist (§3.3, L11) —
+      // selection, history, and viewport stay session-scoped.
+      partialize: (s) => ({ doc: s.doc, level: s.level, unit: s.unit }),
       // Validate what came out of storage — a corrupt or foreign-shaped doc
       // falls back to pristine instead of poisoning the editor.
       merge: (persisted, current) => {
-        const p = persisted as { doc?: unknown; level?: unknown } | undefined;
+        const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
         const parsed = LayoutDocumentSchema.safeParse(p?.doc);
+        // Only override from a *present, valid* persisted value; otherwise keep
+        // `current`. Rehydration runs after mount, so forcing a default here
+        // would clobber a preference the user changed in that window (and the
+        // legacy v1.3 "pro" still coerces to "standard").
         const level: ExperienceLevel =
-          p?.level === "simple" || p?.level === "pro" ? p.level : "standard";
-        if (!parsed.success) return { ...current, level };
+          p?.level === "simple" || p?.level === "standard"
+            ? p.level
+            : p?.level === "pro"
+              ? "standard"
+              : current.level;
+        const unit: Unit = isUnit(p?.unit) ? p.unit : current.unit;
+        if (!parsed.success) return { ...current, level, unit };
         return {
           ...current,
           level,
+          unit,
           doc: parsed.data,
           activePageId: parsed.data.pages[0].id,
         };

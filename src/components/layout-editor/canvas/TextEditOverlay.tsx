@@ -60,6 +60,8 @@ export function TextEditOverlay({ obj, zoom }: { obj: FrameObject; zoom: number 
         top: inToPx(obj.y, zoom),
         width: inToPx(obj.w, zoom),
         height: inToPx(obj.h, zoom),
+        // editing a rotated frame keeps the overlay on the frame (L10)
+        transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
         fontFamily: fontStack(text.font.family),
         fontSize: ptToPx(text.font.size, zoom),
         fontWeight: text.font.bold ? 700 : 400,
