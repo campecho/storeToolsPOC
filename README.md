@@ -52,8 +52,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 |---|---|
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
-| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers (L1–L8) | ✅ shipped |
-| Layout editor — toolset build-out: picture fill-on-click & drag-in, rotation/Arrange, ruler guides & units, spreads & mixed sizes, clipboard (L9–L13) | ❌ next in plan (v1.4) |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in (L1–L9) | ✅ shipped |
+| Layout editor — toolset build-out: rotation/Arrange, ruler guides & units, spreads & mixed sizes, clipboard (L10–L13) | ❌ next in plan (v1.4) |
 | Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
@@ -207,6 +207,15 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   — click selects, **drag restacks** (one undo step, verified against canvas paint order).
   The canvas dropped the wire's name/size/zoom caption and bleed corner marks, and the title
   bar dropped the Pro segment (two experience levels since plan v1.3).
+- **Layout editor — step L9, pictures: fill-on-click & drag-in (plan v1.4):** image intake
+  moves onto the frame. The Picture tool still draws a gray image box; now a **dragless click
+  on an empty frame opens the device file picker** — the chosen file joins the Assets library
+  (same IndexedDB store) **and binds to that frame**. Image tiles in the Assets panel are
+  **draggable onto any picture frame**: the frame under the cursor highlights and the image
+  binds (or swaps) on drop, empty or filled. A frame that already holds an image just selects
+  on click; a non-image pick raises a visible note, never a silent fallback; both paths
+  persist through reload. The dragless-click detection reuses L7's 3px capture threshold, so
+  it never fires after a move or resize.
 - **Design revision — single-row ribbon (user-directed):** every command band lays its
   groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
   and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge

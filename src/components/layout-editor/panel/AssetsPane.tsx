@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { FileText, ImagePlus } from "lucide-react";
 import { useLayoutStore } from "@/store";
 import type { Asset } from "@/schema";
-import { putAssetBlob } from "@/lib/assets/blob-store";
+import { ASSET_DND_TYPE, importAssetFile } from "@/lib/assets/import";
 import { useAssetUrl } from "@/lib/assets/use-asset-url";
 
 /**
@@ -12,25 +12,9 @@ import { useAssetUrl } from "@/lib/assets/use-asset-url";
  * picker + drag-drop, images and PDFs. Clicking an image places it on the
  * page (or binds it to the selected picture frame); PDFs join the library but
  * stay honestly un-placeable until the print pipeline can rasterize them.
- * Unsupported files are skipped with a visible note, never silently.
+ * Unsupported files are skipped with a visible note, never silently. Image
+ * tiles also drag onto any picture frame to fill it (plan L9).
  */
-
-/** Natural pixel size via an off-DOM <img> — an SVG without intrinsic size reads 0×0. */
-function imageDims(file: File): Promise<{ w: number; h: number } | undefined> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      resolve({ w: img.naturalWidth, h: img.naturalHeight });
-      URL.revokeObjectURL(url);
-    };
-    img.onerror = () => {
-      resolve(undefined);
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
-  });
-}
 
 function AssetThumb({ asset }: { asset: Asset }) {
   const url = useAssetUrl(asset.kind === "image" ? asset.id : undefined);
@@ -60,28 +44,12 @@ export function AssetsPane() {
   const importFiles = async (files: Iterable<File>) => {
     let skipped = 0;
     for (const file of Array.from(files)) {
-      const kind =
-        file.type === "application/pdf"
-          ? ("pdf" as const)
-          : file.type.startsWith("image/")
-            ? ("image" as const)
-            : null;
-      if (!kind) {
+      const res = await importAssetFile(file);
+      if (!res.ok) {
         skipped++;
         continue;
       }
-      const id = crypto.randomUUID();
-      const dims = kind === "image" ? await imageDims(file) : undefined;
-      await putAssetBlob(id, file);
-      addAsset({
-        id,
-        name: file.name,
-        kind,
-        mime: file.type,
-        width: dims?.w,
-        height: dims?.h,
-        bytes: file.size,
-      });
+      addAsset(res.asset);
     }
     setNote(skipped ? `Skipped ${skipped} file${skipped > 1 ? "s" : ""} — images and PDFs only` : null);
   };
@@ -149,10 +117,15 @@ export function AssetsPane() {
                   type="button"
                   data-testid={`asset-tile-${i}`}
                   disabled={a.kind === "pdf"}
+                  draggable={a.kind === "image"}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(ASSET_DND_TYPE, a.id);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   title={
                     a.kind === "pdf"
                       ? "PDF placement arrives with the print pipeline"
-                      : "Place on the page"
+                      : "Place on the page — or drag onto a picture frame"
                   }
                   onClick={() => placeAsset(a.id)}
                   className="flex w-full items-center gap-2 rounded-[6px] border border-[#e4e4e4] bg-white p-[6px] text-left hover:border-[#c9c9c9] hover:bg-[#fafafa] disabled:cursor-not-allowed disabled:hover:border-[#e4e4e4] disabled:hover:bg-white"
@@ -181,7 +154,7 @@ export function AssetsPane() {
               </div>
             ))}
             <div className="pt-[4px] text-[9.5px] leading-relaxed text-[#a8a8a8]">
-              Click an image to place it on the page — or select a picture frame first to fill it.
+              Click an image to place it, or drag it onto a picture frame to fill it.
             </div>
           </div>
         )}

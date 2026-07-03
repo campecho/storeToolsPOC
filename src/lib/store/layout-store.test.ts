@@ -781,6 +781,49 @@ describe("side panel, assets & layers (L8)", () => {
     expect(pageObjects()[0]).toMatchObject({ assetId: "asset-1" });
   });
 
+  it("bindAsset binds a library asset to a picture frame as one undo step (L9)", () => {
+    const s = useLayoutStore.getState();
+    const frame = createFrame("picture", 1, 1, 2, 2);
+    s.addObject(frame);
+    s.addAsset(photo);
+    const depth = useLayoutStore.getState().past.length;
+    s.bindAsset(frame.id, "asset-1");
+    expect(pageObjects()[0]).toMatchObject({ id: frame.id, assetId: "asset-1" });
+    expect(useLayoutStore.getState().selectedIds).toEqual([frame.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo(); // reverts the binding, keeps the asset in the library
+    expect(pageObjects()[0].assetId).toBeUndefined();
+    expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
+  });
+
+  it("bindAsset swaps the image on a frame that already holds one (L9 drag-in)", () => {
+    const s = useLayoutStore.getState();
+    const frame = createFrame("picture", 1, 1, 2, 2);
+    s.addObject(frame);
+    s.addAsset(photo);
+    s.addAsset({ ...photo, id: "asset-2", name: "other.png" });
+    s.bindAsset(frame.id, "asset-1");
+    s.bindAsset(frame.id, "asset-2");
+    expect(pageObjects()[0]).toMatchObject({ assetId: "asset-2" });
+  });
+
+  it("bindAsset is a guarded no-op for non-pictures, unknown assets, and the same binding", () => {
+    const s = useLayoutStore.getState();
+    const rect = createFrame("rect", 0, 0, 1, 1);
+    const pic = createFrame("picture", 2, 2, 1, 1);
+    s.addObject(rect);
+    s.addObject(pic);
+    s.addAsset(photo);
+    const before = useLayoutStore.getState().doc;
+    s.bindAsset(rect.id, "asset-1"); // not a picture frame
+    s.bindAsset(pic.id, "missing"); // unknown asset
+    expect(useLayoutStore.getState().doc).toBe(before);
+    s.bindAsset(pic.id, "asset-1");
+    const after = useLayoutStore.getState().doc;
+    s.bindAsset(pic.id, "asset-1"); // already bound — no history churn
+    expect(useLayoutStore.getState().doc).toBe(after);
+  });
+
   it("reorderObject moves one object to an absolute z-index as one undo step", () => {
     const s = useLayoutStore.getState();
     const a = createFrame("rect", 0, 0, 1, 1);

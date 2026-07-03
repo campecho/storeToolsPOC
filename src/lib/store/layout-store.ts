@@ -354,6 +354,9 @@ export interface LayoutEditorState {
   removeAsset: (id: string) => void;
   /** Image assets only: bind to the selected picture frame, else place centered. */
   placeAsset: (id: string) => void;
+  /** Bind an existing library asset to a specific picture frame (L9 fill/drag-in);
+      one undo step, guarded — undo reverts the binding, the asset stays in the library. */
+  bindAsset: (frameId: string, assetId: string) => void;
 
   // history
   /** Push the pre-gesture snapshot, once, if the gesture changed the doc. */
@@ -770,6 +773,20 @@ export const useLayoutStore = create<LayoutEditorState>()(
             doc: mapSurfaceObjects(s, (objs) => [...objs, obj]),
             selectedIds: [obj.id],
             tool: "select",
+          };
+        }),
+
+      bindAsset: (frameId, assetId) =>
+        set((s) => {
+          const frame = surfaceObjects(s).find((o) => o.id === frameId);
+          if (!frame || frame.type !== "picture") return s;
+          if (!s.doc.assets[assetId] || frame.assetId === assetId) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) =>
+              objs.map((o) => (o.id === frameId ? { ...o, assetId } : o)),
+            ),
+            selectedIds: [frameId],
           };
         }),
 

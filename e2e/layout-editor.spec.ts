@@ -1021,3 +1021,92 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await expect(inked.nth(1)).toHaveAttribute("data-testid", "object-ellipse");
   });
 });
+
+/**
+ * Pictures: fill-on-click & drag-in (plan step L9): the Picture tool draws an
+ * image box; a dragless click on an empty frame opens the device file picker
+ * and fills it; an image dragged from the Assets panel binds into the frame
+ * under the cursor. Both survive reload.
+ */
+test.describe("Pictures: fill-on-click & drag-in (L9)", () => {
+  async function drawPicture(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    await page.getByTestId("tool-pic").click();
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  test("clicking an empty picture frame opens the file picker and fills it, persisting", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await drawPicture(page, { x: 60, y: 80 }, { x: 240, y: 220 });
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+    await expect(page.getByTestId("picture-image")).toHaveCount(0); // gray placeholder
+
+    // a dragless click on the empty frame raises the device chooser
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByTestId("object-picture").click();
+    await (await chooser).setFiles("e2e/fixtures/photo.png");
+
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+    // the picked file also joined the Assets library
+    await page.getByTestId("panel-tab-assets").click();
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+
+    // metadata + bytes both persist through reload
+    await page.reload();
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+  });
+
+  test("a filled frame just selects on click — no picker", async ({ page }) => {
+    await page.goto("/layout");
+    await drawPicture(page, { x: 60, y: 80 }, { x: 240, y: 220 });
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByTestId("object-picture").click();
+    await (await chooser).setFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+
+    // clicking the now-filled frame selects it (no chooser fires; the click resolves)
+    await page.getByTestId("object-picture").click();
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+  });
+
+  test("dragging an image asset from the panel fills the frame under the cursor", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    // import an asset via the panel, then draw an empty frame
+    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    await drawPicture(page, { x: 60, y: 240 }, { x: 240, y: 360 });
+    await expect(page.getByTestId("picture-image")).toHaveCount(0);
+
+    // native HTML drag-drop: dragstart on the tile, dragover + drop on the
+    // pasteboard at the frame's screen center (DataTransfer shared via a handle).
+    // The Assets panel is still open from the import above — re-clicking its
+    // tab would collapse it (L8), so we don't.
+    const frame = (await page.getByTestId("object-picture").boundingBox())!;
+    const cx = frame.x + frame.width / 2;
+    const cy = frame.y + frame.height / 2;
+    const dt = await page.evaluateHandle(() => new DataTransfer());
+    await page.getByTestId("asset-tile-0").dispatchEvent("dragstart", { dataTransfer: dt });
+    await page
+      .getByTestId("pasteboard")
+      .dispatchEvent("dragover", { dataTransfer: dt, clientX: cx, clientY: cy });
+    await expect(page.getByTestId("drop-target")).toBeVisible();
+    await page
+      .getByTestId("pasteboard")
+      .dispatchEvent("drop", { dataTransfer: dt, clientX: cx, clientY: cy });
+
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+    await expect(page.getByTestId("drop-target")).toHaveCount(0);
+  });
+});

@@ -16,6 +16,7 @@ import {
   translated,
 } from "@/lib/layout/objects";
 import { unionBBox } from "@/lib/layout/align";
+import { ASSET_DND_TYPE, importAssetFile } from "@/lib/assets/import";
 import {
   SNAP_THRESHOLD_PX,
   snapBBox,
@@ -47,6 +48,10 @@ import { TextEditOverlay } from "./TextEditOverlay";
  * resize/draw/endpoint gestures snap to margins, page centers, column guides
  * (while the Guides toggle is on), and other objects' edges/centers — the
  * engaged targets render as brand-red smart guides and clear on release.
+ *
+ * Pictures (L9): a dragless click on an empty picture frame opens the device
+ * file picker and fills it; an image dragged from the Assets panel highlights
+ * the picture frame under the cursor and binds on drop (empty or filled).
  */
 
 const RULER_BREADTH = 18;
@@ -252,8 +257,15 @@ export function CanvasViewport() {
     y2: number;
   } | null>(null);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
+  // L9: the picture frame highlighted under a dragged asset, and a transient
+  // note when a picked file wasn't an image.
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [pickNote, setPickNote] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const fittedFor = useRef<number | null>(null);
+  // L9 fill-on-click: the frame awaiting the file the device picker returns.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingFrame = useRef<string | null>(null);
 
   // measure the pasteboard
   useEffect(() => {
@@ -334,6 +346,58 @@ export function CanvasViewport() {
     };
   };
 
+  /** Topmost picture frame on the editing surface containing a page-space point (L9). */
+  const pictureAt = (pt: { x: number; y: number }) => {
+    const objs = surfaceObjects(useLayoutStore.getState());
+    for (let i = objs.length - 1; i >= 0; i--) {
+      const o = objs[i];
+      if (o.type !== "picture") continue;
+      const b = bboxOf(o);
+      if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) return o.id;
+    }
+    return null;
+  };
+
+  /** Open the device picker to fill an empty picture frame (L9 fill-on-click). */
+  const openPicker = (frameId: string) => {
+    pendingFrame.current = frameId;
+    fileInputRef.current?.click();
+  };
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // re-picking the same file should re-fire
+    const frameId = pendingFrame.current;
+    pendingFrame.current = null;
+    if (!file || !frameId) return;
+    void importAssetFile(file).then((res) => {
+      if (!res.ok) {
+        setPickNote("That file isn't an image — pick a JPG, PNG, or similar.");
+        return;
+      }
+      const s = useLayoutStore.getState();
+      s.addAsset(res.asset); // joins the library (not an undo step)…
+      s.bindAsset(frameId, res.asset.id); // …and binds to the frame (one undo step)
+    });
+  };
+
+  // Asset drag from the panel: highlight the frame under the cursor, bind on drop.
+  const onBoardDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(ASSET_DND_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropTargetId(pictureAt(toPageIn(e)));
+  };
+
+  const onBoardDrop = (e: React.DragEvent) => {
+    setDropTargetId(null);
+    const assetId = e.dataTransfer.getData(ASSET_DND_TYPE);
+    if (!assetId) return;
+    e.preventDefault();
+    const frameId = pictureAt(toPageIn(e));
+    if (frameId) useLayoutStore.getState().bindAsset(frameId, assetId);
+  };
+
   /**
    * Select-tool pointer-down on an object. Shift toggles it in the selection
    * (plan L7); a plain press on a selected member keeps the group and drags
@@ -411,6 +475,7 @@ export function CanvasViewport() {
 
   const onBoardPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    if (pickNote) setPickNote(null); // dismiss the last skip note on the next action
     if (tool === "move") {
       capture(e);
       gesture.current = { kind: "pan", fromX: e.clientX, fromY: e.clientY, panX: pan.x, panY: pan.y };
@@ -567,9 +632,17 @@ export function CanvasViewport() {
         .map((o) => o.id);
       s.setSelection(hit);
     } else if (g.kind !== "pan") {
-      // a dragless press on a group member collapses the selection to it
-      if (g.kind === "move" && !g.captured && g.movingIds.size > 1) {
-        s.setSelection([g.pressedId]);
+      if (g.kind === "move" && !g.captured) {
+        if (g.movingIds.size > 1) {
+          // a dragless press on a group member collapses the selection to it
+          s.setSelection([g.pressedId]);
+        } else {
+          // a dragless click on an empty picture frame opens the file picker (L9)
+          const pressed = surfaceObjects(s).find((o) => o.id === g.pressedId);
+          if (pressed && pressed.type === "picture" && !pressed.assetId) {
+            openPicker(g.pressedId);
+          }
+        }
       }
       s.commitGesture(g.before);
     }
@@ -610,6 +683,9 @@ export function CanvasViewport() {
           onPointerDown={onBoardPointerDown}
           onPointerMove={onBoardPointerMove}
           onPointerUp={onBoardPointerUp}
+          onDragOver={onBoardDragOver}
+          onDrop={onBoardDrop}
+          onDragLeave={() => setDropTargetId(null)}
           onClick={(e) => {
             if (tool !== "zoom") return;
             const s = useLayoutStore.getState();
@@ -617,6 +693,15 @@ export function CanvasViewport() {
             else s.zoomIn();
           }}
         >
+          {/* device file picker for L9 fill-on-click — triggered from a frame click */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            data-testid="canvas-file-input"
+            onChange={onPickFile}
+          />
           {/* master-editing mode banner (plan L6). The wire's name/size/zoom
               caption that sat here came out in L8 — the title bar and status
               bar already carry all three. */}
@@ -692,6 +777,25 @@ export function CanvasViewport() {
                       />
                     );
                   })}
+              {/* drop-target highlight — the picture frame under a dragged asset (L9) */}
+              {dropTargetId &&
+                (() => {
+                  const f = surface.find((o) => o.id === dropTargetId);
+                  if (!f || f.type !== "picture") return null;
+                  const b = bboxOf(f);
+                  return (
+                    <div
+                      data-testid="drop-target"
+                      className="pointer-events-none absolute z-20 border-2 border-brand bg-[rgba(204,0,0,.08)]"
+                      style={{
+                        left: inToPx(b.x, zoom),
+                        top: inToPx(b.y, zoom),
+                        width: inToPx(b.w, zoom),
+                        height: inToPx(b.h, zoom),
+                      }}
+                    />
+                  );
+                })()}
               {/* marquee rubber band, in page coordinates */}
               {marquee && (
                 <div
@@ -733,6 +837,16 @@ export function CanvasViewport() {
               })()}
             </PageSurface>
           </div>
+
+          {/* L9: transient note when a picked file wasn't an image */}
+          {pickNote && (
+            <div
+              data-testid="pick-note"
+              className="pointer-events-none absolute bottom-[14px] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-brand bg-white px-3 py-1 text-[11px] text-brand shadow-[0_1px_4px_rgba(0,0,0,.12)]"
+            >
+              {pickNote}
+            </div>
+          )}
 
           {/* guide legend */}
           <div className="pointer-events-none absolute bottom-[14px] right-4 z-10 flex flex-col gap-[6px] rounded-[7px] border border-[#e2e2e2] bg-white px-[11px] py-2">
