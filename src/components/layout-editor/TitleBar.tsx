@@ -46,7 +46,7 @@ export function TitleBar() {
 
       {/* Experience levels (design doc §3.3) — surface-only, never the file.
           Two levels since plan v1.3 (Pro dropped); Simple renders disabled
-          until switching lands in plan step L9. */}
+          until switching lands in plan step L14. */}
       <div
         data-testid="experience-switch"
         className="flex shrink-0 items-center rounded-[6px] bg-[#e7e7e7] p-[2px] text-[11px] text-[#777]"

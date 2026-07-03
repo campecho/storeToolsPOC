@@ -264,7 +264,7 @@ export interface LayoutEditorState {
   past: LayoutDocument[];
   future: LayoutDocument[];
 
-  // experience (persisted; switching arrives in L9 — two levels since v1.3)
+  // experience (persisted; switching arrives in L14 — two levels since v1.3)
   level: ExperienceLevel;
 
   // viewport (session)

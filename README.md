@@ -53,7 +53,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
 | Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers (L1–L8) | ✅ shipped |
-| Layout editor — experience levels (Simple/Standard), hardening (L9–L10) | ❌ next in plan |
+| Layout editor — toolset build-out: picture fill-on-click & drag-in, rotation/Arrange, ruler guides & units, spreads & mixed sizes, clipboard (L9–L13) | ❌ next in plan (v1.4) |
+| Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |

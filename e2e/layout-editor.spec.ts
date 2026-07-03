@@ -16,7 +16,7 @@ test.describe("Layout editor shell (L1)", () => {
     await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
     await expect(page.getByTestId("give-feedback")).toBeVisible();
 
-    // experience switch shows Standard active (Simple disabled until L9; two levels since v1.3)
+    // experience switch shows Standard active (Simple disabled until L14; two levels since v1.3)
     await expect(page.getByTestId("experience-switch")).toContainText("Standard");
     await expect(page.getByTestId("experience-switch")).not.toContainText("Pro");
 
