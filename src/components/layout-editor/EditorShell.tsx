@@ -12,6 +12,7 @@ import { HomeBand } from "./ribbon/HomeBand";
 import { InsertBand } from "./ribbon/InsertBand";
 import { LayoutBand } from "./ribbon/LayoutBand";
 import { TextBand } from "./ribbon/TextBand";
+import { ArrangeBand } from "./ribbon/ArrangeBand";
 import { ToolPalette } from "./palette/ToolPalette";
 import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
@@ -105,6 +106,7 @@ export function EditorShell() {
           {ribbon === "insert" && <InsertBand />}
           {ribbon === "layout" && <LayoutBand />}
           {ribbon === "text" && <TextBand />}
+          {ribbon === "arrange" && <ArrangeBand />}
         </div>
         <div className="flex min-h-0 flex-1">
           <ToolPalette />

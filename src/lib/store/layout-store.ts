@@ -18,7 +18,12 @@ import {
   zoomOutStep,
 } from "@/lib/layout/geometry";
 import { getPreset } from "@/lib/layout/presets";
-import { DUPLICATE_OFFSET_IN, MIN_OBJECT_IN, translated } from "@/lib/layout/objects";
+import {
+  DUPLICATE_OFFSET_IN,
+  MIN_OBJECT_IN,
+  normalizeAngle,
+  translated,
+} from "@/lib/layout/objects";
 import {
   alignObjects,
   distributeObjects,
@@ -44,7 +49,7 @@ import {
  * both, so every L4/L5 gesture works inside a master unchanged.
  */
 
-export type RibbonTab = "home" | "insert" | "layout" | "text";
+export type RibbonTab = "home" | "insert" | "layout" | "text" | "arrange";
 export type EditorTool =
   | "select"
   | "text"
@@ -75,12 +80,14 @@ export const TOOL_LABELS: Record<EditorTool, string> = {
   move: "Move tool",
 };
 
-/** Geometry-only edit to one object — frame x/y/w/h or line endpoints. */
+/** Geometry-only edit to one object — frame x/y/w/h(/rotation) or line endpoints. */
 export type TransformPatch = {
   x?: number;
   y?: number;
   w?: number;
   h?: number;
+  /** Frames only — degrees, normalized into [0, 360) on apply (plan L10). */
+  rotation?: number;
   x1?: number;
   y1?: number;
   x2?: number;
@@ -183,6 +190,7 @@ function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
     y: patch.y ?? o.y,
     w: Math.max(MIN_OBJECT_IN, patch.w ?? o.w),
     h: Math.max(MIN_OBJECT_IN, patch.h ?? o.h),
+    rotation: patch.rotation !== undefined ? normalizeAngle(patch.rotation) : o.rotation,
   };
 }
 
@@ -342,9 +350,12 @@ export interface LayoutEditorState {
   deleteSelection: () => void;
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
-  reorder: (dir: "forward" | "backward") => void;
+  /** Step selection up/down the z-order, or jump it to the very front/back (Arrange, L10). */
+  reorder: (dir: "forward" | "backward" | "front" | "back") => void;
   /** Move one object to an absolute z-index on the surface (Layers drag, L8). */
   reorderObject: (id: string, to: number) => void;
+  /** Rotate every selected frame 90° left/right, or reset to 0 (Arrange, L10). */
+  rotateSelection: (kind: "left" | "right" | "reset") => void;
   nudgeSelection: (dx: number, dy: number) => void;
 
   // asset library (plan L8) — document data, deliberately not an undo step;
@@ -795,18 +806,27 @@ export const useLayoutStore = create<LayoutEditorState>()(
           if (!s.selectedIds.length) return s;
           const current = surfaceObjects(s);
           const sel = new Set(s.selectedIds);
-          const next = [...current];
-          if (dir === "forward") {
-            // z-order is array order: swap selected items toward the top
-            for (let i = next.length - 2; i >= 0; i--) {
-              if (sel.has(next[i].id) && !sel.has(next[i + 1].id)) {
-                [next[i], next[i + 1]] = [next[i + 1], next[i]];
-              }
-            }
+          let next: LayoutObject[];
+          if (dir === "front" || dir === "back") {
+            // z-order is array order — lift the selection out and re-slot it,
+            // keeping the selected items' relative order
+            const picked = current.filter((o) => sel.has(o.id));
+            const rest = current.filter((o) => !sel.has(o.id));
+            next = dir === "front" ? [...rest, ...picked] : [...picked, ...rest];
           } else {
-            for (let i = 1; i < next.length; i++) {
-              if (sel.has(next[i].id) && !sel.has(next[i - 1].id)) {
-                [next[i], next[i - 1]] = [next[i - 1], next[i]];
+            next = [...current];
+            if (dir === "forward") {
+              // swap selected items toward the top
+              for (let i = next.length - 2; i >= 0; i--) {
+                if (sel.has(next[i].id) && !sel.has(next[i + 1].id)) {
+                  [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                }
+              }
+            } else {
+              for (let i = 1; i < next.length; i++) {
+                if (sel.has(next[i].id) && !sel.has(next[i - 1].id)) {
+                  [next[i], next[i - 1]] = [next[i - 1], next[i]];
+                }
               }
             }
           }
@@ -815,6 +835,25 @@ export const useLayoutStore = create<LayoutEditorState>()(
             ...pushed(s, s.doc),
             doc: mapSurfaceObjects(s, () => next),
           };
+        }),
+
+      rotateSelection: (kind) =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const delta = kind === "left" ? -90 : kind === "right" ? 90 : 0;
+          let changed = false;
+          const doc = mapSurfaceObjects(s, (objs) =>
+            objs.map((o) => {
+              if (!sel.has(o.id) || o.type === "line") return o; // lines have no rotation
+              const next = kind === "reset" ? 0 : normalizeAngle(o.rotation + delta);
+              if (next === o.rotation) return o;
+              changed = true;
+              return { ...o, rotation: next };
+            }),
+          );
+          if (!changed) return s;
+          return { ...pushed(s, s.doc), doc };
         }),
 
       nudgeSelection: (dx, dy) =>

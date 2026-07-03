@@ -1110,3 +1110,90 @@ test.describe("Pictures: fill-on-click & drag-in (L9)", () => {
     await expect(page.getByTestId("drop-target")).toHaveCount(0);
   });
 });
+
+/**
+ * Rotation & Arrange (plan step L10): the rotate handle (Shift snaps to 15°)
+ * and the numeric Rotation field round-trip; the Arrange tab's order commands
+ * restack against the real canvas paint order.
+ */
+test.describe("Rotation & Arrange (L10)", () => {
+  async function drawRect(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    await page.getByTestId("tool-rect").click();
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  test("the rotate handle turns a frame, Shift-snapped to 90°, and the field + Arrange reset it", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await drawRect(page, { x: 80, y: 90 }, { x: 200, y: 190 });
+    await expect(page.getByTestId("handle-rotate")).toBeVisible();
+
+    // grab the rotate handle and swing the pointer due east of the frame center,
+    // holding Shift → the ~90° angle snaps exactly to 90
+    const rect = (await page.getByTestId("object-rect").boundingBox())!;
+    const cx = rect.x + rect.width / 2;
+    const cy = rect.y + rect.height / 2;
+    const handle = (await page.getByTestId("handle-rotate").boundingBox())!;
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.keyboard.down("Shift");
+    await page.mouse.move(cx + 90, cy, { steps: 12 });
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+
+    // the status bar reads the live angle, and the Properties field round-trips
+    await expect(page.getByTestId("status-tool")).toContainText("90°");
+    await page.getByTestId("insp-props").click();
+    await expect(page.getByTestId("prop-rotation")).toHaveValue("90");
+
+    // typing a rotation commits too
+    await page.getByTestId("prop-rotation").fill("45");
+    await page.getByTestId("prop-rotation").press("Enter");
+    await expect(page.getByTestId("prop-rotation")).toHaveValue("45");
+
+    // Arrange tab's reset zeroes it
+    await page.getByTestId("ribbon-arrange").click();
+    await page.getByTestId("arrange-rotate-reset").click();
+    await expect(page.getByTestId("prop-rotation")).toHaveValue("0");
+
+    // undo brings 45 back (reset was one step)
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("prop-rotation")).toHaveValue("45");
+  });
+
+  test("Arrange · Bring to front restacks against the canvas paint order", async ({ page }) => {
+    await page.goto("/layout");
+    // an ellipse on the bottom, then two rects on top of the z-order
+    await page.getByTestId("tool-ellipse").click();
+    let box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + 60, box.y + 70);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 150, box.y + 150, { steps: 6 });
+    await page.mouse.up();
+    await drawRect(page, { x: 180, y: 70 }, { x: 260, y: 150 });
+    await drawRect(page, { x: 60, y: 200 }, { x: 140, y: 280 });
+
+    const inked = page.locator('[data-testid="publication-page"] [data-testid^="object-"]');
+    await expect(inked.first()).toHaveAttribute("data-testid", "object-ellipse"); // bottom
+
+    // bring the ellipse to the front
+    await page.getByTestId("object-ellipse").click();
+    await page.getByTestId("ribbon-arrange").click();
+    await page.getByTestId("arrange-front").click();
+    await expect(inked.last()).toHaveAttribute("data-testid", "object-ellipse"); // now top
+    await expect(inked.first()).toHaveAttribute("data-testid", "object-rect");
+
+    // one undo restores the original order
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(inked.first()).toHaveAttribute("data-testid", "object-ellipse");
+  });
+});

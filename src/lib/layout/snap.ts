@@ -1,6 +1,6 @@
 import type { LayoutDocument, LayoutObject } from "@/schema";
 import { columnGuides } from "./geometry";
-import { bboxOf, type BBox } from "./objects";
+import { rotatedBBox, type BBox } from "./objects";
 
 /**
  * Snapping (plan L7): candidate detection + resolution, pure and in inches so
@@ -41,7 +41,8 @@ export function snapTargets(
   }
   for (const o of objects) {
     if (opts.exclude?.has(o.id)) continue;
-    const b = bboxOf(o);
+    // a rotated object contributes its axis-aligned footprint (plan L10)
+    const b = rotatedBBox(o);
     v.push(b.x, b.x + b.w / 2, b.x + b.w);
     hh.push(b.y, b.y + b.h / 2, b.y + b.h);
   }

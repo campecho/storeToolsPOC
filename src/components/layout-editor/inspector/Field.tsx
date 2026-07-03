@@ -41,9 +41,10 @@ export function Field({
 }
 
 /**
- * Editable, unit-aware numeric inspector row (inches). Shows the model value
- * until the user types; commits on Enter/blur (Escape reverts). Clamping is
- * the store action's job — the committed value re-renders as clamped.
+ * Editable, unit-aware numeric inspector row. Shows the model value until the
+ * user types; commits on Enter/blur (Escape reverts). Clamping is the store
+ * action's job — the committed value re-renders as clamped. Defaults to
+ * inches; pass `suffix`/`format`/`ariaUnit` for other units (e.g. degrees, L10).
  */
 export function NumberField({
   label,
@@ -51,12 +52,21 @@ export function NumberField({
   onCommit,
   testId,
   inputRef,
+  suffix = "in",
+  ariaUnit = "inches",
+  format = formatIn,
 }: {
   label: string;
   value: number;
   onCommit: (v: number) => void;
   testId?: string;
   inputRef?: React.Ref<HTMLInputElement>;
+  /** Unit shown at the row's right edge. */
+  suffix?: string;
+  /** Unit word for the aria-label. */
+  ariaUnit?: string;
+  /** Display formatter for the model value. */
+  format?: (v: number) => string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   // Escape blurs before the cleared draft re-renders — the flag stops the
@@ -80,7 +90,7 @@ export function NumberField({
       <div className="flex h-[30px] items-center rounded-[5px] border border-[#d6d6d6] bg-white px-[9px] text-[12px] text-[#444] focus-within:border-[#b0b0b0]">
         <input
           ref={inputRef}
-          value={draft ?? formatIn(value)}
+          value={draft ?? format(value)}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
@@ -92,11 +102,11 @@ export function NumberField({
             }
           }}
           inputMode="decimal"
-          aria-label={`${label} (inches)`}
+          aria-label={`${label} (${ariaUnit})`}
           data-testid={testId}
           className="w-full min-w-0 bg-transparent outline-none"
         />
-        <span className="pl-1 text-[#999]">in</span>
+        <span className="pl-1 text-[#999]">{suffix}</span>
       </div>
     </div>
   );

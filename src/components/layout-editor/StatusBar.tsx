@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useLayoutStore, TOOL_LABELS } from "@/store";
+import { surfaceObjects, useLayoutStore, TOOL_LABELS } from "@/store";
 import { clampZoom, ZOOM_MAX, ZOOM_MIN } from "@/lib/layout/geometry";
 
 /**
@@ -27,6 +27,12 @@ function statusText(tool: ReturnType<typeof useLayoutStore.getState>["tool"], co
 export function StatusBar() {
   const tool = useLayoutStore((s) => s.tool);
   const selectedCount = useLayoutStore((s) => s.selectedIds.length);
+  // live rotation readout for a single rotated frame (updates through a drag, L10)
+  const rotation = useLayoutStore((s) => {
+    if (s.selectedIds.length !== 1) return 0;
+    const o = surfaceObjects(s).find((x) => x.id === s.selectedIds[0]);
+    return o && o.type !== "line" ? o.rotation : 0;
+  });
   const zoom = useLayoutStore((s) => s.zoom);
   const pages = useLayoutStore((s) => s.doc.pages);
   const activePageId = useLayoutStore((s) => s.activePageId);
@@ -79,6 +85,7 @@ export function StatusBar() {
       <div className="h-[14px] w-px bg-[#d4d4d4]" />
       <span className="text-[11px] text-[#777]" data-testid="status-tool">
         {statusText(tool, selectedCount)}
+        {tool === "select" && rotation ? ` · ${Math.round(rotation)}°` : ""}
       </span>
 
       <div className="flex-1" />

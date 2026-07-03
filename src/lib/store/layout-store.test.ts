@@ -792,7 +792,7 @@ describe("side panel, assets & layers (L8)", () => {
     expect(useLayoutStore.getState().selectedIds).toEqual([frame.id]);
     expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
     s.undo(); // reverts the binding, keeps the asset in the library
-    expect(pageObjects()[0].assetId).toBeUndefined();
+    expect((pageObjects()[0] as { assetId?: string }).assetId).toBeUndefined();
     expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
   });
 
@@ -875,6 +875,86 @@ describe("side panel, assets & layers (L8)", () => {
     expect(pageObjects()).toHaveLength(0);
     s.redo();
     expect(useLayoutStore.getState().doc.assets["asset-1"]).toBeDefined();
+  });
+});
+
+describe("rotation & arrange (L10)", () => {
+  it("transformObject applies rotation, normalized into [0, 360)", () => {
+    const s = useLayoutStore.getState();
+    const r = createFrame("rect", 1, 1, 2, 2);
+    s.addObject(r);
+    s.transformObject(r.id, { rotation: 45 });
+    expect(pageObjects()[0]).toMatchObject({ rotation: 45 });
+    s.transformObject(r.id, { rotation: 405 }); // wraps to 45
+    expect(pageObjects()[0]).toMatchObject({ rotation: 45 });
+    s.transformObject(r.id, { rotation: -90 }); // wraps to 270
+    expect(pageObjects()[0]).toMatchObject({ rotation: 270 });
+  });
+
+  it("rotateSelection turns each selected frame about its own center, one undo step", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.setSelection([a.id, b.id]);
+    const depth = useLayoutStore.getState().past.length;
+    s.rotateSelection("right"); // +90 each
+    expect(pageObjects().map((o) => (o as { rotation: number }).rotation)).toEqual([90, 90]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.rotateSelection("left"); // back to 0
+    expect(pageObjects().map((o) => (o as { rotation: number }).rotation)).toEqual([0, 0]);
+    s.rotateSelection("right");
+    s.rotateSelection("reset"); // to 0 regardless
+    expect(pageObjects().map((o) => (o as { rotation: number }).rotation)).toEqual([0, 0]);
+  });
+
+  it("rotateSelection skips lines and no-ops when nothing changes", () => {
+    const s = useLayoutStore.getState();
+    const line = createLine(0, 0, 2, 2);
+    s.addObject(line);
+    s.setSelection([line.id]);
+    const before = useLayoutStore.getState().doc;
+    s.rotateSelection("right"); // a line can't rotate
+    expect(useLayoutStore.getState().doc).toBe(before);
+    const r = createFrame("rect", 1, 1, 1, 1);
+    s.addObject(r);
+    s.setSelection([r.id]);
+    const at0 = useLayoutStore.getState().doc;
+    s.rotateSelection("reset"); // already 0 — no history churn
+    expect(useLayoutStore.getState().doc).toBe(at0);
+  });
+
+  it("reorder front/back jumps the selection to the top/bottom, one undo step", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 1, 1, 1, 1);
+    const c = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.addObject(c); // order [a, b, c]
+    s.setSelection([a.id]);
+    const depth = useLayoutStore.getState().past.length;
+    s.reorder("front");
+    expect(pageObjects().map((o) => o.id)).toEqual([b.id, c.id, a.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.reorder("back");
+    expect(pageObjects().map((o) => o.id)).toEqual([a.id, b.id, c.id]);
+    s.reorder("back"); // already at the bottom — no-op
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 2);
+  });
+
+  it("reorder front keeps the relative order of a multi-selection", () => {
+    const s = useLayoutStore.getState();
+    const a = createFrame("rect", 0, 0, 1, 1);
+    const b = createFrame("rect", 1, 1, 1, 1);
+    const c = createFrame("rect", 2, 2, 1, 1);
+    s.addObject(a);
+    s.addObject(b);
+    s.addObject(c);
+    s.setSelection([a.id, b.id]); // pull a & b to the front, a still under b
+    s.reorder("front");
+    expect(pageObjects().map((o) => o.id)).toEqual([c.id, a.id, b.id]);
   });
 });
 

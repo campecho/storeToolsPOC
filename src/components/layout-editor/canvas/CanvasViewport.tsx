@@ -8,14 +8,17 @@ import { DPI, clampZoom, fitZoom, inToPx, pxToIn, rulerTicks } from "@/lib/layou
 import { formatIn } from "@/lib/layout/presets";
 import {
   DRAW_THRESHOLD_IN,
+  angleFromCenter,
   bboxOf,
   createFrame,
   createLine,
   createTextFrame,
   resizeBBox,
+  resizeRotatedBBox,
+  rotatedBBox,
+  snapAngle,
   translated,
 } from "@/lib/layout/objects";
-import { unionBBox } from "@/lib/layout/align";
 import { ASSET_DND_TYPE, importAssetFile } from "@/lib/assets/import";
 import {
   SNAP_THRESHOLD_PX,
@@ -99,8 +102,26 @@ type Gesture =
       startX: number;
       startY: number;
       startBBox: BBox;
+      /** Frame rotation at grab — nonzero switches to local-axis resize (L10). */
+      rotation: number;
       targets: SnapTargets;
       thresholdIn: number;
+      before: LayoutDocument;
+    }
+  | {
+      kind: "rotate";
+      id: string;
+      pointerId: number;
+      captured?: boolean;
+      /** Grab point (page inches) — only the capture threshold reads it. */
+      startX: number;
+      startY: number;
+      /** Frame center, page inches — the pivot the angle is read against. */
+      cx: number;
+      cy: number;
+      startRotation: number;
+      /** Pointer angle at grab, so we rotate by the delta, not the absolute. */
+      grabAngle: number;
       before: LayoutDocument;
     }
   | {
@@ -451,7 +472,30 @@ export function CanvasViewport() {
       startX: p.x,
       startY: p.y,
       startBBox: bboxOf(obj),
+      rotation: obj.type === "line" ? 0 : obj.rotation,
       ...gestureSnap(new Set([obj.id])),
+      before: useLayoutStore.getState().doc,
+    };
+  };
+
+  /** Rotate-handle pointer-down (L10): read the angle by the delta from the grab. */
+  const startRotate = (obj: LayoutObject) => (e: React.PointerEvent) => {
+    if (e.button !== 0 || obj.type === "line") return;
+    e.stopPropagation();
+    const b = bboxOf(obj);
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const p = toPageIn(e);
+    gesture.current = {
+      kind: "rotate",
+      id: obj.id,
+      pointerId: e.pointerId,
+      startX: p.x,
+      startY: p.y,
+      cx,
+      cy,
+      startRotation: obj.rotation,
+      grabAngle: angleFromCenter(cx, cy, p.x, p.y),
       before: useLayoutStore.getState().doc,
     };
   };
@@ -535,11 +579,16 @@ export function CanvasViewport() {
       g.curY = p.y;
       setMarquee({ x1: g.startX, y1: g.startY, x2: p.x, y2: p.y });
     } else if (g.kind === "move") {
-      // the moving group's union box snaps as one (edges + centers)
+      // the moving group snaps as one union box — by each object's rotated
+      // footprint (axis-aligned bounds), the honest simplification of L10
       const moving = g.startSurface.filter((o) => g.movingIds.has(o.id));
-      const ub = unionBBox(moving)!;
+      const boxes = moving.map(rotatedBBox);
+      const minX = Math.min(...boxes.map((b) => b.x));
+      const minY = Math.min(...boxes.map((b) => b.y));
+      const maxX = Math.max(...boxes.map((b) => b.x + b.w));
+      const maxY = Math.max(...boxes.map((b) => b.y + b.h));
       const snap = snapBBox(
-        { x: ub.x + dx, y: ub.y + dy, w: ub.w, h: ub.h },
+        { x: minX + dx, y: minY + dy, w: maxX - minX, h: maxY - minY },
         g.targets,
         g.thresholdIn,
       );
@@ -550,27 +599,38 @@ export function CanvasViewport() {
         true,
       );
       setSnapLines(snap.lines);
+    } else if (g.kind === "rotate") {
+      // rotation reads by the delta from the grab; Shift snaps to 15°
+      const raw = g.startRotation + (angleFromCenter(g.cx, g.cy, p.x, p.y) - g.grabAngle);
+      s.transformObject(g.id, { rotation: e.shiftKey ? snapAngle(raw) : raw }, true);
     } else if (g.kind === "resize") {
-      // only the dragged edges snap — an east handle snaps x, never y
-      const movingX = g.dir.includes("e")
-        ? g.startBBox.x + g.startBBox.w + dx
-        : g.dir.includes("w")
-          ? g.startBBox.x + dx
-          : null;
-      const movingY = g.dir.includes("s")
-        ? g.startBBox.y + g.startBBox.h + dy
-        : g.dir.includes("n")
-          ? g.startBBox.y + dy
-          : null;
-      const sp = snapPoint(movingX ?? 0, movingY ?? 0, g.targets, g.thresholdIn, {
-        x: movingX !== null,
-        y: movingY !== null,
-      });
-      const sdx = movingX !== null ? dx + (sp.x - movingX) : dx;
-      const sdy = movingY !== null ? dy + (sp.y - movingY) : dy;
-      const b = resizeBBox(g.startBBox, g.dir, sdx, sdy, e.shiftKey);
-      s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
-      setSnapLines(sp.lines);
+      if (g.rotation) {
+        // rotated: resize in the object's local axes, no edge snapping (the
+        // dragged edge isn't axis-aligned, so axis snap targets don't apply)
+        const b = resizeRotatedBBox(g.startBBox, g.dir, dx, dy, g.rotation, e.shiftKey);
+        s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
+      } else {
+        // only the dragged edges snap — an east handle snaps x, never y
+        const movingX = g.dir.includes("e")
+          ? g.startBBox.x + g.startBBox.w + dx
+          : g.dir.includes("w")
+            ? g.startBBox.x + dx
+            : null;
+        const movingY = g.dir.includes("s")
+          ? g.startBBox.y + g.startBBox.h + dy
+          : g.dir.includes("n")
+            ? g.startBBox.y + dy
+            : null;
+        const sp = snapPoint(movingX ?? 0, movingY ?? 0, g.targets, g.thresholdIn, {
+          x: movingX !== null,
+          y: movingY !== null,
+        });
+        const sdx = movingX !== null ? dx + (sp.x - movingX) : dx;
+        const sdy = movingY !== null ? dy + (sp.y - movingY) : dy;
+        const b = resizeBBox(g.startBBox, g.dir, sdx, sdy, e.shiftKey);
+        s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
+        setSnapLines(sp.lines);
+      }
     } else {
       const ex = g.which === "p1" ? g.startObj.x1 : g.startObj.x2;
       const ey = g.which === "p1" ? g.startObj.y1 : g.startObj.y2;
@@ -751,18 +811,21 @@ export function CanvasViewport() {
                   obj={selected}
                   zoom={zoom}
                   onHandleDown={startResize(selected)}
+                  onRotateDown={startRotate(selected)}
                   onEndpointDown={
                     selected.type === "line" ? startEndpoint(selected) : () => undefined
                   }
                 />
               )}
-              {/* multi-selection: an outline per member — resize handles are single-only */}
+              {/* multi-selection: an outline per member (rotating with it) —
+                  resize/rotate handles stay single-selection only */}
               {tool === "select" &&
                 selectedIds.length > 1 &&
                 surface
                   .filter((o) => selectedIds.includes(o.id))
                   .map((o) => {
                     const b = bboxOf(o);
+                    const rot = o.type !== "line" && o.rotation ? o.rotation : 0;
                     return (
                       <div
                         key={`msel-${o.id}`}
@@ -773,6 +836,7 @@ export function CanvasViewport() {
                           top: inToPx(b.y, zoom) - 1,
                           width: inToPx(b.w, zoom) + 2,
                           height: inToPx(b.h, zoom) + 2,
+                          transform: rot ? `rotate(${rot}deg)` : undefined,
                         }}
                       />
                     );

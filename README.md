@@ -52,8 +52,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 |---|---|
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
-| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in (L1–L9) | ✅ shipped |
-| Layout editor — toolset build-out: rotation/Arrange, ruler guides & units, spreads & mixed sizes, clipboard (L10–L13) | ❌ next in plan (v1.4) |
+| Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in, rotation & Arrange (L1–L10) | ✅ shipped |
+| Layout editor — toolset build-out: ruler guides & units, spreads & mixed sizes, clipboard (L11–L13) | ❌ next in plan (v1.4) |
 | Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
@@ -216,6 +216,15 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   on click; a non-image pick raises a visible note, never a silent fallback; both paths
   persist through reload. The dragless-click detection reuses L7's 3px capture threshold, so
   it never fires after a move or resize.
+- **Layout editor — step L10, rotation & Arrange (plan v1.4):** a **stemmed rotate handle**
+  above the selection turns a frame about its center (**Shift snaps to 15°**), the status bar
+  reads the live angle, and a **Rotation field** in Properties round-trips degrees — all one
+  undo step. The selection chrome (and the text-edit overlay) rotate with the object; a
+  rotated frame **resizes in its own local axes** (the fixed corner stays put in page space),
+  and rotated objects snap by their axis-aligned footprint (the honest simplification). The
+  **Arrange ribbon tab goes live**: Order (bring to front / forward / backward / to back),
+  Rotate (90° left / right / reset), and Align (the L7 actions) — all against the selection,
+  verified against real canvas paint order. Grouping and effects stay in the backlog.
 - **Design revision — single-row ribbon (user-directed):** every command band lays its
   groups' controls in **one row** — the wire's stacked clusters flatten (the big Paste tile
   and the Cut/Copy and Find/Replace columns become uniform pills; Font and Paragraph merge
