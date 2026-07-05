@@ -1,0 +1,61 @@
+startDocument()
+  startPage(svg:height: 11.0000in, svg:width: 8.5000in)
+    setStyle(draw:fill: solid, draw:fill-color: #cc0000, draw:stroke: none)
+    drawRectangle (svg:height: 1.7500in, svg:width: 7.5000in, svg:x: 0.5000in, svg:y: 0.5000in)
+    setStyle(draw:fill: none, draw:stroke: none, draw:textarea-vertical-align: middle, fo:padding-bottom: 0.0400in, fo:padding-left: 0.0400in, fo:padding-right: 0.0400in, fo:padding-top: 0.0400in)
+    startTextObject (svg:height: 1.2500in, svg:width: 7.0000in, svg:x: 0.7500in, svg:y: 0.7500in)
+      openParagraph (fo:line-height: 119.0000%, fo:text-align: center)
+        openSpan(fo:color: #ffffff, fo:font-size: 48.0000pt, fo:font-weight: normal, style:font-name: Impact)
+          insertText (GRAND OPENING)
+        closeSpan
+      closeParagraph
+    endTextObject
+    setStyle(draw:fill: none, draw:stroke: none)
+    startTextObject (svg:height: 3.0000in, svg:width: 4.5000in, svg:x: 0.7500in, svg:y: 2.6000in)
+      openParagraph (fo:line-height: 119.0000%, fo:text-align: left)
+        openSpan(fo:font-size: 12.0000pt, style:font-name: Times New Roman)
+          insertText (Join us Saturday for our )
+        closeSpan
+        openSpan(fo:font-size: 12.0000pt, fo:font-weight: bold, style:font-name: Times New Roman)
+          insertText (grand opening celebration)
+        closeSpan
+        openSpan(fo:font-size: 12.0000pt, style:font-name: Times New Roman)
+          insertText ( with door prizes and demos.)
+        closeSpan
+      closeParagraph
+      openParagraph (fo:line-height: 119.0000%, fo:text-align: left)
+        openSpan(fo:font-size: 12.0000pt, style:font-name: Times New Roman)
+          insertText (Doors open at 9 AM.)
+        closeSpan
+      closeParagraph
+    endTextObject
+    setStyle(draw:fill: solid, draw:fill-color: #ffd700, draw:stroke: none)
+    drawRectangle (librevenge:rotate: 15.0000in, svg:height: 2.0000in, svg:width: 2.0000in, svg:x: 5.7500in, svg:y: 3.0000in)
+    setStyle(draw:fill: none, draw:stroke: solid, svg:stroke-color: #000000, svg:stroke-width: 0.0200in)
+    drawRectangle (svg:height: 2.0000in, svg:rx: 0.1000in, svg:width: 7.0000in, svg:x: 0.7500in, svg:y: 6.0000in)
+    setStyle(draw:fill: none, draw:stroke: solid, svg:stroke-color: #333333, svg:stroke-width: 0.0100in)
+    drawPolyline (svg:points: ((svg:x: 0.7500in, svg:y: 8.5000in), (svg:x: 7.7500in, svg:y: 8.5000in)))
+    setStyle(draw:fill: solid, draw:fill-color: #0866d2, draw:stroke: none)
+    drawPolygon (svg:points: ((svg:x: 6.0000in, svg:y: 8.9000in), (svg:x: 6.4000in, svg:y: 9.6000in), (svg:x: 7.4000in, svg:y: 9.6000in), (svg:x: 6.6000in, svg:y: 10.1000in), (svg:x: 7.0000in, svg:y: 11.0000in), (svg:x: 6.0000in, svg:y: 10.5000in), (svg:x: 5.0000in, svg:y: 11.0000in), (svg:x: 5.4000in, svg:y: 10.1000in), (svg:x: 4.6000in, svg:y: 9.6000in), (svg:x: 5.6000in, svg:y: 9.6000in)))
+    setStyle(draw:fill: solid, draw:fill-color: #2e8b3d, draw:stroke: none)
+    drawPath (svg:d: ((librevenge:path-action: M, svg:x: 1.0000in, svg:y: 9.0000in), (librevenge:path-action: C, svg:x: 3.0000in, svg:x1: 1.5000in, svg:x2: 2.5000in, svg:y: 9.0000in, svg:y1: 8.5000in, svg:y2: 9.5000in), (librevenge:path-action: Z)))
+    setStyle(draw:fill: none, draw:stroke: none)
+    drawGraphicObject (librevenge:mime-type: image/png, office:binary-data: iVBORw0KGgo=, svg:height: 1.5000in, svg:width: 2.2500in, svg:x: 5.5000in, svg:y: 2.6000in)
+  endPage
+  startPage(svg:height: 11.0000in, svg:width: 8.5000in)
+    setStyle(draw:fill: solid, draw:fill-color: #e4e4e4, draw:stroke: none)
+    drawRectangle (svg:height: 10.0000in, svg:width: 7.5000in, svg:x: 0.5000in, svg:y: 0.5000in)
+    setStyle(draw:fill: none, draw:stroke: none)
+    startTextObject (svg:height: 1.0000in, svg:width: 4.5000in, svg:x: 2.0000in, svg:y: 5.0000in)
+      openParagraph (fo:text-align: center)
+        openSpan(fo:font-size: 10.0000pt, style:font-name: Arial)
+          insertText (123 Main Street)
+        closeSpan
+        insertLineBreak
+        openSpan(fo:font-size: 10.0000pt, style:font-name: Arial)
+          insertText (Anytown, USA 01234)
+        closeSpan
+      closeParagraph
+    endTextObject
+  endPage
+endDocument

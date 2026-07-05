@@ -57,7 +57,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ next in the L-sequence |
 | Customer proof station — counter sign-off: customer view, associate dispatch, session service | ❌ planned, sequenced **before UAT** — spec + build plan in docs (PS1–PS5) |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
-| `.pub` import (the next proof point), open/save/export, print production | ❌ specified in docs (plan §8–§11; fonts §10.5); P-tranche cleared to run on the DOM render (plan v1.5) |
+| `.pub` import — geometry-first pipeline (P1): sniff → `pub2raw` → trace parser → mapper, fixture mode, homepage callout live | ✅ shipped — the import proof point; text runs/fonts (P2), images (P3), report UI (P4) next |
+| Open/save/export, print production | ❌ specified in docs (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
 
@@ -265,6 +266,22 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   or master, surviving navigation) with the duplicate offset and cascading repeat pastes, fresh
   ids, pictures keeping their assets. Inside a text-editing session the browser's native
   clipboard keeps working untouched; pill enabled states track selection and clipboard content.
+- **`.pub` import — step P1, the geometry-first pipeline (plan §10, v1.5):** the POC's **first
+  server slice**. The homepage's `.pub` callout goes live: pick a Publisher file and
+  `POST /api/import` runs **content-sniff** (CFBF magic + `Contents`-stream markers — never the
+  extension) → the **`pub2raw` subprocess** (size cap, timeout+kill, per-job scratch jail; the
+  one-file seam of plan §10.7) → a **trace parser** ground-truthed against librevenge's raw
+  generator (format quirks and all — see `fixtures/pub-traces/README.md`) → an intermediate
+  model → the **geometry mapper**: pages (with per-page `sizeOverride`), rects/ellipses/lines
+  placed exactly, rotation converted CCW→CW, fills/strokes, text frames with content, dominant
+  font/size/alignment, and Publisher's 1.19 default line spacing; polygons/paths degrade to
+  bounding boxes, images to placeholder frames, tables to flagged placeholders — every
+  simplification lands in the structured **import report** (`{fidelity, fonts, notes}`), nothing
+  silent. **Fixture mode** serves the golden demo trace wherever `libmspub-tools` isn't
+  installed, so dev/CI/e2e run with zero native dependency; the Docker runner moved to
+  **Debian slim + libmspub-tools** and is where live conversion executes. Replacing a
+  publication that has content asks first; the imported document opens in the editor named
+  after its file, fully editable and persisted.
 
 ## Where things live
 

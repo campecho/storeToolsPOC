@@ -33,6 +33,7 @@ import {
   type AlignRelativeTo,
   type DistributeAxis,
 } from "@/lib/layout/align";
+import type { ImportReport } from "@/lib/import/report";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -304,6 +305,10 @@ export interface LayoutEditorState {
   /** One-shot deep-link cue (`/layout?custom=1`): focus the Page tab's width field. */
   focusPageSize: boolean;
 
+  /** Last `.pub` import's fidelity report (session, plan §10.4) — the P4
+      report panel reads it; P1 keeps it for the status-bar summary. */
+  importReport: ImportReport | null;
+
   setRibbon: (ribbon: RibbonTab) => void;
   setTool: (tool: EditorTool) => void;
   setInsp: (insp: InspectorTab) => void;
@@ -423,6 +428,12 @@ export interface LayoutEditorState {
 
   /** Start over: pristine document, guides on, view re-fit. */
   resetDoc: () => void;
+
+  /** Open a converted `.pub` (plan §10.7 seam #2 — the ONLY way import
+      results enter the editor). Replaces the working document wholesale,
+      exactly like resetDoc, and stashes the fidelity report. The doc must
+      already be schema-validated (client.ts does). */
+  openImportedDocument: (doc: LayoutDocument, report: ImportReport) => void;
 }
 
 // SSR/tests have no localStorage — persistence becomes a silent no-op there.
@@ -468,6 +479,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       pageSizeScope: "document",
       fitRequestId: 0,
       focusPageSize: false,
+      importReport: null,
 
       setRibbon: (ribbon) => set({ ribbon }),
       // Switching tools ends a text-editing session (the overlay commits on unmount)
@@ -1113,6 +1125,32 @@ export const useLayoutStore = create<LayoutEditorState>()(
             clipboard: [],
             pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
+            importReport: null,
+          };
+        }),
+
+      openImportedDocument: (doc, report) =>
+        set((s) => {
+          // P1 imports carry no assets (extraction is P3); the library resets
+          // with the document. P3 replaces this clear with blob seeding.
+          void clearAssetBlobs();
+          return {
+            doc,
+            activePageId: doc.pages[0]?.id ?? "page-1",
+            masterEditingId: null,
+            guidesVisible: true,
+            spread: false,
+            pageSizeScope: "document",
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            selectedGuide: null,
+            editingTextId: null,
+            past: [],
+            future: [],
+            clipboard: [],
+            pasteCount: 0,
+            fitRequestId: s.fitRequestId + 1,
+            importReport: report,
           };
         }),
     }),

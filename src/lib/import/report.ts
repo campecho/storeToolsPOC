@@ -1,0 +1,42 @@
+import { z } from "zod";
+
+/**
+ * Import report (plan §10.4) — the structured record of every conversion
+ * decision. CONTRACT: this shape is the API response's `report` half and the
+ * P4 report panel's input; nothing degrades silently (§10.3's tiering rule).
+ * Tiers: 1 = converted clean · 2 = degraded with a note · 3 = flag-only.
+ */
+
+export const ImportNoteSchema = z.object({
+  /** Object the note anchors to — P4's report panel deep-links via this. */
+  objectId: z.string().optional(),
+  pageId: z.string().optional(),
+  tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  message: z.string(),
+});
+export type ImportNote = z.infer<typeof ImportNoteSchema>;
+
+export const FontRemapSchema = z.object({
+  /** Family name as the .pub referenced it. */
+  source: z.string(),
+  /** Family it renders with in the editor. */
+  mappedTo: z.string(),
+  reason: z.string(),
+});
+export type FontRemap = z.infer<typeof FontRemapSchema>;
+
+export const ImportReportSchema = z.object({
+  /** 'live' = pub2raw ran; 'fixture' = the canned demo trace (plan §10.1). */
+  mode: z.enum(["live", "fixture"]),
+  source: z.object({ filename: z.string(), bytes: z.number() }),
+  fidelity: z.object({
+    converted: z.number(),
+    degraded: z.number(),
+    flagged: z.number(),
+  }),
+  fonts: z.array(FontRemapSchema),
+  notes: z.array(ImportNoteSchema),
+  /** Overflowing text frames — populated by the client-side overset check (P4). */
+  overset: z.array(z.string()),
+});
+export type ImportReport = z.infer<typeof ImportReportSchema>;

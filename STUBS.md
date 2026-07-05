@@ -26,7 +26,12 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 | Release participation | `src/components/board/BoardRail.tsx` (`TOP_STORES`) | Fixture store list | Query stores that backed items in the latest release. |
 | Rollup hierarchy | `src/components/board/BoardRail.tsx` | "Region · Northeast" / "District 118" demo labels | Real region/district from store identity. |
 | Product/SKU binding | `src/components/layout-editor/inspector/PageTab.tsx` | "Choose a product →" link is inert; `doc.product` schema field already renders when set | Catalog/spec-sync slice (plan §6) wires the picker; the schema needs no change. |
-| Fonts | `src/lib/layout/text.ts`, `public/fonts/README` | Motiva Sans renders via system fallback | License + drop WOFF2 files into `public/fonts/` (README there documents the exact step). |
+| Fonts | `src/lib/layout/text.ts`, `public/fonts/README` | Motiva Sans renders via system fallback | License + drop WOFF2 files into `public/fonts/` (README there documents the exact step). The import font library (self-hosted Google Fonts + remap tiers) lands in P2 per plan §10.5. |
+| `.pub` conversion subprocess (P1) | `src/lib/import/pub2raw.ts` | Shells out to a local `pub2raw` (Docker image only); **fixture mode** serves the golden demo trace when the binary is absent or `STP_IMPORT_FIXTURE=1` | Production calls the backbone's sandboxed conversion service — the swap touches only this file (plan §10.7 seam #1). |
+| Import client/service boundary (P1) | `src/lib/import/client.ts`, `src/app/api/import/route.ts` | POC route in the app's own container; in-memory request handling | The Zod contract (`{doc, report}` per `LayoutDocumentSchema` + `ImportReportSchema`) is the interface a production conversion service implements; the client module is the only caller (plan §10.7 seam #2). |
+| Import server state | `src/app/api/import/route.ts` | Stateless per-request today, but the server tranche (import jobs, proof sessions) assumes **one instance** | Real job/session store; until then deploy single-instance (Cloud Run `max-instances=1`). |
+| AV scan on ingest | `src/lib/import/pub2raw.ts` (`avScanHook`) | Logging stub — the seam exists, nothing scans | Suite AV decision (ClamAV vs. commercial) plugs in here (plan §10.1). |
+| Import report UI | `src/lib/store/layout-store.ts` (`importReport`) | Report is captured in the store but has no panel yet | P4 renders the report panel with per-note deep links (plan §10.4). |
 
 ## Inert-by-design affordances (`PROTOTYPE-ONLY:`)
 
@@ -74,3 +79,6 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 | Display units in/mm/px/pt at 96 DPI | `src/lib/layout/units.ts`, `StatusBar.tsx` | Geometry stays canonical inches; the unit is a display/parse layer (`px` = CSS px at DPI 96, not print-DPI). Per-region default (metric vs imperial) and a print-DPI read are later. |
 | Curated font list | `src/lib/layout/text.ts` | In-store set TBD; Motiva licensing pending |
 | Recently-shipped band window (7 days) | board logic / seeds | Product to confirm |
+| Import rotation sign | `src/lib/import/mapper.ts` | librevenge rotation treated as CCW-positive → mapped to the editor's CW convention (345° for 15° CCW); verify against a real rotated `.pub` from the corpus |
+| Publisher default line spacing 1.19 | `src/lib/import/mapper.ts` | Used when the trace carries no `fo:line-height` (plan §10.5); confirm against corpus renders |
+| Import caps: 25 MB / 20 s | `src/lib/import/limits.ts` | POC guesses per plan §10.1; tune on the corpus |
