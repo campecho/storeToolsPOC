@@ -12,6 +12,8 @@ The editor is explicitly **built over time**: the shell lands first, capability 
 
 **Revision (v1.4):** the pre-Simple **toolset build-out** is planned as five user-directed steps, **L9–L13**, pulled from the §6 backlog with interaction updates: **L9** reworks picture import around the frame (the Picture tool draws an image box; clicking an empty box opens the device file picker; assets drag from the panel into any visible image container), **L10** rotation editing + a live Arrange tab, **L11** ruler-dragged guides + a unit toggle (in/mm/px/pt), **L12** facing-page spreads + per-page size overrides (§9's `sizeOverride` pulled forward), **L13** copy/cut/paste with keyboard shortcuts. Experience levels and hardening renumber to **L14/L15**. Each step stays independently demoable, one commit each; §6 and §9 rows are updated in place.
 
+**Revision (v1.5, 2026-07-05):** pre-UAT pipeline updates, driven by the Publisher-import proof point. (1) **The P-tranche is cleared to lead the K-tranche.** Import correctness (parse → map → place) is render-agnostic by construction — the document model is the contract — so P1–P4 may run against the POC's DOM render to hit the import proof point now; a converted document that exceeds the DOM comfort zone (~150 objects on a page) gets an honest perf note in the import report rather than a blocked import. The K-tranche remains the **performance gate before import-heavy documents go to field UAT**, and §8.1's spike numbers still decide the engine with evidence — the sequencing changes, the gates don't. (2) **§10.5 (new; acceptance & testing renumbers to §10.6)** turns §10.4's remap-and-report posture into a concrete **font library & mapping plan**: a self-hosted open-license (Google Fonts) library with metric-compatible mappings for the Publisher-era core faces, lazy per-document loading, and measurement gated on font load. (3) The **customer proof station** is planned as a sibling slice in `docs/CUSTOMER_PROOF_STATION_PLAN.md` — it consumes this editor's documents (and, later, the §8.6 server render) but adds no editor scope; it shares §10.1's server-seam posture.
+
 **Inputs reviewed:**
 
 | Input | Where | Role |
@@ -333,7 +335,7 @@ Explicitly **not** in L1–L15, with where each lands later — the affordances 
 3. **Single working document**, autosaved to `stp-layout-v1`; opening a new size from Home replaces it (with a confirm when the current doc has content). Multi-document / open / save-as is backlog.
 4. **Desktop-minimum gate** below `lg` rather than a phone reflow — a precision canvas is a station tool; the gate card keeps small screens honest.
 5. **Simple disabled until L14** — per the built-over-time direction; the control renders from L1 so the title bar matches the wire. *(v1.3: the experience model is two levels — Pro dropped, its segment removed in L8.)*
-6. **Fonts** — system stack + a curated family list until Motiva Sans licensing is confirmed (same posture as `public/fonts/README`).
+6. **Fonts** — system stack + a curated family list until Motiva Sans licensing is confirmed (same posture as `public/fonts/README`). *(v1.5: the import library is now planned in §10.5 — self-hosted Google Fonts, metric-compatible remap; Motiva remains a separate licensing question.)*
 7. **Inches only** at first; the unit toggle is handoff-mentioned and cheap to add later because all geometry is canonical-inches behind helpers.
 
 ---
@@ -385,7 +387,7 @@ Text is the one place a canvas engine costs something, and the design pays it de
 - **Committed text renders in Konva; editing stays `contentEditable`.** On `editingTextId`, the Konva text node hides and the DOM overlay appears at the frame's stage-transformed position — native caret, selection, IME, and spellcheck for free (the overlay gymnastics §1.4 warned about are confined to one well-defined swap). On commit, the store updates and Konva redraws.
 - **`text.ts` grows into a shared text-layout module** — the single source of truth for line breaking and metrics. It measures with the Canvas 2D `measureText` API only (no DOM dependency), takes a frame's text + style + width, and returns positioned **line boxes** consumed by three clients: (1) the Konva renderer (each line drawn as a `Konva.Text` node — sidestepping Konva's limited built-in wrapping control), (2) the **overflow indicator** (content height vs. frame height — same red badge, now computed from real metrics), and (3) any future server-side render (§8.6).
 - **Per-frame styling now, per-run ready.** The v1 layout module consumes the POC's per-frame text props; the v2 schema's paragraph/run structure (§9) slots in as richer input to the same module — `.pub` import (§10) is what forces that upgrade.
-- **Fonts gate measurement.** Layout runs only after `document.fonts.load()` resolves for the frame's family (curated list per §7.6); un-loaded families measure with the fallback and re-layout on load. The import pipeline's font-remap table (§10.4) maps foreign `.pub` fonts into this same curated list.
+- **Fonts gate measurement.** Layout runs only after `document.fonts.load()` resolves for the frame's family (curated list per §7.6); un-loaded families measure with the fallback and re-layout on load. The import pipeline's font-remap table (§10.4, library per §10.5) maps foreign `.pub` fonts into the self-hosted library.
 
 ### 8.5 Performance & thumbnails on the store profile
 
@@ -446,7 +448,7 @@ The pipeline is the `PUB_TO_IDML_RESEARCH.md` architecture with one substitution
 
 **Exposure guard (holds regardless of posture):** the import endpoint ships behind the demo deployment with the size cap, timeout, and rate limiting — it is never advertised as a public anonymous upload surface. Behind the demo, the residual risk is a crashed ephemeral container; on the open internet it would be a free fuzzing service against a C++ parser, which the POC does not accept.
 
-**Dev/CI without the binary — fixture mode:** because the pipeline consumes `pub2raw`'s *text trace*, the golden traces §10.5 specifies double as a dev fallback: when the binary is absent, the import route serves a canned demo trace through the real trace-parser → mapper → report → editor path. `npm run dev` and Playwright therefore run everywhere with no native dependency; the binary is required only where live conversion is exercised (the Docker image, and P5's full-pipeline lane).
+**Dev/CI without the binary — fixture mode:** because the pipeline consumes `pub2raw`'s *text trace*, the golden traces §10.6 specifies double as a dev fallback: when the binary is absent, the import route serves a canned demo trace through the real trace-parser → mapper → report → editor path. `npm run dev` and Playwright therefore run everywhere with no native dependency; the binary is required only where live conversion is exercised (the Docker image, and P5's full-pipeline lane).
 
 ### 10.2 Pipeline
 
@@ -497,7 +499,26 @@ The response's `report` is structured JSON rendered as a panel when the converte
 - **Overset:** after mapping, the §8.4 layout module measures every text frame with the *remapped* fonts; overflowing frames are listed in the report and badged on canvas — remapped metrics are the #1 cause of post-conversion overflow, so this check is not optional.
 - Report items deep-link: clicking a note selects the object and navigates to its page.
 
-### 10.5 Acceptance & testing
+### 10.5 Font library & mapping (v1.5)
+
+§10.4's remap table needs an actual library to map *into*. The decision:
+
+- **Self-hosted, open-license — Google Fonts as the source.** WOFF2 files served from `public/fonts/` with `@font-face`/`FontFace` registration — **no CDN fetch** (store networks and the proof station's kiosk posture want zero external dependencies, and rendering must be deterministic offline at the counter). Google Fonts' OFL/Apache licensing is clean for a deployed tool; the Motiva Sans question stays separate and pending (§7.6). Practical note: the download artifact is the font files themselves (via `@fontsource/*` packages or google-webfonts-helper), vendored into the repo — not a runtime dependency.
+- **Two lists, one seam.** The **UI pick list** (`FONT_FAMILIES` in `text.ts`) stays short and curated — associates choose from an opinionated set. The **import library** is broader: every family the remap table can land on registers **lazily** and loads only when an open document references it, so the extensive library costs nothing until an import needs it.
+- **The remap table, tiered like the conversion itself:**
+
+  | Tier | Rule | Mappings |
+  |---|---|---|
+  | 1 — metric-compatible | Same metrics by design; text reflows identically | Arial / Helvetica → **Arimo** · Times New Roman → **Tinos** · Courier New → **Cousine** · Calibri → **Carlito** · Cambria → **Caladea** · Georgia → **Gelasio** |
+  | 2 — close match | Same class, near metrics; overset check decides | Verdana → Open Sans · Comic Sans MS → Comic Neue · Impact → Anton · Book Antiqua / Palatino → Lora · Century Schoolbook → PT Serif · Franklin Gothic → Libre Franklin · Garamond → EB Garamond |
+  | 3 — class fallback | Bucket by class (serif / sans / script / mono / display) | script → Caveat · display → Oswald · mono → Cousine · else the document default |
+
+  Every mapping lands in the import report's `fonts` array with its tier and reason (§10.4); **tier ≥ 2 makes the overset check mandatory** for the affected frames. The table is data (one module), grown from what the corpus actually references — not exhaustively up front.
+- **Weights & styles:** regular/bold + italics minimum per family; import clamps intermediate weights to the nearest registered weight and reports the clamp.
+- **Measurement gating:** the §8.4 rule applies even pre-Konva — text measurement (DOM today, canvas after K3) runs only after `document.fonts.load()` resolves for the mapped family; frames re-measure on late load so overset verdicts are computed with the real metrics.
+- **Publisher metric quirks the mapper owns:** Publisher's "single" line spacing (`1sp`) ≈ **1.19× the point size**, not 1.0 — convert to the model's multiplier honestly or every imported frame reads overset; Publisher text boxes carry default **internal insets (~0.04 in)** the v1 schema doesn't model — the mapper shrinks the frame's text area on import, and schema v2 gains an optional text-frame `inset` (§9) so the value survives round-trip; Publisher's **"shrink text on overflow" autofit** means the declared point size may exceed what Publisher actually rendered — the overset report is the honest catch-all, and a "shrink to fit" quick action on a reported frame is a cheap later add.
+
+### 10.6 Acceptance & testing
 
 - **Corpus:** real store `.pub` files (flyers, signage, newsletters, the template library) — the suite plan's standing real-file corpus, plus adversarial samples (malformed OLE2, fuzzed Escher records, zip/CAB attack files) exercising §10.1's controls.
 - **Golden traces:** unit-test the trace parser and the mapper against checked-in `pub2raw` outputs — deterministic, no `libmspub` needed in the unit lane.
@@ -508,7 +529,7 @@ The response's `report` is structured JSON rendered as a panel when the converte
 
 ## 11. Extended build order — K- and P-tranches
 
-Both tranches follow the L-steps' contract: one commit per step, demoable after each, the L1–L15 tests staying green throughout. **K before P** — import lands on the render layer that can actually carry a converted newsletter.
+Both tranches follow the L-steps' contract: one commit per step, demoable after each, the L1–L15 tests staying green throughout. ~~**K before P**~~ *(v1.5)*: **P may lead K for the import proof point** — import correctness is render-agnostic (the document model is the contract), so P1–P4 run against the DOM render now, with an honest perf note on documents past the DOM comfort zone; **K remains the gate before import-heavy documents go to field UAT** (a converted newsletter still needs the render layer that can carry it).
 
 | Step | Lands | Newly available |
 |---|---|---|

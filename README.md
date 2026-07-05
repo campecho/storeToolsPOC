@@ -53,10 +53,11 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
 | Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in, rotation & Arrange, ruler guides & units (L1–L11) | ✅ shipped |
-| Layout editor — toolset build-out: spreads & mixed sizes, clipboard (L12–L13) | ❌ next in plan (v1.4) |
-| Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
+| Layout editor — toolset build-out: spreads & mixed sizes, clipboard (L12–L13) | ✅ shipped |
+| Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ next in the L-sequence |
+| Customer proof station — counter sign-off: customer view, associate dispatch, session service | ❌ planned, sequenced **before UAT** — spec + build plan in docs (PS1–PS5) |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
-| `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
+| `.pub` import (the next proof point), open/save/export, print production | ❌ specified in docs (plan §8–§11; fonts §10.5); P-tranche cleared to run on the DOM render (plan v1.5) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
 
@@ -251,6 +252,19 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   **wrap within their section** as the viewport narrows, so the band grows down instead of
   clipping; band height is auto (min 64px) instead of the wire's fixed 92px. Recorded as
   fidelity deviation #5 (plan §2).
+- **Layout editor — step L12, spreads & mixed page sizes (plan v1.4):** the status bar's
+  **two-page spread toggle goes live** with Publisher pairing (page 1 alone, then 2|3, 4|5 …) —
+  the partner page renders beside the active one, a click activates it, and every editing
+  gesture keeps targeting the active page; spread view is session-only. The **Page tab gains
+  "Apply to: Whole document / This page"** — a per-page size override (`sizeOverride`, the §9
+  v2 delta pulled forward additively) honored by canvas, rulers, thumbnails, spreads, guides,
+  and snapping; clearing it returns the page to the document size.
+- **Layout editor — step L13, clipboard: copy, cut & paste (plan v1.4):** **Cmd/Ctrl+C/X/V and
+  the Home band's Clipboard pills go live** against an in-app object clipboard — multi-selection
+  copy, cut as copy+delete in one undo step, paste onto the current editing surface (any page
+  or master, surviving navigation) with the duplicate offset and cascading repeat pastes, fresh
+  ids, pictures keeping their assets. Inside a text-editing session the browser's native
+  clipboard keeps working untouched; pill enabled states track selection and clipboard content.
 
 ## Where things live
 
@@ -266,7 +280,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 
 - **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L8 shipped.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L13 shipped; the K-tranche (Konva render) and P-tranche (`.pub` import, incl. the §10.5 font library & mapping plan) are specified and next.
+- **[docs/CUSTOMER_PROOF_STATION_PLAN.md](docs/CUSTOMER_PROOF_STATION_PLAN.md)** — the build plan for the **customer proof station** (counter sign-off: customer view + associate "Send proof" + SSE session service, steps PS1–PS5), sequenced ahead of UAT. Implements [docs/Customer_Proof_Station_Spec.md](docs/Customer_Proof_Station_Spec.md).
 
 ## Reference documents
 
@@ -281,3 +296,6 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   - `Layout Editor.dc.html` — readable source (markup + `Component` logic).
 - `docs/Desktop_Publisher_Design_Doc.md` — the desktop publishing application design doc (product vision, experience model, capability targets the editor serves).
 - `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early; the layout editor is Track B's custom-size layout core.
+- `docs/Customer_Proof_Station_Spec.md` — the customer-facing proof station functional/technical spec (transport, pairing, screens, signed-proof artifact, session hygiene).
+- `docs/PUB_TO_IDML_RESEARCH.md` — the `.pub` parse/convert research (`libmspub` front end, intermediate model, IDML target) the import pipeline builds on.
+- `docs/SECURITY_CONSIDERATIONS.md` — the cross-cutting threat model; gates the import pipeline (§2.1, layout plan §10.1) and the proof station (§2.6/§2.7).
