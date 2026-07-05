@@ -34,6 +34,9 @@ export type IRParagraph = {
   align?: "left" | "center" | "right" | "justify";
   /** fo:line-height as a multiplier (1.19 = Publisher single spacing). */
   lineSpacing?: number;
+  /** fo:margin-left / fo:text-indent present (hanging indents etc.) —
+      the v1 frame model can't hold them; mapper notes the drop. */
+  hasIndent?: boolean;
   spans: IRSpan[];
 };
 
@@ -184,9 +187,11 @@ export function buildModel(events: TraceEvent[]): IRDoc {
 
   for (const ev of events) {
     if ("text" in ev) {
-      // insertText — the one payload-carrying callback
+      // insertText — the one payload-carrying callback. Corpus finding:
+      // Publisher's \r paragraph terminators leak into the text; normalize
+      // to \n here (the mapper strips redundant trailing ones per paragraph).
       if (paragraph && !tableDepth) {
-        paragraph.spans.push({ ...(inSpan ? spanStyle : {}), text: ev.text });
+        paragraph.spans.push({ ...(inSpan ? spanStyle : {}), text: ev.text.replace(/\r\n?/g, "\n") });
       }
       continue;
     }
@@ -289,10 +294,22 @@ export function buildModel(events: TraceEvent[]): IRDoc {
         if (tableDepth) break; // cell text rides the table flag, not a frame
         const bbox = readBBox(props);
         if (!bbox) break;
+        // Corpus finding (3up_tabs.pub): real libmspub puts the text-frame
+        // style — vertical alignment, insets, sometimes fill — on the
+        // startTextObject callback itself, not on the preceding setStyle.
+        // Merge: callback props win where present, setStyle fills the rest.
+        const own = readStyle(props);
+        const merged: IRStyle = {
+          fill: "draw:fill" in props ? own.fill : style.fill,
+          fillKind: "draw:fill" in props ? own.fillKind : style.fillKind,
+          stroke: "draw:stroke" in props ? own.stroke : style.stroke,
+          textVAlign: own.textVAlign ?? style.textVAlign,
+          paddingIn: own.paddingIn ?? style.paddingIn,
+        };
         textbox = {
           kind: "textbox",
           bbox,
-          style,
+          style: merged,
           rotationDeg: toNumber(props["librevenge:rotate"]),
           paragraphs: [],
         };
@@ -305,9 +322,12 @@ export function buildModel(events: TraceEvent[]): IRDoc {
         break;
       case "openParagraph": {
         if (!textbox) break;
+        const marginLeft = toInches(props["fo:margin-left"]);
+        const indent = toInches(props["fo:text-indent"]);
         paragraph = {
           align: readAlign(props["fo:text-align"]),
           lineSpacing: toMultiplier(props["fo:line-height"]),
+          hasIndent: Boolean(marginLeft || indent) || undefined,
           spans: [],
         };
         textbox.paragraphs.push(paragraph);
@@ -326,7 +346,14 @@ export function buildModel(events: TraceEvent[]): IRDoc {
         break;
       case "insertLineBreak":
       case "insertTab":
-        if (paragraph) paragraph.spans.push({ ...spanStyle, text: ev.name === "insertTab" ? "\t" : "\n" });
+      case "insertSpace":
+        // Corpus finding (production_checkpoint_labels.pub): libmspub emits
+        // explicit insertSpace callbacks — dropping them loses word spacing.
+        if (paragraph)
+          paragraph.spans.push({
+            ...spanStyle,
+            text: ev.name === "insertTab" ? "\t" : ev.name === "insertSpace" ? " " : "\n",
+          });
         break;
       default:
         // startDocument/endDocument/metadata/embedded fonts/… — structural

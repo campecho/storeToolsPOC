@@ -34,7 +34,28 @@ g++ -o trace-emitter trace-emitter.cpp \
 
 ## Real-corpus traces
 
-Traces from **real store `.pub` files** (plan §10.6's corpus) belong here as
-they're gathered: `pub2raw file.pub > name.trace` inside the Docker image (or
-any machine with `libmspub-tools`). Real traces supersede the synthetic one as
-goldens; keep `demo-flyer.trace` as the fixture-mode demo payload.
+The **real store files** live in `fixtures/pub-corpus/` (four `.pub` files,
+2026-07-05); their traces here were generated with `pub2raw` 0.1.4 and are the
+primary goldens (`src/lib/import/corpus.test.ts`). `demo-flyer.trace` remains
+the fixture-mode demo payload. Regenerate any trace with
+`pub2raw fixtures/pub-corpus/<name>.pub > fixtures/pub-traces/<name>.trace`.
+
+| Trace | Source | What it exercises |
+|---|---|---|
+| `3up_tabs.trace` | Binder-tab store template | 3 pages 9×11 · **rotated text frames** (`librevenge:rotate: 90`) · inch-denominated font sizes · vertical-align middle · empty trailing spans |
+| `bcim_double_cut.trace` | 2-sided customer business card | 3.75×2.125 landscape pages · right-aligned multi-paragraph text · unknown font (Goudy Old Style) · bitmap fill |
+| `production_checkpoint_labels.trace` | Store production labels | 2 dense pages, 192 shapes · **layers** · 96 polygons + 32 paths · `insertSpace` runs · 125% line spacing · Wingdings + HelveticaNeueLT Pro faces |
+| `business_card_template_10up.trace` | 10-up imposition template | **Master-page-only content → converts empty** (upstream libmspub limitation, flagged tier 3) |
+
+**What the real corpus corrected vs. the synthetic golden** (all fixed in the
+parser/mapper, each pinned by a corpus test):
+
+- `fo:font-size` prints in **inches** (`0.1667in` = 12 pt), not points;
+- text-frame styling (`draw:textarea-vertical-align`, `fo:padding-*`) rides
+  the **`startTextObject` callback**, not the preceding `setStyle`;
+- Publisher's `\r` paragraph terminators leak into `insertText` payloads;
+- explicit **`insertSpace`** callbacks carry word spacing;
+- rotation is **clockwise about the frame center, passed through unchanged**
+  (verified against pub2xhtml's `rotate(θ, cx, cy)` reference render);
+- every real text frame carries the **0.04 in default insets** — reported
+  once per document, not per frame.

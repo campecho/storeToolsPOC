@@ -46,10 +46,10 @@ test.describe(".pub import (P1)", () => {
     await expect(page.getByTestId("prop-h")).toHaveValue("1.75");
     await expect(page.getByTestId("prop-rotation")).toHaveValue("0");
 
-    // Rotation carries through (15° CCW in the source → 345° CW here);
-    // z-order: the rotated accent is the 4th object → layers row index 5.
+    // Rotation carries through unchanged (verified vs the pub2xhtml reference
+    // render); z-order: the rotated accent is the 4th object → layers row 5.
     await page.getByTestId("layer-row-5").click();
-    await expect(page.getByTestId("prop-rotation")).toHaveValue("345");
+    await expect(page.getByTestId("prop-rotation")).toHaveValue("15");
 
     // Page 2 renders its own content
     await page.getByTestId("page-next").click();

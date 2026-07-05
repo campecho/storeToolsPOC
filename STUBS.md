@@ -62,6 +62,12 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   enforces it on write (`src/lib/schema/layout.ts`).
 - **File-size watch:** `layout-store.ts` (~750 lines) and `CanvasViewport.tsx` (~600) should
   split (store slices; gesture hook) as L7+ grows them.
+- **Master pages don't survive `.pub` import** (upstream): libmspub never emits master-page
+  content, so publications whose content lives on masters convert **empty** — real corpus
+  case: `fixtures/pub-corpus/business_card_template_10up.pub`. The mapper flags it tier-3
+  ("no drawable page content"); a fix means going below libmspub (research doc's
+  reverse-engineering appendix) or accepting the gap for the on-ramp
+  (`src/lib/import/mapper.ts`).
 
 ## Assumptions to confirm (`ASSUMPTION:`)
 
@@ -79,6 +85,6 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 | Display units in/mm/px/pt at 96 DPI | `src/lib/layout/units.ts`, `StatusBar.tsx` | Geometry stays canonical inches; the unit is a display/parse layer (`px` = CSS px at DPI 96, not print-DPI). Per-region default (metric vs imperial) and a print-DPI read are later. |
 | Curated font list | `src/lib/layout/text.ts` | In-store set TBD; Motiva licensing pending |
 | Recently-shipped band window (7 days) | board logic / seeds | Product to confirm |
-| Import rotation sign | `src/lib/import/mapper.ts` | librevenge rotation treated as CCW-positive → mapped to the editor's CW convention (345° for 15° CCW); verify against a real rotated `.pub` from the corpus |
-| Publisher default line spacing 1.19 | `src/lib/import/mapper.ts` | Used when the trace carries no `fo:line-height` (plan §10.5); confirm against corpus renders |
+| ~~Import rotation sign~~ **resolved** | `src/lib/import/mapper.ts` | Verified against the real corpus: `librevenge:rotate` passes through unchanged — clockwise about the frame center, matching pub2xhtml's reference render of `3up_tabs.pub` |
+| Publisher default line spacing 1.19 | `src/lib/import/mapper.ts` | Used when the trace carries no `fo:line-height` (plan §10.5); corpus shows explicit 125% where set — visual confirm still pending a side-by-side render |
 | Import caps: 25 MB / 20 s | `src/lib/import/limits.ts` | POC guesses per plan §10.1; tune on the corpus |

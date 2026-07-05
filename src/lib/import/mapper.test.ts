@@ -107,11 +107,13 @@ describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
     expect(notes.some((n) => n.objectId === body.id && n.message.includes("character styles flattened"))).toBe(true);
   });
 
-  it("converts librevenge CCW rotation to the editor's CW convention", () => {
+  it("passes rotation through unchanged (both conventions are CW about the center)", () => {
+    // Verified against pub2xhtml's reference render of the corpus (3up_tabs):
+    // librevenge:rotate θ → SVG rotate(θ, cx, cy) with no negation.
     const rotated = doc.pages[0].objects[3];
     expect(rotated.type).toBe("rect");
     if (rotated.type === "line") throw new Error("unexpected line");
-    expect(rotated.rotation).toBe(345); // 15° CCW
+    expect(rotated.rotation).toBe(15);
   });
 
   it("degrades rounded corners, polygons, paths, and images with notes — never silently", () => {
@@ -159,11 +161,15 @@ describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
     expect(arial?.mappedTo).toBe("Arial");
   });
 
-  it("notes text insets and vertical alignment the v1 schema can't hold", () => {
+  it("notes vertical alignment per frame; default insets once at document level", () => {
     const headline = doc.pages[0].objects[1];
-    const msgs = notes.filter((n) => n.objectId === headline.id).map((n) => n.message);
-    expect(msgs.some((m) => m.includes("insets"))).toBe(true);
-    expect(msgs.some((m) => m.includes("vertical alignment"))).toBe(true);
+    const frameMsgs = notes.filter((n) => n.objectId === headline.id).map((n) => n.message);
+    expect(frameMsgs.some((m) => m.includes("vertical alignment"))).toBe(true);
+    // 0.04 in on all sides is Publisher's universal default — one doc-level
+    // note, not per-frame spam (corpus finding)
+    const docLevel = notes.filter((n) => !n.objectId).map((n) => n.message);
+    expect(docLevel.some((m) => m.includes("default text-box insets"))).toBe(true);
+    expect(frameMsgs.some((m) => m.includes("insets"))).toBe(false);
   });
 
   it("tallies fidelity so the report adds up", () => {

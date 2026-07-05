@@ -282,6 +282,17 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   **Debian slim + libmspub-tools** and is where live conversion executes. Replacing a
   publication that has content asks first; the imported document opens in the editor named
   after its file, fully editable and persisted.
+- **`.pub` import — real-corpus validation:** four real store files
+  (`fixtures/pub-corpus/`: binder tabs, a two-sided customer business card, production
+  checkpoint labels, a 10-up imposition template) now convert **live** end-to-end and their
+  traces are the primary goldens (16 corpus tests). Reality corrected the synthetic
+  assumptions — inch-denominated font sizes, frame styling on `startTextObject`, leaked `\r`
+  terminators, `insertSpace` word spacing, and the **rotation sign (clockwise passthrough,
+  verified against pub2xhtml's reference render)** — and surfaced one honest upstream
+  limitation: master-page-only publications convert empty and are flagged tier-3
+  (libmspub never emits master pages). Default 0.04 in text insets report once per document
+  instead of drowning the report per-frame; the corpus fonts (Calibri, Goudy Old Style,
+  HelveticaNeueLT Pro, Wingdings) seed §10.5's P2 remap table.
 
 ## Where things live
 

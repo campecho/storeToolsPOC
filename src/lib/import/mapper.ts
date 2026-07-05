@@ -34,14 +34,15 @@ const round = (n: number, places = 4) => {
 };
 
 /**
- * librevenge rotation is degrees counterclockwise-positive; the editor's
- * schema (CSS transform convention) is clockwise-positive.
- * ASSUMPTION: sign convention pending verification against a real rotated
- * .pub from the corpus — recorded in STUBS.md.
+ * libmspub's `librevenge:rotate` maps to the editor's rotation DIRECTLY —
+ * both are clockwise-positive about the frame center. Verified against the
+ * corpus: pub2xhtml (the libmspub authors' reference render) emits
+ * `rotate(θ, cx, cy)` for the same callbacks with θ passed through unchanged
+ * and (cx, cy) = the frame center (3up_tabs.pub, 90° tab labels).
  */
 function mapRotation(deg: number | undefined): number {
   if (!deg) return 0;
-  return round((((-deg % 360) + 360) % 360), 2);
+  return round(((deg % 360) + 360) % 360, 2);
 }
 
 function mapStroke(style: IRStyle): { color: string; width: number } | null {
@@ -68,7 +69,10 @@ function dominant<T>(values: T[]): T | undefined {
 type TextMapping = { text: TextProps; distinctSpanStyles: number; distinctAligns: number };
 
 function mapText(paragraphs: IRParagraph[], fonts: Map<string, FontRemap>): TextMapping {
-  const spans: IRSpan[] = paragraphs.flatMap((p) => p.spans).filter((s) => s.text !== "\n" && s.text !== "\t");
+  // Whitespace-only spans (insertSpace/insertLineBreak markers, Publisher's
+  // empty trailing spans) don't count toward styling — corpus files carry
+  // many and they'd inflate the flatten detection.
+  const spans: IRSpan[] = paragraphs.flatMap((p) => p.spans).filter((s) => s.text.trim() !== "");
   const styleKey = (s: IRSpan) =>
     JSON.stringify([s.fontName, s.sizePt, !!s.bold, !!s.italic, !!s.underline, s.color]);
   const distinctSpanStyles = new Set(spans.map(styleKey)).size;
@@ -98,8 +102,11 @@ function mapText(paragraphs: IRParagraph[], fonts: Map<string, FontRemap>): Text
     }
   }
 
+  // Publisher ends each paragraph with a terminator (\r, normalized to \n by
+  // the model) — redundant with the paragraph structure, so strip trailing
+  // newlines per paragraph; mid-paragraph breaks stay.
   const content = paragraphs
-    .map((p) => p.spans.map((s) => s.text).join(""))
+    .map((p) => p.spans.map((s) => s.text).join("").replace(/\n+$/, ""))
     .join("\n");
 
   const text: TextProps = {
@@ -122,10 +129,20 @@ function mapText(paragraphs: IRParagraph[], fonts: Map<string, FontRemap>): Text
 }
 
 /** Map one page's shapes; ids are deterministic (`imp-p1-o3`) for testability. */
+/** Publisher's universal text-box default — 0.04 in on all sides. */
+function isDefaultInsets(p: { l: number; r: number; t: number; b: number }): boolean {
+  return [p.l, p.r, p.t, p.b].every((v) => Math.abs(v - 0.04) < 0.001);
+}
+
 function mapPage(
   ir: IRPage,
   pageIndex: number,
-  ctx: { fidelity: MapResult["fidelity"]; notes: ImportNote[]; fonts: Map<string, FontRemap> }
+  ctx: {
+    fidelity: MapResult["fidelity"];
+    notes: ImportNote[];
+    fonts: Map<string, FontRemap>;
+    sawDefaultInsets: boolean;
+  }
 ): LayoutPage {
   const pageId = `imp-p${pageIndex + 1}`;
   const objects: LayoutObject[] = [];
@@ -202,8 +219,16 @@ function mapPage(
         if (distinctAligns > 1) flag("mixed paragraph alignment flattened to the dominant alignment");
         if (shape.style.textVAlign && shape.style.textVAlign !== "top")
           flag(`vertical alignment '${shape.style.textVAlign}' rendered as top-aligned`);
-        if (shape.style.paddingIn && Object.values(shape.style.paddingIn).some((v) => v > 0))
-          flag("text-box insets not modeled — text starts at the frame edge (schema v2)");
+        // Every Publisher text frame carries the 0.04 in default insets —
+        // per-frame notes for a universal default would drown the report
+        // (corpus finding: 100% of real frames flagged). Default insets get
+        // one document-level note; only non-default insets flag the frame.
+        if (shape.style.paddingIn && Object.values(shape.style.paddingIn).some((v) => v > 0)) {
+          if (isDefaultInsets(shape.style.paddingIn)) ctx.sawDefaultInsets = true;
+          else flag("non-default text-box insets dropped — text starts at the frame edge (schema v2)");
+        }
+        if (shape.paragraphs.some((p) => p.hasIndent))
+          flag("paragraph indents dropped — per-paragraph layout arrives in P2");
         objects.push({ ...base, type: "text", fill: base.fill, text });
         break;
       }
@@ -225,7 +250,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   const fidelity = { converted: 0, degraded: 0, flagged: 0 };
   const notes: ImportNote[] = [];
   const fonts = new Map<string, FontRemap>();
-  const ctx = { fidelity, notes, fonts };
+  const ctx = { fidelity, notes, fonts, sawDefaultInsets: false };
 
   const first = ir.pages[0] ?? { wIn: 8.5, hIn: 11, shapes: [] };
   const size = { w: round(first.wIn), h: round(first.hIn) };
@@ -242,8 +267,24 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
       })
     : [{ id: "imp-p1", masterId: null, objects: [] }];
 
+  if (ctx.sawDefaultInsets)
+    notes.push({
+      tier: 2,
+      message:
+        "Publisher's default text-box insets (0.04 in) aren't modeled yet — text sits at the frame edge (schema v2 adds insets)",
+    });
   if (ir.sawLayers) notes.push({ tier: 2, message: "source layers flattened into the page z-order" });
   if (ir.sawGroups) notes.push({ tier: 2, message: "grouped objects imported ungrouped (grouping is backlog)" });
+  if (!ir.pages.length) {
+    // Corpus finding (business_card_template_10up.pub): publications whose
+    // content lives entirely on master pages convert empty — libmspub doesn't
+    // expose master pages. Flag it; never present an empty doc as a clean win.
+    notes.push({
+      tier: 3,
+      message:
+        "no drawable page content found — this publication's content may live on master pages, which the Publisher parser doesn't expose yet",
+    });
+  }
 
   const doc: LayoutDocument = {
     version: 1,
