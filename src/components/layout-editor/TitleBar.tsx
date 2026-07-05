@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { useLayoutStore } from "@/store";
+import { effectivePageSize } from "@/lib/layout/geometry";
 import { sizeLabel } from "@/lib/layout/presets";
 import { formatLen } from "@/lib/layout/units";
 
@@ -15,9 +16,17 @@ import { formatLen } from "@/lib/layout/units";
  */
 export function TitleBar() {
   const name = useLayoutStore((s) => s.doc.name);
-  const size = useLayoutStore((s) => s.doc.size);
+  // the hint reflects the visible page — its per-page override, else the doc
+  // size (plan L12); a master being edited shows the document size
+  const doc = useLayoutStore((s) => s.doc);
+  const activePageId = useLayoutStore((s) => s.activePageId);
+  const masterEditingId = useLayoutStore((s) => s.masterEditingId);
   const unit = useLayoutStore((s) => s.unit);
   const setName = useLayoutStore((s) => s.setName);
+
+  const size = masterEditingId
+    ? doc.size
+    : effectivePageSize(doc, doc.pages.find((p) => p.id === activePageId));
 
   return (
     <div className="flex h-10 shrink-0 items-center gap-3 border-b border-[#e0e0e0] bg-[#f0f0f0] px-[14px]">

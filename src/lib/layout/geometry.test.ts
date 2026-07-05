@@ -4,6 +4,7 @@ import {
   clampZoom,
   columnGuides,
   COLUMN_GUTTER_IN,
+  effectivePageSize,
   fitZoom,
   inToPx,
   MAX_PAGE_IN,
@@ -25,6 +26,19 @@ describe("in↔px conversion", () => {
 
   it("round-trips", () => {
     expect(pxToIn(inToPx(3.25, 0.63), 0.63)).toBeCloseTo(3.25, 10);
+  });
+});
+
+describe("effectivePageSize (L12)", () => {
+  const doc = { size: { w: 8.5, h: 11 } };
+
+  it("falls back to the document size without an override", () => {
+    expect(effectivePageSize(doc, { sizeOverride: undefined })).toEqual({ w: 8.5, h: 11 });
+    expect(effectivePageSize(doc, undefined)).toEqual({ w: 8.5, h: 11 });
+  });
+
+  it("uses the page override when present", () => {
+    expect(effectivePageSize(doc, { sizeOverride: { w: 11, h: 17 } })).toEqual({ w: 11, h: 17 });
   });
 });
 

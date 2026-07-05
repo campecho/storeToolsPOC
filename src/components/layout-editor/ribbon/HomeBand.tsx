@@ -11,6 +11,7 @@ import {
   Scissors,
   Search,
 } from "lucide-react";
+import { useLayoutStore } from "@/store";
 import { FONT_FAMILIES, FONT_SIZES, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
 import { FaceSelect } from "../FaceSelect";
 import { useTextTarget } from "../useTextTarget";
@@ -18,22 +19,57 @@ import { RibbonGroup } from "./RibbonGroup";
 
 /**
  * Home command band (wire 2b · Home): Clipboard · Font · Paragraph · Styles ·
- * Editing. Font/Paragraph/Styles are live against the text target (plan L5) —
- * the frame being edited or the selected text frame — and fall back to the
- * wire's at-rest faces, disabled, when there is none. Controls sit in one
- * row per group and wrap within it (plan §2, deviation #5) — the wire's big
- * Paste tile and stacked columns flatten to uniform pills.
- * PROTOTYPE-ONLY: the Clipboard and Editing groups, the list/¶ controls, and
- * Styles' "+ New" are inert chrome for later slices (plan §6).
+ * Editing. Clipboard is live (plan L13) — Paste/Cut/Copy act on the selection
+ * and the session clipboard, with real enabled/disabled states. Font/
+ * Paragraph/Styles are live against the text target (plan L5) — the frame
+ * being edited or the selected text frame — and fall back to the wire's
+ * at-rest faces, disabled, when there is none. Controls sit in one row per
+ * group and wrap within it (plan §2, deviation #5) — the wire's big Paste
+ * tile and stacked columns flatten to uniform pills.
+ * PROTOTYPE-ONLY: the Editing group, the list/¶ controls, and Styles'
+ * "+ New" are inert chrome for later slices (plan §6).
  */
 
-/** Static command pill — icon + label chrome (Clipboard/Editing groups). */
+/** Static command pill — icon + label chrome (the Editing group). */
 function Cmd({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex h-6 items-center gap-[5px] whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-[7px] text-[10.5px] text-[#666]">
       {icon}
       {children}
     </div>
+  );
+}
+
+/** Clickable command pill with a disabled state (the live Clipboard group, L13). */
+function CmdBtn({
+  icon,
+  children,
+  onClick,
+  disabled,
+  testId,
+  label,
+}: {
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  testId?: string;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      data-testid={testId}
+      className={`flex h-6 items-center gap-[5px] whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-[7px] text-[10.5px] text-[#666] ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[#c9c9c9]"
+      }`}
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
 
@@ -81,12 +117,43 @@ export function HomeBand() {
   const font = target?.text.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
 
+  // Clipboard (plan L13): Copy/Cut track the selection, Paste tracks the clipboard
+  const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
+  const hasClipboard = useLayoutStore((s) => s.clipboard.length > 0);
+  const copySelection = useLayoutStore((s) => s.copySelection);
+  const cutSelection = useLayoutStore((s) => s.cutSelection);
+  const pasteClipboard = useLayoutStore((s) => s.pasteClipboard);
+
   return (
     <>
       <RibbonGroup label="Clipboard">
-        <Cmd icon={<Clipboard size={12} strokeWidth={1.7} className="text-[#777]" />}>Paste</Cmd>
-        <Cmd icon={<Scissors size={12} strokeWidth={1.7} className="text-[#777]" />}>Cut</Cmd>
-        <Cmd icon={<Copy size={12} strokeWidth={1.7} className="text-[#777]" />}>Copy</Cmd>
+        <CmdBtn
+          icon={<Clipboard size={12} strokeWidth={1.7} className="text-[#777]" />}
+          onClick={pasteClipboard}
+          disabled={!hasClipboard}
+          testId="clip-paste"
+          label="Paste"
+        >
+          Paste
+        </CmdBtn>
+        <CmdBtn
+          icon={<Scissors size={12} strokeWidth={1.7} className="text-[#777]" />}
+          onClick={cutSelection}
+          disabled={!hasSelection}
+          testId="clip-cut"
+          label="Cut"
+        >
+          Cut
+        </CmdBtn>
+        <CmdBtn
+          icon={<Copy size={12} strokeWidth={1.7} className="text-[#777]" />}
+          onClick={copySelection}
+          disabled={!hasSelection}
+          testId="clip-copy"
+          label="Copy"
+        >
+          Copy
+        </CmdBtn>
       </RibbonGroup>
 
       <RibbonGroup label="Font">

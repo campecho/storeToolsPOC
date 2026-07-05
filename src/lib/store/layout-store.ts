@@ -63,6 +63,8 @@ export type EditorTool =
   | "move";
 export type InspectorTab = "props" | "text" | "align" | "page";
 export type PagesPaneView = "pages" | "masters";
+/** Page-tab "Apply to" target for size edits (plan L12). */
+export type PageSizeScope = "document" | "page";
 /** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip. */
 export type PanelTab = "pages" | "assets" | "layers";
 /** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
@@ -277,6 +279,12 @@ export interface LayoutEditorState {
   past: LayoutDocument[];
   future: LayoutDocument[];
 
+  // clipboard (session, plan L13): copied objects survive page/master
+  // navigation and are never persisted; pasteCount cascades repeated pastes
+  // and resets on the next copy/cut.
+  clipboard: LayoutObject[];
+  pasteCount: number;
+
   // experience (persisted; switching arrives in L14 — two levels since v1.3)
   level: ExperienceLevel;
   // display unit (persisted, L11) — presentation only, geometry stays inches
@@ -287,6 +295,10 @@ export interface LayoutEditorState {
   zoom: number;
   pan: { x: number; y: number };
   guidesVisible: boolean;
+  /** Two-page spread view (plan L12) — session-only, Publisher pairing. */
+  spread: boolean;
+  /** Where the Page tab's size edits land (plan L12) — session UI, not the file. */
+  pageSizeScope: PageSizeScope;
   /** Bumped by page-geometry mutations — CanvasViewport re-fits when it moves. */
   fitRequestId: number;
   /** One-shot deep-link cue (`/layout?custom=1`): focus the Page tab's width field. */
@@ -311,6 +323,12 @@ export interface LayoutEditorState {
   setMargin: (margin: number) => void;
   setColumns: (columns: number) => void;
   setUnit: (unit: Unit) => void;
+  /** Which target the Page tab's size controls edit (plan L12). */
+  setPageSizeScope: (scope: PageSizeScope) => void;
+  /** Pin the active page to its own size (plan L12) — clamps, one undo step, re-fits. */
+  setActivePageSize: (w: number, h: number) => void;
+  /** Drop the active page's override so it follows the document size again (L12). */
+  clearActivePageSize: () => void;
 
   // ruler guides (plan L11) — document data, undoable, persisted
   /** Drop a new guide at a page-inch position; one undo step. */
@@ -339,6 +357,8 @@ export interface LayoutEditorState {
   zoomOut: () => void;
   setPan: (pan: { x: number; y: number }) => void;
   toggleGuides: () => void;
+  /** Two-page spread view on/off (plan L12) — session-only. */
+  setSpread: (spread: boolean) => void;
   setFocusPageSize: (v: boolean) => void;
 
   // selection & objects (the editing surface — active page or edited master)
@@ -369,6 +389,13 @@ export interface LayoutEditorState {
   deleteSelection: () => void;
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
+  /** Copy the selection to the session clipboard (plan L13) — not an undo step. */
+  copySelection: () => void;
+  /** Cut = copy the selection, then delete it, in one undo step (plan L13). */
+  cutSelection: () => void;
+  /** Paste the clipboard onto the current surface — fresh ids, cascading offset,
+      selects the pasted objects; one undo step (plan L13). */
+  pasteClipboard: () => void;
   /** Step selection up/down the z-order, or jump it to the very front/back (Arrange, L10). */
   reorder: (dir: "forward" | "backward" | "front" | "back") => void;
   /** Move one object to an absolute z-index on the surface (Layers drag, L8). */
@@ -431,10 +458,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
       alignRel: "page",
       past: [],
       future: [],
+      clipboard: [],
+      pasteCount: 0,
 
       zoom: 1,
       pan: { x: 0, y: 0 },
       guidesVisible: true,
+      spread: false,
+      pageSizeScope: "document",
       fitRequestId: 0,
       focusPageSize: false,
 
@@ -521,6 +552,52 @@ export const useLayoutStore = create<LayoutEditorState>()(
         }),
 
       setUnit: (unit) => set({ unit }),
+
+      setPageSizeScope: (scope) => set({ pageSizeScope: scope }),
+
+      // Per-page size override (plan L12) — targets the active page (never a
+      // master; masters always follow the document size). Same undo + re-fit
+      // contract as the document-level setPageSize.
+      setActivePageSize: (w, h) =>
+        set((s) => {
+          const cw = clampPageDim(w);
+          const ch = clampPageDim(h);
+          const page = s.doc.pages.find((p) => p.id === s.activePageId);
+          if (!page) return s;
+          if (page.sizeOverride && page.sizeOverride.w === cw && page.sizeOverride.h === ch) {
+            return s;
+          }
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              pages: s.doc.pages.map((p) =>
+                p.id === s.activePageId ? { ...p, sizeOverride: { w: cw, h: ch } } : p,
+              ),
+            },
+            fitRequestId: s.fitRequestId + 1,
+          };
+        }),
+
+      clearActivePageSize: () =>
+        set((s) => {
+          const page = s.doc.pages.find((p) => p.id === s.activePageId);
+          if (!page || !page.sizeOverride) return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: {
+              ...s.doc,
+              pages: s.doc.pages.map((p) => {
+                if (p.id !== s.activePageId) return p;
+                // strip the optional key entirely so the page matches a pristine one
+                const { sizeOverride: _drop, ...rest } = p;
+                void _drop;
+                return rest;
+              }),
+            },
+            fitRequestId: s.fitRequestId + 1,
+          };
+        }),
 
       addGuide: (axis, at) =>
         set((s) => ({
@@ -645,6 +722,9 @@ export const useLayoutStore = create<LayoutEditorState>()(
       zoomOut: () => set((s) => ({ zoom: zoomOutStep(s.zoom) })),
       setPan: (pan) => set({ pan }),
       toggleGuides: () => set((s) => ({ guidesVisible: !s.guidesVisible })),
+      // toggling the view re-fits so the spread (or the lone page) lands framed
+      setSpread: (spread) =>
+        set((s) => (s.spread === spread ? s : { spread, fitRequestId: s.fitRequestId + 1 })),
       setFocusPageSize: (v) => set({ focusPageSize: v }),
 
       setSelection: (ids) => set({ selectedIds: ids, selectedGuide: null }),
@@ -780,6 +860,53 @@ export const useLayoutStore = create<LayoutEditorState>()(
             ...pushed(s, s.doc),
             doc: mapSurfaceObjects(s, (objs) => [...objs, ...copies]),
             selectedIds: copies.map((c) => c.id),
+          };
+        }),
+
+      copySelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const picked = surfaceObjects(s).filter((o) => sel.has(o.id));
+          if (!picked.length) return s;
+          // copy doesn't touch the document — no history push; reset the cascade
+          return { clipboard: picked, pasteCount: 0 };
+        }),
+
+      cutSelection: () =>
+        set((s) => {
+          if (!s.selectedIds.length) return s;
+          const sel = new Set(s.selectedIds);
+          const picked = surfaceObjects(s).filter((o) => sel.has(o.id));
+          if (!picked.length) return s;
+          // copy + delete land in one undo step
+          return {
+            ...pushed(s, s.doc),
+            clipboard: picked,
+            pasteCount: 0,
+            doc: mapSurfaceObjects(s, (objs) => objs.filter((o) => !sel.has(o.id))),
+            selectedIds: [],
+            editingTextId:
+              s.editingTextId && sel.has(s.editingTextId) ? null : s.editingTextId,
+          };
+        }),
+
+      pasteClipboard: () =>
+        set((s) => {
+          if (!s.clipboard.length) return s;
+          // cascade: each paste steps one duplicate-offset further than the last
+          const k = s.pasteCount + 1;
+          const off = DUPLICATE_OFFSET_IN * k;
+          const copies = s.clipboard.map((o) => ({
+            ...translated(o, off, off),
+            id: crypto.randomUUID(), // fresh ids; a picture keeps its assetId via the spread
+          }));
+          return {
+            ...pushed(s, s.doc),
+            // lands on the current editing surface — master or active page (L6)
+            doc: mapSurfaceObjects(s, (objs) => [...objs, ...copies]),
+            selectedIds: copies.map((c) => c.id),
+            pasteCount: k,
           };
         }),
 
@@ -976,11 +1103,15 @@ export const useLayoutStore = create<LayoutEditorState>()(
             activePageId: "page-1",
             masterEditingId: null,
             guidesVisible: true,
+            spread: false,
+            pageSizeScope: "document",
             pan: { x: 0, y: 0 },
             selectedIds: [],
             editingTextId: null,
             past: [],
             future: [],
+            clipboard: [],
+            pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
           };
         }),

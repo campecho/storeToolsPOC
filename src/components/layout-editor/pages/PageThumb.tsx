@@ -1,5 +1,5 @@
 import type { LayoutDocument, LayoutObject, LayoutPage } from "@/schema";
-import { inToPx } from "@/lib/layout/geometry";
+import { effectivePageSize, inToPx } from "@/lib/layout/geometry";
 import { ObjectNode } from "../canvas/ObjectNode";
 
 /**
@@ -7,37 +7,40 @@ import { ObjectNode } from "../canvas/ObjectNode";
  * — the same ObjectNode tree the canvas draws, laid out at reference zoom 1
  * and CSS-scaled into the tile, so the thumbnail can't drift from the page.
  * Tiles contain-fit an 88 × 114 budget (the wire's tile is exactly Letter at
- * that fit); the active page carries the wire's red border and numeral.
+ * that fit); the active page carries the wire's red border and numeral. The
+ * tile is sized from the page's *effective* size (plan L12), so an overridden
+ * page reads true-shape in the navigator.
  */
 
 export const THUMB_MAX_W = 88;
 export const THUMB_MAX_H = 114;
 
-export function thumbScale(doc: LayoutDocument): number {
-  return Math.min(THUMB_MAX_W / inToPx(doc.size.w, 1), THUMB_MAX_H / inToPx(doc.size.h, 1));
+export function thumbScale(size: { w: number; h: number }): number {
+  return Math.min(THUMB_MAX_W / inToPx(size.w, 1), THUMB_MAX_H / inToPx(size.h, 1));
 }
 
 /** Objects at zoom 1, scaled down as one layer. `withTestId={false}` keeps
  *  mini-render nodes out of the canvas testid namespace. */
 export function MiniRender({
-  doc,
+  size,
   objects,
 }: {
-  doc: LayoutDocument;
+  /** The page's effective size in inches (plan L12). */
+  size: { w: number; h: number };
   objects: LayoutObject[];
 }) {
-  const scale = thumbScale(doc);
+  const scale = thumbScale(size);
   return (
     <div
       className="pointer-events-none relative overflow-hidden bg-white"
-      style={{ width: inToPx(doc.size.w, 1) * scale, height: inToPx(doc.size.h, 1) * scale }}
+      style={{ width: inToPx(size.w, 1) * scale, height: inToPx(size.h, 1) * scale }}
     >
       <div
         className="absolute left-0 top-0 origin-top-left"
         style={{
           transform: `scale(${scale})`,
-          width: inToPx(doc.size.w, 1),
-          height: inToPx(doc.size.h, 1),
+          width: inToPx(size.w, 1),
+          height: inToPx(size.h, 1),
         }}
       >
         {objects.map((o) => (
@@ -70,6 +73,7 @@ export function PageThumb({
   const master = page.masterId ? doc.masters.find((m) => m.id === page.masterId) : undefined;
   // master furniture beneath page objects — the same stacking as the canvas
   const objects = [...(master?.objects ?? []), ...page.objects];
+  const size = effectivePageSize(doc, page);
 
   return (
     <div className="group relative flex flex-col items-center gap-[5px]">
@@ -85,7 +89,7 @@ export function PageThumb({
             : "border border-[#dcdcdc] hover:border-[#b8b8b8]"
         }`}
       >
-        <MiniRender doc={doc} objects={objects} />
+        <MiniRender size={size} objects={objects} />
       </button>
       {removable && (
         <button
