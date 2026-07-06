@@ -35,7 +35,7 @@ export function PubConvertCallout() {
       setPhase({ kind: "error", message: outcome.message });
       return;
     }
-    useLayoutStore.getState().openImportedDocument(outcome.doc, outcome.report);
+    useLayoutStore.getState().openImportedDocument(outcome.doc, outcome.report, outcome.blobs);
     router.push("/layout");
   };
 

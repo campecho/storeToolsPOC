@@ -12,7 +12,7 @@ import {
 } from "@/schema";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
 import { applyToAllRuns, type TextPatch } from "@/lib/layout/text";
-import { clearAssetBlobs, deleteAssetBlob } from "@/lib/assets/blob-store";
+import { clearAssetBlobs, deleteAssetBlob, replaceAssetBlobs } from "@/lib/assets/blob-store";
 import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
 import {
   clampPageDim,
@@ -420,7 +420,11 @@ export interface LayoutEditorState {
       results enter the editor). Replaces the working document wholesale,
       exactly like resetDoc, and stashes the fidelity report. The doc must
       already be schema-validated (client.ts does). */
-  openImportedDocument: (doc: LayoutDocument, report: ImportReport) => void;
+  openImportedDocument: (
+    doc: LayoutDocument,
+    report: ImportReport,
+    blobs?: Record<string, Blob>,
+  ) => void;
 }
 
 // SSR/tests have no localStorage — persistence becomes a silent no-op there.
@@ -1119,11 +1123,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
           };
         }),
 
-      openImportedDocument: (doc, report) =>
+      openImportedDocument: (doc, report, blobs) =>
         set((s) => {
-          // P1 imports carry no assets (extraction is P3); the library resets
-          // with the document. P3 replaces this clear with blob seeding.
-          void clearAssetBlobs();
+          // Seed the extracted image bytes (P3) as the library resets with the
+          // document; a P1-era import carries none, so an absent set just clears.
+          void replaceAssetBlobs(blobs ?? {});
           return {
             doc,
             activePageId: doc.pages[0]?.id ?? "page-1",

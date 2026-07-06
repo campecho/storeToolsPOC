@@ -51,20 +51,27 @@ function MountainGlyph({ px }: { px: number }) {
 }
 
 /**
- * Picture frame content (L8): the bound image cover-fit (ASSUMPTION — the
- * `fit` mode field is a schema-v2 delta), the placeholder glyph when unbound,
- * or the missing-asset state when the id has no bytes behind it.
+ * Picture frame content (L8): the bound image fit to the frame — cover by
+ * default (the L8 upload default), or the frame's `fit` mode when set (imports
+ * emit "stretch") — the placeholder glyph when unbound, or the missing-asset
+ * state when the id has no bytes behind it.
  */
 function PictureFill({
   assetId,
+  fit,
   glyphPx,
   withTestId,
 }: {
   assetId?: string;
+  fit?: FrameObject["fit"];
   glyphPx: number;
   withTestId: boolean;
 }) {
   const url = useAssetUrl(assetId);
+  // absent/"cover" fills and crops (the default); "stretch" distorts to the
+  // frame exactly (Publisher's scaling); "contain" fits without cropping.
+  const objectFit =
+    fit === "stretch" ? "object-fill" : fit === "contain" ? "object-contain" : "object-cover";
   if (!assetId) return <MountainGlyph px={glyphPx} />;
   if (url === undefined) return null; // resolving — never flash the placeholder
   if (url === null) {
@@ -87,7 +94,7 @@ function PictureFill({
       alt=""
       draggable={false}
       data-testid={withTestId ? "picture-image" : undefined}
-      className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      className={`pointer-events-none absolute inset-0 h-full w-full ${objectFit}`}
     />
   );
 }
@@ -317,6 +324,7 @@ export function ObjectNode({
       {obj.type === "picture" && (
         <PictureFill
           assetId={obj.assetId}
+          fit={obj.fit}
           glyphPx={Math.min(inToPx(obj.w, zoom), inToPx(obj.h, zoom)) * 0.35}
           withTestId={withTestId}
         />

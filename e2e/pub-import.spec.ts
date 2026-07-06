@@ -50,12 +50,18 @@ test.describe(".pub import (P1)", () => {
 
     // Page 1 of the demo flyer: 3 rects (banner + rotated + rounded), 2 REAL
     // vector paths since P2 (the star polygon and the bezier leaf), 2 text
-    // frames, the divider line, and the image placeholder — nothing dropped.
+    // frames, the divider line, and the picture frame — nothing dropped.
     await expect(page.getByTestId("object-rect")).toHaveCount(3);
     await expect(page.getByTestId("object-path")).toHaveCount(2);
     await expect(page.getByTestId("object-text")).toHaveCount(2);
     await expect(page.getByTestId("object-line")).toHaveCount(1);
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
+
+    // P3: the picture frame carries the extracted image bytes now — the <img>
+    // renders (not the placeholder glyph, not the missing state), still exactly
+    // one picture on the page. (Depends on the golden trace's real PNG payload.)
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+    await expect(page.getByTestId("picture-missing")).toHaveCount(0);
 
     // Text landed with its content, per-run style, and the source ink color
     const headline = page.getByTestId("text-content").first();

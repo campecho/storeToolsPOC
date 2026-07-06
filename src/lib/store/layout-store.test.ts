@@ -9,6 +9,7 @@ import {
   type EditorTool,
 } from "./layout-store";
 import { LayoutDocumentSchema } from "@/schema";
+import type { ImportReport } from "@/lib/import/report";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
 import { plainToParagraphs, textContent, textSummary } from "@/lib/layout/text";
 import { MAX_PAGE_IN } from "@/lib/layout/geometry";
@@ -1244,6 +1245,40 @@ describe("clipboard: copy, cut & paste (L13)", () => {
     s.copySelection();
     s.resetDoc();
     expect(useLayoutStore.getState().clipboard).toEqual([]);
+  });
+});
+
+describe("imported documents (P3 image extraction)", () => {
+  const importReport: ImportReport = {
+    mode: "fixture",
+    source: { filename: "demo.pub", bytes: 1024 },
+    fidelity: { converted: 1, degraded: 0, flagged: 0 },
+    fonts: [],
+    notes: [],
+    overset: [],
+  };
+
+  it("openImportedDocument accepts a blobs record — the blob store no-ops without IndexedDB", () => {
+    const s = useLayoutStore.getState();
+    const doc = createDefaultDocument();
+    const blobs = { "asset-1": new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }) };
+    // seeding is fire-and-forget and degrades to a no-op in the node env
+    expect(() => s.openImportedDocument(doc, importReport, blobs)).not.toThrow();
+    const st = useLayoutStore.getState();
+    expect(st.importReport).toEqual(importReport);
+    expect(st.doc).toEqual(doc);
+  });
+
+  it("a v2 imported doc with a stretch-fit picture frame round-trips the schema", () => {
+    const doc = createDefaultDocument();
+    const pic = { ...createFrame("picture", 1, 1, 2, 2), assetId: "asset-1", fit: "stretch" as const };
+    doc.pages[0].objects.push(pic);
+    const parsed = LayoutDocumentSchema.safeParse(doc);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const frame = parsed.data.pages[0].objects[0];
+      expect(frame.type === "picture" && frame.fit).toBe("stretch");
+    }
   });
 });
 

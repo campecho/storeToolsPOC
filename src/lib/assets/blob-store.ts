@@ -70,6 +70,21 @@ export async function deleteAssetBlob(id: string): Promise<void> {
   notifyBytes(id);
 }
 
+/**
+ * Import seeding (P3): swap the whole library's bytes in one shot. Reuses the
+ * clear semantics (drop cached URLs, notify the old ids so mounted pictures let
+ * go of their now-dead object URLs), then writes each new blob and notifies its
+ * id so a picture already mounted against that id re-resolves to the fresh bytes
+ * — putAssetBlob stays silent for the L9 upload path, so the notify lives here.
+ */
+export async function replaceAssetBlobs(blobs: Record<string, Blob>): Promise<void> {
+  await clearAssetBlobs();
+  for (const [id, blob] of Object.entries(blobs)) {
+    await putAssetBlob(id, blob);
+    notifyBytes(id);
+  }
+}
+
 /** Reset support: the library metadata resets with the document, so the bytes go too. */
 export async function clearAssetBlobs(): Promise<void> {
   const ids = Array.from(urlCache.keys());
