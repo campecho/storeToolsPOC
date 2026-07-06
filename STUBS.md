@@ -68,6 +68,12 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   ("no drawable page content"); a fix means going below libmspub (research doc's
   reverse-engineering appendix) or accepting the gap for the on-ramp
   (`src/lib/import/mapper.ts`).
+- **Page margins / ruler guides / columns / bleed aren't imported** (upstream, corpus-verified):
+  libmspub's `startPage` exposes only width/height — no page-level layout metadata anywhere in
+  the trace. Imported docs take editor defaults (margin 0.5in, bleed 0, 1 column, no guides);
+  page **size** is imported (incl. per-page). The correct source for print margins/bleed is the
+  product spec on catalog binding (plan §6), not the customer's `.pub` (`src/lib/import/mapper.ts`,
+  plan §10.3).
 
 ## Assumptions to confirm (`ASSUMPTION:`)
 

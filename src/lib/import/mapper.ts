@@ -292,7 +292,11 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
     product: null,
     size,
     orientation: size.w > size.h ? "landscape" : "portrait",
-    // .pub carries no bleed; margins are editor guides, kept at the default.
+    // Editor defaults for page setup: libmspub's trace exposes NO page-level
+    // margin / guide / column / bleed data — corpus-verified, startPage carries
+    // only width/height (plan §10.3). Page size is the one page-setup value we
+    // import; margins/bleed/safe-area belong to the product spec on catalog
+    // binding ("born correct", plan §6), not the customer's .pub.
     bleed: 0,
     margin: 0.5,
     columns: 1,

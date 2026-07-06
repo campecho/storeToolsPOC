@@ -489,6 +489,12 @@ LayoutDocument mapper                    IDML generator (sibling consumer,
 
 **Tiers:** **1** convert clean · **2** degrade with a report note · **3** flag-only (visible placeholder + report; nothing silently dropped). The tiering rule is the design doc's import-report requirement (§5.1) made mechanical.
 
+**What libmspub does *not* expose — page margins, layout/ruler guides, columns, bleed (corpus-verified, v1.5).** Across the real corpus (`fixtures/pub-corpus/`), the `startPage` callback carries **only `svg:width`/`svg:height`** — no page-level margin, guide, column, or bleed properties appear anywhere in the trace (librevenge's drawing interface is shape-oriented; Publisher's layout guides live in document-structure records libmspub doesn't surface). So these are **not a later P-step** — the data isn't in the parse path:
+
+- **Imported docs get editor defaults** — `margin 0.5in`, `bleed 0`, `columns 1`, no ruler guides — and the page **size** (per-page) is the one page-setup value that *is* imported. Text-frame column gaps (`fo:column-gap`) and paragraph indents (`fo:margin-left`/`fo:text-indent`) *are* in the trace but are frame/paragraph-level, not page guides.
+- **The right source for print margins/bleed/safe-area is the product spec, not the customer's `.pub`.** For a print shop these belong to the SKU the job is bound to ("born correct", §6 catalog/spec-sync) — more reliable than whatever arbitrary guides a customer's file happened to carry. So margins/guides effectively *arrive with catalog binding*, not with `.pub` import.
+- **Recovering the `.pub`'s own guides** would require going below libmspub to the page-setup records (the research doc's reverse-engineering appendix) — high effort, low value given the line above. Recorded as a non-goal for the P-tranche unless a corpus need forces it.
+
 ### 10.4 Import report & font remap
 
 The response's `report` is structured JSON rendered as a panel when the converted doc opens (and stored with the doc):
