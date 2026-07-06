@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { CONVERT_TIMEOUT_MS } from "./limits";
+import { CONVERT_AS_BYTES, CONVERT_CPU_SECONDS, CONVERT_TIMEOUT_MS } from "./limits";
 
 /**
  * The `pub2raw` subprocess seam — the ONE file that knows conversion runs as
@@ -12,9 +12,11 @@ import { CONVERT_TIMEOUT_MS } from "./limits";
  * internals and nothing else.
  *
  * POC-enforced controls hosted here (plan §10.1): out-of-process execution,
- * wall-clock timeout with SIGKILL (a hang is a finding, not a wait), bounded
- * output, and a per-job scratch-dir jail wiped in `finally`. Size caps are
- * enforced at the route before bytes reach this file.
+ * wall-clock timeout with SIGKILL (a hang is a finding, not a wait), CPU and
+ * address-space rlimits via a `prlimit` wrapper (the kernel-enforced backstop
+ * for what a userland timer can't cover), bounded output, and a per-job
+ * scratch-dir jail wiped in `finally`. Size caps are enforced at the route
+ * before bytes reach this file.
  *
  * Fixture mode (plan §10.1): when the binary is absent — every dev/CI
  * machine — or `STP_IMPORT_FIXTURE=1` forces it, conversion serves the
@@ -30,7 +32,7 @@ const execFileP = promisify(execFile);
 
 export type ConvertOutcome =
   | { ok: true; trace: string; mode: "live" | "fixture" }
-  | { ok: false; error: "parse-failed" | "timeout"; detail: string };
+  | { ok: false; error: "parse-failed" | "timeout" | "resource-limit"; detail: string };
 
 const FIXTURE_TRACE_PATH = join(process.cwd(), "fixtures", "pub-traces", "demo-flyer.trace");
 
@@ -57,6 +59,41 @@ async function pub2rawAvailable(): Promise<boolean> {
   return (await pub2rawProbe()).available;
 }
 
+let rlimitProbe: { available: boolean; error?: string } | null = null;
+
+/**
+ * Probe `prlimit` (util-linux), cached per process like the pub2raw probe.
+ * Present on the Docker runner (Debian bookworm-slim) and Ubuntu CI; absent
+ * on macOS dev boxes — there live conversion runs UNWRAPPED, and the gap is
+ * surfaced (not silent) via importDiagnostics().rlimits.
+ */
+async function prlimitProbe(): Promise<{ available: boolean; error?: string }> {
+  if (rlimitProbe !== null) return rlimitProbe;
+  try {
+    await execFileP("prlimit", ["--version"], { timeout: 5_000 });
+    rlimitProbe = { available: true };
+  } catch (err) {
+    const e = err as { code?: string; message?: string };
+    rlimitProbe = { available: false, error: e.code ? `${e.code}: ${e.message ?? ""}`.trim() : e.message ?? "unknown error" };
+  }
+  return rlimitProbe;
+}
+
+/** The rlimit posture for the GET diagnostic — enforced (how) or not (why). */
+async function rlimitDiagnostics() {
+  const rl = await prlimitProbe();
+  return rl.available
+    ? {
+        enforced: true as const,
+        via: "prlimit" as const,
+        limits: { cpuSeconds: CONVERT_CPU_SECONDS, asBytes: CONVERT_AS_BYTES },
+      }
+    : {
+        enforced: false as const,
+        reason: `prlimit not runnable (${rl.error}) — live conversion runs without CPU/memory rlimits on this host; the wall-clock timeout is the only subprocess cap`,
+      };
+}
+
 export async function fixtureModeActive(): Promise<boolean> {
   if (process.env.STP_IMPORT_FIXTURE === "1") return true;
   return !(await pub2rawAvailable());
@@ -70,6 +107,7 @@ export async function importDiagnostics() {
     mode: fixtureForced || !p.available ? ("fixture" as const) : ("live" as const),
     fixtureForced,
     pub2raw: p,
+    rlimits: await rlimitDiagnostics(),
     cwd: process.cwd(),
     reason: fixtureForced
       ? "STP_IMPORT_FIXTURE=1 is set in this server's environment — remove it to convert real files"
@@ -92,7 +130,20 @@ export async function convertPub(bytes: Uint8Array): Promise<ConvertOutcome> {
   const inputPath = join(jail, "input.pub");
   try {
     await writeFile(inputPath, bytes);
-    const { stdout } = await execFileP("pub2raw", [inputPath], {
+    // rlimit wrapper (plan §10.1): `prlimit --cpu --as -- pub2raw` sets
+    // kernel-enforced CPU-time and address-space ceilings on the conversion.
+    // prlimit exec()s the target (no intermediate process), so the wall-clock
+    // SIGKILL below still lands on pub2raw itself and exit status propagates
+    // unchanged. The CPU limit is soft:hard with a 5 s gap — with soft==hard
+    // the kernel prefers SIGKILL over SIGXCPU (verified on this kernel), and
+    // a genuine CPU overrun would then be indistinguishable from a wall-clock
+    // kill. Where prlimit is missing the conversion runs unwrapped — an
+    // honest fallback reported by importDiagnostics(), never silent.
+    const wrap = (await prlimitProbe()).available;
+    const argv = wrap
+      ? ["prlimit", `--cpu=${CONVERT_CPU_SECONDS}:${CONVERT_CPU_SECONDS + 5}`, `--as=${CONVERT_AS_BYTES}`, "--", "pub2raw", inputPath]
+      : ["pub2raw", inputPath];
+    const { stdout } = await execFileP(argv[0], argv.slice(1), {
       timeout: CONVERT_TIMEOUT_MS,
       killSignal: "SIGKILL",
       maxBuffer: 64 * 1024 * 1024,
@@ -101,6 +152,15 @@ export async function convertPub(bytes: Uint8Array): Promise<ConvertOutcome> {
     return { ok: true, trace: stdout, mode: "live" };
   } catch (err) {
     const e = err as { killed?: boolean; signal?: string; code?: number | string; stderr?: string };
+    // Kill classification, most specific first. SIGXCPU is unambiguously the
+    // CPU rlimit (the kernel raises it at the soft limit; nothing else in this
+    // pipeline sends it). An RLIMIT_AS overrun, by contrast, surfaces INSIDE
+    // the child as allocation failure — a nonzero exit or a bad_alloc SIGABRT
+    // indistinguishable from an ordinary parser crash — so it stays
+    // "parse-failed"; the security property (bounded memory) holds either way.
+    if (e.signal === "SIGXCPU") {
+      return { ok: false, error: "resource-limit", detail: `conversion exceeded the ${CONVERT_CPU_SECONDS}s CPU rlimit (SIGXCPU)` };
+    }
     if (e.killed || e.signal === "SIGKILL") {
       return { ok: false, error: "timeout", detail: `conversion exceeded ${CONVERT_TIMEOUT_MS / 1000}s and was killed` };
     }

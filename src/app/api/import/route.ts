@@ -105,7 +105,9 @@ export async function POST(req: Request) {
       converted.error,
       converted.error === "timeout"
         ? "Conversion timed out — the file may be damaged or too complex."
-        : "Publisher parser couldn't read this file — it may be damaged or an unsupported version."
+        : converted.error === "resource-limit"
+          ? "Conversion exceeded resource limits — the file may be damaged or too complex."
+          : "Publisher parser couldn't read this file — it may be damaged or an unsupported version."
     );
   }
 
