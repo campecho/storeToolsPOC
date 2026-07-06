@@ -431,6 +431,19 @@ export interface LayoutEditorState {
       the import report panel so the associate sees what to review. No-op when
       there's no active import report. */
   setImportOverset: (objectIds: string[]) => void;
+  /** Import autofit (§10.5's "shrink to fit"): apply the measured per-frame
+      font scales and the residual overset list in one write. `entries` is the
+      COMPLETE autofit state for the frames the check evaluated — scale < 1
+      sets `text.fontScale`, scale === 1 clears it — so late-font re-measures
+      converge instead of stacking. Each applied scale is REPORTED as a
+      kind:"autofit" tier-2 note (replacing previous autofit notes, idempotent);
+      frames the floor couldn't rescue land in `overset` and stay badged. Not
+      an undo step: this is import materialization, like the open itself.
+      No-op when there's no active import report. */
+  applyImportAutofit: (
+    entries: { objectId: string; scale: number }[],
+    oversetIds: string[],
+  ) => void;
 }
 
 // SSR/tests have no localStorage — persistence becomes a silent no-op there.
@@ -1169,6 +1182,47 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             importReport: { ...s.importReport, overset: objectIds },
             ...(objectIds.length ? { panelTab: "import" as const, panelOpen: true } : {}),
+          };
+        }),
+
+      applyImportAutofit: (entries, oversetIds) =>
+        set((s) => {
+          if (!s.importReport) return s;
+          const scaleById = new Map(entries.map((e) => [e.objectId, e.scale]));
+          const pageOf = new Map<string, string>();
+          const pages = s.doc.pages.map((page) => {
+            let changed = false;
+            const objects = page.objects.map((o) => {
+              const scale = scaleById.get(o.id);
+              if (scale === undefined || o.type !== "text" || !o.text) return o;
+              pageOf.set(o.id, page.id);
+              const { fontScale: prev, ...rest } = o.text;
+              const next = scale < 1 ? { ...rest, fontScale: scale } : rest;
+              if ((prev ?? 1) === (scale < 1 ? scale : 1)) return o;
+              changed = true;
+              return { ...o, text: next };
+            });
+            return changed ? { ...page, objects } : page;
+          });
+          // Silent-but-REPORTED: every applied scale is a deep-linkable note;
+          // re-measures replace prior autofit notes rather than stacking them.
+          const applied = entries.filter((e) => e.scale < 1 && pageOf.has(e.objectId));
+          const notes = [
+            ...s.importReport.notes.filter((n) => n.kind !== "autofit"),
+            ...applied.map((e) => ({
+              kind: "autofit" as const,
+              tier: 2 as const,
+              objectId: e.objectId,
+              pageId: pageOf.get(e.objectId),
+              message: `Auto-fit: text scaled to ${Math.round(e.scale * 100)}% so it still fits its frame (the remapped stand-in font runs slightly wide).`,
+            })),
+          ];
+          return {
+            doc: { ...s.doc, pages },
+            importReport: { ...s.importReport, notes, overset: oversetIds },
+            ...(applied.length || oversetIds.length
+              ? { panelTab: "import" as const, panelOpen: true }
+              : {}),
           };
         }),
     }),

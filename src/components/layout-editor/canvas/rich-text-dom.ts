@@ -19,11 +19,18 @@ const PARA_ATTR = "data-pp";
 
 type ParaProps = Pick<Paragraph, "align" | "lineSpacing" | "indent" | "firstLineIndent">;
 
-/** Inline CSS for one run at a zoom — shared with the static TextFrameNode. */
-export function runCss(run: { font: TextRun["font"]; color: string }, zoom: number) {
+/** Inline CSS for one run at a zoom — shared with the static TextFrameNode.
+    `fontScale` is the frame's import-autofit factor (schema `text.fontScale`):
+    it scales the RENDERED size only — the run's declared size (and the data
+    attribute the parser reads back) stays the source of truth. */
+export function runCss(
+  run: { font: TextRun["font"]; color: string },
+  zoom: number,
+  fontScale = 1,
+) {
   return {
     fontFamily: fontStack(run.font.family),
-    fontSize: `${ptToPx(run.font.size, zoom)}px`,
+    fontSize: `${ptToPx(run.font.size * fontScale, zoom)}px`,
     fontWeight: run.font.bold ? "700" : "400",
     fontStyle: run.font.italic ? "italic" : "normal",
     textDecoration: run.font.underline ? "underline" : "none",
@@ -50,8 +57,12 @@ function paraProps(p: Paragraph): ParaProps {
   };
 }
 
-/** Build the overlay's children from the document text. */
+/** Build the overlay's children from the document text. Renders at the
+    frame's autofit scale (visual parity with the canvas) while the data
+    attributes keep the DECLARED styles — parseEditableDom reads those, so a
+    scaled frame round-trips its true run sizes untouched. */
 export function seedEditableDom(el: HTMLElement, text: TextProps, zoom: number): void {
+  const scale = text.fontScale ?? 1;
   el.replaceChildren();
   for (const p of text.paragraphs) {
     const div = document.createElement("div");
@@ -62,7 +73,7 @@ export function seedEditableDom(el: HTMLElement, text: TextProps, zoom: number):
       if (r.text === "") continue;
       const span = document.createElement("span");
       span.setAttribute(RUN_ATTR, JSON.stringify({ font: r.font, color: r.color }));
-      Object.assign(span.style, runCss(r, zoom));
+      Object.assign(span.style, runCss(r, zoom, scale));
       span.textContent = r.text;
       div.appendChild(span);
       wrote = true;
@@ -75,7 +86,7 @@ export function seedEditableDom(el: HTMLElement, text: TextProps, zoom: number):
       const span = document.createElement("span");
       const style = p.runs[0];
       span.setAttribute(RUN_ATTR, JSON.stringify({ font: style.font, color: style.color }));
-      Object.assign(span.style, runCss(style, zoom));
+      Object.assign(span.style, runCss(style, zoom, scale));
       div.appendChild(span);
       const br = document.createElement("br");
       br.setAttribute("data-ph", "1");

@@ -13,6 +13,9 @@ export const ImportNoteSchema = z.object({
   pageId: z.string().optional(),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   message: z.string(),
+  /** Autofit notes (client-side, post-import) are marked so idempotent
+      re-measures replace their own notes and the panel can group them. */
+  kind: z.literal("autofit").optional(),
 });
 export type ImportNote = z.infer<typeof ImportNoteSchema>;
 

@@ -73,6 +73,11 @@ export const TextPropsSchema = z.object({
   vAlign: z.enum(["top", "middle", "bottom"]).optional(),
   /** Text insets, inches (Publisher's default is 0.04 on all sides); absent = none. */
   inset: TextInsetSchema.optional(),
+  /** Import autofit (§10.5): a uniform render-time scale on every run's size,
+      mirroring Publisher's "shrink text on overflow" when the remapped
+      stand-in font runs wider than the original. Declared run sizes stay the
+      source of truth (reversible, round-trips); absent = 1. */
+  fontScale: z.number().min(0.5).max(1).optional(),
 });
 export type TextProps = z.infer<typeof TextPropsSchema>;
 
