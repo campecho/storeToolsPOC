@@ -119,6 +119,10 @@ function TextFrameNode({
   const contentRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
   const text = obj.text!;
+  // Import-autofit render scale (schema text.fontScale): mirrors Publisher's
+  // shrink-on-overflow. Declared run sizes stay the source of truth — this
+  // scales rendered px only, so every runCss below takes it as the 3rd arg.
+  const scale = text.fontScale ?? 1;
   // Webfonts land after first paint — the shell bumps this when new faces
   // finish loading (§10.5), so overflow re-measures with real metrics.
   const fontsTick = useLayoutStore((s) => s.fontsTick);
@@ -126,6 +130,8 @@ function TextFrameNode({
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
+    // Reads the RENDERED contentRef, so the autofit scale is already baked
+    // into scrollHeight — the badge stays consistent with no separate term.
     setOverflow(isOverflowing(el.scrollHeight, el.clientHeight));
   }, [text, obj.w, obj.h, zoom, fontsTick]);
 
@@ -169,10 +175,10 @@ function TextFrameNode({
           className="max-h-full whitespace-pre-wrap break-words"
         >
           {text.paragraphs.map((p, pi) => (
-            // the div carries its first run's size so empty lines keep height
-            <div key={pi} style={{ ...paraCss(p, zoom), fontSize: runCss(p.runs[0], zoom).fontSize }}>
+            // the div carries its first run's (scaled) size so empty lines keep height
+            <div key={pi} style={{ ...paraCss(p, zoom), fontSize: runCss(p.runs[0], zoom, scale).fontSize }}>
               {p.runs.map((r, ri) => (
-                <span key={ri} style={runCss(r, zoom)}>
+                <span key={ri} style={runCss(r, zoom, scale)}>
                   {r.text}
                 </span>
               ))}

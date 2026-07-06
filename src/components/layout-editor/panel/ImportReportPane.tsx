@@ -66,13 +66,18 @@ export function ImportReportPane() {
   const remapped = report.fonts.filter((f) => f.mappedTo !== f.source);
   const matched = report.fonts.length - remapped.length;
 
+  // Autofit notes (client-side, tier-2, kind "autofit") get their own group —
+  // excluded from the tiered buckets below so they never mix into those rows.
+  const autofit = report.notes.filter((n) => n.kind === "autofit");
+
   // Notes group by tier: 3 = not converted (flag-only), 2 = simplified.
-  const notConverted = report.notes.filter((n) => n.tier === 3);
-  const simplified = report.notes.filter((n) => n.tier === 2);
+  const notConverted = report.notes.filter((n) => n.tier === 3 && n.kind !== "autofit");
+  const simplified = report.notes.filter((n) => n.tier === 2 && n.kind !== "autofit");
 
   const hasReview =
     remapped.length > 0 ||
     report.overset.length > 0 ||
+    autofit.length > 0 ||
     notConverted.length > 0 ||
     simplified.length > 0;
 
@@ -90,12 +95,19 @@ export function ImportReportPane() {
     ...(flagged > 0 ? [`${flagged} not converted`] : []),
   ].join(" · ");
 
-  const noteRow = (n: (typeof report.notes)[number], key: string) =>
+  // Deep-link note row, shared by the tiered groups and the autofit group;
+  // the testid is passed in so autofit rows carry `import-autofit-link` and
+  // never shift the e2e-pinned `import-note-link` ordering.
+  const noteRow = (
+    n: (typeof report.notes)[number],
+    key: string,
+    testId: string = "import-note-link",
+  ) =>
     n.objectId ? (
       <button
         key={key}
         type="button"
-        data-testid="import-note-link"
+        data-testid={testId}
         onClick={() => deepLink(n.objectId!, n.pageId)}
         className="flex w-full cursor-pointer items-start gap-[6px] rounded-[5px] px-2 py-[6px] text-left text-[10.5px] leading-relaxed text-[#555] hover:bg-[#f2f2f2]"
       >
@@ -186,6 +198,15 @@ export function ImportReportPane() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {autofit.length > 0 && (
+              <div className="border-b border-[#f2f2f2] px-3 py-[10px]">
+                <SectionHeading>Auto-fitted</SectionHeading>
+                <div className="flex flex-col gap-[2px]">
+                  {autofit.map((n, i) => noteRow(n, `af-${i}`, "import-autofit-link"))}
                 </div>
               </div>
             )}
