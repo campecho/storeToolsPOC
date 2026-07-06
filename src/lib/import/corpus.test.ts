@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LayoutDocumentSchema } from "@/schema";
+import { LayoutDocumentSchema, type Paragraph, type TextRun } from "@/schema";
+import { textContent } from "@/lib/layout/text";
 import { buildModel } from "./model";
 import { mapToLayoutDocument, PUBLISHER_DEFAULT_LINE_SPACING } from "./mapper";
 import { parseTrace } from "./trace-parser";
@@ -16,12 +17,17 @@ import { parseTrace } from "./trace-parser";
  *   - explicit insertSpace callbacks carry word spacing
  *   - whitespace-only/empty trailing spans are styling noise
  *   - master-page-only publications convert empty (upstream limitation)
+ * P2 additions: per-run styling (the labels' white ink), the §10.5 remap
+ * tiers on real corpus families, Wingdings glyph translation, and the 128
+ * checkpoint-label vector shapes converting as real paths.
  */
 
 const load = (name: string) =>
   readFileSync(join(process.cwd(), "fixtures", "pub-traces", `${name}.trace`), "utf8");
 
 const convert = (name: string) => mapToLayoutDocument(buildModel(parseTrace(load(name))), name);
+
+const allRuns = (paragraphs: Paragraph[]): TextRun[] => paragraphs.flatMap((p) => p.runs);
 
 describe("corpus: 3up_tabs.pub (binder-tab template, rotated text)", () => {
   const { doc, fonts, notes } = convert("3up_tabs");
@@ -40,31 +46,36 @@ describe("corpus: 3up_tabs.pub (binder-tab template, rotated text)", () => {
     expect(tab1.y).toBe(1.9828);
     expect(tab1.w).toBe(3.0939);
     expect(tab1.rotation).toBe(90); // passthrough — the pub2xhtml-verified sign
-    expect(tab1.text.content).toBe("Tab 1");
-    expect(tab1.text.align).toBe("center");
+    expect(textContent(tab1.text)).toBe("Tab 1");
+    expect(tab1.text.paragraphs[0].align).toBe("center");
   });
 
   it("converts inch-denominated font sizes to points", () => {
     const tab1 = doc.pages[0].objects[0];
     const tab3 = doc.pages[2].objects[0];
     if (tab1.type !== "text" || !tab1.text || tab3.type !== "text" || !tab3.text) throw new Error("text");
-    expect(tab1.text.font.size).toBe(12); // 0.1667in × 72
-    expect(tab3.text.font.size).toBe(10); // 0.1389in × 72
-    expect(tab1.text.lineSpacing).toBe(PUBLISHER_DEFAULT_LINE_SPACING);
+    expect(tab1.text.paragraphs[0].runs[0].font.size).toBe(12); // 0.1667in × 72
+    expect(tab3.text.paragraphs[0].runs[0].font.size).toBe(10); // 0.1389in × 72
+    expect(tab1.text.paragraphs[0].lineSpacing).toBe(PUBLISHER_DEFAULT_LINE_SPACING);
   });
 
-  it("remaps Calibri (not yet in the curated list) with a named entry — Carlito lands in P2", () => {
+  it("keeps Calibri as Calibri — the Carlito webfont stands in (§10.5 tier 1)", () => {
     const calibri = fonts.find((f) => f.source === "Calibri");
-    expect(calibri?.mappedTo).toBe("Motiva Sans");
-    expect(calibri?.reason).toContain("P2");
+    expect(calibri?.mappedTo).toBe("Calibri");
+    expect(calibri?.reason).toContain("Carlito");
+    const tab1 = doc.pages[0].objects[0];
+    if (tab1.type !== "text" || !tab1.text) throw new Error("text");
+    expect(tab1.text.paragraphs[0].runs[0].font.family).toBe("Calibri");
   });
 
-  it("notes the middle vertical alignment and insets — empty trailing spans don't fake a flatten", () => {
-    const msgs = notes.map((n) => n.message);
-    expect(msgs.some((m) => m.includes("vertical alignment 'middle'"))).toBe(true);
-    expect(msgs.some((m) => m.includes("insets"))).toBe(true);
-    // each frame has one real span + one empty span — that's not multi-styling
-    expect(msgs.some((m) => m.includes("character styles flattened"))).toBe(false);
+  it("carries the middle vertical alignment and default insets faithfully (P2)", () => {
+    const tab1 = doc.pages[0].objects[0];
+    if (tab1.type !== "text" || !tab1.text) throw new Error("text");
+    expect(tab1.text.vAlign).toBe("middle");
+    expect(tab1.text.inset).toEqual({ l: 0.04, r: 0.04, t: 0.04, b: 0.04 });
+    // faithful now — neither warrants a note
+    expect(notes.some((n) => n.message.includes("vertical alignment"))).toBe(false);
+    expect(notes.some((n) => n.message.includes("insets"))).toBe(false);
   });
 });
 
@@ -78,18 +89,18 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
     expect(doc.orientation).toBe("landscape");
   });
 
-  it("carries the card copy with its geometry", () => {
+  it("carries the card copy with its geometry and per-run style", () => {
     const firstText = doc.pages[0].objects.find((o) => o.type === "text");
     if (!firstText || firstText.type !== "text" || !firstText.text) throw new Error("text");
-    expect(firstText.text.content).toContain("3 Peckville Road");
-    expect(firstText.text.align).toBe("right");
-    expect(firstText.text.font.size).toBe(10);
+    expect(textContent(firstText.text)).toContain("3 Peckville Road");
+    expect(firstText.text.paragraphs[0].align).toBe("right");
+    expect(allRuns(firstText.text.paragraphs).some((r) => r.font.size === 10)).toBe(true);
   });
 
-  it("remaps the unknown corpus font with a named report entry", () => {
+  it("keeps Goudy Old Style by name — Sorts Mill Goudy stands in (§10.5 tier 2)", () => {
     const goudy = fonts.find((f) => f.source === "Goudy Old Style");
-    expect(goudy?.mappedTo).toBe("Motiva Sans");
-    expect(goudy?.reason).toContain("P2");
+    expect(goudy?.mappedTo).toBe("Goudy Old Style");
+    expect(goudy?.reason).toContain("Sorts Mill Goudy");
   });
 
   it("keeps every shape inside the page bounds (sanity on real geometry)", () => {
@@ -106,33 +117,68 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
 });
 
 describe("corpus: production_checkpoint_labels.pub (layered, vector-heavy)", () => {
-  const { doc, fidelity, notes } = convert("production_checkpoint_labels");
+  const { doc, fidelity, fonts, notes } = convert("production_checkpoint_labels");
+  const objects = doc.pages.flatMap((p) => p.objects);
+  const texts = objects.filter((o) => o.type === "text");
 
   it("is a valid 2-page document carrying all 192 shapes", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
     expect(doc.pages).toHaveLength(2);
-    const total = doc.pages.reduce((n, p) => n + p.objects.length, 0);
-    expect(total).toBe(192); // 64 text + 96 polygons + 32 paths — nothing dropped
+    expect(objects).toHaveLength(192); // 64 text + 128 vector — nothing dropped
   });
 
-  it("degrades the 128 vector shapes to bounding boxes with notes, not silently", () => {
-    const bboxNotes = notes.filter((n) => n.message.includes("bounding box"));
-    expect(bboxNotes.length).toBe(128);
-    expect(fidelity.degraded).toBeGreaterThanOrEqual(128);
+  it("converts the 128 vector shapes as REAL paths now (P2) — no bbox fallback", () => {
+    const paths = objects.filter((o) => o.type === "path");
+    expect(paths).toHaveLength(128);
+    expect(notes.some((n) => n.message.includes("bounding box"))).toBe(false);
+    // normalized segments stay in the unit box
+    for (const p of paths.slice(0, 8)) {
+      if (p.type !== "path" || !p.d) throw new Error("path");
+      for (const seg of p.d) {
+        if (seg.c === "Z") continue;
+        expect(seg.x).toBeGreaterThanOrEqual(-0.001);
+        expect(seg.x).toBeLessThanOrEqual(1.001);
+        expect(seg.y).toBeGreaterThanOrEqual(-0.001);
+        expect(seg.y).toBeLessThanOrEqual(1.001);
+      }
+    }
+    expect(fidelity.converted).toBeGreaterThanOrEqual(128);
+  });
+
+  it("renders the labels' white ink per run — the corpus case that forced text color", () => {
+    const white = texts.filter(
+      (o) => o.type === "text" && o.text && allRuns(o.text.paragraphs).some((r) => r.color === "#ffffff"),
+    );
+    expect(white.length).toBeGreaterThan(0);
+  });
+
+  it("translates the Wingdings checkbox marks to ✔ and notes it once", () => {
+    const checks = texts.filter(
+      (o) => o.type === "text" && o.text && textContent(o.text).includes("✔"),
+    );
+    expect(checks.length).toBeGreaterThan(0);
+    expect(notes.filter((n) => n.message.includes("Wingdings"))).toHaveLength(1);
+  });
+
+  it("remaps the HelveticaNeue LT Pro cuts to Libre Franklin (§10.5 tier 2)", () => {
+    const helveticas = fonts.filter((f) => /HelveticaNeue/i.test(f.source));
+    expect(helveticas.length).toBeGreaterThan(0);
+    for (const f of helveticas) expect(f.mappedTo).toBe("Libre Franklin");
   });
 
   it("preserves explicit insertSpace word spacing inside runs", () => {
-    const texts = doc.pages.flatMap((p) => p.objects).filter((o) => o.type === "text");
-    const mounting = texts.find((o) => o.type === "text" && o.text?.content.includes("Mounting: 280"));
+    const mounting = texts.find(
+      (o) => o.type === "text" && o.text && textContent(o.text).includes("Mounting: 280"),
+    );
     if (!mounting || mounting.type !== "text" || !mounting.text) throw new Error("expected label text");
     // "insertText ( )" + 3 × insertSpace + "Mounting: 280" — spacing intact
-    expect(mounting.text.content).toContain("    Mounting: 280");
+    expect(textContent(mounting.text)).toContain("    Mounting: 280");
   });
 
   it("carries the 125% line spacing where the source sets it", () => {
-    const spaced = doc.pages
-      .flatMap((p) => p.objects)
-      .find((o) => o.type === "text" && o.text?.lineSpacing === 1.25);
+    const spaced = texts.find(
+      (o) => o.type === "text" && o.text?.paragraphs.some((p) => p.lineSpacing === 1.25),
+    );
     expect(spaced).toBeDefined();
   });
 

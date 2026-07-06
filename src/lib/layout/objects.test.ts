@@ -38,11 +38,21 @@ describe("factories", () => {
   it("text frames are transparent with the wire's typographic defaults", () => {
     const t = createTextFrame(1, 2, 3, 1);
     expect(t).toMatchObject({ type: "text", fill: null, stroke: null });
+    // schema v2: one empty paragraph/run carrying the default typing style
     expect(t.text).toEqual({
-      content: "",
-      font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
-      align: "left",
-      lineSpacing: 1.2,
+      paragraphs: [
+        {
+          align: "left",
+          lineSpacing: 1.2,
+          runs: [
+            {
+              text: "",
+              font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
+              color: "#111111",
+            },
+          ],
+        },
+      ],
     });
   });
 

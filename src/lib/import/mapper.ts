@@ -1,16 +1,26 @@
-import type { LayoutDocument, LayoutObject, LayoutPage, TextProps } from "@/schema";
-import { FONT_FAMILIES, DEFAULT_FAMILY } from "@/lib/layout/text";
-import type { IRDoc, IRPage, IRParagraph, IRSpan, IRStyle } from "./model";
+import type {
+  LayoutDocument,
+  LayoutObject,
+  LayoutPage,
+  Paragraph,
+  PathSeg,
+  TextProps,
+  TextRun,
+} from "@/schema";
+import { DEFAULT_TEXT_COLOR } from "@/lib/layout/text";
+import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
+import type { IRDoc, IRPage, IRParagraph, IRPathSeg, IRSpan, IRStyle } from "./model";
 import type { FontRemap, ImportNote } from "./report";
 
 /**
- * Intermediate model → `LayoutDocument` mapper (plan §10.3) — P1 scope:
- * geometry-first with honest tiering. Every frame lands correctly sized and
- * placed; polygons/paths degrade to bounding boxes, images to placeholder
- * picture frames, tables to flagged placeholders — each with a report note.
- * Text content maps into the v1 per-frame model where that is faithful
- * (single-style frames); multi-run styling flattens with a note until the
- * schema-v2 run model lands (P2). Nothing is dropped silently.
+ * Intermediate model → `LayoutDocument` mapper (plan §10.3) — P2 scope:
+ * geometry AND content fidelity. Text maps run-for-run (family, size, weight,
+ * style, ink color) with fonts resolved through the §10.5 remap table;
+ * paragraph alignment, line spacing, indents, frame insets, and vertical
+ * alignment are all carried. Polygons/polylines/paths convert to real vector
+ * paths (normalized segments). What still degrades — images (P3), tables,
+ * gradient fills, rounded corners, exotic path verbs — degrades with a
+ * report note. Nothing is dropped silently.
  */
 
 export type MapResult = {
@@ -25,8 +35,6 @@ export type MapResult = {
  * unit), not 1.0 — plan §10.5. Used when the trace carries no fo:line-height.
  */
 export const PUBLISHER_DEFAULT_LINE_SPACING = 1.19;
-
-const KNOWN_FAMILIES = new Set(FONT_FAMILIES.map((f) => f.name));
 
 const round = (n: number, places = 4) => {
   const f = 10 ** places;
@@ -51,88 +59,162 @@ function mapStroke(style: IRStyle): { color: string; width: number } | null {
   return { color: style.stroke.color, width: round(style.stroke.widthIn * 96, 2) };
 }
 
-/** Dominant value in a list (first-seen wins ties) — for flattening runs. */
-function dominant<T>(values: T[]): T | undefined {
-  const counts = new Map<T, number>();
-  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
-  let best: T | undefined;
-  let bestN = 0;
-  for (const [v, n] of counts) {
-    if (n > bestN) {
-      best = v;
-      bestN = n;
-    }
+/* ── Text: spans → runs, per-family font disposition (plan §10.5) ── */
+
+type FontCtx = {
+  fonts: Map<string, FontRemap>;
+  /** Dingbat translation happened somewhere in the doc (one doc-level note). */
+  sawDingbats: boolean;
+  /** …and some dingbat characters had no Unicode equivalent. */
+  sawUnmappedDingbats: boolean;
+};
+
+/** Resolve a source family once per document, recording the report row. */
+function disposeFamily(source: string | undefined, ctx: FontCtx): string {
+  if (!source) return resolveFamily("").family; // editor default, unrecorded
+  const resolved = resolveFamily(source);
+  if (!ctx.fonts.has(source)) {
+    ctx.fonts.set(source, { source, mappedTo: resolved.family, reason: resolved.reason });
   }
-  return best;
+  return resolved.family;
 }
 
-type TextMapping = { text: TextProps; distinctSpanStyles: number; distinctAligns: number };
-
-function mapText(paragraphs: IRParagraph[], fonts: Map<string, FontRemap>): TextMapping {
-  // Whitespace-only spans (insertSpace/insertLineBreak markers, Publisher's
-  // empty trailing spans) don't count toward styling — corpus files carry
-  // many and they'd inflate the flatten detection.
-  const spans: IRSpan[] = paragraphs.flatMap((p) => p.spans).filter((s) => s.text.trim() !== "");
-  const styleKey = (s: IRSpan) =>
-    JSON.stringify([s.fontName, s.sizePt, !!s.bold, !!s.italic, !!s.underline, s.color]);
-  const distinctSpanStyles = new Set(spans.map(styleKey)).size;
-  const aligns = paragraphs.map((p) => p.align ?? "left");
-  const distinctAligns = new Set(aligns).size;
-
-  const sourceFamily = dominant(spans.map((s) => s.fontName).filter((f): f is string => !!f));
-  let family = DEFAULT_FAMILY;
-  if (sourceFamily) {
-    if (KNOWN_FAMILIES.has(sourceFamily)) {
-      family = sourceFamily;
-      if (!fonts.has(sourceFamily)) {
-        fonts.set(sourceFamily, {
-          source: sourceFamily,
-          mappedTo: sourceFamily,
-          reason: "in the editor's font list",
-        });
-      }
-    } else {
-      if (!fonts.has(sourceFamily)) {
-        fonts.set(sourceFamily, {
-          source: sourceFamily,
-          mappedTo: DEFAULT_FAMILY,
-          reason: "not in the POC font list — the remap library lands in P2 (plan §10.5)",
-        });
-      }
-    }
+function mapSpan(span: IRSpan, ctx: FontCtx): TextRun {
+  let text = span.text;
+  if (span.fontName && isDingbat(span.fontName)) {
+    const t = translateDingbats(text);
+    text = t.text;
+    ctx.sawDingbats = true;
+    if (t.unmapped) ctx.sawUnmappedDingbats = true;
   }
-
-  // Publisher ends each paragraph with a terminator (\r, normalized to \n by
-  // the model) — redundant with the paragraph structure, so strip trailing
-  // newlines per paragraph; mid-paragraph breaks stay.
-  const content = paragraphs
-    .map((p) => p.spans.map((s) => s.text).join("").replace(/\n+$/, ""))
-    .join("\n");
-
-  const text: TextProps = {
-    content,
+  return {
+    text,
     font: {
-      family,
-      size: round(dominant(spans.map((s) => s.sizePt).filter((n): n is number => n !== undefined)) ?? 11, 1),
-      bold: dominant(spans.map((s) => !!s.bold)) ?? false,
-      italic: dominant(spans.map((s) => !!s.italic)) ?? false,
-      underline: dominant(spans.map((s) => !!s.underline)) ?? false,
+      family: disposeFamily(span.fontName, ctx),
+      size: round(span.sizePt ?? 11, 1),
+      bold: !!span.bold,
+      italic: !!span.italic,
+      underline: !!span.underline,
     },
-    align: dominant(aligns) ?? "left",
-    lineSpacing: round(
-      dominant(paragraphs.map((p) => p.lineSpacing).filter((n): n is number => n !== undefined)) ??
-        PUBLISHER_DEFAULT_LINE_SPACING,
-      3
-    ),
+    color: span.color ?? DEFAULT_TEXT_COLOR,
   };
-  return { text, distinctSpanStyles, distinctAligns };
 }
 
-/** Map one page's shapes; ids are deterministic (`imp-p1-o3`) for testability. */
-/** Publisher's universal text-box default — 0.04 in on all sides. */
-function isDefaultInsets(p: { l: number; r: number; t: number; b: number }): boolean {
-  return [p.l, p.r, p.t, p.b].every((v) => Math.abs(v - 0.04) < 0.001);
+const runStyleKey = (r: TextRun) => JSON.stringify([r.font, r.color]);
+
+function mapParagraph(p: IRParagraph, ctx: FontCtx): Paragraph {
+  // Merge adjacent same-style runs (libmspub splits spans liberally —
+  // insertSpace callbacks, per-word spans in justified text).
+  const runs: TextRun[] = [];
+  for (const span of p.spans) {
+    const run = mapSpan(span, ctx);
+    const prev = runs[runs.length - 1];
+    if (prev && runStyleKey(prev) === runStyleKey(run)) prev.text += run.text;
+    else runs.push(run);
+  }
+  // Publisher ends each paragraph with a terminator (\r, normalized to \n by
+  // the model) — redundant with the paragraph structure; strip it. Interior
+  // \n (insertLineBreak) stay: they're soft breaks.
+  const last = runs[runs.length - 1];
+  if (last) {
+    last.text = last.text.replace(/\n+$/, "");
+    if (last.text === "" && runs.length > 1) runs.pop();
+  }
+  if (!runs.length) {
+    runs.push({
+      text: "",
+      font: { family: disposeFamily(undefined, ctx), size: 11, bold: false, italic: false, underline: false },
+      color: DEFAULT_TEXT_COLOR,
+    });
+  }
+  return {
+    align: p.align ?? "left",
+    lineSpacing: round(p.lineSpacing ?? PUBLISHER_DEFAULT_LINE_SPACING, 3),
+    ...(p.marginLeftIn ? { indent: round(p.marginLeftIn) } : {}),
+    ...(p.textIndentIn ? { firstLineIndent: round(p.textIndentIn) } : {}),
+    runs,
+  };
 }
+
+function mapText(shape: { paragraphs: IRParagraph[]; style: IRStyle }, ctx: FontCtx): TextProps {
+  const paragraphs = shape.paragraphs.length
+    ? shape.paragraphs.map((p) => mapParagraph(p, ctx))
+    : [mapParagraph({ spans: [] }, ctx)];
+  const v = shape.style.textVAlign;
+  const vAlign = v === "middle" || v === "center" ? "middle" : v === "bottom" ? "bottom" : undefined;
+  const pad = shape.style.paddingIn;
+  const inset =
+    pad && Object.values(pad).some((n) => n > 0)
+      ? { l: round(pad.l), r: round(pad.r), t: round(pad.t), b: round(pad.b) }
+      : undefined;
+  return {
+    paragraphs,
+    ...(vAlign ? { vAlign } : {}),
+    ...(inset ? { inset } : {}),
+  };
+}
+
+/* ── Vector paths: absolute-inch segments → normalized (0–1) frame space ── */
+
+type AbsSeg = Exclude<IRPathSeg, { a: "?" }>;
+
+function polyToSegs(points: { x: number; y: number }[], close: boolean): AbsSeg[] {
+  const segs: AbsSeg[] = points.map((p, i) => ({ a: i === 0 ? "M" : "L", x: p.x, y: p.y }));
+  if (close) segs.push({ a: "Z" });
+  return segs;
+}
+
+/**
+ * Normalize into the bbox (0–1 each axis) and lower quadratics to cubics so
+ * the schema stays M/L/C/Z. Returns null when an unmodeled verb appears —
+ * the caller degrades that shape to its bounding box with a note.
+ */
+function normalizeSegs(segs: IRPathSeg[], bbox: { x: number; y: number; w: number; h: number }): PathSeg[] | null {
+  const nx = (v: number) => round(bbox.w > 0 ? (v - bbox.x) / bbox.w : 0);
+  const ny = (v: number) => round(bbox.h > 0 ? (v - bbox.y) / bbox.h : 0);
+  const out: PathSeg[] = [];
+  let cur: { x: number; y: number } | null = null;
+  for (const s of segs) {
+    switch (s.a) {
+      case "M":
+      case "L":
+        out.push({ c: s.a, x: nx(s.x), y: ny(s.y) });
+        cur = { x: nx(s.x), y: ny(s.y) };
+        break;
+      case "C":
+        out.push({ c: "C", x1: nx(s.x1), y1: ny(s.y1), x2: nx(s.x2), y2: ny(s.y2), x: nx(s.x), y: ny(s.y) });
+        cur = { x: nx(s.x), y: ny(s.y) };
+        break;
+      case "Q": {
+        // exact degree elevation: C1 = P0 + 2/3(Q−P0), C2 = P + 2/3(Q−P)
+        if (!cur) return null;
+        const qx = nx(s.x1);
+        const qy = ny(s.y1);
+        const x = nx(s.x);
+        const y = ny(s.y);
+        out.push({
+          c: "C",
+          x1: round(cur.x + (2 / 3) * (qx - cur.x)),
+          y1: round(cur.y + (2 / 3) * (qy - cur.y)),
+          x2: round(x + (2 / 3) * (qx - x)),
+          y2: round(y + (2 / 3) * (qy - y)),
+          x,
+          y,
+        });
+        cur = { x, y };
+        break;
+      }
+      case "Z":
+        out.push({ c: "Z" });
+        break;
+      default:
+        return null; // "?" — arc or other unmodeled verb
+    }
+  }
+  return out;
+}
+
+/* ── Pages ── */
 
 function mapPage(
   ir: IRPage,
@@ -140,9 +222,8 @@ function mapPage(
   ctx: {
     fidelity: MapResult["fidelity"];
     notes: ImportNote[];
-    fonts: Map<string, FontRemap>;
-    sawDefaultInsets: boolean;
-  }
+    fontCtx: FontCtx;
+  },
 ): LayoutPage {
   const pageId = `imp-p${pageIndex + 1}`;
   const objects: LayoutObject[] = [];
@@ -191,16 +272,25 @@ function mapPage(
         break;
       }
       case "polygon":
-      case "polyline":
+      case "polyline": {
+        const d = normalizeSegs(polyToSegs(shape.pointsIn, shape.kind === "polygon"), shape.bbox);
+        // polyToSegs emits only M/L/Z, so d is always non-null here
+        objects.push({ ...base, type: "path", d: d ?? [] });
+        break;
+      }
       case "path": {
-        const label = shape.kind === "path" ? "freeform path" : shape.kind;
-        flag(`${label} (${shape.pointCount} points) converted to its bounding box — faithful paths arrive in P2`);
-        objects.push({ ...base, type: "rect" });
+        const d = normalizeSegs(shape.segs, shape.bbox);
+        if (d) {
+          objects.push({ ...base, type: "path", d });
+        } else {
+          flag("path uses segments the editor can't model yet (arc) — converted to its bounding box");
+          objects.push({ ...base, type: "rect" });
+        }
         break;
       }
       case "image": {
         flag(
-          `embedded image${shape.mime ? ` (${shape.mime})` : ""} shown as a placeholder frame — extraction arrives in P3`
+          `embedded image${shape.mime ? ` (${shape.mime})` : ""} shown as a placeholder frame — extraction arrives in P3`,
         );
         objects.push({ ...base, type: "picture", fill: base.fill ?? null });
         break;
@@ -213,22 +303,7 @@ function mapPage(
         return; // counted as flagged, not converted/degraded
       }
       case "textbox": {
-        const { text, distinctSpanStyles, distinctAligns } = mapText(shape.paragraphs, ctx.fonts);
-        if (distinctSpanStyles > 1)
-          flag(`${distinctSpanStyles} character styles flattened to one — per-run styling arrives in P2`);
-        if (distinctAligns > 1) flag("mixed paragraph alignment flattened to the dominant alignment");
-        if (shape.style.textVAlign && shape.style.textVAlign !== "top")
-          flag(`vertical alignment '${shape.style.textVAlign}' rendered as top-aligned`);
-        // Every Publisher text frame carries the 0.04 in default insets —
-        // per-frame notes for a universal default would drown the report
-        // (corpus finding: 100% of real frames flagged). Default insets get
-        // one document-level note; only non-default insets flag the frame.
-        if (shape.style.paddingIn && Object.values(shape.style.paddingIn).some((v) => v > 0)) {
-          if (isDefaultInsets(shape.style.paddingIn)) ctx.sawDefaultInsets = true;
-          else flag("non-default text-box insets dropped — text starts at the frame edge (schema v2)");
-        }
-        if (shape.paragraphs.some((p) => p.hasIndent))
-          flag("paragraph indents dropped — per-paragraph layout arrives in P2");
+        const text = mapText(shape, ctx.fontCtx);
         objects.push({ ...base, type: "text", fill: base.fill, text });
         break;
       }
@@ -249,8 +324,8 @@ function mapPage(
 export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   const fidelity = { converted: 0, degraded: 0, flagged: 0 };
   const notes: ImportNote[] = [];
-  const fonts = new Map<string, FontRemap>();
-  const ctx = { fidelity, notes, fonts, sawDefaultInsets: false };
+  const fontCtx: FontCtx = { fonts: new Map(), sawDingbats: false, sawUnmappedDingbats: false };
+  const ctx = { fidelity, notes, fontCtx };
 
   const first = ir.pages[0] ?? { wIn: 8.5, hIn: 11, shapes: [] };
   const size = { w: round(first.wIn), h: round(first.hIn) };
@@ -267,11 +342,12 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
       })
     : [{ id: "imp-p1", masterId: null, objects: [] }];
 
-  if (ctx.sawDefaultInsets)
+  if (fontCtx.sawDingbats)
     notes.push({
       tier: 2,
-      message:
-        "Publisher's default text-box insets (0.04 in) aren't modeled yet — text sits at the frame edge (schema v2 adds insets)",
+      message: fontCtx.sawUnmappedDingbats
+        ? "dingbat font (Wingdings) glyphs translated to Unicode symbols where known (✔ ✘ ☑ ■) — unmapped characters kept as their raw letters, review them"
+        : "dingbat font (Wingdings) glyphs translated to Unicode symbols (✔ ✘ ☑ ■)",
     });
   if (ir.sawLayers) notes.push({ tier: 2, message: "source layers flattened into the page z-order" });
   if (ir.sawGroups) notes.push({ tier: 2, message: "grouped objects imported ungrouped (grouping is backlog)" });
@@ -287,7 +363,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   }
 
   const doc: LayoutDocument = {
-    version: 1,
+    version: 2,
     name,
     product: null,
     size,
@@ -306,5 +382,5 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
     guides: { v: [], h: [] },
   };
 
-  return { doc, fidelity, fonts: [...fonts.values()], notes };
+  return { doc, fidelity, fonts: [...fontCtx.fonts.values()], notes };
 }

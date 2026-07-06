@@ -9,6 +9,8 @@ import {
   type EditorTool,
 } from "./layout-store";
 import { LayoutDocumentSchema } from "@/schema";
+import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import { plainToParagraphs, textContent, textSummary } from "@/lib/layout/text";
 import { MAX_PAGE_IN } from "@/lib/layout/geometry";
 import {
   DUPLICATE_OFFSET_IN,
@@ -300,16 +302,17 @@ describe("objects (L4 reducers)", () => {
 });
 
 describe("text frames (L5)", () => {
-  it("setTextContent is transient — typing never floods the history", () => {
+  it("setTextParagraphs is transient — typing never floods the history", () => {
     const s = useLayoutStore.getState();
     const t = createTextFrame(1, 1, 3, 1);
     s.addObject(t);
+    const style = { font: t.text!.paragraphs[0].runs[0].font, color: "#111111" };
     const depth = useLayoutStore.getState().past.length;
-    s.setTextContent(t.id, "S");
-    s.setTextContent(t.id, "SP");
-    s.setTextContent(t.id, "SPRING SALE");
+    s.setTextParagraphs(t.id, plainToParagraphs("S", style));
+    s.setTextParagraphs(t.id, plainToParagraphs("SP", style));
+    s.setTextParagraphs(t.id, plainToParagraphs("SPRING SALE", style));
     const obj = pageObjects()[0];
-    expect(obj.type === "text" && obj.text?.content).toBe("SPRING SALE");
+    expect(obj.type === "text" && obj.text && textContent(obj.text)).toBe("SPRING SALE");
     expect(useLayoutStore.getState().past).toHaveLength(depth);
   });
 
@@ -317,16 +320,17 @@ describe("text frames (L5)", () => {
     const s = useLayoutStore.getState();
     const t = createTextFrame(1, 1, 3, 1);
     s.addObject(t);
+    const style = { font: t.text!.paragraphs[0].runs[0].font, color: "#111111" };
     const before = useLayoutStore.getState().doc; // session opens
-    s.setTextContent(t.id, "Hello");
-    s.setTextContent(t.id, "Hello world");
+    s.setTextParagraphs(t.id, plainToParagraphs("Hello", style));
+    s.setTextParagraphs(t.id, plainToParagraphs("Hello world", style));
     s.commitGesture(before); // session closes
     s.undo();
     const obj = pageObjects()[0];
-    expect(obj.type === "text" && obj.text?.content).toBe("");
+    expect(obj.type === "text" && obj.text && textContent(obj.text)).toBe("");
   });
 
-  it("setTextProps merges flattened patches and pushes history; no-ops don't", () => {
+  it("setTextProps patches every run and pushes history; no-ops don't", () => {
     const s = useLayoutStore.getState();
     const t = createTextFrame(1, 1, 3, 1);
     s.addObject(t);
@@ -334,9 +338,10 @@ describe("text frames (L5)", () => {
 
     s.setTextProps(t.id, { bold: true, size: 24, align: "center", lineSpacing: 1.1 });
     let obj = pageObjects()[0];
-    expect(obj.type === "text" && obj.text?.font).toMatchObject({ bold: true, size: 24 });
-    expect(obj.type === "text" && obj.text?.align).toBe("center");
-    expect(obj.type === "text" && obj.text?.lineSpacing).toBe(1.1);
+    let summary = obj.type === "text" && obj.text ? textSummary(obj.text) : undefined;
+    expect(summary?.font).toMatchObject({ bold: true, size: 24 });
+    expect(summary?.align).toBe("center");
+    expect(summary?.lineSpacing).toBe(1.1);
     expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
 
     s.setTextProps(t.id, { bold: true }); // already bold — no change, no entry
@@ -344,9 +349,10 @@ describe("text frames (L5)", () => {
 
     s.setTextProps(t.id, { italic: true });
     obj = pageObjects()[0];
-    expect(obj.type === "text" && obj.text?.font.italic).toBe(true);
+    summary = obj.type === "text" && obj.text ? textSummary(obj.text) : undefined;
+    expect(summary?.font.italic).toBe(true);
     // the earlier fields survived the merge
-    expect(obj.type === "text" && obj.text?.font.bold).toBe(true);
+    expect(summary?.font.bold).toBe(true);
   });
 
   it("setTextProps ignores non-text objects", () => {
@@ -1248,8 +1254,8 @@ describe("persisted-state validation (the merge guard)", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
   });
 
-  it("the committed contract fixture parses (fixtures/layout-document.v1.json)", () => {
-    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v1.json"), "utf8");
+  it("the committed contract fixture parses (fixtures/layout-document.v2.json)", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v2.json"), "utf8");
     const parsed = LayoutDocumentSchema.safeParse(JSON.parse(raw));
     expect(parsed.success).toBe(true);
     if (parsed.success) {
@@ -1263,8 +1269,28 @@ describe("persisted-state validation (the merge guard)", () => {
     }
   });
 
+  it("a persisted v1 document (fixtures/layout-document.v1.json) migrates to v2 — never dropped", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v1.json"), "utf8");
+    const v1 = V1LayoutDocumentSchema.safeParse(JSON.parse(raw));
+    expect(v1.success).toBe(true);
+    if (!v1.success) return;
+    const migrated = migrateLegacyDocument(v1.data);
+    // the migrated document is a fully valid v2 document…
+    expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
+    expect(migrated.version).toBe(2);
+    // …with the v1 text carried into runs (content, style, fixed v1 ink)
+    const headline = migrated.pages[0].objects.find((o) => o.id === "obj-headline");
+    expect(headline?.type === "text" && headline.text && textContent(headline.text)).toBe("GRAND OPENING");
+    const para = headline?.type === "text" ? headline.text?.paragraphs[0] : undefined;
+    expect(para?.align).toBe("center");
+    expect(para?.runs[0].font).toMatchObject({ family: "Motiva Sans", size: 48, bold: true });
+    expect(para?.runs[0].color).toBe("#111111");
+    // non-text objects pass through untouched
+    expect(migrated.pages[1].objects[0]).toEqual(v1.data.pages[1].objects[0]);
+  });
+
   it("rejects corrupt shapes so the editor falls back to pristine", () => {
-    expect(LayoutDocumentSchema.safeParse({ version: 1, name: "broken" }).success).toBe(false);
+    expect(LayoutDocumentSchema.safeParse({ version: 2, name: "broken" }).success).toBe(false);
     expect(LayoutDocumentSchema.safeParse(null).success).toBe(false);
     const noPages = { ...createDefaultDocument(), pages: [] };
     expect(LayoutDocumentSchema.safeParse(noPages).success).toBe(false);

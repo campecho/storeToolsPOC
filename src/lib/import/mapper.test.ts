@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LayoutDocumentSchema } from "@/schema";
+import { textContent } from "@/lib/layout/text";
 import { buildModel } from "./model";
 import { mapToLayoutDocument, PUBLISHER_DEFAULT_LINE_SPACING } from "./mapper";
 import { parseTrace } from "./trace-parser";
@@ -60,10 +61,11 @@ describe("buildModel (plan §10.2 intermediate model)", () => {
   });
 });
 
-describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
-  it("produces a schema-valid v1 document", () => {
+describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
+  it("produces a schema-valid v2 document", () => {
     const parsed = LayoutDocumentSchema.safeParse(doc);
     expect(parsed.success).toBe(true);
+    expect(doc.version).toBe(2);
   });
 
   it("sets document size, orientation, and name from the source", () => {
@@ -87,24 +89,36 @@ describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
     });
   });
 
-  it("maps text frames with content, family, size, and line spacing", () => {
+  it("maps text frames with per-run family, size, ink color, and line spacing", () => {
     const headline = doc.pages[0].objects[1];
     if (headline.type !== "text" || !headline.text) throw new Error("expected text frame");
-    expect(headline.text.content).toBe("GRAND OPENING");
-    expect(headline.text.font.family).toBe("Impact"); // in the editor list — kept
-    expect(headline.text.font.size).toBe(48);
-    expect(headline.text.align).toBe("center");
-    expect(headline.text.lineSpacing).toBeCloseTo(1.19, 5);
+    const para = headline.text.paragraphs[0];
+    expect(para.runs).toHaveLength(1);
+    expect(para.runs[0]).toMatchObject({
+      text: "GRAND OPENING",
+      color: "#ffffff", // the corpus's white-on-dark labels made this a P2 must
+    });
+    expect(para.runs[0].font).toMatchObject({ family: "Impact", size: 48, bold: false });
+    expect(para.align).toBe("center");
+    expect(para.lineSpacing).toBeCloseTo(1.19, 5);
   });
 
-  it("joins paragraphs with newlines and flattens multi-run styling with a note", () => {
+  it("keeps multi-style paragraphs as real runs (P2) — merging same-style neighbors", () => {
     const body = doc.pages[0].objects[2];
     if (body.type !== "text" || !body.text) throw new Error("expected text frame");
-    expect(body.text.content).toBe(
+    expect(textContent(body.text)).toBe(
       "Join us Saturday for our grand opening celebration with door prizes and demos.\nDoors open at 9 AM."
     );
-    expect(body.text.font.family).toBe("Times New Roman");
-    expect(notes.some((n) => n.objectId === body.id && n.message.includes("character styles flattened"))).toBe(true);
+    // regular / bold / regular — three runs, bold carried per-run
+    const runs = body.text.paragraphs[0].runs;
+    expect(runs.map((r) => [r.text, r.font.bold])).toEqual([
+      ["Join us Saturday for our ", false],
+      ["grand opening celebration", true],
+      [" with door prizes and demos.", false],
+    ]);
+    expect(runs.every((r) => r.font.family === "Times New Roman")).toBe(true);
+    // no flatten note anymore — this is faithful now
+    expect(notes.some((n) => n.objectId === body.id)).toBe(false);
   });
 
   it("passes rotation through unchanged (both conventions are CW about the center)", () => {
@@ -116,28 +130,45 @@ describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
     expect(rotated.rotation).toBe(15);
   });
 
-  it("degrades rounded corners, polygons, paths, and images with notes — never silently", () => {
+  it("still degrades rounded corners and images with notes — never silently", () => {
     const ids = new Set(notes.filter((n) => n.tier === 2).map((n) => n.objectId));
     const rounded = doc.pages[0].objects[4];
-    const polygon = doc.pages[0].objects[6];
-    const path = doc.pages[0].objects[7];
     const picture = doc.pages[0].objects[8];
     expect(ids.has(rounded.id)).toBe(true);
-    expect(polygon.type).toBe("rect"); // bbox fallback
-    expect(ids.has(polygon.id)).toBe(true);
-    expect(path.type).toBe("rect");
-    expect(ids.has(path.id)).toBe(true);
     expect(picture.type).toBe("picture");
     expect(ids.has(picture.id)).toBe(true);
   });
 
-  it("computes the polygon bounding box from its points", () => {
+  it("converts polygons to real closed paths with normalized (0–1) points (P2)", () => {
     const polygon = doc.pages[0].objects[6];
-    if (polygon.type === "line") throw new Error("unexpected line");
+    if (polygon.type !== "path" || !polygon.d) throw new Error("expected path");
+    // bbox exact, as before
     expect(polygon.x).toBe(4.6);
     expect(polygon.y).toBe(8.9);
     expect(polygon.w).toBeCloseTo(2.8, 5);
     expect(polygon.h).toBeCloseTo(2.1, 5);
+    // 10 star points + close, first vertex (6.0, 8.9) normalizes into the box
+    expect(polygon.d).toHaveLength(11);
+    expect(polygon.d[0]).toEqual({ c: "M", x: 0.5, y: 0 });
+    expect(polygon.d[10]).toEqual({ c: "Z" });
+    for (const seg of polygon.d) {
+      if (seg.c === "Z") continue;
+      expect(seg.x).toBeGreaterThanOrEqual(0);
+      expect(seg.x).toBeLessThanOrEqual(1);
+    }
+    // faithful now — no degradation note
+    expect(notes.some((n) => n.objectId === polygon.id)).toBe(false);
+  });
+
+  it("converts bezier paths to real paths, keeping cubic control points (P2)", () => {
+    const path = doc.pages[0].objects[7];
+    if (path.type !== "path" || !path.d) throw new Error("expected path");
+    expect(path.d[0]).toEqual({ c: "M", x: 0, y: 0.5 });
+    const c = path.d[1];
+    if (c.c !== "C") throw new Error("expected cubic");
+    expect(c.x).toBe(1); // end point at the right edge of the bbox
+    expect(path.d[2]).toEqual({ c: "Z" });
+    expect(notes.some((n) => n.objectId === path.id)).toBe(false);
   });
 
   it("maps the divider polyline to a line object with px stroke width", () => {
@@ -151,7 +182,7 @@ describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
   it("defaults unspecified line spacing to Publisher single (1.19)", () => {
     const addr = doc.pages[1].objects[1];
     if (addr.type !== "text" || !addr.text) throw new Error("expected text frame");
-    expect(addr.text.lineSpacing).toBe(PUBLISHER_DEFAULT_LINE_SPACING);
+    expect(addr.text.paragraphs[0].lineSpacing).toBe(PUBLISHER_DEFAULT_LINE_SPACING);
   });
 
   it("reports font dispositions (known kept, unknown → default with reason)", () => {
@@ -161,21 +192,20 @@ describe("mapToLayoutDocument (plan §10.3, P1 geometry bar)", () => {
     expect(arial?.mappedTo).toBe("Arial");
   });
 
-  it("notes vertical alignment per frame; default insets once at document level", () => {
+  it("carries vertical alignment and text insets faithfully (P2) — no notes needed", () => {
     const headline = doc.pages[0].objects[1];
-    const frameMsgs = notes.filter((n) => n.objectId === headline.id).map((n) => n.message);
-    expect(frameMsgs.some((m) => m.includes("vertical alignment"))).toBe(true);
-    // 0.04 in on all sides is Publisher's universal default — one doc-level
-    // note, not per-frame spam (corpus finding)
-    const docLevel = notes.filter((n) => !n.objectId).map((n) => n.message);
-    expect(docLevel.some((m) => m.includes("default text-box insets"))).toBe(true);
-    expect(frameMsgs.some((m) => m.includes("insets"))).toBe(false);
+    if (headline.type !== "text" || !headline.text) throw new Error("expected text frame");
+    expect(headline.text.vAlign).toBe("middle");
+    expect(headline.text.inset).toEqual({ l: 0.04, r: 0.04, t: 0.04, b: 0.04 });
+    expect(notes.some((n) => n.objectId === headline.id)).toBe(false);
   });
 
-  it("tallies fidelity so the report adds up", () => {
+  it("tallies fidelity so the report adds up (P2: paths and text now convert clean)", () => {
     expect(fidelity.converted + fidelity.degraded + fidelity.flagged).toBe(11);
     expect(fidelity.flagged).toBe(0); // no tables in the demo trace
-    expect(fidelity.degraded).toBeGreaterThanOrEqual(5);
+    // only the rounded rect and the placeholder image still degrade
+    expect(fidelity.degraded).toBe(2);
+    expect(fidelity.converted).toBe(9);
   });
 });
 
@@ -197,7 +227,88 @@ describe("mapper edge cases", () => {
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
     const remap = result.fonts.find((f) => f.source === "Papyrus");
     expect(remap?.mappedTo).toBe("Motiva Sans");
-    expect(remap?.reason).toContain("P2");
+    expect(remap?.reason).toContain("no libre equivalent");
+  });
+
+  it("remaps corpus families through the §10.5 table with honest tiers", () => {
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      "    startTextObject (svg:height: 1.0000in, svg:width: 4.0000in, svg:x: 1.0000in, svg:y: 1.0000in)",
+      "      openParagraph (fo:text-align: left)",
+      "        openSpan(fo:font-size: 12.0000pt, style:font-name: Calibri)",
+      "          insertText (tab label)",
+      "        closeSpan",
+      "        openSpan(fo:font-size: 12.0000pt, style:font-name: HelveticaNeueLT Pro 65 Md)",
+      "          insertText (checkpoint)",
+      "        closeSpan",
+      "        openSpan(fo:font-size: 12.0000pt, style:font-name: Goudy Old Style)",
+      "          insertText (card)",
+      "        closeSpan",
+      "      closeParagraph",
+      "    endTextObject",
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const by = (s: string) => result.fonts.find((f) => f.source === s);
+    // tier 1: Calibri keeps its name — Carlito is the webfont stand-in
+    expect(by("Calibri")?.mappedTo).toBe("Calibri");
+    expect(by("Calibri")?.reason).toContain("Carlito");
+    // tier 2: commercial HelveticaNeue LT → class match
+    expect(by("HelveticaNeueLT Pro 65 Md")?.mappedTo).toBe("Libre Franklin");
+    // tier 2: Goudy Old Style keeps its name via the Sorts Mill Goudy revival
+    expect(by("Goudy Old Style")?.mappedTo).toBe("Goudy Old Style");
+    const runs = (() => {
+      const o = result.doc.pages[0].objects[0];
+      return o.type === "text" && o.text ? o.text.paragraphs[0].runs : [];
+    })();
+    expect(runs.map((r) => r.font.family)).toEqual(["Calibri", "Libre Franklin", "Goudy Old Style"]);
+  });
+
+  it("translates Wingdings checkbox glyphs to Unicode symbols with a doc-level note", () => {
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      "    startTextObject (svg:height: 1.0000in, svg:width: 4.0000in, svg:x: 1.0000in, svg:y: 1.0000in)",
+      "      openParagraph (fo:text-align: center)",
+      "        openSpan(fo:color: #ffffff, fo:font-size: 0.2500in, fo:font-weight: bold, style:font-name: Wingdings)",
+      "          insertText (ü)",
+      "        closeSpan",
+      "      closeParagraph",
+      "    endTextObject",
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const o = result.doc.pages[0].objects[0];
+    if (o.type !== "text" || !o.text) throw new Error("expected text frame");
+    const run = o.text.paragraphs[0].runs[0];
+    expect(run.text).toBe("✔"); // 0xFC — the corpus checkpoint checkmark
+    expect(run.color).toBe("#ffffff");
+    expect(run.font.size).toBe(18); // 0.25in = 18pt
+    expect(result.notes.some((n) => !n.objectId && n.message.includes("Wingdings"))).toBe(true);
+  });
+
+  it("carries paragraph indents into the run model (P2)", () => {
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      "    startTextObject (svg:height: 1.0000in, svg:width: 4.0000in, svg:x: 1.0000in, svg:y: 1.0000in)",
+      "      openParagraph (fo:margin-left: 0.5000in, fo:text-align: left, fo:text-indent: -0.2500in)",
+      "        openSpan(fo:font-size: 12.0000pt, style:font-name: Arial)",
+      "          insertText (hanging bullet line)",
+      "        closeSpan",
+      "      closeParagraph",
+      "    endTextObject",
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const o = result.doc.pages[0].objects[0];
+    if (o.type !== "text" || !o.text) throw new Error("expected text frame");
+    expect(o.text.paragraphs[0].indent).toBe(0.5);
+    expect(o.text.paragraphs[0].firstLineIndent).toBe(-0.25);
   });
 
   it("per-page size deviations become sizeOverride", () => {

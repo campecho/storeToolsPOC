@@ -7,8 +7,11 @@ import {
   type LayoutObject,
   type MasterPage,
   type Orientation,
+  type Paragraph,
   type Stroke,
 } from "@/schema";
+import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import { applyToAllRuns, type TextPatch } from "@/lib/layout/text";
 import { clearAssetBlobs, deleteAssetBlob } from "@/lib/assets/blob-store";
 import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
 import {
@@ -100,16 +103,9 @@ export type TransformPatch = {
 
 export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
 
-/** Flattened text edit — font fields, alignment, and line spacing (plan L5). */
-export type TextPropsPatch = {
-  family?: string;
-  size?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  align?: "left" | "center" | "right" | "justify";
-  lineSpacing?: number;
-};
+/** Flattened text edit (plan L5) — applies to the WHOLE frame: since schema
+    v2 the runs are the source of truth, so a patch maps over every run. */
+export type TextPropsPatch = TextPatch;
 
 // ASSUMPTION: 50 undo steps matches desktop-publishing norms — confirm with
 // associates once real documents exist.
@@ -200,21 +196,7 @@ function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
 
 function applyTextProps(o: LayoutObject, patch: TextPropsPatch): LayoutObject {
   if (o.type !== "text" || !o.text) return o;
-  return {
-    ...o,
-    text: {
-      ...o.text,
-      font: {
-        family: patch.family ?? o.text.font.family,
-        size: patch.size ?? o.text.font.size,
-        bold: patch.bold ?? o.text.font.bold,
-        italic: patch.italic ?? o.text.font.italic,
-        underline: patch.underline ?? o.text.font.underline,
-      },
-      align: patch.align ?? o.text.align,
-      lineSpacing: patch.lineSpacing ?? o.text.lineSpacing,
-    },
-  };
+  return { ...o, text: applyToAllRuns(o.text, patch) };
 }
 
 function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
@@ -232,7 +214,7 @@ function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
 export function createDefaultDocument(): LayoutDocument {
   return {
-    version: 1,
+    version: 2,
     name: "Untitled publication",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -273,6 +255,9 @@ export interface LayoutEditorState {
   selectedGuide: { axis: "v" | "h"; index: number } | null;
   /** Text frame with the contentEditable overlay open (plan L5). */
   editingTextId: string | null;
+  /** Bumped when lazily-loaded webfonts finish (§10.5) — text frames
+      re-measure overflow against the real metrics. Session-only. */
+  fontsTick: number;
   /** Align tab's "Relative to" choice (plan L7) — session UI, not persisted. */
   alignRel: AlignRelativeTo;
 
@@ -382,8 +367,10 @@ export interface LayoutEditorState {
   /** Equal-gap distribution — needs three or more objects. */
   distributeSelection: (axis: DistributeAxis) => void;
   setEditingText: (id: string | null) => void;
-  /** Typing is transient — the edit session commits one snapshot at close. */
-  setTextContent: (id: string, content: string) => void;
+  bumpFontsTick: () => void;
+  /** Typing is transient — the edit session commits one snapshot at close.
+      The overlay parses its DOM to paragraphs (schema v2) and writes them whole. */
+  setTextParagraphs: (id: string, paragraphs: Paragraph[]) => void;
   /** Styling clicks are discrete input commits — each pushes history. */
   setTextProps: (id: string, patch: TextPropsPatch) => void;
   /** Appends, selects, and returns the tool to Select (Publisher behavior). */
@@ -466,6 +453,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       selectedIds: [],
       selectedGuide: null,
       editingTextId: null,
+      fontsTick: 0,
       alignRel: "page",
       past: [],
       future: [],
@@ -796,12 +784,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       setEditingText: (id) => set({ editingTextId: id }),
 
-      setTextContent: (id, content) =>
+      bumpFontsTick: () => set((s) => ({ fontsTick: s.fontsTick + 1 })),
+
+      setTextParagraphs: (id, paragraphs) =>
         set((s) => ({
           doc: mapSurfaceObjects(s, (objs) =>
             objs.map((o) =>
               o.id === id && o.type === "text" && o.text
-                ? { ...o, text: { ...o.text, content } }
+                ? { ...o, text: { ...o.text, paragraphs } }
                 : o,
             ),
           ),
@@ -1157,12 +1147,12 @@ export const useLayoutStore = create<LayoutEditorState>()(
     {
       // CONTRACT: the storage key + LayoutDocumentSchema are the saved-file
       // format — a real backend persists the same shape per publication.
+      // Key kept from v1 — changing it would orphan existing documents; the
+      // merge below migrates their SHAPE (v1→v2, plan §9), which is the part
+      // that versions. The zustand-level version stays 1 for the same reason.
       name: "stp-layout-v1",
-      // Bumped when the persisted document shape changes beyond what the
-      // schema-validating merge below can absorb.
-      // PROD-TODO: production migrates old documents (v1→v2 per plan §9);
-      // the prototype may drop-and-reseed. A failed write (quota, private
-      // mode) only logs — production needs a visible "not saved" state.
+      // PROD-TODO: a failed write (quota, private mode) only logs —
+      // production needs a visible "not saved" state.
       version: 1,
       storage: createJSONStorage(() =>
         typeof window === "undefined" ? noopStorage : window.localStorage,
@@ -1174,10 +1164,18 @@ export const useLayoutStore = create<LayoutEditorState>()(
       // selection, history, and viewport stay session-scoped.
       partialize: (s) => ({ doc: s.doc, level: s.level, unit: s.unit }),
       // Validate what came out of storage — a corrupt or foreign-shaped doc
-      // falls back to pristine instead of poisoning the editor.
+      // falls back to pristine instead of poisoning the editor. A v1 document
+      // (pre-P2 per-frame text) MIGRATES to v2 (plan §9) — real migration,
+      // not drop-and-reseed: associates' saved work keeps opening.
       merge: (persisted, current) => {
         const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
-        const parsed = LayoutDocumentSchema.safeParse(p?.doc);
+        let parsed = LayoutDocumentSchema.safeParse(p?.doc);
+        if (!parsed.success) {
+          const legacy = V1LayoutDocumentSchema.safeParse(p?.doc);
+          if (legacy.success) {
+            parsed = { success: true, data: migrateLegacyDocument(legacy.data) };
+          }
+        }
         // Only override from a *present, valid* persisted value; otherwise keep
         // `current`. Rehydration runs after mount, so forcing a default here
         // would clobber a preference the user changed in that window (and the

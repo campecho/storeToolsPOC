@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, PanelsTopLeft } from "lucide-react";
 import { useLayoutStore } from "@/store";
+import { collectDocFontFamilies, ensureFamiliesLoaded } from "@/lib/layout/webfonts";
 import { useEditorKeyboard } from "./useEditorKeyboard";
 import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
@@ -61,6 +62,17 @@ function DeepLinkInit() {
 export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
   useEditorKeyboard();
+
+  // Lazy webfont registration (§10.5): whichever families the document uses
+  // load on demand (no-op after the first request per family); when new faces
+  // finish, bump fontsTick so text frames re-measure overflow with real
+  // metrics instead of the fallback's.
+  const doc = useLayoutStore((s) => s.doc);
+  useEffect(() => {
+    void ensureFamiliesLoaded(collectDocFontFamilies(doc)).then((loadedNew) => {
+      if (loadedNew) useLayoutStore.getState().bumpFontsTick();
+    });
+  }, [doc]);
 
   // Expose when the persisted store has rehydrated (skipHydration runs it after
   // mount). Interacting before then can be clobbered by the late rehydrate, so

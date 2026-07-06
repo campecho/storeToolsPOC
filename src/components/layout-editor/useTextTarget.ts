@@ -1,6 +1,6 @@
 import { surfaceObjects, useLayoutStore, type TextPropsPatch } from "@/store";
 import type { FrameObject } from "@/schema";
-import { TEXT_STYLES, type TextStyleKey } from "@/lib/layout/text";
+import { TEXT_STYLES, textSummary, type TextStyleKey } from "@/lib/layout/text";
 
 /**
  * The text frame the typography controls operate on (plan L5): the frame
@@ -9,9 +9,13 @@ import { TEXT_STYLES, type TextStyleKey } from "@/lib/layout/text";
  * tab — resolve their target and apply edits through this hook, so they
  * can't drift apart. Targets live on the editing surface — active page or
  * the master being edited (L6).
+ *
+ * Since schema v2, frame-level style is DERIVED (dominant run, textSummary)
+ * — `summary` is what control faces show; `apply` maps over every run.
  */
 export function useTextTarget(): {
   target: (FrameObject & { text: NonNullable<FrameObject["text"]> }) | undefined;
+  summary: ReturnType<typeof textSummary> | undefined;
   apply: (patch: TextPropsPatch) => void;
   applyStyle: (key: TextStyleKey) => void;
 } {
@@ -29,6 +33,7 @@ export function useTextTarget(): {
 
   return {
     target,
+    summary: target ? textSummary(target.text) : undefined,
     apply: (patch) => {
       if (target) setTextProps(target.id, patch);
     },

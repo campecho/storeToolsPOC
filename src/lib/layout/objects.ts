@@ -1,4 +1,5 @@
 import type { FrameObject, LayoutObject, LineObject } from "@/schema";
+import { defaultTextProps } from "./text";
 
 /**
  * Object factories, bbox math, and the L4 ink palette. Geometry is canonical
@@ -74,12 +75,7 @@ export function createTextFrame(x: number, y: number, w: number, h: number): Fra
     locked: false,
     fill: null,
     stroke: null,
-    text: {
-      content: "",
-      font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
-      align: "left",
-      lineSpacing: 1.2,
-    },
+    text: defaultTextProps(),
   };
 }
 

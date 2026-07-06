@@ -34,13 +34,23 @@ export type IRParagraph = {
   align?: "left" | "center" | "right" | "justify";
   /** fo:line-height as a multiplier (1.19 = Publisher single spacing). */
   lineSpacing?: number;
-  /** fo:margin-left / fo:text-indent present (hanging indents etc.) —
-      the v1 frame model can't hold them; mapper notes the drop. */
-  hasIndent?: boolean;
+  /** fo:margin-left, inches — the paragraph's left indent (schema v2). */
+  marginLeftIn?: number;
+  /** fo:text-indent, inches — extra first-line indent, negative = hanging. */
+  textIndentIn?: number;
   spans: IRSpan[];
 };
 
 export type IRBBox = { x: number; y: number; w: number; h: number };
+
+/** Path segments in ABSOLUTE page inches (mapper normalizes into the bbox).
+    "?" marks a verb we don't model (arc etc.) — mapper degrades to bbox. */
+export type IRPathSeg =
+  | { a: "M" | "L"; x: number; y: number }
+  | { a: "C"; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
+  | { a: "Q"; x1: number; y1: number; x: number; y: number }
+  | { a: "Z" }
+  | { a: "?"; raw: string };
 
 type IRShapeBase = {
   bbox: IRBBox;
@@ -53,7 +63,8 @@ export type IRShape =
   | (IRShapeBase & { kind: "rect"; rxIn?: number })
   | (IRShapeBase & { kind: "ellipse" })
   | (IRShapeBase & { kind: "line"; x1: number; y1: number; x2: number; y2: number })
-  | (IRShapeBase & { kind: "polygon" | "polyline" | "path"; pointCount: number })
+  | (IRShapeBase & { kind: "polygon" | "polyline"; pointsIn: { x: number; y: number }[] })
+  | (IRShapeBase & { kind: "path"; segs: IRPathSeg[] })
   | (IRShapeBase & { kind: "image"; mime?: string })
   | (IRShapeBase & { kind: "table" })
   | (IRShapeBase & { kind: "textbox"; paragraphs: IRParagraph[] });
@@ -123,6 +134,44 @@ function vectorCoords(v: PropValue | undefined): { xs: number[]; ys: number[]; c
     }
   }
   return { xs, ys, count };
+}
+
+/** svg:points vector → absolute-inch points (order preserved). */
+function vectorPoints(v: PropValue | undefined): { x: number; y: number }[] {
+  if (!Array.isArray(v)) return [];
+  const points: { x: number; y: number }[] = [];
+  for (const g of v) {
+    const x = toInches(g["svg:x"]);
+    const y = toInches(g["svg:y"]);
+    if (x !== undefined && y !== undefined) points.push({ x, y });
+  }
+  return points;
+}
+
+/** svg:d vector → typed segments (absolute inches); unknown verbs marked "?". */
+function vectorSegs(v: PropValue | undefined): IRPathSeg[] {
+  if (!Array.isArray(v)) return [];
+  const segs: IRPathSeg[] = [];
+  for (const g of v) {
+    const a = g["librevenge:path-action"];
+    const x = toInches(g["svg:x"]);
+    const y = toInches(g["svg:y"]);
+    const x1 = toInches(g["svg:x1"]);
+    const y1 = toInches(g["svg:y1"]);
+    const x2 = toInches(g["svg:x2"]);
+    const y2 = toInches(g["svg:y2"]);
+    if (a === "Z") segs.push({ a: "Z" });
+    else if ((a === "M" || a === "L") && x !== undefined && y !== undefined) segs.push({ a, x, y });
+    else if (
+      a === "C" &&
+      [x, y, x1, y1, x2, y2].every((n) => n !== undefined)
+    )
+      segs.push({ a: "C", x1: x1!, y1: y1!, x2: x2!, y2: y2!, x: x!, y: y! });
+    else if (a === "Q" && [x, y, x1, y1].every((n) => n !== undefined))
+      segs.push({ a: "Q", x1: x1!, y1: y1!, x: x!, y: y! });
+    else segs.push({ a: "?", raw: String(a) });
+  }
+  return segs;
 }
 
 function bboxOf(xs: number[], ys: number[]): IRBBox | undefined {
@@ -246,27 +295,33 @@ export function buildModel(events: TraceEvent[]): IRDoc {
       }
       case "drawPolyline":
       case "drawPolygon": {
-        const { xs, ys, count } = vectorCoords(props["svg:points"]);
-        const bbox = bboxOf(xs, ys);
+        const points = vectorPoints(props["svg:points"]);
+        const bbox = bboxOf(points.map((p) => p.x), points.map((p) => p.y));
         if (!bbox) break;
-        if (ev.name === "drawPolyline" && count === 2) {
-          push({ kind: "line", bbox, style, x1: xs[0], y1: ys[0], x2: xs[1], y2: ys[1] });
+        if (ev.name === "drawPolyline" && points.length === 2) {
+          push({ kind: "line", bbox, style, x1: points[0].x, y1: points[0].y, x2: points[1].x, y2: points[1].y });
         } else {
           push({
             kind: ev.name === "drawPolygon" ? "polygon" : "polyline",
             bbox,
             style,
-            pointCount: count,
+            pointsIn: points,
             rotationDeg: toNumber(props["librevenge:rotate"]),
           });
         }
         break;
       }
       case "drawPath": {
-        const { xs, ys, count } = vectorCoords(props["svg:d"]);
+        const { xs, ys } = vectorCoords(props["svg:d"]);
         const bbox = bboxOf(xs, ys);
         if (!bbox) break;
-        push({ kind: "path", bbox, style, pointCount: count, rotationDeg: toNumber(props["librevenge:rotate"]) });
+        push({
+          kind: "path",
+          bbox,
+          style,
+          segs: vectorSegs(props["svg:d"]),
+          rotationDeg: toNumber(props["librevenge:rotate"]),
+        });
         break;
       }
       case "drawGraphicObject": {
@@ -327,7 +382,8 @@ export function buildModel(events: TraceEvent[]): IRDoc {
         paragraph = {
           align: readAlign(props["fo:text-align"]),
           lineSpacing: toMultiplier(props["fo:line-height"]),
-          hasIndent: Boolean(marginLeft || indent) || undefined,
+          ...(marginLeft ? { marginLeftIn: marginLeft } : {}),
+          ...(indent ? { textIndentIn: indent } : {}),
           spans: [],
         };
         textbox.paragraphs.push(paragraph);

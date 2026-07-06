@@ -468,7 +468,8 @@ test.describe("Text frames & typography (L5)", () => {
     await page.getByTestId("style-heading").click();
     const headline = page.getByTestId("object-text").first().getByTestId("text-content");
     await expect(headline).toContainText("SPRING SALE");
-    await expect(headline).toHaveCSS("font-weight", "700");
+    // schema v2: ink styles live on the run spans
+    await expect(headline.locator("span").first()).toHaveCSS("font-weight", "700");
 
     // body copy, centered from the Text inspector tab
     await typeFrame(
@@ -479,14 +480,15 @@ test.describe("Text frames & typography (L5)", () => {
     );
     await page.getByTestId("insp-text").click();
     await page.getByTestId("tab-align-center").click();
-    const body = page.getByTestId("object-text").nth(1).getByTestId("text-content");
+    // schema v2: paragraph alignment lives on the paragraph div
+    const body = page.getByTestId("object-text").nth(1).getByTestId("text-content").locator("div").first();
     await expect(body).toHaveCSS("text-align", "center");
 
     // the whole sign survives a reload
     await page.reload();
     await expect(page.getByTestId("object-text")).toHaveCount(2);
     await expect(
-      page.getByTestId("object-text").first().getByTestId("text-content"),
+      page.getByTestId("object-text").first().getByTestId("text-content").locator("span").first(),
     ).toHaveCSS("font-weight", "700");
     await expect(page.getByTestId("object-text").nth(1)).toContainText("this week only");
   });
@@ -533,15 +535,19 @@ test.describe("Text frames & typography (L5)", () => {
     await page.goto("/layout");
     await typeFrame(page, { x: 40, y: 40 }, { x: 300, y: 140 }, "Style me");
     const content = page.getByTestId("text-content");
+    // schema v2: character styles live on run spans; paragraph styles on the
+    // paragraph divs inside text-content
+    const ink = content.locator("span").first();
+    const para = content.locator("div").first();
 
     await page.getByTestId("tog-bold").click();
-    await expect(content).toHaveCSS("font-weight", "700");
+    await expect(ink).toHaveCSS("font-weight", "700");
     await page.getByTestId("tog-italic").click();
-    await expect(content).toHaveCSS("font-style", "italic");
+    await expect(ink).toHaveCSS("font-style", "italic");
     await page.getByTestId("tog-underline").click();
-    await expect(content).toHaveCSS("text-decoration-line", "underline");
+    await expect(ink).toHaveCSS("text-decoration-line", "underline");
     await page.getByTestId("font-family").selectOption("Georgia");
-    await expect(content).toHaveCSS("font-family", /Georgia/);
+    await expect(ink).toHaveCSS("font-family", /Georgia/);
 
     // exact metrics at a known zoom: 24 pt = 32 px, ×1.5 line = 48 px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {
@@ -554,14 +560,14 @@ test.describe("Text frames & typography (L5)", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }, "100");
     await page.getByTestId("font-size").selectOption("24");
-    await expect(content).toHaveCSS("font-size", "32px");
+    await expect(ink).toHaveCSS("font-size", "32px");
     await page.getByTestId("ribbon-text").click();
     await page.getByTestId("text-band-line").selectOption("1.5");
-    await expect(content).toHaveCSS("line-height", "48px");
+    await expect(para).toHaveCSS("line-height", "48px");
 
     // undo unwinds the styling clicks one at a time — back to the 1.2 default
     await page.keyboard.press("ControlOrMeta+z");
-    await expect(content).toHaveCSS("line-height", "38.4px");
+    await expect(para).toHaveCSS("line-height", "38.4px");
   });
 
   test("typography controls disable without a text target", async ({ page }) => {

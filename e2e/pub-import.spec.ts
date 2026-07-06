@@ -48,16 +48,19 @@ test.describe(".pub import (P1)", () => {
     await expect(page.getByTestId("doc-name")).toHaveValue("demo");
     await expect(page.getByTestId("page-indicator")).toContainText("of 2");
 
-    // Page 1 of the demo flyer: 5 rects (banner + rotated + rounded + the
-    // polygon and path bounding-box fallbacks), 2 text frames, the divider
-    // line, and the image placeholder frame — nothing dropped.
-    await expect(page.getByTestId("object-rect")).toHaveCount(5);
+    // Page 1 of the demo flyer: 3 rects (banner + rotated + rounded), 2 REAL
+    // vector paths since P2 (the star polygon and the bezier leaf), 2 text
+    // frames, the divider line, and the image placeholder — nothing dropped.
+    await expect(page.getByTestId("object-rect")).toHaveCount(3);
+    await expect(page.getByTestId("object-path")).toHaveCount(2);
     await expect(page.getByTestId("object-text")).toHaveCount(2);
     await expect(page.getByTestId("object-line")).toHaveCount(1);
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
 
-    // Text landed with its content
-    await expect(page.getByTestId("text-content").first()).toContainText("GRAND OPENING");
+    // Text landed with its content, per-run style, and the source ink color
+    const headline = page.getByTestId("text-content").first();
+    await expect(headline).toContainText("GRAND OPENING");
+    await expect(headline.locator("span").first()).toHaveCSS("color", "rgb(255, 255, 255)");
 
     // Geometry accuracy (the Milestone-1 bar): the banner rect is exactly
     // 0.5,0.5 7.5×1.75 in. Select it from the Layers list (bottom of the
