@@ -83,7 +83,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Customer proof station — counter sign-off: customer view, associate dispatch, session service | ❌ planned, sequenced **before UAT** — spec + build plan in docs (PS1–PS5) |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import — geometry-first pipeline (P1): sniff → `pub2raw` → trace parser → mapper, fixture mode, homepage callout live | ✅ shipped — the import proof point |
-| `.pub` import — content core (P2): schema v2 per-run text + ink color, real vector paths, §10.5 font library (self-hosted stand-ins + tiered remap + Wingdings translation), v1→v2 migration | ✅ shipped — labels corpus 176/192 clean (was 34); images (P3), report UI (P4) next |
+| `.pub` import — content core (P2): schema v2 per-run text + ink color, real vector paths, §10.5 font library (self-hosted stand-ins + tiered remap + Wingdings translation), v1→v2 migration | ✅ shipped — labels corpus 176/192 clean (was 34) |
+| `.pub` import — image extraction (P3): bitmap fills + graphic objects → deduped assets, real bytes seeded to the editor's asset store, stretch-fit rendering | ✅ shipped — labels corpus **192/192 clean**; report UI (P4) next |
 | Open/save/export, print production | ❌ specified in docs (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
@@ -339,6 +340,22 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   34 converted / 158 degraded (P1) to **176 / 16**, with all 128 vector shapes as real paths.
   Still honest: images (P3), tables, arcs, and selection-scoped styling remain flagged
   degradations or later slices.
+- **`.pub` import — step P3, image extraction (plan v1.7): pictures convert for real.** The
+  corpus corrected the spec before build: real Publisher images arrive as **bitmap fills**
+  (`draw:fill: bitmap` + base64 `draw:fill-image` on `setStyle`, stretched onto rectangle
+  polygons), not as `drawGraphicObject` embeds — the pipeline now extracts **both paths**.
+  Payloads are sniffed by magic bytes (never the declared MIME — same posture as the `.pub`
+  sniffer), PNG/JPEG/GIF dimensions parsed from headers, and **deduped by content hash**: the
+  checkpoint-labels file stamps one 915×300 logo onto 16 frames and imports as 16 picture
+  frames sharing **one** asset. Bytes ride the import response as base64 (`assets`, a new
+  Zod contract) and the client seeds them into the same IndexedDB asset store the L8 upload
+  path uses — pictures re-resolve whichever side of the async write they mount on. New
+  picture `fit` mode renders imports **stretched** (Publisher's scaling) while uploads keep
+  cover-fit. Honest edges: WMF/EMF/TIFF can't render in a browser and stay placeholders with
+  a format-named note (no asset); bitmap fills on non-rectangular shapes keep their vector
+  geometry, unfilled, with a note. Live corpus: labels **192/192 converted, 0 degraded**
+  (P1: 34/158 · P2: 176/16); the business card's 600×434 JPEG (~1 MB) extracts and renders.
+  Verified end-to-end: 348 unit tests, 77 e2e, live conversion of all four corpus files.
 
 ## Where things live
 

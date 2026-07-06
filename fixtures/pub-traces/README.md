@@ -24,6 +24,22 @@ Format quirks this ground truth pinned down (encoded in `trace-parser.ts`):
 - `office:binary-data` prints as base64;
 - `insertText (…)` payload is raw text, not a property list.
 
+### Images in the golden (P3)
+
+The golden exercises **both** ways Publisher images reach the trace, so the
+image-extraction step (P3) has a synthetic fixture for each path:
+
+- **`drawGraphicObject`** (page 1) — the direct embed: `librevenge:mime-type`
+  + `office:binary-data` (base64). The payload is a real programmatically
+  generated 8×8 PNG (solid `#cc0000`, 74 bytes), so `imageDimensions` reads a
+  genuine 8×8 IHDR — it replaced the earlier 12-char signature-only stub.
+- **Bitmap fill** (page 2) — `setStyle(draw:fill: bitmap, draw:fill-image: …,
+  librevenge:mime-type: image/png, style:repeat: stretch)` applied to the next
+  axis-aligned `drawRectangle`. This is the **dominant real-corpus path**
+  (see below): a bitmap fill on the following rectangle, not a graphic object.
+  The golden reuses the same 8×8 PNG payload, so the mapper's content-dedupe
+  collapses both frames to one asset.
+
 Regenerate (needs `g++ librevenge-dev pkg-config`):
 
 ```bash
@@ -44,7 +60,7 @@ the fixture-mode demo payload. Regenerate any trace with
 |---|---|---|
 | `3up_tabs.trace` | Binder-tab store template | 3 pages 9×11 · **rotated text frames** (`librevenge:rotate: 90`) · inch-denominated font sizes · vertical-align middle · empty trailing spans |
 | `bcim_double_cut.trace` | 2-sided customer business card | 3.75×2.125 landscape pages · right-aligned multi-paragraph text · unknown font (Goudy Old Style) · bitmap fill |
-| `production_checkpoint_labels.trace` | Store production labels | 2 dense pages, 192 shapes · **layers** · 96 polygons + 32 paths · `insertSpace` runs · 125% line spacing · Wingdings + HelveticaNeueLT Pro faces |
+| `production_checkpoint_labels.trace` | Store production labels | 2 dense pages, 192 shapes · **layers** · 96 polygons (16 are **bitmap-fill rectangles** — one shared PNG) + 32 paths · `insertSpace` runs · 125% line spacing · Wingdings + HelveticaNeueLT Pro faces |
 | `business_card_template_10up.trace` | 10-up imposition template | **Master-page-only content → converts empty** (upstream libmspub limitation, flagged tier 3) |
 
 **What the real corpus corrected vs. the synthetic golden** (all fixed in the
@@ -58,4 +74,11 @@ parser/mapper, each pinned by a corpus test):
 - rotation is **clockwise about the frame center, passed through unchanged**
   (verified against pub2xhtml's `rotate(θ, cx, cy)` reference render);
 - every real text frame carries the **0.04 in default insets** — reported
-  once per document, not per frame.
+  once per document, not per frame;
+- **images arrive as bitmap fills, not graphic objects** (P3): the real corpus
+  ships raster images via `setStyle(draw:fill: bitmap, draw:fill-image: …)`
+  applied to the following axis-aligned rectangle (a `drawRectangle`, or a 4-/
+  5-point rect `drawPolygon`) — `production_checkpoint_labels` has 16 (one PNG
+  reused across sibling label frames), `bcim_double_cut` has 1 (~1 MB JPEG).
+  `drawGraphicObject` embeds exist too but didn't appear in this corpus; the
+  golden carries one so both paths stay covered.

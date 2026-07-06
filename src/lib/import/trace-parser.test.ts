@@ -12,7 +12,8 @@ describe("parseTrace against the librevenge golden (plan P1)", () => {
     expect(events[0]).toEqual({ name: "startDocument", props: {} });
     expect(events.at(-1)).toEqual({ name: "endDocument", props: {} });
     expect(events.filter((e) => e.name === "startPage")).toHaveLength(2);
-    expect(events.filter((e) => e.name === "drawRectangle")).toHaveLength(4);
+    // 3 on page 1 (banner, rotated, rounded) + gray backer + bitmap-fill rect on page 2
+    expect(events.filter((e) => e.name === "drawRectangle")).toHaveLength(5);
     expect(events.filter((e) => e.name === "startTextObject")).toHaveLength(3);
   });
 

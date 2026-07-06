@@ -40,7 +40,7 @@ startDocument()
     setStyle(draw:fill: solid, draw:fill-color: #2e8b3d, draw:stroke: none)
     drawPath (svg:d: ((librevenge:path-action: M, svg:x: 1.0000in, svg:y: 9.0000in), (librevenge:path-action: C, svg:x: 3.0000in, svg:x1: 1.5000in, svg:x2: 2.5000in, svg:y: 9.0000in, svg:y1: 8.5000in, svg:y2: 9.5000in), (librevenge:path-action: Z)))
     setStyle(draw:fill: none, draw:stroke: none)
-    drawGraphicObject (librevenge:mime-type: image/png, office:binary-data: iVBORw0KGgo=, svg:height: 1.5000in, svg:width: 2.2500in, svg:x: 5.5000in, svg:y: 2.6000in)
+    drawGraphicObject (librevenge:mime-type: image/png, office:binary-data: iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mM4w8CAFTEMLQkAIPQzAWg3IxUAAAAASUVORK5CYII=, svg:height: 1.5000in, svg:width: 2.2500in, svg:x: 5.5000in, svg:y: 2.6000in)
   endPage
   startPage(svg:height: 11.0000in, svg:width: 8.5000in)
     setStyle(draw:fill: solid, draw:fill-color: #e4e4e4, draw:stroke: none)
@@ -57,5 +57,7 @@ startDocument()
         closeSpan
       closeParagraph
     endTextObject
+    setStyle(draw:fill: bitmap, draw:fill-image: iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mM4w8CAFTEMLQkAIPQzAWg3IxUAAAAASUVORK5CYII=, draw:fill-image-ref-point: top-left, draw:stroke: none, librevenge:mime-type: image/png, style:repeat: stretch)
+    drawRectangle (svg:height: 1.0000in, svg:width: 2.0000in, svg:x: 2.0000in, svg:y: 2.0000in)
   endPage
 endDocument

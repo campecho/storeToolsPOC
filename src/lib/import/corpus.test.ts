@@ -80,7 +80,7 @@ describe("corpus: 3up_tabs.pub (binder-tab template, rotated text)", () => {
 });
 
 describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () => {
-  const { doc, fonts } = convert("bcim_double_cut");
+  const { doc, fonts, fidelity } = convert("bcim_double_cut");
 
   it("is a valid 2-page 3.75×2.125 landscape document", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
@@ -101,6 +101,23 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
     const goudy = fonts.find((f) => f.source === "Goudy Old Style");
     expect(goudy?.mappedTo).toBe("Goudy Old Style");
     expect(goudy?.reason).toContain("Sorts Mill Goudy");
+  });
+
+  it("extracts the single JPEG bitmap fill to one picture frame (P3)", () => {
+    const pictures = doc.pages.flatMap((p) => p.objects).filter((o) => o.type === "picture");
+    expect(pictures).toHaveLength(1);
+    const pic = pictures[0];
+    if (pic.type !== "picture") throw new Error("picture");
+    expect(pic.assetId).toBeDefined();
+    expect(pic.fit).toBe("stretch");
+    expect(Object.keys(doc.assets)).toHaveLength(1);
+    // sniffed as JPEG (the declared mime agrees here) — 600×434, ~983 KB
+    const asset = doc.assets[pic.assetId!];
+    expect(asset.mime).toBe("image/jpeg");
+    expect(asset.width).toBe(600);
+    expect(asset.height).toBe(434);
+    // nothing degrades now that the fill converts
+    expect(fidelity.degraded).toBe(0);
   });
 
   it("keeps every shape inside the page bounds (sanity on real geometry)", () => {
@@ -124,12 +141,15 @@ describe("corpus: production_checkpoint_labels.pub (layered, vector-heavy)", () 
   it("is a valid 2-page document carrying all 192 shapes", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
     expect(doc.pages).toHaveLength(2);
-    expect(objects).toHaveLength(192); // 64 text + 128 vector — nothing dropped
+    // 64 text + 112 path + 16 picture — nothing dropped (16 of the 128 vector
+    // shapes were bitmap-fill rectangles, now extracted to picture frames).
+    expect(objects).toHaveLength(192);
   });
 
-  it("converts the 128 vector shapes as REAL paths now (P2) — no bbox fallback", () => {
+  it("converts the 112 non-image vector shapes as REAL paths (P2) — no bbox fallback", () => {
     const paths = objects.filter((o) => o.type === "path");
-    expect(paths).toHaveLength(128);
+    // 128 vector shapes minus the 16 bitmap-fill rectangles (now pictures) = 112
+    expect(paths).toHaveLength(112);
     expect(notes.some((n) => n.message.includes("bounding box"))).toBe(false);
     // normalized segments stay in the unit box
     for (const p of paths.slice(0, 8)) {
@@ -142,7 +162,34 @@ describe("corpus: production_checkpoint_labels.pub (layered, vector-heavy)", () 
         expect(seg.y).toBeLessThanOrEqual(1.001);
       }
     }
-    expect(fidelity.converted).toBeGreaterThanOrEqual(128);
+    expect(fidelity.converted).toBeGreaterThanOrEqual(112);
+  });
+
+  it("extracts the 16 bitmap fills to picture frames sharing ONE deduped asset (P3)", () => {
+    const pictures = objects.filter((o) => o.type === "picture");
+    expect(pictures).toHaveLength(16);
+    // identical payload applied to 16 sibling label frames → a single asset
+    const assetIds = new Set(pictures.map((p) => (p.type === "picture" ? p.assetId : undefined)));
+    expect(assetIds.size).toBe(1);
+    for (const p of pictures) {
+      if (p.type !== "picture") throw new Error("picture");
+      expect(p.assetId).toBeDefined();
+      expect(p.fit).toBe("stretch");
+    }
+    expect(Object.keys(doc.assets)).toHaveLength(1);
+    // the corpus PNG is 915×300 — sniffed mime + real dimensions defined
+    const asset = Object.values(doc.assets)[0];
+    expect(asset.mime).toBe("image/png");
+    expect(asset.width).toBe(915);
+    expect(asset.height).toBe(300);
+    expect(asset.bytes).toBe(19875);
+    // the degradation these used to produce is gone
+    expect(notes.some((n) => n.message.includes("bitmap fill flattened"))).toBe(false);
+  });
+
+  it("tallies fidelity clean now that the bitmap fills convert (P3)", () => {
+    // pinned to the live corpus: 176 clean + 16 bitmap fills, all now converted
+    expect(fidelity).toEqual({ converted: 192, degraded: 0, flagged: 0 });
   });
 
   it("renders the labels' white ink per run — the corpus case that forced text color", () => {

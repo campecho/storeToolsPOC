@@ -3,13 +3,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LayoutDocumentSchema } from "@/schema";
 import { textContent } from "@/lib/layout/text";
+import { decodeBase64 } from "./image-meta";
 import { buildModel } from "./model";
 import { mapToLayoutDocument, PUBLISHER_DEFAULT_LINE_SPACING } from "./mapper";
 import { parseTrace } from "./trace-parser";
 
 const golden = readFileSync(join(process.cwd(), "fixtures/pub-traces/demo-flyer.trace"), "utf8");
 const ir = buildModel(parseTrace(golden));
-const { doc, fidelity, fonts, notes } = mapToLayoutDocument(ir, "Demo flyer");
+const { doc, fidelity, fonts, notes, blobs } = mapToLayoutDocument(ir, "Demo flyer");
 
 describe("buildModel (plan §10.2 intermediate model)", () => {
   it("captures pages and shape counts", () => {
@@ -19,7 +20,8 @@ describe("buildModel (plan §10.2 intermediate model)", () => {
     // banner rect, headline text, body text, rotated rect, rounded rect,
     // divider line, polygon, path, image = 9 shapes on page 1
     expect(ir.pages[0].shapes).toHaveLength(9);
-    expect(ir.pages[1].shapes).toHaveLength(2);
+    // page 2: gray backer rect, address text, bitmap-fill rect = 3 shapes
+    expect(ir.pages[1].shapes).toHaveLength(3);
   });
 
   it("applies setStyle statefully to subsequent draws", () => {
@@ -130,13 +132,40 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
     expect(rotated.rotation).toBe(15);
   });
 
-  it("still degrades rounded corners and images with notes — never silently", () => {
+  it("still degrades rounded corners with a note — never silently", () => {
     const ids = new Set(notes.filter((n) => n.tier === 2).map((n) => n.objectId));
     const rounded = doc.pages[0].objects[4];
-    const picture = doc.pages[0].objects[8];
     expect(ids.has(rounded.id)).toBe(true);
-    expect(picture.type).toBe("picture");
-    expect(ids.has(picture.id)).toBe(true);
+  });
+
+  it("extracts the drawGraphicObject image to a stretched picture frame (P3) — no note", () => {
+    const picture = doc.pages[0].objects[8];
+    if (picture.type !== "picture") throw new Error("expected picture frame");
+    expect(picture.assetId).toBeDefined();
+    expect(picture.fit).toBe("stretch");
+    // the extracted image is faithful now — no degradation note
+    expect(notes.some((n) => n.objectId === picture.id)).toBe(false);
+    // asset metadata carries the sniffed mime + real 8×8 dimensions
+    const asset = doc.assets[picture.assetId!];
+    expect(asset).toMatchObject({ kind: "image", mime: "image/png", width: 8, height: 8, name: "imported-1.png" });
+    expect(asset.bytes).toBe(74);
+    // and the bytes ride the blobs payload keyed by the same id
+    expect(blobs[picture.assetId!]).toBeDefined();
+    expect(blobs[picture.assetId!].mime).toBe("image/png");
+    expect(decodeBase64(blobs[picture.assetId!].dataB64).length).toBe(74);
+  });
+
+  it("converts a page-2 bitmap-fill rect to a picture sharing the deduped asset", () => {
+    const picture = doc.pages[1].objects[2];
+    if (picture.type !== "picture") throw new Error("expected picture frame");
+    expect(picture.fit).toBe("stretch");
+    // same PNG payload as the page-1 graphic → one shared asset, not two
+    const graphic = doc.pages[0].objects[8];
+    if (graphic.type !== "picture") throw new Error("expected picture frame");
+    expect(picture.assetId).toBe(graphic.assetId);
+    expect(Object.keys(doc.assets)).toHaveLength(1);
+    expect(Object.keys(blobs)).toHaveLength(1);
+    expect(notes.some((n) => n.objectId === picture.id)).toBe(false);
   });
 
   it("converts polygons to real closed paths with normalized (0–1) points (P2)", () => {
@@ -200,12 +229,13 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
     expect(notes.some((n) => n.objectId === headline.id)).toBe(false);
   });
 
-  it("tallies fidelity so the report adds up (P2: paths and text now convert clean)", () => {
-    expect(fidelity.converted + fidelity.degraded + fidelity.flagged).toBe(11);
+  it("tallies fidelity so the report adds up (P3: the image now extracts clean)", () => {
+    // 9 page-1 shapes + 3 page-2 shapes (the added bitmap rect) = 12
+    expect(fidelity.converted + fidelity.degraded + fidelity.flagged).toBe(12);
     expect(fidelity.flagged).toBe(0); // no tables in the demo trace
-    // only the rounded rect and the placeholder image still degrade
-    expect(fidelity.degraded).toBe(2);
-    expect(fidelity.converted).toBe(9);
+    // only the rounded rect still degrades — the image + bitmap rect convert
+    expect(fidelity.degraded).toBe(1);
+    expect(fidelity.converted).toBe(11);
   });
 });
 
@@ -343,5 +373,51 @@ describe("mapper edge cases", () => {
     const result = mapToLayoutDocument(buildModel(parseTrace("startDocument()\nendDocument()")), "empty");
     expect(LayoutDocumentSchema.safeParse(result.doc).success).toBe(true);
     expect(result.doc.pages).toHaveLength(1);
+  });
+
+  // A real 8×8 PNG (color type 2), the same payload the golden trace carries.
+  const TINY_PNG =
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mM4w8CAFTEMLQkAIPQzAWg3IxUAAAAASUVORK5CYII=";
+
+  it("keeps a bitmap fill on a non-rectangular polygon as a path, unfilled, with a note (P3)", () => {
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      `    setStyle(draw:fill: bitmap, draw:fill-image: ${TINY_PNG}, draw:stroke: none, librevenge:mime-type: image/png, style:repeat: stretch)`,
+      "    drawPolygon (svg:points: ((svg:x: 1.0000in, svg:y: 1.0000in), (svg:x: 3.0000in, svg:y: 1.0000in), (svg:x: 2.0000in, svg:y: 3.0000in)))",
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const o = result.doc.pages[0].objects[0];
+    expect(o.type).toBe("path"); // geometry kept — fidelity over a wrong rectangle
+    if (o.type === "line") throw new Error("unexpected line");
+    expect(o.fill).toBeNull();
+    // no asset — we only extract images we can actually place
+    expect(Object.keys(result.doc.assets)).toHaveLength(0);
+    expect(Object.keys(result.blobs)).toHaveLength(0);
+    expect(result.notes.some((n) => n.tier === 2 && n.message.includes("non-rectangular shape"))).toBe(true);
+    expect(result.fidelity.degraded).toBe(1);
+  });
+
+  it("degrades a WMF graphic object to a placeholder with a note and no asset (P3)", () => {
+    const wmf = "183GmgAAAAAAAAAA"; // placeable-WMF magic D7 CD C6 9A
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      "    setStyle(draw:fill: none, draw:stroke: none)",
+      `    drawGraphicObject (librevenge:mime-type: image/wmf, office:binary-data: ${wmf}, svg:height: 1.0000in, svg:width: 1.0000in, svg:x: 1.0000in, svg:y: 1.0000in)`,
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const o = result.doc.pages[0].objects[0];
+    expect(o.type).toBe("picture");
+    if (o.type !== "picture") throw new Error("expected picture");
+    expect(o.assetId).toBeUndefined();
+    expect(Object.keys(result.doc.assets)).toHaveLength(0);
+    expect(Object.keys(result.blobs)).toHaveLength(0);
+    expect(result.notes.some((n) => n.tier === 2 && n.message.includes("WMF"))).toBe(true);
+    expect(result.fidelity.degraded).toBe(1);
   });
 });

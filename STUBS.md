@@ -32,6 +32,7 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 | Import server state | `src/app/api/import/route.ts` | Stateless per-request today, but the server tranche (import jobs, proof sessions) assumes **one instance** | Real job/session store; until then deploy single-instance (Cloud Run `max-instances=1`). |
 | AV scan on ingest | `src/lib/import/pub2raw.ts` (`avScanHook`) | Logging stub — the seam exists, nothing scans | Suite AV decision (ClamAV vs. commercial) plugs in here (plan §10.1). |
 | Import report UI | `src/lib/store/layout-store.ts` (`importReport`) | Report is captured in the store but has no panel yet | P4 renders the report panel with per-note deep links (plan §10.4). |
+| Extracted-image transport (P3) | `src/lib/import/report.ts` (`ImportAssetsPayloadSchema`), `src/lib/import/client.ts` | Image bytes ride the import response as base64 JSON and seed client IndexedDB | A production conversion service stores assets and returns URLs; the client seam (decode → `replaceAssetBlobs`) is the only code that changes. Note: extracted images bypass the ingest AV hook — production scans derived content too (plan §10.1). |
 
 ## Inert-by-design affordances (`PROTOTYPE-ONLY:`)
 

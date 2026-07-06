@@ -78,7 +78,7 @@ export async function POST(req: Request) {
   }
 
   const name = file.name.replace(/\.(pub|puz)$/i, "") || "Imported publication";
-  const { doc, fidelity, fonts, notes } = mapToLayoutDocument(buildModel(parseTrace(converted.trace)), name);
+  const { doc, fidelity, fonts, notes, blobs } = mapToLayoutDocument(buildModel(parseTrace(converted.trace)), name);
 
   const report: ImportReport = {
     mode: converted.mode,
@@ -99,5 +99,8 @@ export async function POST(req: Request) {
     overset: [],
   };
 
-  return NextResponse.json({ ok: true, doc, report });
+  // `assets` carries the extracted image bytes (P3) keyed by asset id — the
+  // client seeds its blob store from these before opening `doc` (report.ts's
+  // ImportAssetsPayload contract). Empty when the publication has no images.
+  return NextResponse.json({ ok: true, doc, report, assets: blobs });
 }

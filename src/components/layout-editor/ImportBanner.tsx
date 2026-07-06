@@ -94,7 +94,7 @@ export function ImportBanner() {
       <Info size={14} strokeWidth={2} className="shrink-0 text-[#086dd2]" />
       <div className="flex-1 leading-relaxed">
         Imported <span className="font-semibold">{report.source.filename}</span> — {converted} converted,{" "}
-        {needsReview} need review (fonts remapped, images and vector art simplified). Full report panel is coming;
+        {needsReview} need review (fonts remapped, some elements simplified). Full report panel is coming;
         nothing was dropped silently.
       </div>
       <button

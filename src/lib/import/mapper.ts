@@ -1,4 +1,5 @@
 import type {
+  Asset,
   LayoutDocument,
   LayoutObject,
   LayoutPage,
@@ -9,8 +10,9 @@ import type {
 } from "@/schema";
 import { DEFAULT_TEXT_COLOR } from "@/lib/layout/text";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
-import type { IRDoc, IRPage, IRParagraph, IRPathSeg, IRSpan, IRStyle } from "./model";
-import type { FontRemap, ImportNote } from "./report";
+import { assetIdFor, decodeBase64, imageDimensions, isRenderableImage, sniffImageMime } from "./image-meta";
+import type { IRDoc, IRPage, IRParagraph, IRPathSeg, IRShape, IRSpan, IRStyle } from "./model";
+import type { FontRemap, ImportAssetsPayload, ImportNote } from "./report";
 
 /**
  * Intermediate model → `LayoutDocument` mapper (plan §10.3) — P2 scope:
@@ -28,6 +30,10 @@ export type MapResult = {
   fidelity: { converted: number; degraded: number; flagged: number };
   fonts: FontRemap[];
   notes: ImportNote[];
+  /** Extracted image bytes (P3), keyed by asset id — the API response's
+      `assets` half (report.ts's frozen contract). Seeds the client blob store
+      before the document opens; `doc.assets` holds the matching metadata. */
+  blobs: ImportAssetsPayload;
 };
 
 /**
@@ -214,6 +220,89 @@ function normalizeSegs(segs: IRPathSeg[], bbox: { x: number; y: number; w: numbe
   return out;
 }
 
+/* ── Images: bitmap fills + graphic objects → deduped asset registry (P3) ── */
+
+/**
+ * Distinct-payload asset store built as the mapper walks the shapes. Both
+ * image paths — `drawGraphicObject` (office:binary-data) and bitmap fills
+ * (draw:fill-image) — funnel through here; identical bytes collapse to one
+ * asset (the labels corpus applies one bitmap to 16 sibling frames).
+ */
+type AssetRegistry = {
+  /** doc.assets metadata, keyed by content id. */
+  assets: Record<string, Asset>;
+  /** API-response blob payloads, same keys. */
+  blobs: ImportAssetsPayload;
+  /** First-seen counter for `imported-<n>.<ext>` names. */
+  count: number;
+};
+
+const EXT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/bmp": "bmp",
+  "image/webp": "webp",
+};
+
+/** Sniff a payload's true type (never trust the declared mime) once. */
+function inspectImage(dataB64: string, declaredMime: string | undefined): {
+  bytes: Uint8Array;
+  mime: string;
+  renderable: boolean;
+} {
+  const bytes = decodeBase64(dataB64);
+  const mime = sniffImageMime(bytes) ?? declaredMime ?? "application/octet-stream";
+  return { bytes, mime, renderable: isRenderableImage(mime) };
+}
+
+/** Human format label for a mime, for the degradation notes ("WMF", "TIFF"). */
+function formatName(mime: string): string {
+  const slash = mime.indexOf("/");
+  const sub = slash === -1 ? mime : mime.slice(slash + 1);
+  return sub.replace(/^x-/, "").toUpperCase();
+}
+
+/** Register a renderable payload (dedup by content id), returning its asset id. */
+function registerImage(reg: AssetRegistry, dataB64: string, bytes: Uint8Array, mime: string): string {
+  const id = assetIdFor(dataB64);
+  if (!reg.blobs[id]) {
+    reg.blobs[id] = { mime, dataB64 };
+    const n = ++reg.count;
+    const dims = imageDimensions(bytes, mime);
+    reg.assets[id] = {
+      id,
+      name: `imported-${n}.${EXT_BY_MIME[mime] ?? "img"}`,
+      kind: "image",
+      mime,
+      ...(dims ? { width: dims.width, height: dims.height } : {}),
+      bytes: bytes.length,
+    };
+  }
+  return id;
+}
+
+/**
+ * A bitmap fill lands on a shape whose geometry is an axis-aligned rectangle
+ * (a rect frame, or a polygon Publisher emits as one) → we can honestly show
+ * the image stretched into the frame. The corpus ships rectangles as 4- or
+ * 5-point polygons (the 5th repeats the first); tolerance is 0.002in.
+ */
+function isAxisAlignedRect(points: { x: number; y: number }[]): boolean {
+  if (points.length !== 4 && points.length !== 5) return false;
+  const near = (a: number, b: number) => Math.abs(a - b) <= 0.002;
+  const distinct = (vals: number[]): number[] => {
+    const out: number[] = [];
+    for (const v of vals) if (!out.some((u) => near(u, v))) out.push(v);
+    return out;
+  };
+  return distinct(points.map((p) => p.x)).length === 2 && distinct(points.map((p) => p.y)).length === 2;
+}
+
+function fillImageIsRectangular(shape: IRShape): boolean {
+  return shape.kind === "rect" || (shape.kind === "polygon" && isAxisAlignedRect(shape.pointsIn));
+}
+
 /* ── Pages ── */
 
 function mapPage(
@@ -223,6 +312,7 @@ function mapPage(
     fidelity: MapResult["fidelity"];
     notes: ImportNote[];
     fontCtx: FontCtx;
+    assets: AssetRegistry;
   },
 ): LayoutPage {
   const pageId = `imp-p${pageIndex + 1}`;
@@ -247,6 +337,47 @@ function mapPage(
     };
     if (shape.style.fillKind) {
       flag(`${shape.style.fillKind} fill flattened to the nearest flat color`);
+    }
+
+    // Bitmap fills (P3) — the corpus's dominant image path: setStyle applies an
+    // embedded image to the following shape. On an axis-aligned rectangle it
+    // becomes a stretched picture frame; on other geometry (or a textbox) we
+    // keep the shape and drop the fill, since image-clipping is backlog.
+    const fillImage = shape.style.fillImage;
+    if (fillImage) {
+      const { bytes, mime, renderable } = inspectImage(fillImage.dataB64, fillImage.mime);
+      const rectangular = fillImageIsRectangular(shape);
+      if (rectangular) {
+        if (renderable) {
+          const assetId = registerImage(ctx.assets, fillImage.dataB64, bytes, mime);
+          if (fillImage.repeat && fillImage.repeat !== "stretch") {
+            flag(`bitmap fill repeat mode "${fillImage.repeat}" isn't supported — image stretched to fill instead`);
+          }
+          objects.push({ ...base, type: "picture", fill: null, assetId, fit: "stretch" });
+        } else {
+          flag(
+            `embedded ${formatName(mime)} vector image can't be displayed — placeholder frame (rasterization is backlog)`,
+          );
+          objects.push({ ...base, type: "picture", fill: null });
+        }
+        if (degradations.length) {
+          ctx.fidelity.degraded++;
+          for (const m of degradations) note(id, 2, m);
+        } else {
+          ctx.fidelity.converted++;
+        }
+        return;
+      }
+      // Non-rectangular geometry (or a textbox): keep it, drop the fill. Fall
+      // through to the normal switch with the fill forced null (no corpus
+      // bitmap carries a draw:fill-color, but a stray preview color would
+      // contradict the "shown unfilled" note) — and add the honest note.
+      base.fill = null;
+      flag(
+        renderable
+          ? "bitmap fill on a non-rectangular shape dropped — shown unfilled (image-clip is backlog)"
+          : `embedded ${formatName(mime)} vector image can't be displayed — shown unfilled (rasterization is backlog)`,
+      );
     }
 
     switch (shape.kind) {
@@ -289,8 +420,25 @@ function mapPage(
         break;
       }
       case "image": {
+        if (shape.dataB64) {
+          const { bytes, mime, renderable } = inspectImage(shape.dataB64, shape.mime);
+          if (renderable) {
+            // Extracted (P3): real bytes, browser-renderable → a stretched
+            // picture frame referencing the deduped asset. Converts clean.
+            const assetId = registerImage(ctx.assets, shape.dataB64, bytes, mime);
+            objects.push({ ...base, type: "picture", fill: base.fill ?? null, assetId, fit: "stretch" });
+            break;
+          }
+          // Real bytes, but a format no <img> renders (WMF/EMF/TIFF) — no asset.
+          flag(
+            `embedded ${formatName(mime)} vector image can't be displayed — placeholder frame (rasterization is backlog)`,
+          );
+          objects.push({ ...base, type: "picture", fill: base.fill ?? null });
+          break;
+        }
+        // No payload on the callback — a placeholder is the honest best.
         flag(
-          `embedded image${shape.mime ? ` (${shape.mime})` : ""} shown as a placeholder frame — extraction arrives in P3`,
+          `embedded image${shape.mime ? ` (${shape.mime})` : ""} shown as a placeholder frame — no extractable bytes`,
         );
         objects.push({ ...base, type: "picture", fill: base.fill ?? null });
         break;
@@ -325,7 +473,8 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   const fidelity = { converted: 0, degraded: 0, flagged: 0 };
   const notes: ImportNote[] = [];
   const fontCtx: FontCtx = { fonts: new Map(), sawDingbats: false, sawUnmappedDingbats: false };
-  const ctx = { fidelity, notes, fontCtx };
+  const assets: AssetRegistry = { assets: {}, blobs: {}, count: 0 };
+  const ctx = { fidelity, notes, fontCtx, assets };
 
   const first = ir.pages[0] ?? { wIn: 8.5, hIn: 11, shapes: [] };
   const size = { w: round(first.wIn), h: round(first.hIn) };
@@ -378,9 +527,9 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
     columns: 1,
     pages,
     masters: [],
-    assets: {},
+    assets: assets.assets,
     guides: { v: [], h: [] },
   };
 
-  return { doc, fidelity, fonts: [...fontCtx.fonts.values()], notes };
+  return { doc, fidelity, fonts: [...fontCtx.fonts.values()], notes, blobs: assets.blobs };
 }

@@ -13,6 +13,10 @@ import { toInches, toMultiplier, toNumber, toPoints } from "./trace-parser";
 export type IRStyle = {
   fill: string | null; // hex color; null = none (gradients degrade in mapper)
   fillKind?: string; // raw draw:fill value when not solid/none (gradient…)
+  /** draw:fill: bitmap WITH an embedded payload — the corpus's dominant image
+      path. Carries the base64, its declared mime, and style:repeat. When a
+      bitmap fill has no payload it degrades via fillKind instead (mapper). */
+  fillImage?: { dataB64: string; mime?: string; repeat?: string };
   stroke: { color: string; widthIn: number } | null;
   /** draw:textarea-vertical-align — non-"top" degrades with a note. */
   textVAlign?: string;
@@ -65,7 +69,7 @@ export type IRShape =
   | (IRShapeBase & { kind: "line"; x1: number; y1: number; x2: number; y2: number })
   | (IRShapeBase & { kind: "polygon" | "polyline"; pointsIn: { x: number; y: number }[] })
   | (IRShapeBase & { kind: "path"; segs: IRPathSeg[] })
-  | (IRShapeBase & { kind: "image"; mime?: string })
+  | (IRShapeBase & { kind: "image"; mime?: string; dataB64?: string })
   | (IRShapeBase & { kind: "table" })
   | (IRShapeBase & { kind: "textbox"; paragraphs: IRParagraph[] });
 
@@ -87,9 +91,22 @@ function readStyle(props: PropMap): IRStyle {
     const c = props["draw:fill-color"];
     style.fill = typeof c === "string" ? c : null;
   } else if (typeof fill === "string" && fill !== "none") {
-    style.fillKind = fill; // gradient / bitmap / pattern — mapper degrades
     const c = props["draw:fill-color"];
     style.fill = typeof c === "string" ? c : null;
+    const image = fill === "bitmap" ? props["draw:fill-image"] : undefined;
+    if (typeof image === "string") {
+      // draw:fill: bitmap with a payload — the mapper extracts it to an asset
+      // (the corpus applies this to the NEXT rectangle/rect-polygon shape).
+      const mime = props["librevenge:mime-type"];
+      const repeat = props["style:repeat"];
+      style.fillImage = {
+        dataB64: image,
+        ...(typeof mime === "string" ? { mime } : {}),
+        ...(typeof repeat === "string" ? { repeat } : {}),
+      };
+    } else {
+      style.fillKind = fill; // gradient / pattern / payload-less bitmap — mapper degrades
+    }
   }
   if (props["draw:stroke"] && props["draw:stroke"] !== "none") {
     const color = typeof props["svg:stroke-color"] === "string" ? (props["svg:stroke-color"] as string) : "#000000";
@@ -332,6 +349,7 @@ export function buildModel(events: TraceEvent[]): IRDoc {
           bbox,
           style,
           mime: typeof props["librevenge:mime-type"] === "string" ? (props["librevenge:mime-type"] as string) : undefined,
+          dataB64: typeof props["office:binary-data"] === "string" ? (props["office:binary-data"] as string) : undefined,
           rotationDeg: toNumber(props["librevenge:rotate"]),
         });
         break;
@@ -357,6 +375,7 @@ export function buildModel(events: TraceEvent[]): IRDoc {
         const merged: IRStyle = {
           fill: "draw:fill" in props ? own.fill : style.fill,
           fillKind: "draw:fill" in props ? own.fillKind : style.fillKind,
+          fillImage: "draw:fill" in props ? own.fillImage : style.fillImage,
           stroke: "draw:stroke" in props ? own.stroke : style.stroke,
           textVAlign: own.textVAlign ?? style.textVAlign,
           paddingIn: own.paddingIn ?? style.paddingIn,
