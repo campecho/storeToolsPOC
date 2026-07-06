@@ -13,9 +13,12 @@ export const ImportNoteSchema = z.object({
   pageId: z.string().optional(),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   message: z.string(),
-  /** Autofit notes (client-side, post-import) are marked so idempotent
-      re-measures replace their own notes and the panel can group them. */
-  kind: z.literal("autofit").optional(),
+  /** Kinded notes get their own report-panel groups (and, for autofit,
+      idempotent replacement by re-measures). "autofit" = client-side shrink
+      applied; "corrected" = the importer restored something the conversion
+      toolchain got wrong (e.g. mirrored text boxes folded into a 180°
+      rotation), with the evidence read from the source file itself. */
+  kind: z.union([z.literal("autofit"), z.literal("corrected")]).optional(),
 });
 export type ImportNote = z.infer<typeof ImportNoteSchema>;
 
