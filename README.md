@@ -31,6 +31,15 @@ curl http://localhost:3000/api/import     # {"mode":"live"|"fixture", "reason":"
 environment (remove it); with `pub2raw.available:false` means the binary isn't installed on
 that server.
 
+**Developing locally (macOS/Windows).** A plain `npm run dev` on a laptop has no
+`libmspub-tools`, so `localhost:3000` runs in demo mode — real `.pub` files show the sample
+flyer with the amber banner. Two options: (a) test real imports against the **Docker image**
+(`localhost:8080`), which bundles the converter — recommended; or (b) install the tools
+natively so the dev server converts live. On macOS the CLI tools come from **MacPorts**
+(`sudo port install libmspub`), *not* Homebrew (its `libmspub` is the library only); on
+Debian/Ubuntu, `sudo apt install libmspub-tools`. Restart `npm run dev` after installing and
+`curl localhost:3000/api/import` should report `"mode":"live"`.
+
 **Docker** (standalone runner, unprivileged, Cloud Run shape — binds `0.0.0.0:8080`):
 
 ```bash
