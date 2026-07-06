@@ -82,7 +82,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ next in the L-sequence |
 | Customer proof station — counter sign-off: customer view, associate dispatch, session service | ❌ planned, sequenced **before UAT** — spec + build plan in docs (PS1–PS5) |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
-| `.pub` import — geometry-first pipeline (P1): sniff → `pub2raw` → trace parser → mapper, fixture mode, homepage callout live | ✅ shipped — the import proof point; text runs/fonts (P2), images (P3), report UI (P4) next |
+| `.pub` import — geometry-first pipeline (P1): sniff → `pub2raw` → trace parser → mapper, fixture mode, homepage callout live | ✅ shipped — the import proof point |
+| `.pub` import — content core (P2): schema v2 per-run text + ink color, real vector paths, §10.5 font library (self-hosted stand-ins + tiered remap + Wingdings translation), v1→v2 migration | ✅ shipped — labels corpus 176/192 clean (was 34); images (P3), report UI (P4) next |
 | Open/save/export, print production | ❌ specified in docs (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
@@ -318,6 +319,26 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   (libmspub never emits master pages). Default 0.04 in text insets report once per document
   instead of drowning the report per-frame; the corpus fonts (Calibri, Goudy Old Style,
   HelveticaNeueLT Pro, Wingdings) seed §10.5's P2 remap table.
+- **`.pub` import — step P2, the content core (plan v1.6): schema v2 + fonts + paths.** The
+  document model moves to **`version: 2`**: text is **paragraphs of styled runs** (per-run
+  family/size/weight/style/underline **and ink color**), plus paragraph indents, text-frame
+  **insets** (Publisher's 0.04 in survives round-trip now) and **vertical alignment**, and a
+  real **`path` object** (normalized M/L/C/Z segments — resize/rotate/align tooling works on
+  paths unchanged). Persisted v1 documents **migrate on load** (`src/lib/schema/layout-v1.ts`)
+  — the production posture, practiced in the POC. The **§10.5 font library ships**: eight
+  libre families vendored as self-hosted WOFF2 (`scripts/vendor-fonts.mjs` → `public/fonts/`,
+  no CDN), lazily registered via FontFace with overflow re-measured when faces land; the
+  **remap table is data** grown from the corpus — Calibri *stays Calibri* (Carlito renders it
+  where the real face is missing, metric-compatible), HelveticaNeue LT Pro cuts → Libre
+  Franklin (tier 2, honest note), Goudy Old Style via Sorts Mill Goudy, **Wingdings checkbox
+  glyphs translate to real ✔/✘/☑ symbols** with a report note. The canvas renders runs
+  faithfully (the labels corpus's white-on-dark text finally reads white) and the
+  **contentEditable overlay is run-aware**: it seeds styled spans (editing an imported frame
+  is WYSIWYG) and parses the browser-mutated DOM back into runs, so editing preserves
+  imported styling. Live corpus re-check: the 192-shape checkpoint labels went from
+  34 converted / 158 degraded (P1) to **176 / 16**, with all 128 vector shapes as real paths.
+  Still honest: images (P3), tables, arcs, and selection-scoped styling remain flagged
+  degradations or later slices.
 
 ## Where things live
 

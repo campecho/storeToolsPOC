@@ -19,14 +19,14 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 |---|---|---|---|
 | Station identity | `src/lib/identity.ts` | Hardcoded `#1284` behind `getCurrentStation()` | Real station/associate resolution (device registration or SSO). Swap touches only this file. |
 | Persistence — tracker | `src/lib/store/feedback-store.ts` | `localStorage` (`stp-feedback-v1`), schema-validated on rehydrate | Backend persists the `PersistedFeedbackSchema` shape per store, keyed by station identity. |
-| Persistence — layout docs | `src/lib/store/layout-store.ts` | `localStorage` (`stp-layout-v1`), schema-validated on rehydrate | Backend persists `LayoutDocument` per publication; v1→v2 migration per plan §9 (prototype drops-and-reseeds; production must migrate). |
+| Persistence — layout docs | `src/lib/store/layout-store.ts` | `localStorage` (`stp-layout-v1`), schema-validated on rehydrate; **v1→v2 documents migrate on load** (P2, `src/lib/schema/layout-v1.ts`) — the production posture, already practiced | Backend persists `LayoutDocument` per publication with the same migrate-on-read pattern. |
 | Asset bytes (L8) | `src/lib/assets/blob-store.ts` | IndexedDB blobs keyed by the asset id in `doc.assets` (metadata stays in the document) | Real asset service: upload, dedupe, quotas, orphaned-blob GC. Swap touches only this file — the id → bytes mapping is the seam. |
 | Tracker demo data | `src/lib/data/seed-*.ts` | Seeded items/releases/notifications (authored wire content); "Reset demo data" restores it | Real feedback/release feeds; seeds become test fixtures. |
 | Captured bug context | `src/components/report/CapturedContextPanel.tsx` | Canned capture rows behind a **"Sample data" badge** | Tool surfaces publish live context (file, SKU, recent actions, environment) into the store; the panel reads it. |
 | Release participation | `src/components/board/BoardRail.tsx` (`TOP_STORES`) | Fixture store list | Query stores that backed items in the latest release. |
 | Rollup hierarchy | `src/components/board/BoardRail.tsx` | "Region · Northeast" / "District 118" demo labels | Real region/district from store identity. |
 | Product/SKU binding | `src/components/layout-editor/inspector/PageTab.tsx` | "Choose a product →" link is inert; `doc.product` schema field already renders when set | Catalog/spec-sync slice (plan §6) wires the picker; the schema needs no change. |
-| Fonts | `src/lib/layout/text.ts`, `public/fonts/README` | Motiva Sans renders via system fallback | License + drop WOFF2 files into `public/fonts/` (README there documents the exact step). The import font library (self-hosted Google Fonts + remap tiers) lands in P2 per plan §10.5. |
+| Fonts — Motiva Sans | `src/lib/layout/font-catalog.ts`, `public/fonts/README` | Motiva Sans renders via system fallback (licensing pending) | License + drop WOFF2 files into `public/fonts/` (README there documents the exact step). The **import font library shipped in P2**: 8 libre stand-in families self-hosted under `public/fonts/` with lazy FontFace loading (`webfonts.ts`) and the remap table as data (`src/lib/import/font-remap.ts`). |
 | `.pub` conversion subprocess (P1) | `src/lib/import/pub2raw.ts` | Shells out to a local `pub2raw` (Docker image only); **fixture mode** serves the golden demo trace when the binary is absent or `STP_IMPORT_FIXTURE=1` | Production calls the backbone's sandboxed conversion service — the swap touches only this file (plan §10.7 seam #1). |
 | Import client/service boundary (P1) | `src/lib/import/client.ts`, `src/app/api/import/route.ts` | POC route in the app's own container; in-memory request handling | The Zod contract (`{doc, report}` per `LayoutDocumentSchema` + `ImportReportSchema`) is the interface a production conversion service implements; the client module is the only caller (plan §10.7 seam #2). |
 | Import server state | `src/app/api/import/route.ts` | Stateless per-request today, but the server tranche (import jobs, proof sessions) assumes **one instance** | Real job/session store; until then deploy single-instance (Cloud Run `max-instances=1`). |
@@ -46,11 +46,21 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 - Tool palette: the **Table** tool arms but reports "coming later in the beta" honestly.
 - Assets tab: **PDF assets are library-only** — the tile says so and placement is
   disabled until the print pipeline can rasterize them (plan §6).
+- Home band's **font-color swatch** reads the frame's dominant ink (per-run color renders
+  since schema v2) but opens no picker yet — imported colors display and survive editing;
+  choosing a new ink is a later slice.
+- **Path objects** (from `.pub` import) move/resize/rotate/align like any frame — segment
+  (node) editing is not offered; the normalized-path model supports it later.
+- Text styling (B/I/U, family, size, color) applies to the **whole frame** — the schema
+  carries per-run styles (imports keep theirs through edits), but selection-scoped styling
+  controls are a later slice.
 
 ## Known gaps (`PROD-TODO:`)
 
-- **Storage migrations:** both stores drop-and-reseed on shape mismatch; production migrates
-  (`src/lib/store/*.ts`, `src/lib/schema/layout.ts`).
+- **Storage migrations:** the layout store now MIGRATES v1 documents to v2 on load (P2,
+  `src/lib/schema/layout-v1.ts`) — unrecognizable shapes still fall back to pristine. The
+  feedback store still drop-and-reseeds on mismatch; production migrates there too
+  (`src/lib/store/feedback-store.ts`).
 - **Storage write failures:** quota/private-mode write errors only log; needs a visible
   "changes aren't being saved" state (both persist configs, and the asset blob store).
 - **Orphaned asset blobs:** undoing a place (or clearing history) can leave bytes behind
