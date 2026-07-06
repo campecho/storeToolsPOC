@@ -7,9 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "refresh:corpus": "node scripts/refresh-corpus.mjs",
+    "fidelity": "vitest run src/lib/import/corpus-fidelity.test.ts"
   },
   "dependencies": {
     "lucide-react": "^0.474.0",
