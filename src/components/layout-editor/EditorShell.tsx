@@ -20,6 +20,7 @@ import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
 import { ImportBanner } from "./ImportBanner";
+import { OversetCheck } from "./OversetCheck";
 
 /**
  * Home deep links (plan L3): `/layout?preset=…` starts a fresh document at
@@ -121,6 +122,8 @@ export function EditorShell() {
       >
         <TitleBar />
         <ImportBanner />
+        {/* Headless (§10.4): measures imported text frames for overset after fonts settle */}
+        <OversetCheck />
         <RibbonTabs />
         {/* Command band (wire 2b) — content swaps with the active ribbon tab.
             Single-row sections (plan §2, deviation #5): auto height, controls
