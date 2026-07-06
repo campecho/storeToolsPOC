@@ -48,7 +48,42 @@ export function ImportBanner() {
     );
   }
 
-  const needsReview = report.fidelity.degraded + report.fidelity.flagged;
+  const { converted, degraded, flagged } = report.fidelity;
+  const total = converted + degraded + flagged;
+  const needsReview = degraded + flagged;
+
+  // Empty conversion (real find in the corpus: master-page-only templates —
+  // libmspub can't read master pages). An empty canvas with no explanation is
+  // the same silent-confusion trap as invisible fixture mode, so say why.
+  if (total === 0) {
+    const why =
+      report.notes.find((n) => n.message.includes("master pages"))?.message ??
+      "no drawable page content was found in this publication";
+    return (
+      <div
+        data-testid="import-empty-banner"
+        className="flex shrink-0 items-start gap-2 border-b border-[#e5c07b] bg-[#fdf6e3] px-4 py-2 text-[12px] text-[#7a5b00]"
+      >
+        <AlertTriangle size={15} strokeWidth={2} className="mt-[1px] shrink-0 text-[#b8860b]" />
+        <div className="flex-1 leading-relaxed">
+          <span className="font-semibold">
+            Imported {report.source.filename}, but there&rsquo;s nothing to show.
+          </span>{" "}
+          {why}.
+        </div>
+        <button
+          type="button"
+          aria-label="Dismiss"
+          data-testid="import-banner-dismiss"
+          onClick={() => setDismissed(true)}
+          className="shrink-0 rounded p-[2px] text-[#b8860b] hover:bg-[#f2e6c4]"
+        >
+          <X size={14} strokeWidth={2} />
+        </button>
+      </div>
+    );
+  }
+
   if (needsReview === 0) return null;
 
   return (
@@ -58,9 +93,9 @@ export function ImportBanner() {
     >
       <Info size={14} strokeWidth={2} className="shrink-0 text-[#086dd2]" />
       <div className="flex-1 leading-relaxed">
-        Imported <span className="font-semibold">{report.source.filename}</span> — {report.fidelity.converted}{" "}
-        converted, {needsReview} need review (fonts remapped, images and vector art simplified). Full report panel
-        is coming; nothing was dropped silently.
+        Imported <span className="font-semibold">{report.source.filename}</span> — {converted} converted,{" "}
+        {needsReview} need review (fonts remapped, images and vector art simplified). Full report panel is coming;
+        nothing was dropped silently.
       </div>
       <button
         type="button"
