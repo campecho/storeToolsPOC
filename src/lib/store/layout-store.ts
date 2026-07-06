@@ -69,8 +69,9 @@ export type InspectorTab = "props" | "text" | "align" | "page";
 export type PagesPaneView = "pages" | "masters";
 /** Page-tab "Apply to" target for size edits (plan L12). */
 export type PageSizeScope = "document" | "page";
-/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip. */
-export type PanelTab = "pages" | "assets" | "layers";
+/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip; the
+    "import" tab (P4) is the fidelity-report reader, shown only after an import. */
+export type PanelTab = "pages" | "assets" | "layers" | "import";
 /** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
 export type ExperienceLevel = "simple" | "standard";
 
@@ -425,6 +426,11 @@ export interface LayoutEditorState {
     report: ImportReport,
     blobs?: Record<string, Blob>,
   ) => void;
+  /** Record the imported text frames that overflow their boxes (P4 overset
+      check, §10.4). Writes `importReport.overset`; a non-empty result opens
+      the import report panel so the associate sees what to review. No-op when
+      there's no active import report. */
+  setImportOverset: (objectIds: string[]) => void;
 }
 
 // SSR/tests have no localStorage — persistence becomes a silent no-op there.
@@ -1128,6 +1134,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
           // Seed the extracted image bytes (P3) as the library resets with the
           // document; a P1-era import carries none, so an absent set just clears.
           void replaceAssetBlobs(blobs ?? {});
+          // Open the import report panel (P4) when there's anything to review —
+          // font remaps, degradations/flags, or notes; a clean import leaves
+          // the panel as it was. Overset arrives async (setImportOverset) and
+          // opens the panel later if it finds anything.
+          const worthReviewing =
+            report.fonts.length > 0 ||
+            report.notes.length > 0 ||
+            report.fidelity.degraded + report.fidelity.flagged > 0;
           return {
             doc,
             activePageId: doc.pages[0]?.id ?? "page-1",
@@ -1145,6 +1159,16 @@ export const useLayoutStore = create<LayoutEditorState>()(
             pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
             importReport: report,
+            ...(worthReviewing ? { panelTab: "import" as const, panelOpen: true } : {}),
+          };
+        }),
+
+      setImportOverset: (objectIds) =>
+        set((s) => {
+          if (!s.importReport) return s;
+          return {
+            importReport: { ...s.importReport, overset: objectIds },
+            ...(objectIds.length ? { panelTab: "import" as const, panelOpen: true } : {}),
           };
         }),
     }),

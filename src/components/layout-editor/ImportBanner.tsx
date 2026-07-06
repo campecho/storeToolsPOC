@@ -17,6 +17,7 @@ import { useLayoutStore } from "@/store";
  */
 export function ImportBanner() {
   const report = useLayoutStore((s) => s.importReport);
+  const togglePanelTab = useLayoutStore((s) => s.togglePanelTab);
   const [dismissed, setDismissed] = useState(false);
 
   if (!report || dismissed) return null;
@@ -94,9 +95,16 @@ export function ImportBanner() {
       <Info size={14} strokeWidth={2} className="shrink-0 text-[#086dd2]" />
       <div className="flex-1 leading-relaxed">
         Imported <span className="font-semibold">{report.source.filename}</span> — {converted} converted,{" "}
-        {needsReview} need review (fonts remapped, some elements simplified). Full report panel is coming;
-        nothing was dropped silently.
+        {needsReview} need review (fonts remapped, some elements simplified). Nothing was dropped silently.
       </div>
+      <button
+        type="button"
+        data-testid="import-view-report"
+        onClick={() => togglePanelTab("import")}
+        className="shrink-0 cursor-pointer rounded-[5px] border border-[#b7d2f0] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#1c4e80] hover:bg-[#eaf2fc]"
+      >
+        View report
+      </button>
       <button
         type="button"
         aria-label="Dismiss"
