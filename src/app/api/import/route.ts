@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { extractFirstPub } from "@/lib/import/cab";
 import { MAX_PUB_BYTES } from "@/lib/import/limits";
 import { mapToLayoutDocument } from "@/lib/import/mapper";
 import { buildModel } from "@/lib/import/model";
@@ -25,6 +26,20 @@ export const runtime = "nodejs";
 type Fail = { ok: false; error: string; message: string };
 const fail = (status: number, error: string, message: string) =>
   NextResponse.json<Fail>({ ok: false, error, message }, { status });
+
+/** Friendly copy for each honest `.puz` (CAB) extraction failure. */
+const puzMessage = (error: "not-cab" | "unsupported-compression" | "empty" | "corrupt"): string => {
+  switch (error) {
+    case "unsupported-compression":
+      return "This .puz uses a compression we don't unpack yet (Quantum/LZX) — open it in Publisher and save/import the .pub.";
+    case "empty":
+      return "That pack-and-go (.puz) archive doesn't contain a Publisher publication.";
+    case "not-cab":
+      return "That file looked like pack-and-go (.puz) but isn't a readable CAB archive.";
+    case "corrupt":
+      return "That pack-and-go (.puz) archive is damaged or in a layout we can't unpack — re-export it from Publisher.";
+  }
+};
 
 /**
  * GET /api/import — diagnostic: is this server converting real files or
@@ -54,9 +69,6 @@ export async function POST(req: Request) {
 
   // Content-sniff, never trust the extension (plan §10.1).
   const sniff = sniffPub(bytes);
-  if (sniff.kind === "puz") {
-    return fail(422, "puz-not-yet", "Pack-and-go (.puz) unpacking arrives in P4 — import the inner .pub for now.");
-  }
   if (sniff.kind === "ole2-other") {
     return fail(422, "not-publisher", "That's an Office container, but not a Publisher publication.");
   }
@@ -64,9 +76,29 @@ export async function POST(req: Request) {
     return fail(422, "not-publisher", "That file doesn't look like a Publisher (.pub) publication.");
   }
 
-  await avScanHook(file.name, bytes);
+  // A `.puz` is a CAB (Publisher pack-and-go) wrapping the real `.pub` (P4).
+  // Unpack the inner file and run it through the identical path below — but
+  // re-sniff the EXTRACTED bytes first: the archived name is never trusted,
+  // only what the bytes say (same posture as the outer sniff above).
+  let pub: Uint8Array = bytes;
+  if (sniff.kind === "puz") {
+    const extracted = extractFirstPub(bytes);
+    if (!extracted.ok) {
+      return fail(422, `puz-${extracted.error}`, puzMessage(extracted.error));
+    }
+    if (extracted.pub.length > MAX_PUB_BYTES) {
+      return fail(413, "too-large", `The .puz's inner .pub exceeds the ${Math.round(MAX_PUB_BYTES / 1024 / 1024)} MB import limit.`);
+    }
+    const inner = sniffPub(extracted.pub).kind;
+    if (inner !== "pub" && inner !== "pub-v1") {
+      return fail(422, "puz-not-publisher", "Unpacked the .puz, but its contents aren't a Publisher (.pub) publication.");
+    }
+    pub = extracted.pub;
+  }
 
-  const converted = await convertPub(bytes);
+  await avScanHook(file.name, pub);
+
+  const converted = await convertPub(pub);
   if (!converted.ok) {
     return fail(
       422,

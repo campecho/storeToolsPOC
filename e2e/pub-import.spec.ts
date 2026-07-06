@@ -125,3 +125,64 @@ test.describe(".pub import (P1)", () => {
     await expect(page.getByTestId("pub-convert-button")).toBeVisible();
   });
 });
+
+// The report panel (plan §10.4, P4). The golden demo flyer has a degraded
+// rounded-rect (rounded corners dropped), so the review path is populated and
+// its note deep-links to the object. Imports here are fixture mode, so the
+// summary carries a "Demo mode" chip; the store auto-opens the Review tab.
+test.describe(".pub import — report panel (P4)", () => {
+  test("the Review tab opens the report pane with a fidelity summary", async ({ page }) => {
+    await importDemoPub(page);
+
+    // The 4th tab appears only after an import, and the store opens straight to it.
+    await expect(page.getByTestId("panel-tab-import")).toBeVisible();
+    const pane = page.getByTestId("import-report-pane");
+    await expect(pane).toBeVisible();
+    await expect(pane).toContainText("demo.pub"); // the source filename
+    await expect(page.getByTestId("import-report-fixture")).toBeVisible();
+    await expect(page.getByTestId("import-report-summary")).toContainText("converted");
+    await expect(page.getByTestId("import-report-summary")).toContainText("need review");
+  });
+
+  test("a note deep-links to its object and navigates to its page", async ({ page }) => {
+    await importDemoPub(page);
+
+    // Move to page 2 so the deep link's navigation back to page 1 is observable.
+    await page.getByTestId("page-next").click();
+    await expect(page.getByTestId("page-indicator")).toContainText("Page 2 of 2");
+
+    // The first note link is the degraded rounded-rect (page 1). Clicking it
+    // jumps to that page and selects the frame.
+    await page.getByTestId("import-note-link").first().click();
+    await expect(page.getByTestId("page-indicator")).toContainText("Page 1 of 2");
+
+    // Properties read back the rounded-rect's exact geometry — proof it's the
+    // one now selected (0.75, 6.0, 7.0 × 2.0 in).
+    await page.getByTestId("insp-props").click();
+    await expect(page.getByTestId("prop-x")).toHaveValue("0.75");
+    await expect(page.getByTestId("prop-w")).toHaveValue("7");
+  });
+
+  // NOTE: the blue `import-review-banner` and its "View report" button
+  // (togglePanelTab("import")) are a LIVE-mode affordance. This webServer forces
+  // STP_IMPORT_FIXTURE=1, and a file-upload POST response can't be rewritten to
+  // fake live mode (Playwright's route.fetch can't replay the multipart file
+  // body), so there's no honest fixture-mode e2e for that path. The panel it
+  // opens is covered by the two tests above; the button is a one-line wrapper
+  // over the same togglePanelTab the tab strip uses. Covered live, not in CI.
+});
+
+// P4: `.puz` pack-and-go. e2e/fixtures/demo.puz is a stored CAB wrapping the
+// same demo.pub (built deterministically). Conversion still runs in fixture
+// mode (golden trace), but the upload exercises the real sniff → CAB-extract →
+// re-sniff → accept path in the route before it hands off.
+test.describe(".pub import — .puz pack-and-go (P4)", () => {
+  test("uploading a .puz unpacks the inner .pub and opens the editor", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/demo.puz");
+    await page.waitForURL("**/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    // Named from the outer .puz (its extension is stripped just like ".pub")
+    await expect(page.getByTestId("doc-name")).toHaveValue("demo");
+  });
+});

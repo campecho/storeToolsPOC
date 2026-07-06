@@ -84,7 +84,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
 | `.pub` import — geometry-first pipeline (P1): sniff → `pub2raw` → trace parser → mapper, fixture mode, homepage callout live | ✅ shipped — the import proof point |
 | `.pub` import — content core (P2): schema v2 per-run text + ink color, real vector paths, §10.5 font library (self-hosted stand-ins + tiered remap + Wingdings translation), v1→v2 migration | ✅ shipped — labels corpus 176/192 clean (was 34) |
-| `.pub` import — image extraction (P3): bitmap fills + graphic objects → deduped assets, real bytes seeded to the editor's asset store, stretch-fit rendering | ✅ shipped — labels corpus **192/192 clean**; report UI (P4) next |
+| `.pub` import — image extraction (P3): bitmap fills + graphic objects → deduped assets, real bytes seeded to the editor's asset store, stretch-fit rendering | ✅ shipped — labels corpus **192/192 clean** |
+| `.pub` import — review layer (P4): import report panel with deep links, font-load-gated overset check, `.puz` (CAB) unpacking | ✅ shipped — pure-TS MSCF/MSZIP unpack verified live; report Review tab + overset surfaced |
 | Open/save/export, print production | ❌ specified in docs (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
@@ -356,6 +357,25 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   geometry, unfilled, with a note. Live corpus: labels **192/192 converted, 0 degraded**
   (P1: 34/158 · P2: 176/16); the business card's 600×434 JPEG (~1 MB) extracts and renders.
   Verified end-to-end: 348 unit tests, 77 e2e, live conversion of all four corpus files.
+- **`.pub` import — step P4, the review layer (plan v1.8): the associate sees exactly what to
+  review.** Three pieces. **(1) Import report panel** — a side-panel "Review" tab that renders
+  the fidelity report (remapped fonts as `source → mappedTo` + reason, overset frames, and
+  notes grouped by tier: "Not converted" / "Simplified"); every object-anchored row is a
+  **deep link** that selects the frame and jumps to its page. It auto-opens on import when
+  there's something to review, and the top-of-canvas banner gained a "View report" button.
+  **(2) Overset check** — Publisher's shrink-to-fit plus font remapping can render text taller
+  than its box; a headless pass measures every imported text frame across all pages in a
+  detached container that mirrors the canvas's exact layout (insets, wrap, subpixel cushion),
+  **gated on `document.fonts.ready`** and re-run when a late-loading webfont changes the
+  verdict, then lists the overflowing frames in the report. **(3) `.puz` unpacking** — a
+  Publisher "pack-and-go" file is a Microsoft Cabinet wrapping the `.pub`; a **pure-TypeScript
+  MSCF reader** unpacks it (STORED + MSZIP with cross-block dictionary continuation; Quantum/LZX
+  rejected honestly), re-sniffs the extracted bytes (never the archived name), and re-enters the
+  same pipeline — no new native dependency. Verified live: a real 100 KB `.pub` in a 4-block
+  stored CAB unpacks and converts identically to the raw file. Honest limit: no real `.puz`
+  sample exists to test against, so MSZIP byte-compatibility with Publisher's own packer is
+  unconfirmed — unsupported compressions fail with clear guidance, never silently. Verified:
+  369 unit tests, 80 e2e, live corpus + live `.puz`.
 
 ## Where things live
 
