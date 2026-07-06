@@ -117,6 +117,10 @@ export const FrameObjectSchema = z.object({
   /** Pictures only (L8): key into the document's `assets`; absent = the gray
       placeholder frame. The blob behind it lives in the IndexedDB store. */
   assetId: z.string().optional(),
+  /** Pictures only (P3, the §9 delta): how the image fills the frame.
+      Absent = "cover" (the L8 upload default). Imports use "stretch" —
+      Publisher scales the image to the frame exactly. */
+  fit: z.enum(["cover", "stretch", "contain"]).optional(),
 });
 export type FrameObject = z.infer<typeof FrameObjectSchema>;
 

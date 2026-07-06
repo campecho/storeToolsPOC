@@ -25,6 +25,23 @@ export const FontRemapSchema = z.object({
 });
 export type FontRemap = z.infer<typeof FontRemapSchema>;
 
+/**
+ * Extracted image bytes (P3), keyed by the asset id referenced in
+ * `doc.assets` / picture frames. CONTRACT: this is the API response's
+ * `assets` half — the client decodes each entry to a Blob and seeds the
+ * asset blob store BEFORE opening the document. Base64 in JSON is the POC
+ * transport; a production service would serve asset URLs instead (the
+ * document schema's `assets` metadata is transport-agnostic either way).
+ */
+export const ImportAssetPayloadSchema = z.object({
+  mime: z.string(),
+  dataB64: z.string(),
+});
+export type ImportAssetPayload = z.infer<typeof ImportAssetPayloadSchema>;
+
+export const ImportAssetsPayloadSchema = z.record(ImportAssetPayloadSchema);
+export type ImportAssetsPayload = z.infer<typeof ImportAssetsPayloadSchema>;
+
 export const ImportReportSchema = z.object({
   /** 'live' = pub2raw ran; 'fixture' = the canned demo trace (plan §10.1). */
   mode: z.enum(["live", "fixture"]),
