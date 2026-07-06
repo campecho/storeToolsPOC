@@ -3,14 +3,16 @@
 import { useEffect, useRef } from "react";
 import { useLayoutStore } from "@/store";
 import type { ImportReport } from "@/lib/import/report";
-import { collectOversetIds } from "@/lib/import/overset";
+import { computeAutofit } from "@/lib/import/overset";
 
 /**
- * Import overset check (plan §10.4, part of P4). After a `.pub` import, measure
- * which imported text frames overflow their boxes — Publisher's shrink-to-fit
- * plus our font remapping (§10.5) can render a frame's text taller than the box
- * — and record their ids (setImportOverset) so the report panel lists what the
- * associate must fix.
+ * Import autofit + overset check (plan §10.4–§10.5, part of P4). After a `.pub`
+ * import, Publisher's shrink-to-fit plus our font remapping (§10.5) can render a
+ * frame's text taller than its box. Rather than only badge the overflow, this
+ * first tries to FIT it: computeAutofit finds the largest uniform scale (down to
+ * the floor band) that makes each candidate frame fit, and applyImportAutofit
+ * applies those scales — silently-but-reported — while frames the floor can't
+ * rescue land in `overset` and stay badged at their true declared size.
  *
  * Headless: it renders nothing, it only measures, via its own detached
  * container (overset.ts) so it spans every page — the canvas mounts only the
@@ -19,10 +21,12 @@ import { collectOversetIds } from "@/lib/import/overset";
  * Gated on webfonts (§10.5): measuring against fallback metrics gives false
  * verdicts, so it waits on `document.fonts.ready` before measuring, then
  * re-measures whenever `fontsTick` moves — a late class-match font that lands
- * after the first pass can change the verdict. It runs only for a real import
- * (importReport present), and once per report/fonts state: setImportOverset
- * writes a fresh importReport, so the `settled` ref keeps that write from
- * re-entering into a loop.
+ * after the first pass can change the verdict (and relax an earlier shrink back
+ * toward 1: computeAutofit re-evaluates from declared sizes, so scales converge
+ * instead of stacking). It runs only for a real import (importReport present),
+ * and once per report/fonts state: applyImportAutofit writes a fresh
+ * importReport, so the `settled` ref keeps that write from re-entering into a
+ * loop while a later fontsTick still re-measures.
  */
 export function OversetCheck() {
   const importReport = useLayoutStore((s) => s.importReport);
@@ -39,8 +43,9 @@ export function OversetCheck() {
     let cancelled = false;
     const measure = () => {
       if (cancelled) return;
-      const { doc, setImportOverset } = useLayoutStore.getState();
-      setImportOverset(collectOversetIds(doc));
+      const { doc, applyImportAutofit } = useLayoutStore.getState();
+      const { entries, overset } = computeAutofit(doc);
+      applyImportAutofit(entries, overset);
       // Record the report the write just produced, so re-entry from our own
       // write is a no-op while a later fontsTick still re-measures.
       settled.current = {

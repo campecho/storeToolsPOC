@@ -22,9 +22,21 @@ export function ptToPx(pt: number, zoom: number): number {
   return (pt * 96 * zoom) / 72;
 }
 
-/** Frame-clipping check with a subpixel cushion (rounded layout heights). */
-export function isOverflowing(contentHeightPx: number, frameHeightPx: number): boolean {
-  return contentHeightPx > frameHeightPx + 1;
+/** Frame-clipping check with a subpixel cushion (rounded layout heights).
+    `cushionPx` is explicit because the two callers measure differently: the
+    import mirror (overset.ts) works at zoom 1, where the default 1px absorbs
+    rounding, while the live canvas badge reads int-rounded scrollHeights at
+    ANY zoom — a ≤1px-at-zoom-1 line-box spill scales linearly with zoom and
+    the int rounding adds ±2px, so the badge passes `2 + 2 × zoom` to stay
+    consistent with the mirror's verdict instead of flipping on borderline
+    frames as the user zooms in (real clipping is a line tall — far past
+    either cushion). */
+export function isOverflowing(
+  contentHeightPx: number,
+  frameHeightPx: number,
+  cushionPx = 1,
+): boolean {
+  return contentHeightPx > frameHeightPx + cushionPx;
 }
 
 /* ── Schema-v2 text helpers: paragraphs/runs are the source of truth ── */

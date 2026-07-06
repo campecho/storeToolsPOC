@@ -132,7 +132,10 @@ function TextFrameNode({
     if (!el) return;
     // Reads the RENDERED contentRef, so the autofit scale is already baked
     // into scrollHeight — the badge stays consistent with no separate term.
-    setOverflow(isOverflowing(el.scrollHeight, el.clientHeight));
+    // The cushion scales with zoom (plus int-rounding allowance): a borderline
+    // frame the import check accepted at zoom 1 must not sprout a badge at
+    // 247% just because its subpixel line-box spill scaled past a fixed 1px.
+    setOverflow(isOverflowing(el.scrollHeight, el.clientHeight, 2 + 2 * zoom));
   }, [text, obj.w, obj.h, zoom, fontsTick]);
 
   const strokePx = obj.stroke ? obj.stroke.width * zoom : 0;
