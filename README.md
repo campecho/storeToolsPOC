@@ -15,6 +15,22 @@ npm run build      # production build (standalone output)
 If Playwright complains about a missing browser and downloads are blocked, point it at a
 pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`.
 
+**`.pub` import — live vs. demo mode.** Converting real Publisher files needs the
+`libmspub-tools` binary (`pub2raw`). Where it's absent — a plain `npm run dev` on a machine
+without it — the importer falls back to **fixture mode** and serves a built-in demo
+publication (the "GRAND OPENING" flyer) for *any* file; the editor shows an amber **demo-mode
+banner** so this is never mistaken for a real conversion. To convert real files, either run the
+**Docker image** (it bundles the converter) or `apt install libmspub-tools` where the app runs.
+Ask the server which mode it's in:
+
+```bash
+curl http://localhost:3000/api/import     # {"mode":"live"|"fixture", "reason":"…", "pub2raw":{…}}
+```
+
+`mode:"fixture"` with `fixtureForced:true` means `STP_IMPORT_FIXTURE=1` is set in the
+environment (remove it); with `pub2raw.available:false` means the binary isn't installed on
+that server.
+
 **Docker** (standalone runner, unprivileged, Cloud Run shape — binds `0.0.0.0:8080`):
 
 ```bash

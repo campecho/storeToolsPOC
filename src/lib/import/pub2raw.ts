@@ -34,25 +34,49 @@ export type ConvertOutcome =
 
 const FIXTURE_TRACE_PATH = join(process.cwd(), "fixtures", "pub-traces", "demo-flyer.trace");
 
-let binaryChecked: boolean | null = null;
+let probe: { available: boolean; version?: string; error?: string } | null = null;
 
-/** Is pub2raw runnable here? Cached across requests. */
-async function pub2rawAvailable(): Promise<boolean> {
-  if (binaryChecked !== null) return binaryChecked;
+/** Probe `pub2raw`, capturing the reason it's unavailable. Cached per process. */
+async function pub2rawProbe(): Promise<{ available: boolean; version?: string; error?: string }> {
+  if (probe !== null) return probe;
   try {
-    await execFileP("pub2raw", ["--version"], { timeout: 5_000 });
-    binaryChecked = true;
-  } catch {
-    // ENOENT = not installed → fixture mode. Any other failure also means the
-    // live path can't be trusted here.
-    binaryChecked = false;
+    const { stdout } = await execFileP("pub2raw", ["--version"], { timeout: 5_000 });
+    probe = { available: true, version: stdout.trim() };
+  } catch (err) {
+    // ENOENT = not installed → fixture mode. Any other failure (EACCES, a
+    // PATH that misses /usr/bin, timeout) also means the live path can't be
+    // trusted — but record WHICH so a fixture fallback is diagnosable, not
+    // silent (the GET /api/import diagnostic surfaces this).
+    const e = err as { code?: string; message?: string };
+    probe = { available: false, error: e.code ? `${e.code}: ${e.message ?? ""}`.trim() : e.message ?? "unknown error" };
   }
-  return binaryChecked;
+  return probe;
+}
+
+async function pub2rawAvailable(): Promise<boolean> {
+  return (await pub2rawProbe()).available;
 }
 
 export async function fixtureModeActive(): Promise<boolean> {
   if (process.env.STP_IMPORT_FIXTURE === "1") return true;
   return !(await pub2rawAvailable());
+}
+
+/** Why the import service is (or isn't) in live mode — the GET diagnostic. */
+export async function importDiagnostics() {
+  const fixtureForced = process.env.STP_IMPORT_FIXTURE === "1";
+  const p = await pub2rawProbe();
+  return {
+    mode: fixtureForced || !p.available ? ("fixture" as const) : ("live" as const),
+    fixtureForced,
+    pub2raw: p,
+    cwd: process.cwd(),
+    reason: fixtureForced
+      ? "STP_IMPORT_FIXTURE=1 is set in this server's environment — remove it to convert real files"
+      : p.available
+        ? "pub2raw found — real .pub files convert live"
+        : `pub2raw not runnable (${p.error}) — install libmspub-tools on this server, or run the Docker image`,
+  };
 }
 
 /** Convert .pub bytes to a pub2raw trace (or the fixture trace). */

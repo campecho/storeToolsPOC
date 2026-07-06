@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { MAX_PUB_BYTES } from "@/lib/import/limits";
 import { mapToLayoutDocument } from "@/lib/import/mapper";
 import { buildModel } from "@/lib/import/model";
-import { avScanHook, convertPub } from "@/lib/import/pub2raw";
+import { avScanHook, convertPub, importDiagnostics } from "@/lib/import/pub2raw";
 import type { ImportReport } from "@/lib/import/report";
 import { sniffPub } from "@/lib/import/sniff";
 import { parseTrace } from "@/lib/import/trace-parser";
@@ -25,6 +25,15 @@ export const runtime = "nodejs";
 type Fail = { ok: false; error: string; message: string };
 const fail = (status: number, error: string, message: string) =>
   NextResponse.json<Fail>({ ok: false, error, message }, { status });
+
+/**
+ * GET /api/import — diagnostic: is this server converting real files or
+ * serving the demo fixture, and why? `curl <host>/api/import` answers the
+ * "why am I seeing the GRAND OPENING flyer?" question directly.
+ */
+export async function GET() {
+  return NextResponse.json(await importDiagnostics());
+}
 
 export async function POST(req: Request) {
   let form: FormData;

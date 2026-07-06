@@ -15,6 +15,31 @@ const importDemoPub = async (page: Page) => {
   await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
 };
 
+// The Playwright web server runs with STP_IMPORT_FIXTURE=1 (playwright.config.ts),
+// so every import here is fixture mode — which is exactly the state that must
+// be visible, not silent.
+test.describe(".pub import — demo-mode is visible (P1 follow-up)", () => {
+  test("fixture-mode import shows the unmissable demo banner", async ({ page }) => {
+    await importDemoPub(page);
+    const banner = page.getByTestId("import-fixture-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("this is sample content, not your file");
+    await expect(banner).toContainText("libmspub-tools");
+    // dismissible
+    await page.getByTestId("import-banner-dismiss").click();
+    await expect(banner).toBeHidden();
+  });
+
+  test("GET /api/import reports why it's in fixture mode", async ({ request }) => {
+    const res = await request.get("/api/import");
+    expect(res.ok()).toBe(true);
+    const diag = await res.json();
+    expect(diag.mode).toBe("fixture");
+    expect(diag.fixtureForced).toBe(true);
+    expect(diag.reason).toContain("STP_IMPORT_FIXTURE");
+  });
+});
+
 test.describe(".pub import (P1)", () => {
   test("converts from the homepage callout into correctly-placed frames", async ({ page }) => {
     await importDemoPub(page);

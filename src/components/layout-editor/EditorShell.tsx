@@ -18,6 +18,7 @@ import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
+import { ImportBanner } from "./ImportBanner";
 
 /**
  * Home deep links (plan L3): `/layout?preset=…` starts a fresh document at
@@ -107,6 +108,7 @@ export function EditorShell() {
         data-hydrated={hydrated ? "true" : "false"}
       >
         <TitleBar />
+        <ImportBanner />
         <RibbonTabs />
         {/* Command band (wire 2b) — content swaps with the active ribbon tab.
             Single-row sections (plan §2, deviation #5): auto height, controls
