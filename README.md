@@ -86,6 +86,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | `.pub` import — content core (P2): schema v2 per-run text + ink color, real vector paths, §10.5 font library (self-hosted stand-ins + tiered remap + Wingdings translation), v1→v2 migration | ✅ shipped — labels corpus 176/192 clean (was 34) |
 | `.pub` import — image extraction (P3): bitmap fills + graphic objects → deduped assets, real bytes seeded to the editor's asset store, stretch-fit rendering | ✅ shipped — labels corpus **192/192 clean** |
 | `.pub` import — review layer (P4): import report panel with deep links, font-load-gated overset check, `.puz` (CAB) unpacking | ✅ shipped — pure-TS MSCF/MSZIP unpack verified live; report Review tab + overset surfaced |
+| `.pub` import — fidelity harness + hardening (P5): pipeline scored vs `pub2xhtml` reference across 7 Markzware categories, prlimit rlimit wrapper, adversarial security suite, CI wired | ✅ shipped — **100% element-level fidelity, falsifiably measured** (≥90% gate); P-tranche exit gate met |
 | Open/save/export, print production | ❌ specified in docs (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
@@ -376,6 +377,28 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   sample exists to test against, so MSZIP byte-compatibility with Publisher's own packer is
   unconfirmed — unsupported compressions fail with clear guidance, never silently. Verified:
   369 unit tests, 80 e2e, live corpus + live `.puz`.
+- **`.pub` import — step P5, the fidelity gate (plan v1.9): the ≥90% target is measured, not
+  asserted — and it clears at 100%.** Four pieces. **(1) Fidelity harness** — scores the
+  pipeline's `LayoutDocument` against `pub2xhtml`'s reference render of the same file (an
+  independent consumer of the same libmspub parse) across the seven Markzware categories: page
+  size, position, color, font+remap, text attributes, text flow, images. It runs deterministically
+  from checked-in fixtures (the traces plus new reference renders under `fixtures/pub-refs/`),
+  needs no binary in the test lane, and gates each category at ≥90% combined while printing a
+  per-file scorecard. **Measured 100% in every category** on the real corpus (position 208/208,
+  color 398/398, fonts/attrs 166/166, flow 75/75, images 24/24), extras 0, unmatched 0 — and it's
+  a *falsifiable* 100%: 38 unit tests prove each category goes red on drift, mismatch, or a
+  count-parity break. Because our mapper and `pub2xhtml` serialize the same parse, this measures
+  that our side drops and corrupts nothing — the "nothing silent" half of the exit gate — not an
+  independent oracle for Publisher's own renderer. **(2) The subprocess rlimit control** promised
+  in the security posture but never built: `prlimit --cpu --as -- pub2raw`, with a soft:hard CPU
+  gap so a genuine overrun raises a classifiable SIGXCPU (a distinct "resource-limit" outcome)
+  rather than collapsing into the wall-clock timeout; unwrapped-and-reported where `prlimit` is
+  absent. **(3) Adversarial suite** proving the POC-enforced controls — fake-binary timeout-kill
+  and scratch-jail wipe, size cap, extension-lie/OLE2 rejection, CAB decompression bombs and
+  path-traversal names (inert: extraction is fully in-memory), sniff edges, plus a live-gated
+  fuzz smoke. **(4) CI** (`.github/workflows/ci.yml`): a binary-free `checks` lane, a Playwright
+  `e2e` lane, and a `live-import` lane that installs libmspub-tools, regenerates the corpus, gates
+  on drift, and runs the live suite. Verified: 450 unit tests, 80 e2e, live lane green.
 
 ## Where things live
 
