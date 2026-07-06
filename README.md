@@ -399,6 +399,22 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   fuzz smoke. **(4) CI** (`.github/workflows/ci.yml`): a binary-free `checks` lane, a Playwright
   `e2e` lane, and a `live-import` lane that installs libmspub-tools, regenerates the corpus, gates
   on drift, and runs the live suite. Verified: 450 unit tests, 80 e2e, live lane green.
+- **`.pub` import — autofit (plan v1.10): remap-widened text shrinks to fit, like Publisher
+  did.** The corpus business card showed the failure live: frames, insets, and point sizes
+  import faithfully, but the stand-in font (Sorts Mill Goudy for Goudy Old Style) runs 1–3%
+  wider, so lines that fit in Publisher wrapped and clipped — Publisher's own "shrink text on
+  overflow" (invisible to libmspub) had been absorbing it. Now the font-load-gated overset
+  pass **fits first**: the largest 1%-quantized render scale down to a **0.88 floor** that
+  makes the frame fit is auto-applied *silently-but-reported* — schema v2 gains an optional
+  render-time `text.fontScale` (declared run sizes stay the source of truth: reversible,
+  round-trips, and editing never bakes the shrink into the runs), and each applied scale is a
+  deep-linkable **"Auto-fitted"** note in the Review panel. Frames the floor can't rescue
+  render at their true declared size and stay badged. Verified live on the card: 5 frames
+  auto-fit (97/96/90/89/89%) — address, tagline, and email one-line complete again — and the
+  one genuinely-overfull frame (truncated in Publisher's own render too) stays badged. Bonus
+  fix the live check exposed: the canvas overflow badge's fixed 1px cushion flipped verdicts
+  at high zoom on borderline frames — it now scales with zoom, matching the import check at
+  every zoom. Verified: 462 unit tests, 80 e2e, live import before/after screenshots.
 
 ## Where things live
 

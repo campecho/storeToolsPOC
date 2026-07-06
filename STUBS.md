@@ -75,6 +75,12 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   enforces it on write (`src/lib/schema/layout.ts`).
 - **File-size watch:** `layout-store.ts` (~750 lines) and `CanvasViewport.tsx` (~600) should
   split (store slices; gesture hook) as L7+ grows them.
+- **Import autofit is import-time only** (v1.10): `computeAutofit` scales remap-widened text
+  to fit (floor 0.88, reported as "Auto-fitted" notes; `text.fontScale` in schema v2) when
+  the font-gated check runs after an import — but **editing or resizing a frame does not
+  re-run the fit**. The live overflow badge is the honest fallback there; a "re-fit" quick
+  action on a badged frame is a later slice (`src/lib/import/overset.ts`,
+  `src/components/layout-editor/OversetCheck.tsx`).
 - **Master pages don't survive `.pub` import** (upstream): libmspub never emits master-page
   content, so publications whose content lives on masters convert **empty** — real corpus
   case: `fixtures/pub-corpus/business_card_template_10up.pub`. The mapper flags it tier-3
