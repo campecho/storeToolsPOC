@@ -24,8 +24,8 @@ function Pill({ children }: { children: React.ReactNode }) {
 }
 
 export function TextBand() {
-  const { target, apply, applyStyle } = useTextTarget();
-  const font = target?.text.font;
+  const { target, summary, apply, applyStyle } = useTextTarget();
+  const font = summary?.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
 
   return (
@@ -71,8 +71,8 @@ export function TextBand() {
 
       <RibbonGroup label="Spacing">
         <FaceSelect
-          face={`Line ${formatIn(target?.text.lineSpacing ?? 1.2)}`}
-          value={String(target?.text.lineSpacing ?? "")}
+          face={`Line ${formatIn(summary?.lineSpacing ?? 1.2)}`}
+          value={String(summary?.lineSpacing ?? "")}
           options={LINE_SPACINGS.map((v) => ({ value: String(v), label: String(v) }))}
           onChange={(v) => apply({ lineSpacing: Number(v) })}
           disabled={!target}

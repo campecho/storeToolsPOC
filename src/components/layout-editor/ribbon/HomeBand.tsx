@@ -113,8 +113,8 @@ function IconBtn({
 }
 
 export function HomeBand() {
-  const { target, apply, applyStyle } = useTextTarget();
-  const font = target?.text.font;
+  const { target, summary, apply, applyStyle } = useTextTarget();
+  const font = summary?.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
 
   // Clipboard (plan L13): Copy/Cut track the selection, Paste tracks the clipboard
@@ -204,11 +204,15 @@ export function HomeBand() {
         >
           <span className="text-[12px] underline">U</span>
         </IconBtn>
-        {/* Font color — static swatch; text ink is fixed until schema v2 (§9). */}
+        {/* Font color — the swatch reads the frame's dominant ink (schema v2
+            renders per-run color); a picker UI is a later slice. */}
         <IconBtn wide>
           <span className="flex flex-col items-center leading-none">
             <span className="text-[11px] font-bold">A</span>
-            <span className="mt-[1px] h-[3px] w-[15px] rounded-[1px] bg-brand" />
+            <span
+              className="mt-[1px] h-[3px] w-[15px] rounded-[1px]"
+              style={{ backgroundColor: summary?.color ?? "var(--color-brand)" }}
+            />
           </span>
         </IconBtn>
       </RibbonGroup>
@@ -224,7 +228,7 @@ export function HomeBand() {
         ).map(([align, Icon]) => (
           <IconBtn
             key={align}
-            active={target?.text.align === align}
+            active={summary?.align === align}
             disabled={!target}
             onClick={() => apply({ align })}
             testId={`align-${align}`}

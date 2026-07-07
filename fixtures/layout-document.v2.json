@@ -1,0 +1,176 @@
+{
+  "version": 2,
+  "name": "Grand opening flyer",
+  "product": null,
+  "size": { "w": 8.5, "h": 11 },
+  "orientation": "portrait",
+  "bleed": 0.125,
+  "margin": 0.5,
+  "columns": 1,
+  "pages": [
+    {
+      "id": "page-1",
+      "masterId": "master-a",
+      "objects": [
+        {
+          "id": "obj-headline",
+          "type": "text",
+          "x": 0.75,
+          "y": 0.75,
+          "w": 7,
+          "h": 1.6,
+          "rotation": 0,
+          "locked": false,
+          "fill": null,
+          "stroke": null,
+          "text": {
+            "paragraphs": [
+              {
+                "align": "center",
+                "lineSpacing": 1.1,
+                "runs": [
+                  {
+                    "text": "GRAND ",
+                    "font": { "family": "Motiva Sans", "size": 48, "bold": true, "italic": false, "underline": false },
+                    "color": "#111111"
+                  },
+                  {
+                    "text": "OPENING",
+                    "font": { "family": "Motiva Sans", "size": 48, "bold": true, "italic": false, "underline": false },
+                    "color": "#CC0000"
+                  }
+                ]
+              },
+              {
+                "align": "center",
+                "lineSpacing": 1.19,
+                "runs": [
+                  {
+                    "text": "Saturday · 10am",
+                    "font": { "family": "Calibri", "size": 18, "bold": false, "italic": true, "underline": false },
+                    "color": "#111111"
+                  }
+                ]
+              }
+            ],
+            "vAlign": "middle",
+            "inset": { "l": 0.04, "r": 0.04, "t": 0.04, "b": 0.04 }
+          }
+        },
+        {
+          "id": "obj-hero",
+          "type": "picture",
+          "x": 1.25,
+          "y": 2.75,
+          "w": 6,
+          "h": 4,
+          "rotation": 0,
+          "locked": false,
+          "fill": "#e8e8e8",
+          "stroke": { "color": "#b0b0b0", "width": 1 },
+          "assetId": "asset-hero"
+        },
+        {
+          "id": "obj-star-burst",
+          "type": "path",
+          "x": 6.6,
+          "y": 7.2,
+          "w": 1.4,
+          "h": 1.4,
+          "rotation": 0,
+          "locked": false,
+          "fill": "#CC0000",
+          "stroke": null,
+          "d": [
+            { "c": "M", "x": 0.5, "y": 0 },
+            { "c": "L", "x": 0.65, "y": 0.35 },
+            { "c": "L", "x": 1, "y": 0.4 },
+            { "c": "L", "x": 0.72, "y": 0.62 },
+            { "c": "L", "x": 0.82, "y": 1 },
+            { "c": "L", "x": 0.5, "y": 0.78 },
+            { "c": "L", "x": 0.18, "y": 1 },
+            { "c": "L", "x": 0.28, "y": 0.62 },
+            { "c": "L", "x": 0, "y": 0.4 },
+            { "c": "L", "x": 0.35, "y": 0.35 },
+            { "c": "Z" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-2",
+      "masterId": "master-a",
+      "objects": [
+        {
+          "id": "obj-divider",
+          "type": "line",
+          "x1": 0.75,
+          "y1": 5.5,
+          "x2": 7.75,
+          "y2": 5.5,
+          "stroke": { "color": "#555555", "width": 1.5 }
+        }
+      ]
+    }
+  ],
+  "masters": [
+    {
+      "id": "master-a",
+      "label": "A",
+      "objects": [
+        {
+          "id": "obj-footer-bar",
+          "type": "rect",
+          "x": 0.5,
+          "y": 10.1,
+          "w": 7.5,
+          "h": 0.35,
+          "rotation": 0,
+          "locked": false,
+          "fill": "#CC0000",
+          "stroke": null
+        },
+        {
+          "id": "obj-footer-text",
+          "type": "text",
+          "x": 0.5,
+          "y": 9.55,
+          "w": 7.5,
+          "h": 0.45,
+          "rotation": 0,
+          "locked": false,
+          "fill": null,
+          "stroke": null,
+          "text": {
+            "paragraphs": [
+              {
+                "align": "center",
+                "lineSpacing": 1.2,
+                "runs": [
+                  {
+                    "text": "Staples Print & Marketing · Store 1234",
+                    "font": { "family": "Motiva Sans", "size": 11, "bold": false, "italic": false, "underline": false },
+                    "color": "#111111"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    { "id": "master-b", "label": "B", "objects": [] }
+  ],
+  "assets": {
+    "asset-hero": {
+      "id": "asset-hero",
+      "name": "storefront.png",
+      "kind": "image",
+      "mime": "image/png",
+      "width": 1200,
+      "height": 800,
+      "bytes": 245760
+    }
+  },
+  "guides": { "v": [], "h": [] }
+}

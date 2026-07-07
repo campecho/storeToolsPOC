@@ -13,9 +13,9 @@ import { SectionLabel } from "./Field";
  * faces (left align shown active), disabled.
  */
 export function TextTab() {
-  const { target, apply, applyStyle } = useTextTarget();
-  const font = target?.text.font;
-  const align = target?.text.align ?? "left";
+  const { target, summary, apply, applyStyle } = useTextTarget();
+  const font = summary?.font;
+  const align = summary?.align ?? "left";
   const styleKey = target ? matchTextStyle(target.text) : undefined;
 
   const fieldFace =
@@ -115,8 +115,8 @@ export function TextTab() {
           })}
         </div>
         <FaceSelect
-          face={`Line spacing ${formatIn(target?.text.lineSpacing ?? 1.2)}`}
-          value={String(target?.text.lineSpacing ?? "")}
+          face={`Line spacing ${formatIn(summary?.lineSpacing ?? 1.2)}`}
+          value={String(summary?.lineSpacing ?? "")}
           options={LINE_SPACINGS.map((v) => ({ value: String(v), label: String(v) }))}
           onChange={(v) => apply({ lineSpacing: Number(v) })}
           disabled={!target}

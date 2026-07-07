@@ -1,0 +1,42 @@
+startDocument()
+  setDocumentMetaData(dc:creator: CopyCenter, dc:date: 2013-01-27T22:32:55Z, meta:creation-date: 2013-01-27T22:32:55Z, meta:initial-creator: CopyCenter)
+  startPage(svg:height: 11.0000in, svg:width: 9.0000in)
+    setStyle(draw:fill: none, draw:stroke: none)
+    startTextObject (draw:textarea-vertical-align: middle, fo:column-gap: 0.0800in, fo:padding-bottom: 0.0400in, fo:padding-left: 0.0400in, fo:padding-right: 0.0400in, fo:padding-top: 0.0400in, librevenge:rotate: 90.0000in, svg:height: 0.3849in, svg:width: 3.0939in, svg:x: 7.1455in, svg:y: 1.9828in)
+      openParagraph (fo:text-align: center)
+        openSpan(fo:color: #000000, fo:country: US, fo:font-size: 0.1667in, fo:language: en, style:font-name: Calibri)
+          insertText (Tab 1)
+        closeSpan
+        openSpan(fo:color: #000000, fo:country: US, fo:font-size: 0.1667in, fo:language: en, style:font-name: Calibri)
+          insertText ()
+        closeSpan
+      closeParagraph
+    endTextObject
+  endPage
+  startPage(svg:height: 11.0000in, svg:width: 9.0000in)
+    setStyle(draw:fill: none, draw:stroke: none)
+    startTextObject (draw:textarea-vertical-align: middle, fo:column-gap: 0.0800in, fo:padding-bottom: 0.0400in, fo:padding-left: 0.0400in, fo:padding-right: 0.0400in, fo:padding-top: 0.0400in, librevenge:rotate: 90.0000in, svg:height: 0.3690in, svg:width: 3.2381in, svg:x: 7.0655in, svg:y: 5.2917in)
+      openParagraph (fo:text-align: center)
+        openSpan(fo:color: #000000, fo:country: US, fo:font-size: 0.1667in, fo:language: en, style:font-name: Calibri)
+          insertText (Tab 2)
+        closeSpan
+        openSpan(fo:color: #000000, fo:country: US, fo:font-size: 0.1667in, fo:language: en, style:font-name: Calibri)
+          insertText ()
+        closeSpan
+      closeParagraph
+    endTextObject
+  endPage
+  startPage(svg:height: 11.0000in, svg:width: 9.0000in)
+    setStyle(draw:fill: none, draw:stroke: none)
+    startTextObject (draw:textarea-vertical-align: middle, fo:column-gap: 0.0800in, fo:padding-bottom: 0.0400in, fo:padding-left: 0.0400in, fo:padding-right: 0.0400in, fo:padding-top: 0.0400in, librevenge:rotate: 90.0000in, svg:height: 0.3571in, svg:width: 3.2500in, svg:x: 7.0595in, svg:y: 8.6905in)
+      openParagraph (fo:text-align: center)
+        openSpan(fo:color: #000000, fo:country: US, fo:font-size: 0.1389in, fo:language: en, style:font-name: Calibri)
+          insertText (Tab 3)
+        closeSpan
+        openSpan(fo:color: #000000, fo:country: US, fo:font-size: 0.1389in, fo:language: en, style:font-name: Calibri)
+          insertText ()
+        closeSpan
+      closeParagraph
+    endTextObject
+  endPage
+endDocument

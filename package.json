@@ -7,9 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "refresh:corpus": "node scripts/refresh-corpus.mjs",
+    "fidelity": "vitest run src/lib/import/corpus-fidelity.test.ts"
   },
   "dependencies": {
     "lucide-react": "^0.474.0",
@@ -20,6 +23,14 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@fontsource/arimo": "^5.2.8",
+    "@fontsource/caladea": "^5.2.8",
+    "@fontsource/carlito": "^5.2.8",
+    "@fontsource/cousine": "^5.2.7",
+    "@fontsource/gelasio": "^5.2.8",
+    "@fontsource/libre-franklin": "^5.2.8",
+    "@fontsource/sorts-mill-goudy": "^5.2.8",
+    "@fontsource/tinos": "^5.2.7",
     "@playwright/test": "^1.50.1",
     "@tailwindcss/postcss": "^4.0.3",
     "@types/node": "^22.10.10",

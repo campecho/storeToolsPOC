@@ -15,6 +15,31 @@ npm run build      # production build (standalone output)
 If Playwright complains about a missing browser and downloads are blocked, point it at a
 pre-installed Chromium: `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run e2e`.
 
+**`.pub` import — live vs. demo mode.** Converting real Publisher files needs the
+`libmspub-tools` binary (`pub2raw`). Where it's absent — a plain `npm run dev` on a machine
+without it — the importer falls back to **fixture mode** and serves a built-in demo
+publication (the "GRAND OPENING" flyer) for *any* file; the editor shows an amber **demo-mode
+banner** so this is never mistaken for a real conversion. To convert real files, either run the
+**Docker image** (it bundles the converter) or `apt install libmspub-tools` where the app runs.
+Ask the server which mode it's in:
+
+```bash
+curl http://localhost:3000/api/import     # {"mode":"live"|"fixture", "reason":"…", "pub2raw":{…}}
+```
+
+`mode:"fixture"` with `fixtureForced:true` means `STP_IMPORT_FIXTURE=1` is set in the
+environment (remove it); with `pub2raw.available:false` means the binary isn't installed on
+that server.
+
+**Developing locally (macOS/Windows).** A plain `npm run dev` on a laptop has no
+`libmspub-tools`, so `localhost:3000` runs in demo mode — real `.pub` files show the sample
+flyer with the amber banner. Two options: (a) test real imports against the **Docker image**
+(`localhost:8080`), which bundles the converter — recommended; or (b) install the tools
+natively so the dev server converts live. On macOS the CLI tools come from **MacPorts**
+(`sudo port install libmspub`), *not* Homebrew (its `libmspub` is the library only); on
+Debian/Ubuntu, `sudo apt install libmspub-tools`. Restart `npm run dev` after installing and
+`curl localhost:3000/api/import` should report `"mode":"live"`.
+
 **Docker** (standalone runner, unprivileged, Cloud Run shape — binds `0.0.0.0:8080`):
 
 ```bash
@@ -53,10 +78,16 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 | Suite homepage (quick-jumps, intake affordances) | 🟡 Layout card + size tiles are real entry points; dropzone/product grid are wire placeholders |
 | Feedback tracker — report flow, board, releases, notifications, celebrate | ✅ complete to the wires; localStorage persistence + demo reset |
 | Layout editor — shell, document model, objects, text, multi-page & masters, multi-select/align/snap, side panel with assets & layers, picture fill-on-click & drag-in, rotation & Arrange, ruler guides & units (L1–L11) | ✅ shipped |
-| Layout editor — toolset build-out: spreads & mixed sizes, clipboard (L12–L13) | ❌ next in plan (v1.4) |
-| Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ after the toolset |
+| Layout editor — toolset build-out: spreads & mixed sizes, clipboard (L12–L13) | ✅ shipped |
+| Layout editor — experience levels (Simple/Standard), hardening (L14–L15) | ❌ next in the L-sequence |
+| Customer proof station — counter sign-off: customer view, associate dispatch, session service | ❌ planned, sequenced **before UAT** — spec + build plan in docs (PS1–PS5) |
 | Product/SKU catalog binding | ❌ inert affordance; schema field exists |
-| `.pub` import, open/save/export, print production | ❌ specified in docs only (plan §8–§11) |
+| `.pub` import — geometry-first pipeline (P1): sniff → `pub2raw` → trace parser → mapper, fixture mode, homepage callout live | ✅ shipped — the import proof point |
+| `.pub` import — content core (P2): schema v2 per-run text + ink color, real vector paths, §10.5 font library (self-hosted stand-ins + tiered remap + Wingdings translation), v1→v2 migration | ✅ shipped — labels corpus 176/192 clean (was 34) |
+| `.pub` import — image extraction (P3): bitmap fills + graphic objects → deduped assets, real bytes seeded to the editor's asset store, stretch-fit rendering | ✅ shipped — labels corpus **192/192 clean** |
+| `.pub` import — review layer (P4): import report panel with deep links, font-load-gated overset check, `.puz` (CAB) unpacking | ✅ shipped — pure-TS MSCF/MSZIP unpack verified live; report Review tab + overset surfaced |
+| `.pub` import — fidelity harness + hardening (P5): pipeline scored vs `pub2xhtml` reference across 7 Markzware categories, prlimit rlimit wrapper, adversarial security suite, CI wired | ✅ shipped — **100% element-level fidelity, falsifiably measured** (≥90% gate); P-tranche exit gate met |
+| Open/save/export, print production | ❌ specified in docs (plan §8–§11) |
 | Auth / station identity | ❌ stubbed (`src/lib/identity.ts`) |
 | Backend/API | ❌ none — fully client-side; Zod schemas + `fixtures/` are the contract-in-waiting |
 
@@ -251,6 +282,160 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   **wrap within their section** as the viewport narrows, so the band grows down instead of
   clipping; band height is auto (min 64px) instead of the wire's fixed 92px. Recorded as
   fidelity deviation #5 (plan §2).
+- **Layout editor — step L12, spreads & mixed page sizes (plan v1.4):** the status bar's
+  **two-page spread toggle goes live** with Publisher pairing (page 1 alone, then 2|3, 4|5 …) —
+  the partner page renders beside the active one, a click activates it, and every editing
+  gesture keeps targeting the active page; spread view is session-only. The **Page tab gains
+  "Apply to: Whole document / This page"** — a per-page size override (`sizeOverride`, the §9
+  v2 delta pulled forward additively) honored by canvas, rulers, thumbnails, spreads, guides,
+  and snapping; clearing it returns the page to the document size.
+- **Layout editor — step L13, clipboard: copy, cut & paste (plan v1.4):** **Cmd/Ctrl+C/X/V and
+  the Home band's Clipboard pills go live** against an in-app object clipboard — multi-selection
+  copy, cut as copy+delete in one undo step, paste onto the current editing surface (any page
+  or master, surviving navigation) with the duplicate offset and cascading repeat pastes, fresh
+  ids, pictures keeping their assets. Inside a text-editing session the browser's native
+  clipboard keeps working untouched; pill enabled states track selection and clipboard content.
+- **`.pub` import — step P1, the geometry-first pipeline (plan §10, v1.5):** the POC's **first
+  server slice**. The homepage's `.pub` callout goes live: pick a Publisher file and
+  `POST /api/import` runs **content-sniff** (CFBF magic + `Contents`-stream markers — never the
+  extension) → the **`pub2raw` subprocess** (size cap, timeout+kill, per-job scratch jail; the
+  one-file seam of plan §10.7) → a **trace parser** ground-truthed against librevenge's raw
+  generator (format quirks and all — see `fixtures/pub-traces/README.md`) → an intermediate
+  model → the **geometry mapper**: pages (with per-page `sizeOverride`), rects/ellipses/lines
+  placed exactly, rotation converted CCW→CW, fills/strokes, text frames with content, dominant
+  font/size/alignment, and Publisher's 1.19 default line spacing; polygons/paths degrade to
+  bounding boxes, images to placeholder frames, tables to flagged placeholders — every
+  simplification lands in the structured **import report** (`{fidelity, fonts, notes}`), nothing
+  silent. **Fixture mode** serves the golden demo trace wherever `libmspub-tools` isn't
+  installed, so dev/CI/e2e run with zero native dependency; the Docker runner moved to
+  **Debian slim + libmspub-tools** and is where live conversion executes. Replacing a
+  publication that has content asks first; the imported document opens in the editor named
+  after its file, fully editable and persisted.
+- **`.pub` import — real-corpus validation:** four real store files
+  (`fixtures/pub-corpus/`: binder tabs, a two-sided customer business card, production
+  checkpoint labels, a 10-up imposition template) now convert **live** end-to-end and their
+  traces are the primary goldens (16 corpus tests). Reality corrected the synthetic
+  assumptions — inch-denominated font sizes, frame styling on `startTextObject`, leaked `\r`
+  terminators, `insertSpace` word spacing, and the **rotation sign (clockwise passthrough,
+  verified against pub2xhtml's reference render)** — and surfaced one honest upstream
+  limitation: master-page-only publications convert empty and are flagged tier-3
+  (libmspub never emits master pages). Default 0.04 in text insets report once per document
+  instead of drowning the report per-frame; the corpus fonts (Calibri, Goudy Old Style,
+  HelveticaNeueLT Pro, Wingdings) seed §10.5's P2 remap table.
+- **`.pub` import — step P2, the content core (plan v1.6): schema v2 + fonts + paths.** The
+  document model moves to **`version: 2`**: text is **paragraphs of styled runs** (per-run
+  family/size/weight/style/underline **and ink color**), plus paragraph indents, text-frame
+  **insets** (Publisher's 0.04 in survives round-trip now) and **vertical alignment**, and a
+  real **`path` object** (normalized M/L/C/Z segments — resize/rotate/align tooling works on
+  paths unchanged). Persisted v1 documents **migrate on load** (`src/lib/schema/layout-v1.ts`)
+  — the production posture, practiced in the POC. The **§10.5 font library ships**: eight
+  libre families vendored as self-hosted WOFF2 (`scripts/vendor-fonts.mjs` → `public/fonts/`,
+  no CDN), lazily registered via FontFace with overflow re-measured when faces land; the
+  **remap table is data** grown from the corpus — Calibri *stays Calibri* (Carlito renders it
+  where the real face is missing, metric-compatible), HelveticaNeue LT Pro cuts → Libre
+  Franklin (tier 2, honest note), Goudy Old Style via Sorts Mill Goudy, **Wingdings checkbox
+  glyphs translate to real ✔/✘/☑ symbols** with a report note. The canvas renders runs
+  faithfully (the labels corpus's white-on-dark text finally reads white) and the
+  **contentEditable overlay is run-aware**: it seeds styled spans (editing an imported frame
+  is WYSIWYG) and parses the browser-mutated DOM back into runs, so editing preserves
+  imported styling. Live corpus re-check: the 192-shape checkpoint labels went from
+  34 converted / 158 degraded (P1) to **176 / 16**, with all 128 vector shapes as real paths.
+  Still honest: images (P3), tables, arcs, and selection-scoped styling remain flagged
+  degradations or later slices.
+- **`.pub` import — step P3, image extraction (plan v1.7): pictures convert for real.** The
+  corpus corrected the spec before build: real Publisher images arrive as **bitmap fills**
+  (`draw:fill: bitmap` + base64 `draw:fill-image` on `setStyle`, stretched onto rectangle
+  polygons), not as `drawGraphicObject` embeds — the pipeline now extracts **both paths**.
+  Payloads are sniffed by magic bytes (never the declared MIME — same posture as the `.pub`
+  sniffer), PNG/JPEG/GIF dimensions parsed from headers, and **deduped by content hash**: the
+  checkpoint-labels file stamps one 915×300 logo onto 16 frames and imports as 16 picture
+  frames sharing **one** asset. Bytes ride the import response as base64 (`assets`, a new
+  Zod contract) and the client seeds them into the same IndexedDB asset store the L8 upload
+  path uses — pictures re-resolve whichever side of the async write they mount on. New
+  picture `fit` mode renders imports **stretched** (Publisher's scaling) while uploads keep
+  cover-fit. Honest edges: WMF/EMF/TIFF can't render in a browser and stay placeholders with
+  a format-named note (no asset); bitmap fills on non-rectangular shapes keep their vector
+  geometry, unfilled, with a note. Live corpus: labels **192/192 converted, 0 degraded**
+  (P1: 34/158 · P2: 176/16); the business card's 600×434 JPEG (~1 MB) extracts and renders.
+  Verified end-to-end: 348 unit tests, 77 e2e, live conversion of all four corpus files.
+- **`.pub` import — step P4, the review layer (plan v1.8): the associate sees exactly what to
+  review.** Three pieces. **(1) Import report panel** — a side-panel "Review" tab that renders
+  the fidelity report (remapped fonts as `source → mappedTo` + reason, overset frames, and
+  notes grouped by tier: "Not converted" / "Simplified"); every object-anchored row is a
+  **deep link** that selects the frame and jumps to its page. It auto-opens on import when
+  there's something to review, and the top-of-canvas banner gained a "View report" button.
+  **(2) Overset check** — Publisher's shrink-to-fit plus font remapping can render text taller
+  than its box; a headless pass measures every imported text frame across all pages in a
+  detached container that mirrors the canvas's exact layout (insets, wrap, subpixel cushion),
+  **gated on `document.fonts.ready`** and re-run when a late-loading webfont changes the
+  verdict, then lists the overflowing frames in the report. **(3) `.puz` unpacking** — a
+  Publisher "pack-and-go" file is a Microsoft Cabinet wrapping the `.pub`; a **pure-TypeScript
+  MSCF reader** unpacks it (STORED + MSZIP with cross-block dictionary continuation; Quantum/LZX
+  rejected honestly), re-sniffs the extracted bytes (never the archived name), and re-enters the
+  same pipeline — no new native dependency. Verified live: a real 100 KB `.pub` in a 4-block
+  stored CAB unpacks and converts identically to the raw file. Honest limit: no real `.puz`
+  sample exists to test against, so MSZIP byte-compatibility with Publisher's own packer is
+  unconfirmed — unsupported compressions fail with clear guidance, never silently. Verified:
+  369 unit tests, 80 e2e, live corpus + live `.puz`.
+- **`.pub` import — step P5, the fidelity gate (plan v1.9): the ≥90% target is measured, not
+  asserted — and it clears at 100%.** Four pieces. **(1) Fidelity harness** — scores the
+  pipeline's `LayoutDocument` against `pub2xhtml`'s reference render of the same file (an
+  independent consumer of the same libmspub parse) across the seven Markzware categories: page
+  size, position, color, font+remap, text attributes, text flow, images. It runs deterministically
+  from checked-in fixtures (the traces plus new reference renders under `fixtures/pub-refs/`),
+  needs no binary in the test lane, and gates each category at ≥90% combined while printing a
+  per-file scorecard. **Measured 100% in every category** on the real corpus (position 208/208,
+  color 398/398, fonts/attrs 166/166, flow 75/75, images 24/24), extras 0, unmatched 0 — and it's
+  a *falsifiable* 100%: 38 unit tests prove each category goes red on drift, mismatch, or a
+  count-parity break. Because our mapper and `pub2xhtml` serialize the same parse, this measures
+  that our side drops and corrupts nothing — the "nothing silent" half of the exit gate — not an
+  independent oracle for Publisher's own renderer. **(2) The subprocess rlimit control** promised
+  in the security posture but never built: `prlimit --cpu --as -- pub2raw`, with a soft:hard CPU
+  gap so a genuine overrun raises a classifiable SIGXCPU (a distinct "resource-limit" outcome)
+  rather than collapsing into the wall-clock timeout; unwrapped-and-reported where `prlimit` is
+  absent. **(3) Adversarial suite** proving the POC-enforced controls — fake-binary timeout-kill
+  and scratch-jail wipe, size cap, extension-lie/OLE2 rejection, CAB decompression bombs and
+  path-traversal names (inert: extraction is fully in-memory), sniff edges, plus a live-gated
+  fuzz smoke. **(4) CI** (`.github/workflows/ci.yml`): a binary-free `checks` lane, a Playwright
+  `e2e` lane, and a `live-import` lane that installs libmspub-tools, regenerates the corpus, gates
+  on drift, and runs the live suite. Verified: 450 unit tests, 80 e2e, live lane green.
+- **`.pub` import — autofit (plan v1.10): remap-widened text shrinks to fit, like Publisher
+  did.** The corpus business card showed the failure live: frames, insets, and point sizes
+  import faithfully, but the stand-in font (Sorts Mill Goudy for Goudy Old Style) runs 1–3%
+  wider, so lines that fit in Publisher wrapped and clipped — Publisher's own "shrink text on
+  overflow" (invisible to libmspub) had been absorbing it. Now the font-load-gated overset
+  pass **fits first**: the largest 1%-quantized render scale down to a **0.88 floor** that
+  makes the frame fit is auto-applied *silently-but-reported* — schema v2 gains an optional
+  render-time `text.fontScale` (declared run sizes stay the source of truth: reversible,
+  round-trips, and editing never bakes the shrink into the runs), and each applied scale is a
+  deep-linkable **"Auto-fitted"** note in the Review panel. Frames the floor can't rescue
+  render at their true declared size and stay badged. Verified live on the card: 5 frames
+  auto-fit (97/96/90/89/89%) — address, tagline, and email one-line complete again — and the
+  one genuinely-overfull frame (truncated in Publisher's own render too) stays badged. Bonus
+  fix the live check exposed: the canvas overflow badge's fixed 1px cushion flipped verdicts
+  at high zoom on borderline frames — it now scales with zoom, matching the import check at
+  every zoom. Verified: 462 unit tests, 80 e2e, live import before/after screenshots.
+- **`.pub` import — field-corpus fixes (plan v1.11): the first user-reported file, root-caused
+  to the bytes.** A 39-page training workbook imported with its title upside down on every
+  page, footers flipped on odd pages, and text hidden behind screenshots. Diagnosis went below
+  the conversion toolchain: Publisher stores mirroring as Escher flip flags and renders text
+  in flipped boxes upright, but libmspub folds the flags into a 180° rotation for text and
+  discards the mirror — so we built a pure-TS CFBF/Escher sidecar reader that pulls flip
+  flags, true rotation, and anchors from the `.pub` itself (Publisher's client anchor decoded
+  empirically: fieldId/EMU pairs, page-center origin), correlates by geometry, and restores
+  all 56 folded frames upright with deep-linkable "Corrected" notes — never touching genuine
+  180° rotations (tent cards are real). Along the way the fidelity harness caught arcs
+  degrading to invisible height-0 boxes: elliptical arcs now convert to exact cubic béziers
+  (quadrant-split so control hulls never overshoot), turning 41 invisible callout circles into
+  real vector shapes and the file's position score from 91.9% to 100%. Text wrap and
+  page-number fields — which libmspub simply doesn't emit — get honest import notes (21
+  covered frames announced, zero false positives on the rest of the corpus). The workbook
+  joined the corpus and the scored harness: fidelity denominators more than tripled, still
+  100% across all seven categories. Verified: 530 unit tests, 80 e2e, live import with
+  before/after screenshots on pages 1 and 37. Follow-up: **page numbers now fill in at
+  import** — standalone '#' tokens in header/footer frames become each page's real number
+  (one shared rule, mirrored on the harness's reference side; glued '#'s stay content),
+  reported as a corrected-kind note. Live-verified "Page | 1 / 20 / 37"; 549 unit tests.
 
 ## Where things live
 
@@ -266,7 +451,8 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 
 - **[STUBS.md](STUBS.md)** — the handoff registry: every stub, inert affordance, known gap, and assumption, with the swap story per seam. Dev teams start here.
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
-- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L8 shipped.
+- **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L13 shipped; the K-tranche (Konva render) and P-tranche (`.pub` import, incl. the §10.5 font library & mapping plan) are specified and next.
+- **[docs/CUSTOMER_PROOF_STATION_PLAN.md](docs/CUSTOMER_PROOF_STATION_PLAN.md)** — the build plan for the **customer proof station** (counter sign-off: customer view + associate "Send proof" + SSE session service, steps PS1–PS5), sequenced ahead of UAT. Implements [docs/Customer_Proof_Station_Spec.md](docs/Customer_Proof_Station_Spec.md).
 
 ## Reference documents
 
@@ -281,3 +467,6 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   - `Layout Editor.dc.html` — readable source (markup + `Component` logic).
 - `docs/Desktop_Publisher_Design_Doc.md` — the desktop publishing application design doc (product vision, experience model, capability targets the editor serves).
 - `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early; the layout editor is Track B's custom-size layout core.
+- `docs/Customer_Proof_Station_Spec.md` — the customer-facing proof station functional/technical spec (transport, pairing, screens, signed-proof artifact, session hygiene).
+- `docs/PUB_TO_IDML_RESEARCH.md` — the `.pub` parse/convert research (`libmspub` front end, intermediate model, IDML target) the import pipeline builds on.
+- `docs/SECURITY_CONSIDERATIONS.md` — the cross-cutting threat model; gates the import pipeline (§2.1, layout plan §10.1) and the proof station (§2.6/§2.7).

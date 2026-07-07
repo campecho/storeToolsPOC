@@ -28,3 +28,27 @@ and add the matching `@font-face` declarations to `src/app/globals.css`:
 
 The font stack (`--font-sans` in `globals.css`) already lists "Motiva Sans" first, so the
 files pick up with no other changes. Confirm license coverage before deploying with them.
+
+---
+
+## Import stand-ins (plan §10.5 — vendored, P2)
+
+The subdirectories here (`arimo/`, `carlito/`, `caladea/`, `cousine/`,
+`gelasio/`, `libre-franklin/`, `sorts-mill-goudy/`, `tinos/`) are **libre
+webfonts self-hosted for the `.pub` import font library** — no CDN at runtime.
+They are vendored from the pinned `@fontsource/*` devDependencies by:
+
+```
+node scripts/vendor-fonts.mjs
+```
+
+The catalog that consumes them (CSS stacks, FontFace registration) is
+`src/lib/layout/font-catalog.ts`; lazy loading lives in
+`src/lib/layout/webfonts.ts`. The stand-in model: a document that says
+"Calibri" keeps saying Calibri — the local face renders where installed, the
+metric-compatible stand-in (Carlito) everywhere else. Latin subset only for
+now (store corpus is English).
+
+Licenses: Arimo/Tinos/Cousine/Carlito/Caladea (metric-compatible cores),
+Libre Franklin, Sorts Mill Goudy, and Gelasio are all OFL/Apache-licensed —
+self-hosting is permitted; see each @fontsource package for the license text.

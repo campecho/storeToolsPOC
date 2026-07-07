@@ -7,9 +7,12 @@ import {
   type LayoutObject,
   type MasterPage,
   type Orientation,
+  type Paragraph,
   type Stroke,
 } from "@/schema";
-import { clearAssetBlobs, deleteAssetBlob } from "@/lib/assets/blob-store";
+import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import { applyToAllRuns, type TextPatch } from "@/lib/layout/text";
+import { clearAssetBlobs, deleteAssetBlob, replaceAssetBlobs } from "@/lib/assets/blob-store";
 import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
 import {
   clampPageDim,
@@ -33,6 +36,7 @@ import {
   type AlignRelativeTo,
   type DistributeAxis,
 } from "@/lib/layout/align";
+import type { ImportReport } from "@/lib/import/report";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -65,8 +69,9 @@ export type InspectorTab = "props" | "text" | "align" | "page";
 export type PagesPaneView = "pages" | "masters";
 /** Page-tab "Apply to" target for size edits (plan L12). */
 export type PageSizeScope = "document" | "page";
-/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip. */
-export type PanelTab = "pages" | "assets" | "layers";
+/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip; the
+    "import" tab (P4) is the fidelity-report reader, shown only after an import. */
+export type PanelTab = "pages" | "assets" | "layers" | "import";
 /** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
 export type ExperienceLevel = "simple" | "standard";
 
@@ -99,16 +104,9 @@ export type TransformPatch = {
 
 export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
 
-/** Flattened text edit — font fields, alignment, and line spacing (plan L5). */
-export type TextPropsPatch = {
-  family?: string;
-  size?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  align?: "left" | "center" | "right" | "justify";
-  lineSpacing?: number;
-};
+/** Flattened text edit (plan L5) — applies to the WHOLE frame: since schema
+    v2 the runs are the source of truth, so a patch maps over every run. */
+export type TextPropsPatch = TextPatch;
 
 // ASSUMPTION: 50 undo steps matches desktop-publishing norms — confirm with
 // associates once real documents exist.
@@ -199,21 +197,7 @@ function applyTransform(o: LayoutObject, patch: TransformPatch): LayoutObject {
 
 function applyTextProps(o: LayoutObject, patch: TextPropsPatch): LayoutObject {
   if (o.type !== "text" || !o.text) return o;
-  return {
-    ...o,
-    text: {
-      ...o.text,
-      font: {
-        family: patch.family ?? o.text.font.family,
-        size: patch.size ?? o.text.font.size,
-        bold: patch.bold ?? o.text.font.bold,
-        italic: patch.italic ?? o.text.font.italic,
-        underline: patch.underline ?? o.text.font.underline,
-      },
-      align: patch.align ?? o.text.align,
-      lineSpacing: patch.lineSpacing ?? o.text.lineSpacing,
-    },
-  };
+  return { ...o, text: applyToAllRuns(o.text, patch) };
 }
 
 function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
@@ -231,7 +215,7 @@ function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
 export function createDefaultDocument(): LayoutDocument {
   return {
-    version: 1,
+    version: 2,
     name: "Untitled publication",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -272,6 +256,9 @@ export interface LayoutEditorState {
   selectedGuide: { axis: "v" | "h"; index: number } | null;
   /** Text frame with the contentEditable overlay open (plan L5). */
   editingTextId: string | null;
+  /** Bumped when lazily-loaded webfonts finish (§10.5) — text frames
+      re-measure overflow against the real metrics. Session-only. */
+  fontsTick: number;
   /** Align tab's "Relative to" choice (plan L7) — session UI, not persisted. */
   alignRel: AlignRelativeTo;
 
@@ -303,6 +290,10 @@ export interface LayoutEditorState {
   fitRequestId: number;
   /** One-shot deep-link cue (`/layout?custom=1`): focus the Page tab's width field. */
   focusPageSize: boolean;
+
+  /** Last `.pub` import's fidelity report (session, plan §10.4) — the P4
+      report panel reads it; P1 keeps it for the status-bar summary. */
+  importReport: ImportReport | null;
 
   setRibbon: (ribbon: RibbonTab) => void;
   setTool: (tool: EditorTool) => void;
@@ -377,8 +368,10 @@ export interface LayoutEditorState {
   /** Equal-gap distribution — needs three or more objects. */
   distributeSelection: (axis: DistributeAxis) => void;
   setEditingText: (id: string | null) => void;
-  /** Typing is transient — the edit session commits one snapshot at close. */
-  setTextContent: (id: string, content: string) => void;
+  bumpFontsTick: () => void;
+  /** Typing is transient — the edit session commits one snapshot at close.
+      The overlay parses its DOM to paragraphs (schema v2) and writes them whole. */
+  setTextParagraphs: (id: string, paragraphs: Paragraph[]) => void;
   /** Styling clicks are discrete input commits — each pushes history. */
   setTextProps: (id: string, patch: TextPropsPatch) => void;
   /** Appends, selects, and returns the tool to Select (Publisher behavior). */
@@ -423,6 +416,34 @@ export interface LayoutEditorState {
 
   /** Start over: pristine document, guides on, view re-fit. */
   resetDoc: () => void;
+
+  /** Open a converted `.pub` (plan §10.7 seam #2 — the ONLY way import
+      results enter the editor). Replaces the working document wholesale,
+      exactly like resetDoc, and stashes the fidelity report. The doc must
+      already be schema-validated (client.ts does). */
+  openImportedDocument: (
+    doc: LayoutDocument,
+    report: ImportReport,
+    blobs?: Record<string, Blob>,
+  ) => void;
+  /** Record the imported text frames that overflow their boxes (P4 overset
+      check, §10.4). Writes `importReport.overset`; a non-empty result opens
+      the import report panel so the associate sees what to review. No-op when
+      there's no active import report. */
+  setImportOverset: (objectIds: string[]) => void;
+  /** Import autofit (§10.5's "shrink to fit"): apply the measured per-frame
+      font scales and the residual overset list in one write. `entries` is the
+      COMPLETE autofit state for the frames the check evaluated — scale < 1
+      sets `text.fontScale`, scale === 1 clears it — so late-font re-measures
+      converge instead of stacking. Each applied scale is REPORTED as a
+      kind:"autofit" tier-2 note (replacing previous autofit notes, idempotent);
+      frames the floor couldn't rescue land in `overset` and stay badged. Not
+      an undo step: this is import materialization, like the open itself.
+      No-op when there's no active import report. */
+  applyImportAutofit: (
+    entries: { objectId: string; scale: number }[],
+    oversetIds: string[],
+  ) => void;
 }
 
 // SSR/tests have no localStorage — persistence becomes a silent no-op there.
@@ -455,6 +476,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       selectedIds: [],
       selectedGuide: null,
       editingTextId: null,
+      fontsTick: 0,
       alignRel: "page",
       past: [],
       future: [],
@@ -468,6 +490,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       pageSizeScope: "document",
       fitRequestId: 0,
       focusPageSize: false,
+      importReport: null,
 
       setRibbon: (ribbon) => set({ ribbon }),
       // Switching tools ends a text-editing session (the overlay commits on unmount)
@@ -784,12 +807,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
 
       setEditingText: (id) => set({ editingTextId: id }),
 
-      setTextContent: (id, content) =>
+      bumpFontsTick: () => set((s) => ({ fontsTick: s.fontsTick + 1 })),
+
+      setTextParagraphs: (id, paragraphs) =>
         set((s) => ({
           doc: mapSurfaceObjects(s, (objs) =>
             objs.map((o) =>
               o.id === id && o.type === "text" && o.text
-                ? { ...o, text: { ...o.text, content } }
+                ? { ...o, text: { ...o.text, paragraphs } }
                 : o,
             ),
           ),
@@ -1113,18 +1138,103 @@ export const useLayoutStore = create<LayoutEditorState>()(
             clipboard: [],
             pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
+            importReport: null,
+          };
+        }),
+
+      openImportedDocument: (doc, report, blobs) =>
+        set((s) => {
+          // Seed the extracted image bytes (P3) as the library resets with the
+          // document; a P1-era import carries none, so an absent set just clears.
+          void replaceAssetBlobs(blobs ?? {});
+          // Open the import report panel (P4) when there's anything to review —
+          // font remaps, degradations/flags, or notes; a clean import leaves
+          // the panel as it was. Overset arrives async (setImportOverset) and
+          // opens the panel later if it finds anything.
+          const worthReviewing =
+            report.fonts.length > 0 ||
+            report.notes.length > 0 ||
+            report.fidelity.degraded + report.fidelity.flagged > 0;
+          return {
+            doc,
+            activePageId: doc.pages[0]?.id ?? "page-1",
+            masterEditingId: null,
+            guidesVisible: true,
+            spread: false,
+            pageSizeScope: "document",
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            selectedGuide: null,
+            editingTextId: null,
+            past: [],
+            future: [],
+            clipboard: [],
+            pasteCount: 0,
+            fitRequestId: s.fitRequestId + 1,
+            importReport: report,
+            ...(worthReviewing ? { panelTab: "import" as const, panelOpen: true } : {}),
+          };
+        }),
+
+      setImportOverset: (objectIds) =>
+        set((s) => {
+          if (!s.importReport) return s;
+          return {
+            importReport: { ...s.importReport, overset: objectIds },
+            ...(objectIds.length ? { panelTab: "import" as const, panelOpen: true } : {}),
+          };
+        }),
+
+      applyImportAutofit: (entries, oversetIds) =>
+        set((s) => {
+          if (!s.importReport) return s;
+          const scaleById = new Map(entries.map((e) => [e.objectId, e.scale]));
+          const pageOf = new Map<string, string>();
+          const pages = s.doc.pages.map((page) => {
+            let changed = false;
+            const objects = page.objects.map((o) => {
+              const scale = scaleById.get(o.id);
+              if (scale === undefined || o.type !== "text" || !o.text) return o;
+              pageOf.set(o.id, page.id);
+              const { fontScale: prev, ...rest } = o.text;
+              const next = scale < 1 ? { ...rest, fontScale: scale } : rest;
+              if ((prev ?? 1) === (scale < 1 ? scale : 1)) return o;
+              changed = true;
+              return { ...o, text: next };
+            });
+            return changed ? { ...page, objects } : page;
+          });
+          // Silent-but-REPORTED: every applied scale is a deep-linkable note;
+          // re-measures replace prior autofit notes rather than stacking them.
+          const applied = entries.filter((e) => e.scale < 1 && pageOf.has(e.objectId));
+          const notes = [
+            ...s.importReport.notes.filter((n) => n.kind !== "autofit"),
+            ...applied.map((e) => ({
+              kind: "autofit" as const,
+              tier: 2 as const,
+              objectId: e.objectId,
+              pageId: pageOf.get(e.objectId),
+              message: `Auto-fit: text scaled to ${Math.round(e.scale * 100)}% so it still fits its frame (the remapped stand-in font runs slightly wide).`,
+            })),
+          ];
+          return {
+            doc: { ...s.doc, pages },
+            importReport: { ...s.importReport, notes, overset: oversetIds },
+            ...(applied.length || oversetIds.length
+              ? { panelTab: "import" as const, panelOpen: true }
+              : {}),
           };
         }),
     }),
     {
       // CONTRACT: the storage key + LayoutDocumentSchema are the saved-file
       // format — a real backend persists the same shape per publication.
+      // Key kept from v1 — changing it would orphan existing documents; the
+      // merge below migrates their SHAPE (v1→v2, plan §9), which is the part
+      // that versions. The zustand-level version stays 1 for the same reason.
       name: "stp-layout-v1",
-      // Bumped when the persisted document shape changes beyond what the
-      // schema-validating merge below can absorb.
-      // PROD-TODO: production migrates old documents (v1→v2 per plan §9);
-      // the prototype may drop-and-reseed. A failed write (quota, private
-      // mode) only logs — production needs a visible "not saved" state.
+      // PROD-TODO: a failed write (quota, private mode) only logs —
+      // production needs a visible "not saved" state.
       version: 1,
       storage: createJSONStorage(() =>
         typeof window === "undefined" ? noopStorage : window.localStorage,
@@ -1136,10 +1246,18 @@ export const useLayoutStore = create<LayoutEditorState>()(
       // selection, history, and viewport stay session-scoped.
       partialize: (s) => ({ doc: s.doc, level: s.level, unit: s.unit }),
       // Validate what came out of storage — a corrupt or foreign-shaped doc
-      // falls back to pristine instead of poisoning the editor.
+      // falls back to pristine instead of poisoning the editor. A v1 document
+      // (pre-P2 per-frame text) MIGRATES to v2 (plan §9) — real migration,
+      // not drop-and-reseed: associates' saved work keeps opening.
       merge: (persisted, current) => {
         const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
-        const parsed = LayoutDocumentSchema.safeParse(p?.doc);
+        let parsed = LayoutDocumentSchema.safeParse(p?.doc);
+        if (!parsed.success) {
+          const legacy = V1LayoutDocumentSchema.safeParse(p?.doc);
+          if (legacy.success) {
+            parsed = { success: true, data: migrateLegacyDocument(legacy.data) };
+          }
+        }
         // Only override from a *present, valid* persisted value; otherwise keep
         // `current`. Rehydration runs after mount, so forcing a default here
         // would clobber a preference the user changed in that window (and the

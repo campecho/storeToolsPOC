@@ -1,0 +1,92 @@
+# CI for the Store Tools POC (docs/LAYOUT_EDITOR_PLAN.md).
+#
+# Three independent lanes, run in parallel:
+#   checks      — fixture lane (plan §10.1): lint + typecheck + unit/fidelity
+#                 tests from checked-in fixtures; zero native dependencies.
+#   e2e         — Playwright against `next dev`; the webServer config forces
+#                 STP_IMPORT_FIXTURE=1 itself, so this lane is also binary-free.
+#   live-import — plan §10.6 harness lane: installs libmspub-tools, regenerates
+#                 the corpus from the live binaries, gates on fixture drift,
+#                 then runs the full suite with the live-gated adversarial
+#                 tests enabled (STP_LIVE_IMPORT=1).
+
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # playwright.config.ts starts `npm run dev` as its webServer (no build
+      # step needed) and sets STP_IMPORT_FIXTURE=1 for it — don't duplicate.
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+
+  live-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Ubuntu ships pub2raw + pub2xhtml in libmspub-tools (0.1.4).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools
+      - run: npm ci
+      - run: npm run refresh:corpus
+      # Drift gate: the checked-in corpus artifacts must match what today's
+      # binaries produce from fixtures/pub-corpus.
+      - name: Check corpus fixtures for drift
+        run: |
+          # `git status --porcelain` (not plain `git diff`) so brand-new
+          # untracked outputs from refresh:corpus count as drift too.
+          drift="$(git status --porcelain -- fixtures/pub-traces fixtures/pub-refs)"
+          if [ -n "$drift" ]; then
+            git status -- fixtures/pub-traces fixtures/pub-refs
+            git diff -- fixtures/pub-traces fixtures/pub-refs | head -100
+            echo "::error::Corpus fixture drift: the checked-in artifacts under fixtures/pub-traces and fixtures/pub-refs no longer match what refresh:corpus produces from today's binaries."
+            echo "Either a fixture was edited by hand, or the libmspub toolchain moved."
+            echo "If the new output is correct, run 'npm run refresh:corpus' locally and commit the result; otherwise fix the fixture edit."
+            exit 1
+          fi
+      - run: STP_LIVE_IMPORT=1 npm test

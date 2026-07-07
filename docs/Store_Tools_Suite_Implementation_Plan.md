@@ -1,9 +1,10 @@
 # In-Store Print & Design Tool Suite — Implementation Plan (Prototyping & Beta)
 
 **Document type:** Implementation & delivery plan (prototype → open beta → production)
-**Status:** Draft v0.1 — for internal review
+**Status:** Draft v0.2 — for internal review
 **Author:** Jennifer Allen, Sr Mgr Product Management
-**Last updated:** 2026-06-27
+**Last updated:** 2026-07-05
+**v0.2:** adds the **customer proof station** (the customer-facing half of Proofing & Approval, §8.12) as a named Track B slice, sequenced ahead of field UAT — spec in `Customer_Proof_Station_Spec.md`, POC build plan in `CUSTOMER_PROOF_STATION_PLAN.md`.
 **Companion to:** `Store_Tools_Suite_Feature_Requirements.md` (defines *what* the suite does; this plan defines *how* we build, test, and roll it out, and *in what order*)
 
 **A note on technology:** this plan is intentionally **stack-agnostic**. It does not pick languages, frameworks, or engines. Those choices are made deliberately, with evidence, during the early spikes (Phase 0) and the per-tool build-vs-adopt decisions — measured against the real in-store hardware, real customer files, and the security bar, not chosen up front. Where the requirements doc lists candidate engines, treat them as inputs to evaluate, not commitments.
@@ -80,6 +81,7 @@ Build the narrowest possible *complete* path through the whole backbone, so the 
 Add each tool surface as its own slice onto the skeleton. Each is independently built, independently tested, and independently flag-gated.
 
 - Suggested slice order, leading with daily-frequency value while respecting the Publisher deadline: **quick-fix utilities** (image crop/resize/convert, one-click bleed) → **custom-size layout/design core** → **PDF toolkit** → **Office handlers** (Word round-trip, Excel deterministic print, PowerPoint render/light-edit) → **`.pub` on-ramp** → **templates & catalog/spec sync** → **VDP** → **AI highlight-to-change**. Deepen the **catalog/order integration** continuously alongside these (it is the long-pole `[INT]` dependency).
+- **(v0.2) Customer proof station** — the customer-facing sign-off half of §8.12 (counter touch device, SSE-paired to the associate station, signed-proof audit artifact) is its own Track B slice per `Customer_Proof_Station_Spec.md`. It is sequenced **ahead of field UAT** so the full counter transaction — prepare → send → customer reviews → signs → outcome — is exercised from the first UAT session; its audit artifact is also the evidence half of the customer-re-approval gate the security doc requires on the eventual write-back path (Phase 5 follow-on).
 - Each slice ships with its **own acceptance bar and harness** — e.g. bleed-expansion correctness, Word open→edit→save round-trip integrity, Excel "fix-the-print" determinism, N-up/cut alignment, preflight accuracy — **plus** an integrated test against the backbone and an on-hardware performance check.
 - **Publisher-deadline constraint:** the **custom-size layout core** and the **`.pub` on-ramp** must reach a usable state *before associates lose Publisher in October 2026*. Even though quick-fixes lead on value, sequence these two early enough within Phase 2 that they clear their gates ahead of that marker.
 
@@ -188,6 +190,7 @@ Because the beta launches to every store at once, the feedback mechanism is a **
 | §8.3 Layout & design; §8.9 `.pub` on-ramp | Phase 2, sequenced early for the Oct 2026 constraint |
 | §8.5 Office handlers; §8.6 PDF toolkit | Phase 2 slices |
 | §8.4 Templates; §8.8 VDP; §8.11 AI highlight-to-change | Phase 2 later slices |
+| §8.12 customer-facing proof sign-off (v0.2) | Phase 2 slice, ahead of field UAT — `Customer_Proof_Station_Spec.md` + `CUSTOMER_PROOF_STATION_PLAN.md` |
 | §8.10 Catalog/order integration | Backbone, deepened across Phases 0–2 |
 | §9 Non-functional (hardware, security, deployment, licensing) | Gated throughout; productionized in Phase 5 |
 | §8.10 write-back; §8.14 Design Services / Workfront | Phase 5 follow-ons |

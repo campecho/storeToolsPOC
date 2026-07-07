@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Circle, Image as ImageIcon, Minus, Square, Type } from "lucide-react";
+import { Circle, Image as ImageIcon, Minus, Spline, Square, Type } from "lucide-react";
 import { surfaceObjects, useLayoutStore } from "@/store";
+import { textContent } from "@/lib/layout/text";
 import type { LayoutDocument, LayoutObject } from "@/schema";
 
 /**
@@ -21,7 +22,7 @@ const DRAG_THRESHOLD_PX = 4;
 function rowLabel(o: LayoutObject, doc: LayoutDocument): string {
   switch (o.type) {
     case "text": {
-      const t = o.text?.content.trim() ?? "";
+      const t = o.text ? textContent(o.text).trim() : "";
       return t ? (t.length > 22 ? `${t.slice(0, 22)}…` : t) : "Text";
     }
     case "picture":
@@ -30,6 +31,8 @@ function rowLabel(o: LayoutObject, doc: LayoutDocument): string {
       return "Rectangle";
     case "ellipse":
       return "Ellipse";
+    case "path":
+      return "Path";
     case "line":
       return "Line";
   }
@@ -46,6 +49,8 @@ function RowIcon({ type }: { type: LayoutObject["type"] }) {
       return <Minus {...props} />;
     case "text":
       return <Type {...props} />;
+    case "path":
+      return <Spline {...props} />;
     case "picture":
       return <ImageIcon {...props} />;
   }

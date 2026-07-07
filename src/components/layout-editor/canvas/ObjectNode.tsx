@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { FrameObject, LayoutObject } from "@/schema";
+import type { FrameObject, LayoutObject, PathSeg } from "@/schema";
 import { inToPx } from "@/lib/layout/geometry";
 import { bboxOf } from "@/lib/layout/objects";
-import { fontStack, isOverflowing, ptToPx } from "@/lib/layout/text";
+import { isOverflowing, textContent } from "@/lib/layout/text";
+import { useLayoutStore } from "@/store";
+import { paraCss, runCss } from "./rich-text-dom";
 import { useAssetUrl } from "@/lib/assets/use-asset-url";
 
 /**
@@ -16,6 +18,19 @@ import { useAssetUrl } from "@/lib/assets/use-asset-url";
  * affordance so it stays findable. The pane thumbnails reuse this component
  * with `withTestId={false}` so mini-renders never duplicate canvas testids.
  */
+
+/** Normalized (0–1) path segments → SVG path data at pixel size (schema v2). */
+function pathData(segs: PathSeg[], w: number, h: number): string {
+  const n = (v: number) => Math.round(v * 1000) / 1000;
+  return segs
+    .map((s) => {
+      if (s.c === "Z") return "Z";
+      if (s.c === "C")
+        return `C ${n(s.x1 * w)} ${n(s.y1 * h)}, ${n(s.x2 * w)} ${n(s.y2 * h)}, ${n(s.x * w)} ${n(s.y * h)}`;
+      return `${s.c} ${n(s.x * w)} ${n(s.y * h)}`;
+    })
+    .join(" ");
+}
 
 function MountainGlyph({ px }: { px: number }) {
   return (
@@ -36,20 +51,27 @@ function MountainGlyph({ px }: { px: number }) {
 }
 
 /**
- * Picture frame content (L8): the bound image cover-fit (ASSUMPTION — the
- * `fit` mode field is a schema-v2 delta), the placeholder glyph when unbound,
- * or the missing-asset state when the id has no bytes behind it.
+ * Picture frame content (L8): the bound image fit to the frame — cover by
+ * default (the L8 upload default), or the frame's `fit` mode when set (imports
+ * emit "stretch") — the placeholder glyph when unbound, or the missing-asset
+ * state when the id has no bytes behind it.
  */
 function PictureFill({
   assetId,
+  fit,
   glyphPx,
   withTestId,
 }: {
   assetId?: string;
+  fit?: FrameObject["fit"];
   glyphPx: number;
   withTestId: boolean;
 }) {
   const url = useAssetUrl(assetId);
+  // absent/"cover" fills and crops (the default); "stretch" distorts to the
+  // frame exactly (Publisher's scaling); "contain" fits without cropping.
+  const objectFit =
+    fit === "stretch" ? "object-fill" : fit === "contain" ? "object-contain" : "object-cover";
   if (!assetId) return <MountainGlyph px={glyphPx} />;
   if (url === undefined) return null; // resolving — never flash the placeholder
   if (url === null) {
@@ -72,7 +94,7 @@ function PictureFill({
       alt=""
       draggable={false}
       data-testid={withTestId ? "picture-image" : undefined}
-      className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      className={`pointer-events-none absolute inset-0 h-full w-full ${objectFit}`}
     />
   );
 }
@@ -97,14 +119,29 @@ function TextFrameNode({
   const contentRef = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState(false);
   const text = obj.text!;
+  // Import-autofit render scale (schema text.fontScale): mirrors Publisher's
+  // shrink-on-overflow. Declared run sizes stay the source of truth — this
+  // scales rendered px only, so every runCss below takes it as the 3rd arg.
+  const scale = text.fontScale ?? 1;
+  // Webfonts land after first paint — the shell bumps this when new faces
+  // finish loading (§10.5), so overflow re-measures with real metrics.
+  const fontsTick = useLayoutStore((s) => s.fontsTick);
 
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    setOverflow(isOverflowing(el.scrollHeight, el.clientHeight));
-  }, [text, obj.w, obj.h, zoom]);
+    // Reads the RENDERED contentRef, so the autofit scale is already baked
+    // into scrollHeight — the badge stays consistent with no separate term.
+    // The cushion scales with zoom (plus int-rounding allowance): a borderline
+    // frame the import check accepted at zoom 1 must not sprout a badge at
+    // 247% just because its subpixel line-box spill scaled past a fixed 1px.
+    setOverflow(isOverflowing(el.scrollHeight, el.clientHeight, 2 + 2 * zoom));
+  }, [text, obj.w, obj.h, zoom, fontsTick]);
 
   const strokePx = obj.stroke ? obj.stroke.width * zoom : 0;
+  const insetPx = (v: number | undefined) => (v ? inToPx(v, zoom) : 0);
+  const vJustify =
+    text.vAlign === "middle" ? "center" : text.vAlign === "bottom" ? "flex-end" : "flex-start";
   return (
     <div
       data-testid={withTestId ? "object-text" : undefined}
@@ -121,26 +158,38 @@ function TextFrameNode({
       onPointerDown={interactive ? onPointerDown : undefined}
       onDoubleClick={interactive ? onDoubleClick : undefined}
     >
-      {text.content === "" && !editing && (
+      {textContent(text) === "" && !editing && (
         <div className="pointer-events-none absolute inset-0 border border-dashed border-[#c9c9c9]" />
       )}
       <div
-        ref={contentRef}
-        data-testid={withTestId ? "text-content" : undefined}
-        className="h-full w-full overflow-hidden whitespace-pre-wrap break-words"
+        className="flex h-full w-full flex-col overflow-hidden"
         style={{
-          fontFamily: fontStack(text.font.family),
-          fontSize: ptToPx(text.font.size, zoom),
-          fontWeight: text.font.bold ? 700 : 400,
-          fontStyle: text.font.italic ? "italic" : undefined,
-          textDecoration: text.font.underline ? "underline" : undefined,
-          textAlign: text.align,
-          lineHeight: text.lineSpacing,
-          color: "#111111", // v1 ink — per-run color is the schema-v2 delta (§9)
+          paddingLeft: insetPx(text.inset?.l),
+          paddingRight: insetPx(text.inset?.r),
+          paddingTop: insetPx(text.inset?.t),
+          paddingBottom: insetPx(text.inset?.b),
+          justifyContent: vJustify,
           visibility: editing ? "hidden" : undefined,
         }}
       >
-        {text.content}
+        <div
+          ref={contentRef}
+          data-testid={withTestId ? "text-content" : undefined}
+          className="max-h-full whitespace-pre-wrap break-words"
+        >
+          {text.paragraphs.map((p, pi) => (
+            // the div carries its first run's (scaled) size so empty lines keep height
+            <div key={pi} style={{ ...paraCss(p, zoom), fontSize: runCss(p.runs[0], zoom, scale).fontSize }}>
+              {p.runs.map((r, ri) => (
+                <span key={ri} style={runCss(r, zoom, scale)}>
+                  {r.text}
+                </span>
+              ))}
+              {/* an empty paragraph still occupies its line */}
+              {p.runs.every((r) => r.text === "") && <br />}
+            </div>
+          ))}
+        </div>
       </div>
       {overflow && !editing && (
         <div
@@ -232,6 +281,37 @@ export function ObjectNode({
     );
   }
 
+  if (obj.type === "path" && obj.d) {
+    const w = Math.max(inToPx(obj.w, zoom), 1);
+    const h = Math.max(inToPx(obj.h, zoom), 1);
+    const d = pathData(obj.d, w, h);
+    const strokeW = obj.stroke ? obj.stroke.width * zoom : 0;
+    return (
+      <div
+        data-testid={withTestId ? "object-path" : undefined}
+        className={`absolute ${interactive ? "cursor-move" : "pointer-events-none"}`}
+        style={{
+          left: inToPx(obj.x, zoom),
+          top: inToPx(obj.y, zoom),
+          width: w,
+          height: h,
+          transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+        }}
+        onPointerDown={interactive ? onPointerDown : undefined}
+      >
+        <svg width={w} height={h} className="overflow-visible">
+          <path
+            d={d}
+            fill={obj.fill ?? "none"}
+            fillRule="evenodd"
+            stroke={obj.stroke?.color}
+            strokeWidth={strokeW || undefined}
+          />
+        </svg>
+      </div>
+    );
+  }
+
   const strokePx = obj.stroke ? obj.stroke.width * zoom : 0;
   return (
     <div
@@ -253,6 +333,7 @@ export function ObjectNode({
       {obj.type === "picture" && (
         <PictureFill
           assetId={obj.assetId}
+          fit={obj.fit}
           glyphPx={Math.min(inToPx(obj.w, zoom), inToPx(obj.h, zoom)) * 0.35}
           withTestId={withTestId}
         />

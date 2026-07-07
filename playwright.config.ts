@@ -22,5 +22,8 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: true,
     timeout: 120_000,
+    // .pub import runs in fixture mode (plan §10.1): e2e is deterministic on
+    // machines without libmspub-tools, and the demo trace is the known payload.
+    env: { ...process.env, STP_IMPORT_FIXTURE: "1" },
   },
 });

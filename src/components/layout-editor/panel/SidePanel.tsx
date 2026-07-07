@@ -4,12 +4,14 @@ import { useLayoutStore, type PanelTab } from "@/store";
 import { PagesPane } from "../pages/PagesPane";
 import { AssetsPane } from "./AssetsPane";
 import { LayersPane } from "./LayersPane";
+import { ImportReportPane } from "./ImportReportPane";
 
 /**
  * Left side panel (plan L8): a vertical tab strip — Pages / Assets / Layers,
  * titles rotated 90° clockwise — beside a collapsible content column. Clicking
  * a tab opens the panel to it; clicking the open tab collapses the panel to
- * just the strip. Session state, not persisted.
+ * just the strip. Session state, not persisted. After a `.pub` import a 4th
+ * "Review" tab appears (plan §10.4, P4) for the fidelity report.
  */
 
 const TABS: { id: PanelTab; label: string }[] = [
@@ -22,6 +24,9 @@ export function SidePanel() {
   const panelTab = useLayoutStore((s) => s.panelTab);
   const panelOpen = useLayoutStore((s) => s.panelOpen);
   const togglePanelTab = useLayoutStore((s) => s.togglePanelTab);
+  // The report tab only exists once there's a report to read.
+  const hasReport = useLayoutStore((s) => s.importReport !== null);
+  const tabs = hasReport ? [...TABS, { id: "import" as const, label: "Review" }] : TABS;
 
   return (
     <div className="flex shrink-0 border-r border-[#ececec]">
@@ -29,7 +34,7 @@ export function SidePanel() {
         data-testid="panel-tabs"
         className="flex w-[27px] shrink-0 flex-col items-center gap-[6px] border-r border-[#ececec] bg-[#fafafa] pt-[10px]"
       >
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const active = panelOpen && panelTab === t.id;
           return (
             <button
@@ -57,6 +62,7 @@ export function SidePanel() {
           {panelTab === "pages" && <PagesPane />}
           {panelTab === "assets" && <AssetsPane />}
           {panelTab === "layers" && <LayersPane />}
+          {panelTab === "import" && <ImportReportPane />}
         </div>
       )}
     </div>

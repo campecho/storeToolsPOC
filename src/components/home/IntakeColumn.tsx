@@ -1,10 +1,12 @@
 /**
  * Left column of Home — "Bring in a file": dropzone, actions, .pub callout,
  * and the new-document size tiles. The size tiles deep-link into the layout
- * editor (plan L3) — the rest stay placeholder affordances per the wires.
+ * editor (plan L3) and the .pub callout converts for real (plan P1); the rest
+ * stay placeholder affordances per the wires.
  */
 
 import Link from "next/link";
+import { PubConvertCallout } from "./PubConvertCallout";
 
 const FILE_CHIPS = ["JPG", "PNG", "HEIC", "SVG", "PDF", "DOCX", "XLSX", "PPTX"];
 
@@ -47,15 +49,8 @@ export function IntakeColumn() {
         </div>
       </div>
 
-      {/* .pub callout */}
-      <div className="flex items-center gap-3 rounded-[8px] border border-brand-border bg-brand-tint p-[13px]">
-        <div className="h-[34px] w-[34px] shrink-0 rounded-[6px] border border-[#e6b9b9] bg-white" />
-        <div className="flex-1">
-          <div className="text-[13px] font-semibold text-brand-deep">Got an old .pub file?</div>
-          <div className="text-[12px] text-brand-muted">Convert your Publisher file — we'll recover the layout.</div>
-        </div>
-        <div className="cursor-pointer text-[12px] font-semibold text-brand">Convert →</div>
-      </div>
+      {/* .pub callout — live since P1: picks a file, converts, opens the editor */}
+      <PubConvertCallout />
 
       <div className="h-px bg-[#eee]" />
 
