@@ -9,7 +9,10 @@ import {
   scoreAgainstReference,
   type FileScore,
 } from "./fidelity";
+import { mapToLayoutDocument } from "./mapper";
+import { buildModel } from "./model";
 import type { ImportAssetsPayload } from "./report";
+import { parseTrace } from "./trace-parser";
 
 /**
  * Unit tests for the fidelity harness, on small synthetic SVG strings shaped
@@ -177,7 +180,7 @@ describe("parseReferencePages", () => {
     expect(page.shapes[2].fill).toBeNull();
   });
 
-  it("parses paths (hull over every coordinate pair) and lines", () => {
+  it("parses paths (command-aware hull over M/L/C/Q coordinates) and lines", () => {
     const body =
       `<svg:path d=" \nM72.0000,72.0000\nL144.0000,72.0000\nL108.0000,144.0000\nZ\nZ" \nstyle="fill-rule: nonzero; fill: #fd2826; "/>` +
       `\n<svg:line x1="18.0000"  y1="77.7037" x2="252.0000"  y2="77.7037"\nstyle="stroke-width: 1.0000; stroke: #316d35; stroke-dasharray: none; fill: none; "/>`;
@@ -188,6 +191,30 @@ describe("parseReferencePages", () => {
     expect(page.shapes[1].bbox.x).toBeCloseTo(0.25, 6);
     expect(page.shapes[1].bbox.h).toBe(0);
     expect(page.shapes[1].stroke).toBe("#316d35");
+  });
+
+  it("hulls cubic control points (the trace-side bbox convention)", () => {
+    // C control points at y=0 pull the hull above the endpoints' y=72 —
+    // deliberately matching model.ts, which hulls x1/y1/x2/y2 too.
+    const body = `<svg:path d=" \nM72.0000,72.0000\nC96.0000,0.0000 120.0000,0.0000 144.0000,72.0000\nZ" \nstyle="fill: #000000; "/>`;
+    const [page] = parseReferencePages(svgPage(body));
+    expect(page.shapes[0].bbox).toEqual({ x: 1, y: 0, w: 1, h: 1 });
+  });
+
+  it("parses arc paths command-aware — radii/rotation/flags are NOT coordinates", () => {
+    // The exact shape of the ecl_workbook callout circles: two 180° arcs
+    // whose endpoints share a y. The naive all-numbers-pair scan this
+    // replaced read `16.7750,14.4000 0.0000 1,1` as three coordinate pairs
+    // (garbage hull); an endpoint-only reading hulls to a height-0 box.
+    // Command-aware + arc lowering hulls the full ellipse: 33.55×28.8pt.
+    const body =
+      `<svg:path d=" \nM118.7418,603.8565\nA16.7750,14.4000 0.0000 1,1 85.1918,603.8565\nA16.7750,14.4000 0.0000 1,1 118.7418,603.8565\nZ\nZ" \nstyle="fill: none; stroke: #ff0000; "/>`;
+    const [page] = parseReferencePages(svgPage(body, 9, 11));
+    const b = page.shapes[0].bbox;
+    expect(b.x).toBeCloseTo(85.1918 / 72, 4);
+    expect(b.y).toBeCloseTo((603.8565 - 14.4) / 72, 4);
+    expect(b.w).toBeCloseTo(33.55 / 72, 4);
+    expect(b.h).toBeCloseTo(28.8 / 72, 4);
   });
 
   it("parses pattern images out of defs (id, mime, payload)", () => {
@@ -276,6 +303,53 @@ describe("scoring: shapes (position + color)", () => {
     const s = score(svgPage(""), doc([pathObj("stray", 2, 2, 1, 1, "#000000")]));
     expect(s.extras).toBe(1);
     expect(s.misses.some((m) => m.includes("stray"))).toBe(true);
+  });
+});
+
+describe("scoring: arc paths (both sides through the same arc lowering)", () => {
+  // One callout circle from ecl_workbook, verbatim on BOTH sides: the trace
+  // emits flagless A segments (defaults large-arc=1, sweep=1 — pub2xhtml's
+  // reading), the reference emits the same circle in points with explicit
+  // flags. Doc-side bbox comes from model.ts's converted-segment hull; the
+  // ref hull converts through the same arcToCubics — they must agree within
+  // the 0.02in position tolerance (they agree to ~1e-4: pure print noise).
+  const trace = [
+    "startDocument()",
+    "startPage (svg:width: 9.0000in, svg:height: 11.0000in)",
+    "setStyle(draw:fill: none, draw:stroke: solid, svg:stroke-color: #000000, svg:stroke-width: 0.0104in)",
+    "drawPath (svg:d: ((librevenge:path-action: M, svg:x: 1.6492in, svg:y: 8.3869in), " +
+      "(librevenge:path-action: A, librevenge:rotate: 0.0000in, svg:rx: 0.2330in, svg:ry: 0.2000in, svg:x: 1.1832in, svg:y: 8.3869in), " +
+      "(librevenge:path-action: A, librevenge:rotate: 0.0000in, svg:rx: 0.2330in, svg:ry: 0.2000in, svg:x: 1.6492in, svg:y: 8.3869in), " +
+      "(librevenge:path-action: Z), (librevenge:path-action: Z)))",
+    "endPage()",
+    "endDocument()",
+  ].join("\n");
+  const refBody =
+    `<svg:path d=" \nM118.7424,603.8568\nA16.7760,14.4000 0.0000 1,1 85.1904,603.8568\nA16.7760,14.4000 0.0000 1,1 118.7424,603.8568\nZ\nZ" \nstyle="fill: none; stroke-width: 1.0000; stroke: #000000; "/>`;
+
+  const { doc: converted, blobs } = mapToLayoutDocument(buildModel(parseTrace(trace)), "arc-circle");
+
+  it("imports the circle with the full ellipse bbox — the h=0 regression", () => {
+    const [path] = converted.pages[0].objects;
+    if (path.type !== "path") throw new Error("expected path");
+    expect(path.w).toBeCloseTo(0.466, 4);
+    expect(path.h).toBeCloseTo(0.4, 4); // was 0 when only endpoints hulled
+    expect(path.x).toBeCloseTo(1.1832, 4);
+    expect(path.y).toBeCloseTo(8.1869, 4);
+    expect(path.d?.some((s) => s.c === "C")).toBe(true);
+  });
+
+  it("scores position (and stroke color) clean against the reference render", () => {
+    const s = scoreAgainstReference({
+      name: "arc-circle",
+      refPages: parseReferencePages(svgPage(refBody, 9, 11)),
+      doc: converted,
+      blobs,
+    });
+    expect(cat(s, "position")).toEqual({ pass: 1, total: 1 });
+    expect(cat(s, "color")).toEqual({ pass: 2, total: 2 });
+    expect(s.extras).toBe(0);
+    expect(s.unmatched).toBe(0);
   });
 });
 

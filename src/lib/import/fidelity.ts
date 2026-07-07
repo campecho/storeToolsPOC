@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { LayoutDocument, LayoutObject, TextProps, TextRun } from "@/schema";
 import { textContent } from "@/lib/layout/text";
+import { arcToCubics } from "./arc";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
 import { decodeBase64 } from "./image-meta";
 import type { ImportAssetsPayload } from "./report";
@@ -141,6 +142,109 @@ function bboxOfCoords(xs: number[], ys: number[], ptPerIn: number): BBox | undef
   return { x, y, w: Math.max(...xs) / ptPerIn - x, h: Math.max(...ys) / ptPerIn - y };
 }
 
+/**
+ * Command-aware `d` tokenizer → coordinate hull (viewBox points). The naive
+ * "pair up every number" scan this replaced misread arcs catastrophically:
+ * `A16.7750,14.4000 0.0000 1,1 85.1918,603.8565` pairs radii/rotation/flags
+ * as coordinates. Grammar per pub2xhtml's serializer: absolute uppercase
+ * M/L (1 pair), C (3 pairs), Q (2 pairs), Z (none), and
+ * A (rx ry rot large-arc sweep x y). Arcs convert through the SAME
+ * arcToCubics the trace side uses (scale-equivariant, so running it in
+ * points matches the model's inch-side conversion exactly), and the hull
+ * takes the resulting control points — both sides then hull equivalent
+ * bézier geometry. Bare pairs after a command repeat it per SVG (after M
+ * they mean L); pub2xhtml doesn't emit implicit repeats today, but the
+ * grammar is cheap insurance.
+ */
+function pathCoords(d: string): { xs: number[]; ys: number[] } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const tokens = d.match(/[A-Za-z]|-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) ?? [];
+  let i = 0;
+  let cmd = "";
+  let cur: { x: number; y: number } | null = null;
+  let subpathStart: { x: number; y: number } | null = null;
+  const read = () => parseFloat(tokens[i++]);
+  const pushPt = (x: number, y: number) => {
+    // a truncated command reads past the token list (NaN) — never hull it
+    if (Number.isNaN(x) || Number.isNaN(y)) return;
+    xs.push(x);
+    ys.push(y);
+  };
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (/[A-Za-z]/.test(t)) {
+      cmd = t.toUpperCase();
+      i++;
+      if (cmd === "Z") cur = subpathStart;
+      continue;
+    }
+    switch (cmd) {
+      case "M": {
+        const x = read();
+        const y = read();
+        pushPt(x, y);
+        cur = { x, y };
+        subpathStart = cur;
+        cmd = "L"; // implicit pairs after M are lineto (SVG spec)
+        break;
+      }
+      case "L": {
+        const x = read();
+        const y = read();
+        pushPt(x, y);
+        cur = { x, y };
+        break;
+      }
+      case "C": {
+        const x1 = read();
+        const y1 = read();
+        const x2 = read();
+        const y2 = read();
+        const x = read();
+        const y = read();
+        pushPt(x1, y1);
+        pushPt(x2, y2);
+        pushPt(x, y);
+        cur = { x, y };
+        break;
+      }
+      case "Q": {
+        const x1 = read();
+        const y1 = read();
+        const x = read();
+        const y = read();
+        pushPt(x1, y1);
+        pushPt(x, y);
+        cur = { x, y };
+        break;
+      }
+      case "A": {
+        const rx = read();
+        const ry = read();
+        const rotDeg = read();
+        const largeArc = read() !== 0;
+        const sweep = read() !== 0;
+        const x = read();
+        const y = read();
+        if (cur) {
+          for (const c of arcToCubics(cur, { rx, ry, rotDeg, largeArc, sweep, x, y })) {
+            pushPt(c.x1, c.y1);
+            pushPt(c.x2, c.y2);
+            pushPt(c.x, c.y);
+          }
+        }
+        pushPt(x, y); // endpoint always hulls, even without a current point
+        cur = { x, y };
+        break;
+      }
+      default:
+        i++; // number with no governing command — malformed; skip it
+    }
+  }
+  return { xs, ys };
+}
+
 /** Parse a pub2xhtml reference render into per-page reference models.
     A 0-byte render (master-page-only publication) parses to zero pages. */
 export function parseReferencePages(xhtml: string): RefPage[] {
@@ -203,16 +307,10 @@ export function parseReferencePages(xhtml: string): RefPage[] {
       if (bbox) shapes.push({ kind: "polygon", bbox, ...paintOf(p[1]) });
     }
     for (const p of body.matchAll(/<svg:path\b([\s\S]*?)\/>/g)) {
-      // d is verb-prefixed "x,y" pairs (M/L/C/Q/Z). All numbers pair up x,y in
-      // order, so the hull over every pair — control points included — matches
-      // the trace-side bbox convention (model.ts vectorCoords).
-      const nums = ((attr(p[1], "d") ?? "").match(/-?[\d.]+/g) ?? []).map(parseFloat);
-      const xs: number[] = [];
-      const ys: number[] = [];
-      for (let i = 0; i + 1 < nums.length; i += 2) {
-        xs.push(nums[i]);
-        ys.push(nums[i + 1]);
-      }
+      // Command-aware scan (pathCoords): M/L/C/Q pairs plus arcs lowered
+      // through the same arcToCubics as the trace side — the hull covers
+      // control points, matching model.ts's bbox convention on both sides.
+      const { xs, ys } = pathCoords(attr(p[1], "d") ?? "");
       const bbox = bboxOfCoords(xs, ys, ptPerIn);
       if (bbox) shapes.push({ kind: "path", bbox, ...paintOf(p[1]) });
     }

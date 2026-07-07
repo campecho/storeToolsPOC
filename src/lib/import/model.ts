@@ -1,3 +1,4 @@
+import { arcToCubics } from "./arc";
 import type { PropMap, PropValue, TraceEvent } from "./trace-parser";
 import { toInches, toMultiplier, toNumber, toPoints } from "./trace-parser";
 
@@ -48,7 +49,9 @@ export type IRParagraph = {
 export type IRBBox = { x: number; y: number; w: number; h: number };
 
 /** Path segments in ABSOLUTE page inches (mapper normalizes into the bbox).
-    "?" marks a verb we don't model (arc etc.) — mapper degrades to bbox. */
+    Arcs (A) are lowered to cubics at this boundary (arc.ts) — downstream only
+    ever sees M/L/C/Q/Z. "?" marks a genuinely unknown verb — mapper degrades
+    the shape to its bbox. */
 export type IRPathSeg =
   | { a: "M" | "L"; x: number; y: number }
   | { a: "C"; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
@@ -165,10 +168,22 @@ function vectorPoints(v: PropValue | undefined): { x: number; y: number }[] {
   return points;
 }
 
-/** svg:d vector → typed segments (absolute inches); unknown verbs marked "?". */
-function vectorSegs(v: PropValue | undefined): IRPathSeg[] {
-  if (!Array.isArray(v)) return [];
+/** Arc flag property → boolean. librevenge prints bools as "true"/"false"
+    (tolerate "1"/"0"); ABSENT defaults TRUE — ground-truthed against
+    pub2xhtml, which renders the corpus's flagless trace arcs as
+    `A… 1,1 …` (large-arc=1, sweep=1) in its SVG output. */
+function toFlag(v: PropValue | undefined): boolean {
+  if (typeof v !== "string") return true;
+  return v !== "false" && v !== "0";
+}
+
+/** svg:d vector → typed segments (absolute inches); arcs lowered to cubics
+    (arc.ts), genuinely unknown verbs marked "?". */
+function vectorSegs(v: PropValue | undefined): { segs: IRPathSeg[]; hadArc: boolean } {
   const segs: IRPathSeg[] = [];
+  let hadArc = false;
+  if (!Array.isArray(v)) return { segs, hadArc };
+  let cur: { x: number; y: number } | null = null; // current point, for arcs
   for (const g of v) {
     const a = g["librevenge:path-action"];
     const x = toInches(g["svg:x"]);
@@ -178,17 +193,61 @@ function vectorSegs(v: PropValue | undefined): IRPathSeg[] {
     const x2 = toInches(g["svg:x2"]);
     const y2 = toInches(g["svg:y2"]);
     if (a === "Z") segs.push({ a: "Z" });
-    else if ((a === "M" || a === "L") && x !== undefined && y !== undefined) segs.push({ a, x, y });
-    else if (
+    else if ((a === "M" || a === "L") && x !== undefined && y !== undefined) {
+      segs.push({ a, x, y });
+      cur = { x, y };
+    } else if (
       a === "C" &&
       [x, y, x1, y1, x2, y2].every((n) => n !== undefined)
-    )
+    ) {
       segs.push({ a: "C", x1: x1!, y1: y1!, x2: x2!, y2: y2!, x: x!, y: y! });
-    else if (a === "Q" && [x, y, x1, y1].every((n) => n !== undefined))
+      cur = { x: x!, y: y! };
+    } else if (a === "Q" && [x, y, x1, y1].every((n) => n !== undefined)) {
       segs.push({ a: "Q", x1: x1!, y1: y1!, x: x!, y: y! });
-    else segs.push({ a: "?", raw: String(a) });
+      cur = { x: x!, y: y! };
+    } else if (a === "A" && x !== undefined && y !== undefined) {
+      hadArc = true;
+      if (!cur) {
+        // an arc with no current point is malformed SVG; keep its endpoint
+        segs.push({ a: "M", x, y });
+      } else {
+        for (const c of arcToCubics(cur, {
+          rx: toInches(g["svg:rx"]) ?? 0,
+          ry: toInches(g["svg:ry"]) ?? 0,
+          // degrees with librevenge's bogus `in` suffix, like the shape-level prop
+          rotDeg: toNumber(g["librevenge:rotate"]) ?? 0,
+          largeArc: toFlag(g["librevenge:large-arc"]),
+          sweep: toFlag(g["librevenge:sweep"]),
+          x,
+          y,
+        }))
+          segs.push({ a: "C", ...c });
+      }
+      cur = { x, y };
+    } else segs.push({ a: "?", raw: String(a) });
   }
-  return segs;
+  return { segs, hadArc };
+}
+
+/** Coordinate hull of converted segments (control points included — the same
+    overestimating-hull convention vectorCoords uses on the raw props). */
+function segCoords(segs: IRPathSeg[]): { xs: number[]; ys: number[] } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const s of segs) {
+    if (s.a === "Z" || s.a === "?") continue;
+    xs.push(s.x);
+    ys.push(s.y);
+    if (s.a === "C" || s.a === "Q") {
+      xs.push(s.x1);
+      ys.push(s.y1);
+    }
+    if (s.a === "C") {
+      xs.push(s.x2);
+      ys.push(s.y2);
+    }
+  }
+  return { xs, ys };
 }
 
 function bboxOf(xs: number[], ys: number[]): IRBBox | undefined {
@@ -329,14 +388,21 @@ export function buildModel(events: TraceEvent[]): IRDoc {
         break;
       }
       case "drawPath": {
-        const { xs, ys } = vectorCoords(props["svg:d"]);
+        const { segs, hadArc } = vectorSegs(props["svg:d"]);
+        // Arc paths: hull the CONVERTED segments (cubic control points and
+        // all) — raw arc props only carry endpoints, and the corpus's
+        // dominant case (a circle as two diametric 180° arcs sharing a y)
+        // hulls those endpoints to a height-0 box. Non-arc paths keep the
+        // raw-prop hull: identical coordinates, byte-identical bboxes
+        // (corpus-pinned), and it tolerates "?" verbs that still carry x/y.
+        const { xs, ys } = hadArc ? segCoords(segs) : vectorCoords(props["svg:d"]);
         const bbox = bboxOf(xs, ys);
         if (!bbox) break;
         push({
           kind: "path",
           bbox,
           style,
-          segs: vectorSegs(props["svg:d"]),
+          segs,
           rotationDeg: toNumber(props["librevenge:rotate"]),
         });
         break;

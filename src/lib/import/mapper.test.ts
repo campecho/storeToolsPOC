@@ -424,6 +424,94 @@ describe("mapper edge cases", () => {
 });
 
 /**
+ * Arc paths (ecl_workbook slice): librevenge A segments lower to cubics at
+ * the model boundary (arc.ts), the shape bbox derives from the CONVERTED
+ * segment hull (raw arc props carry only endpoints — the corpus's two-arc
+ * circles hulled those to a height-0 box), and the mapper's bbox degradation
+ * no longer fires for arcs — only for genuinely unknown verbs.
+ */
+describe("arc paths: A → cubics at the model boundary", () => {
+  const pathTrace = (groups: string) =>
+    [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      "    setStyle(draw:fill: none, draw:stroke: solid, svg:stroke-color: #ff0000, svg:stroke-width: 0.0104in)",
+      `    drawPath (svg:d: (${groups}))`,
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+  const M = (x: number, y: number) =>
+    `(librevenge:path-action: M, svg:x: ${x.toFixed(4)}in, svg:y: ${y.toFixed(4)}in)`;
+  const A = (rx: number, ry: number, x: number, y: number, flags = "") =>
+    `(librevenge:path-action: A, librevenge:rotate: 0.0000in, svg:rx: ${rx.toFixed(4)}in, ` +
+    `svg:ry: ${ry.toFixed(4)}in, svg:x: ${x.toFixed(4)}in, svg:y: ${y.toFixed(4)}in${flags})`;
+
+  it("converts the two-arc callout circle to real cubics with the ellipse bbox — not h=0", () => {
+    // the ecl_workbook page-3 callout circle, verbatim (flagless arcs)
+    const groups = [
+      M(1.6492, 8.3869),
+      A(0.233, 0.2, 1.1832, 8.3869),
+      A(0.233, 0.2, 1.6492, 8.3869),
+      "(librevenge:path-action: Z)",
+      "(librevenge:path-action: Z)",
+    ].join(", ");
+    const result = mapToLayoutDocument(buildModel(parseTrace(pathTrace(groups))), "x");
+    const o = result.doc.pages[0].objects[0];
+    if (o.type !== "path" || !o.d) throw new Error("expected path");
+    // both endpoints share y=8.3869 — endpoint-only bbox would be h=0
+    expect(o.x).toBeCloseTo(1.1832, 4);
+    expect(o.y).toBeCloseTo(8.1869, 4);
+    expect(o.w).toBeCloseTo(0.466, 4);
+    expect(o.h).toBeCloseTo(0.4, 4);
+    // M + 2 cubics per 180° arc + the two Zs; everything normalized to [0,1]
+    expect(o.d.map((s) => s.c)).toEqual(["M", "C", "C", "C", "C", "Z", "Z"]);
+    for (const seg of o.d) {
+      if (seg.c === "Z") continue;
+      for (const v of [seg.x, seg.y]) {
+        expect(v).toBeGreaterThanOrEqual(-0.001);
+        expect(v).toBeLessThanOrEqual(1.001);
+      }
+    }
+    // clean conversion: no degradation, no bounding-box note
+    expect(result.fidelity).toEqual({ converted: 1, degraded: 0, flagged: 0 });
+    expect(result.notes.some((n) => n.message.includes("bounding box"))).toBe(false);
+  });
+
+  it("honors explicit librevenge:large-arc / librevenge:sweep props (default is true/true)", () => {
+    // (1,1) → (2,2) with r=1: flags decide which of the four arcs is drawn.
+    const arc = (flags: string) => [M(1, 1), A(1, 1, 2, 2, flags)].join(", ");
+    // default (absent ⇒ true,true — pub2xhtml's reading): the 270° sweep,
+    // center (2,1), covering x ∈ [1,3], y ∈ [0,2]
+    const big = mapToLayoutDocument(buildModel(parseTrace(pathTrace(arc("")))), "x").doc.pages[0].objects[0];
+    if (big.type !== "path") throw new Error("expected path");
+    expect(big.w).toBeCloseTo(2, 3);
+    expect(big.h).toBeCloseTo(2, 3);
+    // explicit false/false: the 90° quarter, same center, x/y ∈ [1,2]
+    const small = mapToLayoutDocument(
+      buildModel(parseTrace(pathTrace(arc(", librevenge:large-arc: false, librevenge:sweep: false")))),
+      "x",
+    ).doc.pages[0].objects[0];
+    if (small.type !== "path") throw new Error("expected path");
+    expect(small.x).toBeCloseTo(1, 3);
+    expect(small.y).toBeCloseTo(1, 3);
+    expect(small.w).toBeCloseTo(1, 3);
+    expect(small.h).toBeCloseTo(1, 3);
+  });
+
+  it("still degrades a genuinely unknown verb to its bbox with a note", () => {
+    const groups = [
+      M(1, 1),
+      "(librevenge:path-action: X, svg:x: 2.0000in, svg:y: 2.0000in)",
+    ].join(", ");
+    const result = mapToLayoutDocument(buildModel(parseTrace(pathTrace(groups))), "x");
+    const o = result.doc.pages[0].objects[0];
+    expect(o.type).toBe("rect"); // bbox fallback
+    expect(result.fidelity.degraded).toBe(1);
+    expect(result.notes.some((n) => n.message.includes("converted to its bounding box"))).toBe(true);
+  });
+});
+
+/**
  * Honest-reporting passes (ecl_workbook slice): text hidden behind a higher-z
  * picture (Publisher wraps text around inline pictures; libmspub emits no wrap
  * data, so text lays out through the full frame and the picture paints over

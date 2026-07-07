@@ -214,7 +214,7 @@ function normalizeSegs(segs: IRPathSeg[], bbox: { x: number; y: number; w: numbe
         out.push({ c: "Z" });
         break;
       default:
-        return null; // "?" — arc or other unmodeled verb
+        return null; // "?" — a verb the model couldn't type (arcs convert upstream)
     }
   }
   return out;
@@ -468,7 +468,9 @@ function mapPage(
         if (d) {
           objects.push({ ...base, type: "path", d });
         } else {
-          flag("path uses segments the editor can't model yet (arc) — converted to its bounding box");
+          // arcs no longer land here — model.ts lowers them to cubics; this
+          // fires only for verbs the model itself couldn't type ("?")
+          flag("path uses segments the editor can't model yet — converted to its bounding box");
           objects.push({ ...base, type: "rect" });
         }
         break;
