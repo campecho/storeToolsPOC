@@ -6,6 +6,7 @@ import { textContent } from "@/lib/layout/text";
 import { decodeBase64 } from "./image-meta";
 import { buildModel } from "./model";
 import { mapToLayoutDocument, PUBLISHER_DEFAULT_LINE_SPACING } from "./mapper";
+import type { ImportNote } from "./report";
 import { parseTrace } from "./trace-parser";
 
 const golden = readFileSync(join(process.cwd(), "fixtures/pub-traces/demo-flyer.trace"), "utf8");
@@ -419,5 +420,132 @@ describe("mapper edge cases", () => {
     expect(Object.keys(result.blobs)).toHaveLength(0);
     expect(result.notes.some((n) => n.tier === 2 && n.message.includes("WMF"))).toBe(true);
     expect(result.fidelity.degraded).toBe(1);
+  });
+});
+
+/**
+ * Honest-reporting passes (ecl_workbook slice): text hidden behind a higher-z
+ * picture (Publisher wraps text around inline pictures; libmspub emits no wrap
+ * data, so text lays out through the full frame and the picture paints over
+ * it), and page-number FIELDS that arrive as a literal '#'. Neither is fixable
+ * at the data level in this slice — the fix is announcing them in the report.
+ */
+describe("mapper honest-reporting passes: wrap-overlap + page-number placeholders", () => {
+  // Same real 8×8 PNG the golden trace ships → a renderable picture frame.
+  const PNG =
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mM4w8CAFTEMLQkAIPQzAWg3IxUAAAAASUVORK5CYII=";
+  const inn = (n: number) => `${n.toFixed(4)}in`;
+
+  const textFrame = (x: number, y: number, w: number, h: number, text: string) =>
+    [
+      `    startTextObject (svg:height: ${inn(h)}, svg:width: ${inn(w)}, svg:x: ${inn(x)}, svg:y: ${inn(y)})`,
+      "      openParagraph (fo:text-align: left)",
+      "        openSpan(fo:font-size: 12.0000pt, style:font-name: Arial)",
+      `          insertText (${text})`,
+      "        closeSpan",
+      "      closeParagraph",
+      "    endTextObject",
+    ].join("\n");
+
+  const emptyTextFrame = (x: number, y: number, w: number, h: number) =>
+    `    startTextObject (svg:height: ${inn(h)}, svg:width: ${inn(w)}, svg:x: ${inn(x)}, svg:y: ${inn(y)})\n    endTextObject`;
+
+  // A picture frame (drawGraphicObject with real PNG bytes) at the given box.
+  const picture = (x: number, y: number, w: number, h: number) =>
+    `    setStyle(draw:fill: none, draw:stroke: none)\n    drawGraphicObject (librevenge:mime-type: image/png, office:binary-data: ${PNG}, svg:height: ${inn(h)}, svg:width: ${inn(w)}, svg:x: ${inn(x)}, svg:y: ${inn(y)})`;
+
+  const page = (...body: string[]) =>
+    ["  startPage(svg:height: 11.0000in, svg:width: 8.5000in)", ...body, "  endPage"].join("\n");
+
+  const doc = (...pages: string[]) => ["startDocument()", ...pages, "endDocument()"].join("\n");
+
+  const convert = (trace: string) => mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+
+  const OVERLAP = "hidden behind an image";
+  const overlapNotes = (notes: ImportNote[]) => notes.filter((n) => n.message.includes(OVERLAP));
+  const pageNumberNotes = (notes: ImportNote[]) =>
+    notes.filter((n) => n.message.includes("Page numbers aren't imported"));
+
+  it("flags a text frame a higher-z picture covers past the 20% gate", () => {
+    // text (idx0) then picture (idx1) → picture ABOVE. 2×2 over a 4×4 frame = 25%.
+    const { doc: d, notes } = convert(
+      doc(page(textFrame(1, 1, 4, 4, "body copy that a screenshot lands on top of"), picture(1, 1, 2, 2))),
+    );
+    const text = d.pages[0].objects[0];
+    const flagged = overlapNotes(notes);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].objectId).toBe(text.id);
+    expect(flagged[0]).toMatchObject({ tier: 2, pageId: "imp-p1" });
+    expect(flagged[0].kind).toBeUndefined(); // unkinded → renders in "Simplified"
+  });
+
+  it("does NOT flag a picture BELOW the text — the bcim full-card-background case", () => {
+    // picture (idx0) then text (idx1) → picture BELOW; 100% coverage, no note.
+    const { notes } = convert(
+      doc(page(picture(1, 1, 4, 4), textFrame(1, 1, 4, 4, "card copy over its own background"))),
+    );
+    expect(overlapNotes(notes)).toHaveLength(0);
+  });
+
+  it("respects the 20% area threshold at the boundary", () => {
+    // page 1: 4.9/25 = 19.6% (just under) → no note.
+    // page 2: 5.0/25 = 20.0% (exactly at) → note.
+    const { doc: d, notes } = convert(
+      doc(
+        page(textFrame(1, 1, 5, 5, "under the gate"), picture(1, 1, 2, 2.45)),
+        page(textFrame(1, 1, 5, 5, "at the gate"), picture(1, 1, 2, 2.5)),
+      ),
+    );
+    const flagged = overlapNotes(notes);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].objectId).toBe(d.pages[1].objects[0].id); // the page-2 frame
+  });
+
+  it("emits exactly ONE note per text frame however many pictures cover it", () => {
+    const { notes } = convert(
+      doc(
+        page(
+          textFrame(1, 1, 4, 4, "copy buried under two screenshots"),
+          picture(1, 1, 2, 2), // 25% over the top-left
+          picture(3, 3, 2, 2), // 25% over the bottom-right
+        ),
+      ),
+    );
+    expect(overlapNotes(notes)).toHaveLength(1);
+  });
+
+  it("exempts an empty text frame even when a picture fully covers it", () => {
+    const { notes } = convert(doc(page(emptyTextFrame(1, 1, 4, 4), picture(1, 1, 4, 4))));
+    expect(overlapNotes(notes)).toHaveLength(0);
+  });
+
+  it("aggregates footer/header '#' placeholders into one document-level note", () => {
+    // two pages, each a bottom-band footer carrying Publisher's '#' field.
+    const { doc: d, notes } = convert(
+      doc(
+        page(textFrame(0.5, 10.5, 7.5, 0.4, "V. May-12   Page | #")),
+        page(textFrame(0.5, 10.5, 7.5, 0.4, "V. May-12   Page | #")),
+      ),
+    );
+    const flagged = pageNumberNotes(notes);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].message).toContain("2 footer/header frames");
+    expect(flagged[0]).toMatchObject({
+      tier: 2,
+      objectId: d.pages[0].objects[0].id, // anchored to the first such frame
+      pageId: "imp-p1",
+    });
+    expect(flagged[0].kind).toBeUndefined();
+  });
+
+  it("does NOT flag a body-text '#' outside the header/footer bands", () => {
+    // center at 5.5in of 11in — squarely body copy, not a footer.
+    const { notes } = convert(doc(page(textFrame(1, 5, 4, 1, "Cut 12 pieces at 5mil: #"))));
+    expect(pageNumberNotes(notes)).toHaveLength(0);
+  });
+
+  it("emits no page-number note when a banded frame has no '#'", () => {
+    const { notes } = convert(doc(page(textFrame(0.5, 10.5, 7.5, 0.4, "Confidential — do not copy"))));
+    expect(pageNumberNotes(notes)).toHaveLength(0);
   });
 });

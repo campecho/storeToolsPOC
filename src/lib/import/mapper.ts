@@ -8,7 +8,7 @@ import type {
   TextProps,
   TextRun,
 } from "@/schema";
-import { DEFAULT_TEXT_COLOR } from "@/lib/layout/text";
+import { DEFAULT_TEXT_COLOR, textContent } from "@/lib/layout/text";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
 import { assetIdFor, decodeBase64, imageDimensions, isRenderableImage, sniffImageMime } from "./image-meta";
 import type { IRDoc, IRPage, IRParagraph, IRPathSeg, IRShape, IRSpan, IRStyle } from "./model";
@@ -303,6 +303,56 @@ function fillImageIsRectangular(shape: IRShape): boolean {
   return shape.kind === "rect" || (shape.kind === "polygon" && isAxisAlignedRect(shape.pointsIn));
 }
 
+/* ── Post-layout honest-reporting passes (plan §10.4) ── */
+
+/**
+ * Wrap-overlap gate (ecl_workbook corpus). Publisher wraps body copy around
+ * inline pictures, but libmspub emits NO wrap data at all (verified against
+ * the library binary), so imported text lays out through the full frame
+ * rectangle and any higher-z picture paints over it. A text frame is flagged
+ * when a picture drawn ABOVE it (later in z-order) covers at least this
+ * fraction of the text frame's area.
+ *
+ * Tuned against all five corpus traces. The four verified-correct files
+ * (3up_tabs, bcim_double_cut, production_checkpoint_labels,
+ * business_card_template_10up) have NO picture-above-text overlap whatsoever,
+ * so they stay at zero notes for any positive threshold — it's the z-order
+ * rule, not the magnitude, that spares bcim_double_cut's full-card background
+ * JPEG (which sits BELOW its text). The threshold's real job is sensitivity on
+ * ecl_workbook: 0.20 flags 21 body frames — including the page-37 case, a
+ * 7.25×8.0in body frame whose lower screenshot covers ~34% of it — while
+ * ignoring incidental clips of small callouts. Loosening to 0.15 adds 5
+ * marginal frames; tightening to 0.30 drops to 9 and misses genuinely-covered
+ * copy. 0.20 is the plan's stated "≥ 20% of the text frame's area" bar and it
+ * lands cleanly, so no deviation was needed.
+ */
+const WRAP_OVERLAP_MIN = 0.2;
+
+/**
+ * Page-number-placeholder band (ecl_workbook corpus). The trace carries
+ * Publisher's page-number FIELD as literal `insertText (#)` — zero insertField
+ * callbacks in 43MB — so footers import reading "Page | #". We treat a '#' in
+ * a text frame as that placeholder ONLY when the frame's vertical center sits
+ * in the top or bottom band of its page, where headers/footers live. Scoping
+ * to the band is what keeps body-copy '#' from false-triggering: e.g.
+ * production_checkpoint_labels has one body frame ("…5mil: #…") at mid-page
+ * (center ≈ 4.5in of 11in) that must NOT be flagged. 0.15 (top/bottom 15%)
+ * clears it with margin while catching every ecl_workbook footer (center
+ * ≈ 10.75in of 11in).
+ */
+const PAGE_NUMBER_BAND = 0.15;
+
+/** Fraction of frame `a`'s area covered by its intersection with frame `b`. */
+function coverFraction(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): number {
+  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const area = a.w * a.h;
+  return area > 0 ? (ix * iy) / area : 0;
+}
+
 /* ── Pages ── */
 
 function mapPage(
@@ -313,6 +363,10 @@ function mapPage(
     notes: ImportNote[];
     fontCtx: FontCtx;
     assets: AssetRegistry;
+    /** Header/footer frames carrying Publisher's '#' page-number placeholder —
+        collected across all pages, reported as ONE aggregate note by the
+        caller (this file has dozens of identical footers). */
+    pageNumberFrames: { objectId: string; pageId: string }[];
   },
 ): LayoutPage {
   const pageId = `imp-p${pageIndex + 1}`;
@@ -465,6 +519,41 @@ function mapPage(
     }
   });
 
+  // Post-layout passes over the finished object list (plan §10.4): two honest-
+  // reporting gaps this slice can't fix at the data level, announced instead of
+  // left for the associate to discover by scrolling.
+  for (let i = 0; i < objects.length; i++) {
+    const t = objects[i];
+    if (t.type !== "text" || !t.text) continue;
+    const plain = textContent(t.text);
+    if (!plain.trim()) continue; // empty frame — nothing to hide, nothing to number
+
+    // (1) Wrap-overlap: a picture drawn ABOVE this text (later in the array)
+    // that covers enough of it will paint over the copy. ONE note per text
+    // frame, however many pictures pile on top.
+    for (let j = i + 1; j < objects.length; j++) {
+      const p = objects[j];
+      if (p.type === "picture" && coverFraction(t, p) >= WRAP_OVERLAP_MIN) {
+        note(
+          t.id,
+          2,
+          "Text may be hidden behind an image here — Publisher wraps text around pictures; text wrap isn't imported yet.",
+        );
+        break;
+      }
+    }
+
+    // (2) Page-number placeholder: a '#' in a header/footer band is Publisher's
+    // page-number field imported as literal text. Collected here; the caller
+    // emits a single aggregate note for the whole document.
+    if (plain.includes("#")) {
+      const cy = t.y + t.h / 2;
+      if (cy <= PAGE_NUMBER_BAND * ir.hIn || cy >= (1 - PAGE_NUMBER_BAND) * ir.hIn) {
+        ctx.pageNumberFrames.push({ objectId: t.id, pageId });
+      }
+    }
+  }
+
   return { id: pageId, masterId: null, objects };
 }
 
@@ -474,7 +563,8 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   const notes: ImportNote[] = [];
   const fontCtx: FontCtx = { fonts: new Map(), sawDingbats: false, sawUnmappedDingbats: false };
   const assets: AssetRegistry = { assets: {}, blobs: {}, count: 0 };
-  const ctx = { fidelity, notes, fontCtx, assets };
+  const pageNumberFrames: { objectId: string; pageId: string }[] = [];
+  const ctx = { fidelity, notes, fontCtx, assets, pageNumberFrames };
 
   const first = ir.pages[0] ?? { wIn: 8.5, hIn: 11, shapes: [] };
   const size = { w: round(first.wIn), h: round(first.hIn) };
@@ -500,6 +590,18 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
     });
   if (ir.sawLayers) notes.push({ tier: 2, message: "source layers flattened into the page z-order" });
   if (ir.sawGroups) notes.push({ tier: 2, message: "grouped objects imported ungrouped (grouping is backlog)" });
+  if (ctx.pageNumberFrames.length) {
+    // Publisher's page-number field imported as a literal '#' (the trace has no
+    // insertField callbacks). One aggregate note anchored to the first such
+    // frame — dozens of identical footers would drown the report otherwise.
+    const [{ objectId, pageId }] = ctx.pageNumberFrames;
+    notes.push({
+      tier: 2,
+      objectId,
+      pageId,
+      message: `Page numbers aren't imported — ${ctx.pageNumberFrames.length} footer/header frames show Publisher's '#' placeholder where the page number would print.`,
+    });
+  }
   if (!ir.pages.length) {
     // Corpus finding (business_card_template_10up.pub): publications whose
     // content lives entirely on master pages convert empty — libmspub doesn't

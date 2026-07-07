@@ -66,18 +66,23 @@ export function ImportReportPane() {
   const remapped = report.fonts.filter((f) => f.mappedTo !== f.source);
   const matched = report.fonts.length - remapped.length;
 
-  // Autofit notes (client-side, tier-2, kind "autofit") get their own group —
-  // excluded from the tiered buckets below so they never mix into those rows.
+  // Kinded notes each get their own group — "autofit" (client-side shrink) and
+  // "corrected" (the importer restored something the toolchain got wrong). Both
+  // are excluded from the tiered buckets below so they never mix into those rows.
   const autofit = report.notes.filter((n) => n.kind === "autofit");
+  const corrected = report.notes.filter((n) => n.kind === "corrected");
 
-  // Notes group by tier: 3 = not converted (flag-only), 2 = simplified.
-  const notConverted = report.notes.filter((n) => n.tier === 3 && n.kind !== "autofit");
-  const simplified = report.notes.filter((n) => n.tier === 2 && n.kind !== "autofit");
+  // Notes group by tier: 3 = not converted (flag-only), 2 = simplified. Any
+  // kinded note has its own group above, so the tiered buckets take only the
+  // unkinded ones (`!n.kind`) — otherwise "corrected"/"autofit" would leak in.
+  const notConverted = report.notes.filter((n) => n.tier === 3 && !n.kind);
+  const simplified = report.notes.filter((n) => n.tier === 2 && !n.kind);
 
   const hasReview =
     remapped.length > 0 ||
     report.overset.length > 0 ||
     autofit.length > 0 ||
+    corrected.length > 0 ||
     notConverted.length > 0 ||
     simplified.length > 0;
 
@@ -207,6 +212,15 @@ export function ImportReportPane() {
                 <SectionHeading>Auto-fitted</SectionHeading>
                 <div className="flex flex-col gap-[2px]">
                   {autofit.map((n, i) => noteRow(n, `af-${i}`, "import-autofit-link"))}
+                </div>
+              </div>
+            )}
+
+            {corrected.length > 0 && (
+              <div className="border-b border-[#f2f2f2] px-3 py-[10px]">
+                <SectionHeading>Corrected</SectionHeading>
+                <div className="flex flex-col gap-[2px]">
+                  {corrected.map((n, i) => noteRow(n, `cr-${i}`, "import-corrected-link"))}
                 </div>
               </div>
             )}
