@@ -453,6 +453,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
 - **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L13 shipped; the K-tranche (Konva render) and P-tranche (`.pub` import, incl. the §10.5 font library & mapping plan) are specified and next.
 - **[docs/CUSTOMER_PROOF_STATION_PLAN.md](docs/CUSTOMER_PROOF_STATION_PLAN.md)** — the build plan for the **customer proof station** (counter sign-off: customer view + associate "Send proof" + SSE session service, steps PS1–PS5), sequenced ahead of UAT. Implements [docs/Customer_Proof_Station_Spec.md](docs/Customer_Proof_Station_Spec.md).
+- **[docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md](docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md)** — the build plan for the **photo editor** (the raster quick-fix surface: crop, adjust, fix-for-print, convert, handoffs; steps PE0–PE9), mounted behind the homepage's Photo Edit card at `/photo`. Planned — not started. Implements [docs/PHOTO_EDITOR_PLAN.md](docs/PHOTO_EDITOR_PLAN.md).
 
 ## Reference documents
 
@@ -468,5 +469,6 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 - `docs/Desktop_Publisher_Design_Doc.md` — the desktop publishing application design doc (product vision, experience model, capability targets the editor serves).
 - `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early; the layout editor is Track B's custom-size layout core.
 - `docs/Customer_Proof_Station_Spec.md` — the customer-facing proof station functional/technical spec (transport, pairing, screens, signed-proof artifact, session hygiene).
+- `docs/PHOTO_EDITOR_PLAN.md` — the photo editor feature plan (features → UI → E-tranche build sequence, edit-recipe architecture, §5.3 security requirements) the PE build plan implements.
 - `docs/PUB_TO_IDML_RESEARCH.md` — the `.pub` parse/convert research (`libmspub` front end, intermediate model, IDML target) the import pipeline builds on.
 - `docs/SECURITY_CONSIDERATIONS.md` — the cross-cutting threat model; gates the import pipeline (§2.1, layout plan §10.1) and the proof station (§2.6/§2.7).
