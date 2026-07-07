@@ -47,6 +47,13 @@ docker build -t store-tools-poc .
 docker run --rm -p 8080:8080 store-tools-poc   # http://localhost:8080
 ```
 
+**Deploy (GCP Cloud Run).** Every push to `main` builds this image, pushes it to
+Artifact Registry, and rolls out a new Cloud Run revision via
+`.github/workflows/deploy.yml` (keyless auth through Workload Identity
+Federation). The one-time GCP + repo-variable setup is in
+[`docs/DEPLOY.md`](docs/DEPLOY.md). Deploys are pinned to `--max-instances=1`
+while server state is in-memory (see `STUBS.md`).
+
 **Persistence:** votes, follows, filed reports, and notification read-state persist to
 localStorage (`stp-feedback-v1`) so a demo survives reloads. **Reset demo data** (top-right of
 the tracker sub-bar on board/releases) restores the pristine seed.

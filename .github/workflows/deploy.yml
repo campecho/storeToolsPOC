@@ -1,0 +1,93 @@
+# Deploy the Store Tools POC to Cloud Run.
+#
+# Builds the standalone image (the same Dockerfile documented for local runs —
+# bundles libmspub-tools so imports run *live* in the cloud, not fixture mode),
+# pushes it to Artifact Registry, and rolls out a new Cloud Run revision.
+#
+# Auth is keyless: Workload Identity Federation trades this workflow's OIDC
+# token for short-lived GCP credentials. No service-account JSON key is stored.
+# One-time GCP + repo-variable setup lives in docs/DEPLOY.md.
+#
+# Single instance by design: server state (import jobs / proof sessions) assumes
+# ONE instance today (STUBS.md, Dockerfile §), so the rollout pins
+# --max-instances=1. Read that note before raising it.
+
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two rollouts at once; let an in-flight deploy finish rather than
+# cancel it (a half-applied revision is worse than a queued one).
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
+# id-token: write is what lets google-github-actions/auth mint the OIDC token
+# WIF exchanges for GCP credentials.
+permissions:
+  contents: read
+  id-token: write
+
+# Infra naming lives here — change it in one place. Account-specific identifiers
+# (project id, the WIF provider resource name, the deploy SA) come from repo
+# Variables so they're not baked into the tree; see docs/DEPLOY.md.
+env:
+  GCP_REGION: us-central1
+  SERVICE: store-tools-poc
+  ARTIFACT_REPO: store-tools-poc
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push image
+        env:
+          IMAGE: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE }}
+        run: |
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - id: deploy
+        name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE }}:${{ github.sha }}
+          # --max-instances=1: required while server state is in-memory (STUBS.md).
+          # --min-instances=0: scale to zero between demos to avoid idle cost;
+          #   raise to 1 to keep a warm instance. --allow-unauthenticated makes
+          #   the demo publicly reachable — front it with IAP/auth to lock down.
+          flags: >-
+            --max-instances=1
+            --min-instances=0
+            --cpu=1
+            --memory=1Gi
+            --port=8080
+            --allow-unauthenticated
+
+      - name: Report deployed URL
+        run: echo "Deployed ${SERVICE} → ${{ steps.deploy.outputs.url }}"
