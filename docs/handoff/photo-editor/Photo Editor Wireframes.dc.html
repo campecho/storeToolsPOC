@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<template id="__bundler_thumbnail" data-bg-color="#CC0000">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="380" y="230" width="440" height="300" rx="18" fill="#ffffff"/>
+    <rect x="420" y="280" width="270" height="200" rx="8" fill="#e4e4e4"/>
+    <circle cx="480" cy="330" r="18" fill="#ffffff"/>
+    <path d="M440 460l70-60 50 38 45-34 55 56z" fill="#ffffff"/>
+    <rect x="712" y="280" width="70" height="200" rx="8" fill="#f0f0f0"/>
+    <rect x="722" y="292" width="50" height="14" rx="4" fill="#CC0000"/>
+    <rect x="722" y="316" width="50" height="10" rx="4" fill="#dcdcdc"/>
+    <rect x="722" y="334" width="50" height="10" rx="4" fill="#dcdcdc"/>
+    <text x="600" y="610" font-family="Arial, sans-serif" font-size="40" font-weight="700" fill="#ffffff" text-anchor="middle">Photo Editor Wireframes</text>
+  </svg>
+</template>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/staples-print-design-system-019e2687-1db4-7a98-aa24-6f47c5847cec/colors_and_type.css">
+<style>
+  body { background:#cfcfcf; }
+  a { color:#086DD2; text-decoration:none; }
+  a:hover { color:#CC0000; text-decoration:underline; }
+  .wf-card { background:#fff; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.12); border:1px solid #e2e2e2; overflow:hidden; }
+  .wf-h { font-weight:700; font-size:11px; letter-spacing:.04em; color:#5f5f5f; text-transform:uppercase; }
+</style>
+</helmet>
+
+<div style="position:absolute; left:0; top:0; width:1820px; height:4900px; pointer-events:none;"></div>
+
+<!-- ============================ TITLE BLOCK ============================ -->
+<div style="position:absolute; left:80px; top:40px; width:1500px;">
+  <div style="font-weight:700; font-size:30px; color:#1a1a1a; letter-spacing:-.01em;">Store Tools Suite — Photo Editor</div>
+  <div style="font-weight:300; font-size:16px; color:#5a5a5a; margin-top:8px; width:920px;">The raster quick-fix surface (Photoshop Elements / Express replacement) · application wireframes · mid-fidelity · desktop in-store station. One image in, a print-ready image out. Shares the Layout Editor's shell language — title bar, red active states, guide colors, status bar.</div>
+  <div style="display:flex; gap:18px; margin-top:16px; align-items:center; flex-wrap:wrap;">
+    <div style="display:flex; align-items:center; gap:7px;"><div style="width:13px; height:13px; border-radius:3px; background:#CC0000;"></div><span style="font-size:12px; color:#555;">Action / active / primary</span></div>
+    <div style="display:flex; align-items:center; gap:7px;"><div style="width:13px; height:13px; border-radius:3px; background:#e4e4e4;"></div><span style="font-size:12px; color:#555;">Placeholder / media</span></div>
+    <div style="display:flex; align-items:center; gap:7px;"><div style="width:13px; height:13px; border-radius:50%; background:#EEF6EF; border:1px solid #cfe3d2;"></div><span style="font-size:12px; color:#555;">Print check · good</span></div>
+    <div style="display:flex; align-items:center; gap:7px;"><div style="width:13px; height:13px; border-radius:50%; background:#FCF3E6; border:1px solid #ecd9b8;"></div><span style="font-size:12px; color:#555;">Print check · soft warning</span></div>
+    <div style="display:flex; align-items:center; gap:7px;"><div style="width:13px; height:13px; border-radius:50%; background:#FBEBEB; border:1px solid #f0c9c9;"></div><span style="font-size:12px; color:#555;">Print check · problem (never blocking)</span></div>
+  </div>
+</div>
+
+<!-- ============================ SECTION A — EDITOR SHELL ============================ -->
+<div style="position:absolute; left:80px; top:220px; font-weight:700; font-size:20px; color:#2b2b2b;">A · The editor — one screen, task-first</div>
+<div style="position:absolute; left:80px; top:250px; font-weight:300; font-size:13px; color:#666; width:1240px;">Canvas center, task rail left, contextual controls right — the panel exists only while a tool is active (✕ closes it). The three counter quick fixes stay pinned top-right. Try the rail: each task swaps the panel and the canvas state. Less-used commands live under ⋯ and “More”.</div>
+
+<div style="position:absolute; left:80px; top:316px; width:1500px;" data-screen-label="A · Photo editor — Crop active">
+  <div style="position:absolute; top:-22px; font-weight:600; font-size:11px; color:#777;">Photo editor — Standard level · IMG_4823.heic from order #58291 · Crop &amp; straighten active</div>
+
+  <div class="wf-card" style="width:1460px; height:904px; display:flex; flex-direction:column;">
+
+    <!-- 1 · TITLE BAR -->
+    <div style="height:40px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 14px; gap:12px; flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:9px; min-width:0;">
+        <div style="background:#CC0000; color:#fff; font-weight:700; font-size:11px; padding:3px 6px; border-radius:3px;">Staples</div>
+        <span style="font-weight:600; font-size:13px; color:#333;">IMG_4823.heic</span>
+        <span style="font-size:12px; color:#9a9a9a; white-space:nowrap;">· 4032 × 3024 px · 12.1 MP</span>
+        <div style="display:flex; align-items:center; gap:6px; border:1px solid #ddd; background:#f7f7f7; border-radius:4px; padding:2px 8px; flex-shrink:0;"><span style="font-size:11px; color:#777; white-space:nowrap;">From order #58291 · S. Mitchell</span></div>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:center; background:#e7e7e7; border-radius:6px; padding:2px; font-size:11px; color:#777;">
+        <span style="padding:3px 11px; border-radius:4px;">Simple</span>
+        <span style="padding:3px 11px; border-radius:4px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Standard</span>
+        <span style="padding:3px 11px; border-radius:4px;">Pro</span>
+      </div>
+      <span style="font-size:12px; color:#8a8a8a;">Store #1284</span>
+      <div style="width:18px; height:18px; border:1.5px solid #b6b6b6; border-radius:50%; color:#9a9a9a; font-size:11px; display:flex; align-items:center; justify-content:center;">?</div>
+      <div style="display:flex; gap:15px; color:#9a9a9a; font-size:11px; margin-left:2px;"><span>—</span><span>▢</span><span>✕</span></div>
+    </div>
+
+    <!-- 2 · ACTION BAR (quick fixes pinned right) -->
+    <div style="height:44px; background:#fafafa; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 12px; gap:8px; flex-shrink:0;">
+      <div style="display:flex; gap:5px;">
+        <div style="width:30px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg></div>
+        <div style="width:30px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; opacity:.45;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg></div>
+      </div>
+      <div style="width:1px; height:20px; background:#e2e2e2;"></div>
+      <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 10px; font-size:12px; color:#555;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#CC0000; stroke-width:1.6; stroke-linejoin:round;"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg>Auto-enhance</div>
+      <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 10px; font-size:12px; color:#555;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6;"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/></svg>Compare <span style="font-size:10px; color:#aaa;">hold</span></div>
+      <div style="flex:1;"></div>
+      <span style="font-size:10px; color:#a6a6a6; text-transform:uppercase; letter-spacing:.04em; font-weight:700; margin-right:2px;">Quick fixes</span>
+      <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; gap:7px; padding:0 12px; font-size:12px; font-weight:600; color:#444; cursor:pointer;" onClick="{{ h.msBleed }}"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#CC0000; stroke-width:1.7; stroke-linecap:round;"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>Fix bleed</div>
+      <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; gap:7px; padding:0 12px; font-size:12px; font-weight:600; color:#444; cursor:pointer;" onClick="{{ h.msFit }}"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#CC0000; stroke-width:1.7; stroke-linecap:round;"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="8" y="9" width="8" height="6"/></svg>Fit to size</div>
+      <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; gap:7px; padding:0 12px; font-size:12px; font-weight:600; color:#444; cursor:pointer;" onClick="{{ h.msConvert }}"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#CC0000; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Convert format</div>
+      <div style="width:1px; height:20px; background:#e2e2e2;"></div>
+      <div style="width:30px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; color:#777; font-size:14px; letter-spacing:1px;">⋯</div>
+    </div>
+
+    <!-- WORK AREA -->
+    <div style="flex:1; display:flex; min-height:0;">
+
+      <!-- 3 · TASK RAIL -->
+      <div style="width:78px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:10px 0; gap:7px; flex-shrink:0;">
+        <div style="position:relative; width:64px; height:52px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer;" onClick="{{ h.tCrop }}"><svg width="17" height="17" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round;"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg><span style="font-size:9px; color:#666;">Crop</span><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rCrop }};"></div></div>
+        <div style="position:relative; width:64px; height:52px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer;" onClick="{{ h.tAdjust }}"><svg width="17" height="17" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round;"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="14" cy="7" r="2.4" style="fill:#fff;"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="8" cy="12" r="2.4" style="fill:#fff;"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="16" cy="17" r="2.4" style="fill:#fff;"/></svg><span style="font-size:9px; color:#666;">Adjust</span><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rAdjust }};"></div></div>
+        <div style="position:relative; width:64px; height:52px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer;" onClick="{{ h.tFix }}"><svg width="17" height="17" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="15" width="12" height="6"/></svg><span style="font-size:9px; color:#666;">Fix for print</span><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rFix }};"></div></div>
+        <div style="position:relative; width:64px; height:52px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer;" onClick="{{ h.tText }}"><svg width="17" height="17" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M4 5h10"/><path d="M9 5v13"/><rect x="14" y="13" width="7" height="6" rx="1"/><path d="M15.5 17l1.4-1.4 1.3 1.2 1.6-1.6"/></svg><span style="font-size:9px; color:#666;">Text &amp; image</span><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rText }};"></div></div>
+        <div style="position:relative; width:64px; height:52px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer;" onClick="{{ h.tClean }}"><svg width="17" height="17" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><path d="M7 21l-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21z"/><path d="M22 21H7"/><path d="M5 11l9 9"/></svg><span style="font-size:9px; color:#666;">Clean up</span><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rClean }};"></div></div>
+        <div style="flex:1;"></div>
+        <div style="width:44px; height:1px; background:#e0e0e0;"></div>
+        <div style="position:relative; width:64px; height:52px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer;" onClick="{{ h.tExport }}"><svg width="17" height="17" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg><span style="font-size:9px; color:#666;">Export</span><div style="position:absolute; inset:-2px; border:2px solid #CC0000; border-radius:7px; background:rgba(204,0,0,.05); pointer-events:none; display:{{ rExport }};"></div></div>
+      </div>
+
+      <!-- 4 · PRINT-CORRECTNESS STRIP + 5 · CANVAS -->
+      <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+        <div style="height:36px; background:#fff; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 14px; gap:11px; flex-shrink:0; font-size:11.5px;">
+          <span style="color:#777;">4032 × 3024 px</span>
+          <div style="width:1px; height:16px; background:#e6e6e6;"></div>
+          <span style="color:#555; font-weight:600;">Target: 4 × 6 in photo print</span>
+          <span style="font-size:11px; color:#086DD2;">Change ▾</span>
+          <div style="width:1px; height:16px; background:#e6e6e6;"></div>
+          <sc-if value="{{ dpiGreen }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; align-items:center; gap:6px; background:#EEF6EF; border:1px solid #cfe3d2; border-radius:10px; padding:2px 9px;"><div style="width:7px; height:7px; border-radius:50%; background:#4c9a5c;"></div><span style="font-size:10.5px; font-weight:600; color:#357040;">672 DPI — great at 4 × 6</span></div>
+          </sc-if>
+          <sc-if value="{{ dpiAmber }}">
+            <div style="display:flex; align-items:center; gap:6px; background:#FCF3E6; border:1px solid #ecd9b8; border-radius:10px; padding:2px 9px;"><div style="width:7px; height:7px; border-radius:50%; background:#c98a2b;"></div><span style="font-size:10.5px; font-weight:600; color:#9a6a1a;">148 DPI — may look soft</span><span style="font-size:10.5px; font-weight:700; color:#9a6a1a; text-decoration:underline;">Fix →</span></div>
+          </sc-if>
+          <sc-if value="{{ dpiRed }}">
+            <div style="display:flex; align-items:center; gap:6px; background:#FBEBEB; border:1px solid #f0c9c9; border-radius:10px; padding:2px 9px;"><div style="width:7px; height:7px; border-radius:50%; background:#CC0000;"></div><span style="font-size:10.5px; font-weight:600; color:#9a1818;">72 DPI — too low at this size</span><span style="font-size:10.5px; font-weight:700; color:#9a1818; text-decoration:underline;">Upscale →</span></div>
+          </sc-if>
+          <div style="width:1px; height:16px; background:#e6e6e6;"></div>
+          <span style="color:#999;">Bleed: not set</span>
+          <span style="font-size:11px; color:#CC0000; font-weight:600;">Add →</span>
+          <div style="width:1px; height:16px; background:#e6e6e6;"></div>
+          <span style="color:#999;">sRGB · converted for press at export</span>
+          <div style="flex:1;"></div>
+          <div style="height:24px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; gap:6px; padding:0 9px; font-size:11px; color:#666;"><svg width="12" height="12" viewBox="0 0 24 24" style="fill:none; stroke:#777; stroke-width:1.7; stroke-linecap:round;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>History · 6</div>
+        </div>
+
+        <!-- pasteboard -->
+        <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+          <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); font-size:11px; color:#7a7a7a;">IMG_4823 · target 4 × 6 in · 38%</div>
+
+          <!-- photo proxy -->
+          <div style="position:relative; width:600px; height:400px; background:#dcdcdc; box-shadow:0 3px 16px rgba(0,0,0,.22); display:flex; align-items:center; justify-content:center;">
+            <svg width="72" height="72" viewBox="0 0 24 24" style="fill:none; stroke:#b8b8b8; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>
+
+            <!-- CROP overlay -->
+            <div style="position:absolute; inset:0; display:{{ ovCrop }};">
+              <div style="position:absolute; left:0; top:0; width:600px; height:45px; background:rgba(23,23,23,.30);"></div>
+              <div style="position:absolute; left:0; top:335px; width:600px; height:65px; background:rgba(23,23,23,.30);"></div>
+              <div style="position:absolute; left:0; top:45px; width:70px; height:290px; background:rgba(23,23,23,.30);"></div>
+              <div style="position:absolute; left:490px; top:45px; width:110px; height:290px; background:rgba(23,23,23,.30);"></div>
+              <div style="position:absolute; left:70px; top:45px; width:420px; height:290px; border:1.5px solid #fff; outline:1px solid rgba(0,0,0,.25); box-sizing:border-box;"></div>
+              <div style="position:absolute; left:210px; top:45px; width:1px; height:290px; background:rgba(255,255,255,.6);"></div>
+              <div style="position:absolute; left:350px; top:45px; width:1px; height:290px; background:rgba(255,255,255,.6);"></div>
+              <div style="position:absolute; left:70px; top:142px; width:420px; height:1px; background:rgba(255,255,255,.6);"></div>
+              <div style="position:absolute; left:70px; top:238px; width:420px; height:1px; background:rgba(255,255,255,.6);"></div>
+              <div style="position:absolute; left:65px; top:40px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:485px; top:40px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:65px; top:330px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:485px; top:330px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:275px; top:40px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:275px; top:330px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:65px; top:185px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:485px; top:185px; width:9px; height:9px; background:#fff; border:1px solid #777;"></div>
+              <div style="position:absolute; left:228px; top:344px; background:#fff; border:1px solid #e2e2e2; border-radius:5px; padding:3px 9px; font-size:10px; color:#666; box-shadow:0 1px 3px rgba(0,0,0,.14);">4 × 6 in · still 300+ DPI</div>
+            </div>
+
+            <!-- FIX FOR PRINT overlay (trim + bleed guides) -->
+            <div style="position:absolute; inset:-10px; border:1.5px dashed #CC0000; pointer-events:none; display:{{ ovFix }};"></div>
+            <div style="position:absolute; inset:14px; border:1px dashed #9fb6df; pointer-events:none; display:{{ ovFix }};"></div>
+
+            <!-- TEXT & LOGO overlay -->
+            <div style="position:absolute; inset:0; display:{{ ovText }};">
+              <div style="position:absolute; left:36px; top:36px; width:250px; height:56px; border:1.5px solid #CC0000; display:flex; align-items:center; justify-content:center;">
+                <span style="font-weight:700; font-size:23px; color:#8a8a8a; letter-spacing:.02em;">SUMMER SALE</span>
+                <div style="position:absolute; left:-4px; top:-4px; width:8px; height:8px; background:#fff; border:1px solid #CC0000;"></div>
+                <div style="position:absolute; right:-4px; top:-4px; width:8px; height:8px; background:#fff; border:1px solid #CC0000;"></div>
+                <div style="position:absolute; left:-4px; bottom:-4px; width:8px; height:8px; background:#fff; border:1px solid #CC0000;"></div>
+                <div style="position:absolute; right:-4px; bottom:-4px; width:8px; height:8px; background:#fff; border:1px solid #CC0000;"></div>
+                <div style="position:absolute; left:50%; top:-18px; width:1px; height:14px; background:#CC0000;"></div>
+                <div style="position:absolute; left:50%; top:-25px; transform:translateX(-50%); width:8px; height:8px; background:#fff; border:1px solid #CC0000; border-radius:50%;"></div>
+              </div>
+              <div style="position:absolute; right:24px; bottom:24px; width:96px; height:64px; border:1.5px dashed #b0b0b0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;"><svg width="20" height="20" viewBox="0 0 24 24" style="fill:none; stroke:#a8a8a8; stroke-width:1.5; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg><span style="font-size:9px; color:#999;">logo.png</span></div>
+            </div>
+
+            <!-- CLEAN UP overlay -->
+            <div style="position:absolute; inset:0; display:{{ ovClean }};">
+              <div style="position:absolute; right:36px; bottom:30px; width:150px; height:36px; border-radius:8px; background:rgba(204,0,0,.12); border:1.5px dashed #CC0000; display:flex; align-items:center; justify-content:center;"><span style="font-size:14px; color:#a9a9a9; letter-spacing:.06em;">05·14·26</span></div>
+              <div style="position:absolute; right:36px; bottom:70px; font-size:10px; color:#9a1818; font-weight:600;">brushed area</div>
+            </div>
+          </div>
+
+          <!-- fix-for-print guide legend -->
+          <div style="position:absolute; right:16px; bottom:14px; background:#fff; border:1px solid #e2e2e2; border-radius:7px; padding:8px 11px; flex-direction:column; gap:6px; display:{{ legendFix }};">
+            <div style="display:flex; align-items:center; gap:7px;"><div style="width:16px; height:0; border-top:1.5px dashed #CC0000;"></div><span style="font-size:10px; color:#888;">Bleed 0.125 in</span></div>
+            <div style="display:flex; align-items:center; gap:7px;"><div style="width:16px; height:0; border-top:1px solid #b0b0b0;"></div><span style="font-size:10px; color:#888;">Trim 6 × 4 in</span></div>
+            <div style="display:flex; align-items:center; gap:7px;"><div style="width:16px; height:0; border-top:1px dashed #9fb6df;"></div><span style="font-size:10px; color:#888;">Safe area</span></div>
+          </div>
+
+          <!-- adjust live-preview hint -->
+          <div style="position:absolute; left:50%; bottom:16px; transform:translateX(-50%); background:#fff; border:1px solid #e2e2e2; border-radius:7px; padding:5px 12px; font-size:10.5px; color:#888; box-shadow:0 1px 3px rgba(0,0,0,.12); display:{{ ovAdj }};">Adjustments preview live · hold Space to see the original</div>
+
+          <!-- clean-up preview approve bar -->
+          <div style="position:absolute; left:50%; bottom:16px; transform:translateX(-50%); background:#fff; border:1px solid #e2e2e2; border-radius:7px; padding:7px 10px; align-items:center; gap:10px; box-shadow:0 2px 8px rgba(0,0,0,.16); display:{{ barClean }};">
+            <span style="font-size:11.5px; color:#555;">Preview · date stamp removed</span>
+            <div style="height:24px; background:#CC0000; color:#fff; border-radius:5px; display:flex; align-items:center; padding:0 11px; font-size:11px; font-weight:600;">Apply</div>
+            <div style="height:24px; background:#fff; border:1px solid #cfcfcf; color:#666; border-radius:5px; display:flex; align-items:center; padding:0 11px; font-size:11px;">Discard</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 · CONTEXTUAL PANEL (only while a tool is active) -->
+      <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="width:268px; border-left:1px solid #ececec; display:flex; flex-direction:column; flex-shrink:0; background:#fff;">
+          <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center; flex-shrink:0;">
+            <div class="wf-h">{{ panelTitle }}</div>
+            <div style="flex:1;"></div>
+            <div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center; cursor:pointer;" onClick="{{ h.tNone }}">✕</div>
+          </div>
+          <div style="flex:1; padding:15px 16px; overflow:hidden;">
+
+            <!-- CROP & STRAIGHTEN -->
+            <sc-if value="{{ pCrop }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:15px;">
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Aspect</div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Free</div>
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Original</div>
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">1 : 1</div>
+                    <div style="height:28px; border:1.5px solid #CC0000; border-radius:5px; background:#FBEBEB; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:600; color:#9a1818;">4 × 6</div>
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">5 × 7</div>
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">8 × 10</div>
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Letter</div>
+                    <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Business card</div>
+                  </div>
+                  <div style="margin-top:6px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11.5px; color:#555;">Product size from catalog… <span style="color:#b0b0b0;">▾</span></div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Shape</div>
+                  <div style="display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px;">
+                    <div style="flex:1; text-align:center; padding:4px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Rectangle</div>
+                    <div style="flex:1; text-align:center; padding:4px 0; color:#777;">Rounded</div>
+                    <div style="flex:1; text-align:center; padding:4px 0; color:#777;">Circle</div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px;"><div class="wf-h">Straighten</div><span style="font-size:11px; color:#999;">0.0°</span></div>
+                  <div style="display:flex; align-items:center; gap:9px;">
+                    <div style="flex:1; height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div>
+                    <div style="height:26px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 10px; font-size:11px; color:#666;">Auto</div>
+                  </div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Rotate &amp; flip</div>
+                  <div style="display:flex; gap:5px;">
+                    <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M3 3v5h5"/><path d="M3 8a9 9 0 1 1-2 6"/></svg></div>
+                    <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M21 3v5h-5"/><path d="M21 8a9 9 0 1 0 2 6"/></svg></div>
+                    <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><path d="M8 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2"/><path d="M16 3h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2"/><path d="M12 2v2M12 8v2M12 14v2M12 20v2"/></svg></div>
+                    <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><path d="M3 8V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2"/><path d="M3 16v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M2 12h2M8 12h2M14 12h2M20 12h2"/></svg></div>
+                  </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:2px;">
+                  <div style="flex:1.4; height:32px; background:#CC0000; color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:12.5px;">Apply crop</div>
+                  <div style="flex:1; height:32px; background:#fff; border:1px solid #cfcfcf; color:#555; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px;">Reset</div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- ADJUST -->
+            <sc-if value="{{ pAdjust }}">
+              <div style="display:flex; flex-direction:column; gap:14px;">
+                <div>
+                  <div style="height:34px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; font-weight:600; color:#9a1818;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#9a1818; stroke-width:1.6; stroke-linejoin:round;"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg>Auto-enhance</div>
+                  <div style="font-size:10.5px; color:#999; margin-top:5px;">One click — always undoable.</div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:10px;">Light</div>
+                  <div style="display:flex; flex-direction:column; gap:11px;">
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Brightness</span><span style="color:#999;">+12</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:62%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Contrast</span><span style="color:#999;">0</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Exposure</span><span style="color:#999;">0</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Highlights</span><span style="color:#999;">−20</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:32%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Shadows</span><span style="color:#999;">+15</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:65%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:10px;">Color</div>
+                  <div style="display:flex; flex-direction:column; gap:11px;">
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Saturation</span><span style="color:#999;">0</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                    <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Warmth</span><span style="color:#999;">+5</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:56%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+                  </div>
+                </div>
+                <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#666;"><span>More · levels, curves, sharpen, noise</span><span style="display:flex; align-items:center; gap:6px;"><span style="font-size:9px; font-weight:700; color:#999; border:1px solid #ddd; border-radius:3px; padding:1px 4px;">PRO</span><span style="color:#b0b0b0;">▾</span></span></div>
+              </div>
+            </sc-if>
+
+            <!-- FIX FOR PRINT -->
+            <sc-if value="{{ pFix }}">
+              <div style="display:flex; flex-direction:column; gap:15px;">
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Target print size</div>
+                  <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">4 × 6 in · glossy photo <span style="color:#b0b0b0;">▾</span></div>
+                  <div style="font-size:11px; color:#086DD2; margin-top:6px;">Pick a catalog product →</div>
+                </div>
+                <div style="border:1px solid #ececec; border-radius:7px; padding:11px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-size:11px; color:#777;">Effective resolution</span><div style="display:flex; align-items:center; gap:5px; background:#EEF6EF; border:1px solid #cfe3d2; border-radius:10px; padding:2px 8px;"><div style="width:6px; height:6px; border-radius:50%; background:#4c9a5c;"></div><span style="font-size:10.5px; font-weight:600; color:#357040;">672 DPI</span></div></div>
+                  <div style="font-size:10.5px; color:#999; margin-top:7px;">Plenty of pixels for a sharp 4 × 6.</div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Bleed</div>
+                  <div style="height:32px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; font-weight:600; color:#9a1818;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#9a1818; stroke-width:1.7; stroke-linecap:round;"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>Expand to bleed · 0.125 in</div>
+                  <div style="margin-top:6px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#666;">Edge fill · Auto (mirror) <span style="color:#b0b0b0;">▾</span></div>
+                  <div style="font-size:10.5px; color:#999; margin-top:5px;">Mirror, smear, or solid fill — picked automatically, override anytime.</div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Fit to size</div>
+                  <div style="display:flex; gap:10px; align-items:center;">
+                    <div style="flex:1; display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px;">
+                      <div style="flex:1; text-align:center; padding:4px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Fit</div>
+                      <div style="flex:1; text-align:center; padding:4px 0; color:#777;">Fill</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(3,16px); grid-template-rows:repeat(3,16px); gap:3px;">
+                      <div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div>
+                      <div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1.5px solid #CC0000; background:#FBEBEB; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div>
+                      <div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div>
+                    </div>
+                  </div>
+                  <div style="font-size:10.5px; color:#999; margin-top:5px;">Same Fit / Fill / anchor controls as the Resize surface.</div>
+                </div>
+                <div style="border:1px dashed #d8d8d8; background:#fafafa; border-radius:7px; padding:10px;">
+                  <div style="font-size:11.5px; color:#999;">Upscale — not needed here</div>
+                  <div style="font-size:10.5px; color:#b0b0b0; margin-top:3px;">Offered automatically when resolution drops below the line.</div>
+                </div>
+                <div style="font-size:11px; color:#086DD2;">New to bleed? 60-second guide →</div>
+              </div>
+            </sc-if>
+
+            <!-- TEXT & LOGO -->
+            <sc-if value="{{ pText }}">
+              <div style="display:flex; flex-direction:column; gap:15px;">
+                <div style="display:flex; gap:8px;">
+                  <div style="flex:1; height:34px; border:1px solid #cfcfcf; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:600; color:#444;"><span style="font-family:Georgia,serif; font-weight:700; font-size:14px; color:#555;">T</span>Add text</div>
+                  <div style="flex:1; height:34px; border:1px solid #cfcfcf; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:600; color:#444;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>Add image</div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">On this image</div>
+                  <div style="display:flex; flex-direction:column; gap:6px;">
+                    <div style="height:34px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; gap:8px; padding:0 10px;"><span style="font-family:Georgia,serif; font-weight:700; font-size:13px; color:#9a1818;">T</span><span style="font-size:12px; font-weight:600; color:#9a1818;">SUMMER SALE</span><div style="flex:1;"></div><span style="font-size:10px; color:#c98a8a;">✕</span></div>
+                    <div style="height:34px; border:1px solid #e0e0e0; border-radius:6px; display:flex; align-items:center; gap:8px; padding:0 10px;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#888; stroke-width:1.6; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg><span style="font-size:12px; color:#555;">logo.png</span><div style="flex:1;"></div><span style="font-size:10px; color:#bbb;">✕</span></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Character</div>
+                  <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555; margin-bottom:8px;">Motiva Sans <span style="color:#b0b0b0;">▾</span></div>
+                  <div style="display:flex; gap:6px; margin-bottom:8px;">
+                    <div style="flex:1; height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">24 pt <span style="color:#b0b0b0;">▾</span></div>
+                    <div style="width:30px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; color:#555;">B</div>
+                    <div style="width:30px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-style:italic; font-size:13px; color:#555;">I</div>
+                    <div style="width:34px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#555;">A<div style="width:16px; height:3px; background:#CC0000; border-radius:1px;"></div></div>
+                  </div>
+                  <div style="display:flex; gap:5px;">
+                    <div style="flex:1; height:28px; border:1px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" style="fill:none; stroke:#9a1818; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="13" y2="12"/></svg></div>
+                    <div style="flex:1; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="3" y1="4" x2="13" y2="4"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="4" y1="12" x2="12" y2="12"/></svg></div>
+                    <div style="flex:1; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="6" y1="8" x2="14" y2="8"/><line x1="3" y1="12" x2="14" y2="12"/></svg></div>
+                  </div>
+                </div>
+                <div style="border:1px solid #ececec; background:#fafafa; border-radius:7px; padding:10px; font-size:10.5px; color:#999;">Same handles as the Layout Editor — drag to place, corners to scale, top handle to rotate.</div>
+              </div>
+            </sc-if>
+
+            <!-- CLEAN UP -->
+            <sc-if value="{{ pClean }}">
+              <div style="display:flex; flex-direction:column; gap:15px;">
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Tool</div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                    <div style="height:36px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; font-weight:600; color:#9a1818;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#9a1818; stroke-width:1.6; stroke-linejoin:round;"><path d="M7 21l-4.3-4.3a2.4 2.4 0 0 1 0-3.4l9.6-9.6a2.4 2.4 0 0 1 3.4 0l5.6 5.6a2.4 2.4 0 0 1 0 3.4L13 21z"/><path d="M5 11l9 9"/></svg>Remove object</div>
+                    <div style="height:36px; border:1px solid #dcdcdc; background:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; color:#555;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6;"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.6" style="fill:#666;"/></svg>Spot heal</div>
+                    <div style="height:36px; border:1px solid #dcdcdc; background:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; color:#555;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6;"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>Red-eye</div>
+                    <div style="height:36px; border:1px solid #dcdcdc; background:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; color:#555;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.5;"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><circle cx="12" cy="10" r="2"/><path d="M8 16c1-2 7-2 8 0"/></svg>Remove background</div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px;"><div class="wf-h">Brush size</div><span style="font-size:11px; color:#999;">40 px</span></div>
+                  <div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:0; top:0; width:40%; height:100%; background:#CC0000; border-radius:2px;"></div><div style="position:absolute; left:40%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div>
+                </div>
+                <div style="border:1px solid #ececec; background:#fafafa; border-radius:7px; padding:10px; font-size:11px; color:#777;">Brush over what you want gone — it's filled from the surroundings. You always see a preview before it applies.</div>
+                <div style="border:1px dashed #d8d8d8; border-radius:7px; padding:10px;">
+                  <div style="font-size:11.5px; font-weight:600; color:#555;">Fix an AI-generated file</div>
+                  <div style="font-size:10.5px; color:#999; margin-top:3px;">One click: normalize resolution, format, and color mode.</div>
+                </div>
+                <div style="font-size:10.5px; color:#999;">Heavy work runs on the server — the canvas never freezes.</div>
+              </div>
+            </sc-if>
+
+            <!-- EXPORT -->
+            <sc-if value="{{ pExport }}">
+              <div style="display:flex; flex-direction:column; gap:15px;">
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Format</div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                    <div style="height:30px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:600; color:#9a1818;">JPG</div>
+                    <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">PNG</div>
+                    <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">TIFF</div>
+                    <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">PDF · print</div>
+                  </div>
+                  <div style="font-size:10.5px; color:#999; margin-top:6px;">PDF carries correct trim + bleed boxes. HEIC always converts on the way in.</div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Settings</div>
+                  <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555; margin-bottom:8px;">Quality · High <span style="color:#b0b0b0;">▾</span></div>
+                  <div style="display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px; margin-bottom:6px;">
+                    <div style="flex:1; text-align:center; padding:4px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">sRGB</div>
+                    <div style="flex:1; text-align:center; padding:4px 0; color:#777;">CMYK-intent</div>
+                  </div>
+                  <div style="font-size:10.5px; color:#999;">CMYK-intent matches press color — fixes the royal-blue surprise.</div>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                  <span style="font-size:11.5px; color:#555;">Strip photo metadata</span>
+                  <div style="width:28px; height:16px; border:1px solid #CC0000; border-radius:8px; background:#FBEBEB; position:relative;"><div style="position:absolute; right:2px; top:2px; width:12px; height:12px; background:#CC0000; border-radius:50%;"></div></div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="height:34px; background:#CC0000; color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:12.5px;">Export file</div>
+                  <div style="height:30px; background:#fff; border:1px solid #cfcfcf; color:#555; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px;">Save back to order #58291</div>
+                </div>
+                <div>
+                  <div class="wf-h" style="margin-bottom:8px;">Send to another tool</div>
+                  <div style="display:flex; flex-direction:column; gap:6px;">
+                    <div style="height:32px; border:1px solid #e0e0e0; border-radius:6px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; font-size:12px; color:#555;">Open in Layout Editor <span style="color:#999;">→</span></div>
+                    <div style="height:32px; border:1px solid #e0e0e0; border-radius:6px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; font-size:12px; color:#555;">Resize &amp; imposition · N-up <span style="color:#999;">→</span></div>
+                  </div>
+                </div>
+                <div style="font-size:10.5px; color:#999;">Full-resolution render happens server-side — keep working while it queues.</div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- 7 · STATUS BAR -->
+    <div style="height:28px; background:#ececec; border-top:1px solid #e0e0e0; display:flex; align-items:center; padding:0 12px; gap:14px; flex-shrink:0;">
+      <span style="font-size:11px; color:#777;">{{ toolStatus }}</span>
+      <div style="width:1px; height:14px; background:#d4d4d4;"></div>
+      <span style="font-size:11px; color:#999;">Autosaved · edits are steps, nothing bakes until export</span>
+      <div style="flex:1;"></div>
+      <span style="font-size:11px; color:#999;">Editing a screen proxy · full res renders on export</span>
+      <div style="width:1px; height:14px; background:#d4d4d4;"></div>
+      <div style="display:flex; align-items:center; gap:8px; font-size:11px; color:#777;">
+        <span style="color:#aaa;">−</span>
+        <div style="width:96px; height:4px; background:#d0d0d0; border-radius:2px; position:relative;"><div style="position:absolute; left:38%; top:50%; transform:translate(-50%,-50%); width:11px; height:11px; background:#fff; border:1px solid #b0b0b0; border-radius:50%;"></div></div>
+        <span style="color:#aaa;">+</span>
+        <span style="min-width:30px;">38%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- anatomy pins -->
+  <div style="position:absolute; left:0; top:0; width:1460px; height:904px; pointer-events:none; z-index:5; display:{{ pinsDisp }};">
+    <div style="position:absolute; left:700px; top:11px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">1</div>
+    <div style="position:absolute; left:1105px; top:54px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">2</div>
+    <div style="position:absolute; left:30px; top:430px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">3</div>
+    <div style="position:absolute; left:1000px; top:94px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">4</div>
+    <div style="position:absolute; left:620px; top:440px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">5</div>
+    <div style="position:absolute; left:1436px; top:300px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">6</div>
+    <div style="position:absolute; left:700px; top:882px; width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.92); border:1px solid #bdbdbd; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">7</div>
+  </div>
+
+  <!-- anatomy key -->
+  <div style="margin-top:22px; display:flex; flex-wrap:wrap; gap:10px 26px; width:1460px;">
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">1</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Title bar</b> — file + order context, experience level (shared shell)</span></div>
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">2</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Quick fixes</b> — Fix bleed · Fit to size · Convert format, always visible</span></div>
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">3</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Task rail</b> — six verbs, one active at a time; Export pinned at the bottom</span></div>
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">4</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Print-correctness strip</b> — dims, target size, DPI state, bleed, color; advisory, clickable</span></div>
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">5</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Canvas</b> — one image, direct-manipulation handles matching the Layout Editor</span></div>
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">6</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Contextual panel</b> — exists only while a tool is active; ✕ returns to the clean canvas</span></div>
+    <div style="display:flex; align-items:center; gap:8px;"><div style="width:16px; height:16px; border-radius:50%; background:#fff; border:1px solid #c4c4c4; color:#777; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;">7</div><span style="font-size:12px; color:#555;"><b style="font-weight:600; color:#333;">Status bar</b> — tool state, autosave note, proxy note, zoom</span></div>
+  </div>
+</div>
+
+<!-- ============================ SECTION B — CONTEXTUAL PANELS ============================ -->
+<div style="position:absolute; left:80px; top:1330px; font-weight:700; font-size:20px; color:#2b2b2b;">B · The six contextual panels</div>
+<div style="position:absolute; left:80px; top:1360px; font-weight:300; font-size:13px; color:#666; width:1240px;">One panel per rail task — nothing floats, nothing stacks. Rarely-used controls collapse under “More” instead of widening the surface. Standard level shown; Pro adds levels/curves and numeric entry inside the same panels.</div>
+
+<div style="position:absolute; left:80px; top:1414px; display:flex; gap:20px; align-items:flex-start;" data-screen-label="B · Contextual panels">
+
+  <div style="width:268px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">1 · Crop &amp; straighten</div>
+    <div class="wf-card" style="width:268px;">
+      <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">Crop &amp; straighten</div><div style="flex:1;"></div><div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center;">✕</div></div>
+      <div style="padding:15px 16px; display:flex; flex-direction:column; gap:15px;">
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Aspect</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Free</div>
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Original</div>
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">1 : 1</div>
+            <div style="height:28px; border:1.5px solid #CC0000; border-radius:5px; background:#FBEBEB; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:600; color:#9a1818;">4 × 6</div>
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">5 × 7</div>
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">8 × 10</div>
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Letter</div>
+            <div style="height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">Business card</div>
+          </div>
+          <div style="margin-top:6px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11.5px; color:#555;">Product size from catalog… <span style="color:#b0b0b0;">▾</span></div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Shape</div>
+          <div style="display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px;">
+            <div style="flex:1; text-align:center; padding:4px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Rectangle</div>
+            <div style="flex:1; text-align:center; padding:4px 0; color:#777;">Rounded</div>
+            <div style="flex:1; text-align:center; padding:4px 0; color:#777;">Circle</div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px;"><div class="wf-h">Straighten</div><span style="font-size:11px; color:#999;">−1.2°</span></div>
+          <div style="display:flex; align-items:center; gap:9px;">
+            <div style="flex:1; height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:44%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div>
+            <div style="height:26px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; padding:0 10px; font-size:11px; color:#666;">Auto</div>
+          </div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Rotate &amp; flip</div>
+          <div style="display:flex; gap:5px;">
+            <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M3 3v5h5"/><path d="M3 8a9 9 0 1 1-2 6"/></svg></div>
+            <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;"><path d="M21 3v5h-5"/><path d="M21 8a9 9 0 1 0 2 6"/></svg></div>
+            <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><path d="M8 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2"/><path d="M16 3h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2"/><path d="M12 2v2M12 8v2M12 14v2M12 20v2"/></svg></div>
+            <div style="flex:1; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#666; stroke-width:1.6; stroke-linecap:round;"><path d="M3 8V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2"/><path d="M3 16v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M2 12h2M8 12h2M14 12h2M20 12h2"/></svg></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1.4; height:32px; background:#CC0000; color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:12.5px;">Apply crop</div>
+          <div style="flex:1; height:32px; background:#fff; border:1px solid #cfcfcf; color:#555; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px;">Reset</div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">97% task. Ratio presets + catalog SKU crop; rounded/circle as a shape preset. Auto-straighten beside the slider.</div>
+  </div>
+
+  <div style="width:268px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">2 · Adjust</div>
+    <div class="wf-card" style="width:268px;">
+      <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">Adjust</div><div style="flex:1;"></div><div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center;">✕</div></div>
+      <div style="padding:15px 16px; display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <div style="height:34px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; font-weight:600; color:#9a1818;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#9a1818; stroke-width:1.6; stroke-linejoin:round;"><path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg>Auto-enhance</div>
+          <div style="font-size:10.5px; color:#999; margin-top:5px;">One click — always undoable.</div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:10px;">Light</div>
+          <div style="display:flex; flex-direction:column; gap:11px;">
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Brightness</span><span style="color:#999;">+12</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:62%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Contrast</span><span style="color:#999;">0</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Exposure</span><span style="color:#999;">0</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Highlights</span><span style="color:#999;">−20</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:32%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Shadows</span><span style="color:#999;">+15</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:65%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:10px;">Color</div>
+          <div style="display:flex; flex-direction:column; gap:11px;">
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Saturation</span><span style="color:#999;">0</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:5px;"><span>Warmth</span><span style="color:#999;">+5</span></div><div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:-3px; width:1px; height:10px; background:#c8c8c8;"></div><div style="position:absolute; left:56%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div></div>
+          </div>
+        </div>
+        <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#666;"><span>More · levels, curves, sharpen, noise</span><span style="display:flex; align-items:center; gap:6px;"><span style="font-size:9px; font-weight:700; color:#999; border:1px solid #ddd; border-radius:3px; padding:1px 4px;">PRO</span><span style="color:#b0b0b0;">▾</span></span></div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">Live on the proxy at &lt;100 ms. Auto-enhance leads; levels/curves stay under More at Pro — reachable, never in the way.</div>
+  </div>
+
+  <div style="width:268px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">3 · Fix for print</div>
+    <div class="wf-card" style="width:268px;">
+      <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">Fix for print</div><div style="flex:1;"></div><div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center;">✕</div></div>
+      <div style="padding:15px 16px; display:flex; flex-direction:column; gap:15px;">
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Target print size</div>
+          <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">4 × 6 in · glossy photo <span style="color:#b0b0b0;">▾</span></div>
+          <div style="font-size:11px; color:#086DD2; margin-top:6px;">Pick a catalog product →</div>
+        </div>
+        <div style="border:1px solid #ececec; border-radius:7px; padding:11px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-size:11px; color:#777;">Effective resolution</span><div style="display:flex; align-items:center; gap:5px; background:#EEF6EF; border:1px solid #cfe3d2; border-radius:10px; padding:2px 8px;"><div style="width:6px; height:6px; border-radius:50%; background:#4c9a5c;"></div><span style="font-size:10.5px; font-weight:600; color:#357040;">672 DPI</span></div></div>
+          <div style="font-size:10.5px; color:#999; margin-top:7px;">Plenty of pixels for a sharp 4 × 6.</div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Bleed</div>
+          <div style="height:32px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; font-weight:600; color:#9a1818;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#9a1818; stroke-width:1.7; stroke-linecap:round;"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>Expand to bleed · 0.125 in</div>
+          <div style="margin-top:6px; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:11px; color:#666;">Edge fill · Auto (mirror) <span style="color:#b0b0b0;">▾</span></div>
+          <div style="font-size:10.5px; color:#999; margin-top:5px;">Mirror, smear, or solid fill — picked automatically, override anytime.</div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Fit to size</div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div style="flex:1; display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px;">
+              <div style="flex:1; text-align:center; padding:4px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">Fit</div>
+              <div style="flex:1; text-align:center; padding:4px 0; color:#777;">Fill</div>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(3,16px); grid-template-rows:repeat(3,16px); gap:3px;">
+              <div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div>
+              <div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1.5px solid #CC0000; background:#FBEBEB; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div>
+              <div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div><div style="border:1px solid #dcdcdc; background:#fff; border-radius:2px;"></div>
+            </div>
+          </div>
+          <div style="font-size:10.5px; color:#999; margin-top:5px;">Same Fit / Fill / anchor controls as the Resize surface.</div>
+        </div>
+        <div style="border:1px dashed #d8d8d8; background:#fafafa; border-radius:7px; padding:10px;">
+          <div style="font-size:11.5px; color:#999;">Upscale — not needed here</div>
+          <div style="font-size:10.5px; color:#b0b0b0; margin-top:3px;">Offered automatically when resolution drops below the line.</div>
+        </div>
+        <div style="font-size:11px; color:#086DD2;">New to bleed? 60-second guide →</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">The differentiator. Bleed expansion is the #1 resubmission cause — a named button, not a menu item. Inline quick-guide teaches in context.</div>
+  </div>
+
+  <div style="width:268px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">4 · Text &amp; image</div>
+    <div class="wf-card" style="width:268px;">
+      <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">Text &amp; image</div><div style="flex:1;"></div><div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center;">✕</div></div>
+      <div style="padding:15px 16px; display:flex; flex-direction:column; gap:15px;">
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1; height:34px; border:1px solid #cfcfcf; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:600; color:#444;"><span style="font-family:Georgia,serif; font-weight:700; font-size:14px; color:#555;">T</span>Add text</div>
+          <div style="flex:1; height:34px; border:1px solid #cfcfcf; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:600; color:#444;"><svg width="14" height="14" viewBox="0 0 24 24" style="fill:none; stroke:#555; stroke-width:1.6; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>Add image</div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">On this image</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="height:34px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; gap:8px; padding:0 10px;"><span style="font-family:Georgia,serif; font-weight:700; font-size:13px; color:#9a1818;">T</span><span style="font-size:12px; font-weight:600; color:#9a1818;">SUMMER SALE</span><div style="flex:1;"></div><span style="font-size:10px; color:#c98a8a;">✕</span></div>
+            <div style="height:34px; border:1px solid #e0e0e0; border-radius:6px; display:flex; align-items:center; gap:8px; padding:0 10px;"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:none; stroke:#888; stroke-width:1.6; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg><span style="font-size:12px; color:#555;">logo.png</span><div style="flex:1;"></div><span style="font-size:10px; color:#bbb;">✕</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Character</div>
+          <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555; margin-bottom:8px;">Motiva Sans <span style="color:#b0b0b0;">▾</span></div>
+          <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <div style="flex:1; height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555;">24 pt <span style="color:#b0b0b0;">▾</span></div>
+            <div style="width:30px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; color:#555;">B</div>
+            <div style="width:30px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-style:italic; font-size:13px; color:#555;">I</div>
+            <div style="width:34px; height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#555;">A<div style="width:16px; height:3px; background:#CC0000; border-radius:1px;"></div></div>
+          </div>
+          <div style="display:flex; gap:5px;">
+            <div style="flex:1; height:28px; border:1px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" style="fill:none; stroke:#9a1818; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="10" y2="8"/><line x1="2" y1="12" x2="13" y2="12"/></svg></div>
+            <div style="flex:1; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="3" y1="4" x2="13" y2="4"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="4" y1="12" x2="12" y2="12"/></svg></div>
+            <div style="flex:1; height:28px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center;"><svg width="14" height="14" viewBox="0 0 16 16" style="fill:none; stroke:#777; stroke-width:1.5; stroke-linecap:round;"><line x1="2" y1="4" x2="14" y2="4"/><line x1="6" y1="8" x2="14" y2="8"/><line x1="3" y1="12" x2="14" y2="12"/></svg></div>
+          </div>
+        </div>
+        <div style="border:1px solid #ececec; background:#fafafa; border-radius:7px; padding:10px; font-size:10.5px; color:#999;">Same handles as the Layout Editor — drag to place, corners to scale, top handle to rotate.</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">Flat overlays only — the base image plus text or image layers (logos, photos, stamps) you place, scale, and rotate. Anything more composite routes to the Layout Editor.</div>
+  </div>
+
+  <div style="width:268px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">5 · Clean up</div>
+    <div class="wf-card" style="width:268px;">
+      <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">Clean up</div><div style="flex:1;"></div><div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center;">✕</div></div>
+      <div style="padding:15px 16px; display:flex; flex-direction:column; gap:15px;">
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Tool</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <div style="height:36px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; font-weight:600; color:#9a1818;">Remove object</div>
+            <div style="height:36px; border:1px solid #dcdcdc; background:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; color:#555;">Spot heal</div>
+            <div style="height:36px; border:1px solid #dcdcdc; background:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; color:#555;">Red-eye</div>
+            <div style="height:36px; border:1px solid #dcdcdc; background:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; gap:6px; font-size:11.5px; color:#555;">Remove background</div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:9px;"><div class="wf-h">Brush size</div><span style="font-size:11px; color:#999;">40 px</span></div>
+          <div style="height:4px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:0; top:0; width:40%; height:100%; background:#CC0000; border-radius:2px;"></div><div style="position:absolute; left:40%; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; background:#fff; border:1px solid #a8a8a8; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.18);"></div></div>
+        </div>
+        <div style="border:1px solid #ececec; background:#fafafa; border-radius:7px; padding:10px; font-size:11px; color:#777;">Brush over what you want gone — it's filled from the surroundings. You always see a preview before it applies.</div>
+        <div style="border:1px dashed #d8d8d8; border-radius:7px; padding:10px;">
+          <div style="font-size:11.5px; font-weight:600; color:#555;">Fix an AI-generated file</div>
+          <div style="font-size:10.5px; color:#999; margin-top:3px;">One click: normalize resolution, format, and color mode.</div>
+        </div>
+        <div style="font-size:10.5px; color:#999;">Heavy work runs on the server — the canvas never freezes.</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">The “remove” half of add/remove text: date stamps, old phone numbers, blemishes. AI suggests, associate approves — never auto-applies.</div>
+  </div>
+
+  <div style="width:268px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">6 · Export</div>
+    <div class="wf-card" style="width:268px;">
+      <div style="padding:12px 14px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">Export</div><div style="flex:1;"></div><div style="width:20px; height:20px; border:1px solid #dcdcdc; border-radius:5px; color:#999; font-size:10px; display:flex; align-items:center; justify-content:center;">✕</div></div>
+      <div style="padding:15px 16px; display:flex; flex-direction:column; gap:15px;">
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Format</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <div style="height:30px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:600; color:#9a1818;">JPG</div>
+            <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">PNG</div>
+            <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">TIFF</div>
+            <div style="height:30px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#555;">PDF · print</div>
+          </div>
+          <div style="font-size:10.5px; color:#999; margin-top:6px;">PDF carries correct trim + bleed boxes. HEIC always converts on the way in.</div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Settings</div>
+          <div style="height:30px; border:1px solid #d6d6d6; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 9px; font-size:12px; color:#555; margin-bottom:8px;">Quality · High <span style="color:#b0b0b0;">▾</span></div>
+          <div style="display:flex; background:#ececec; border-radius:6px; padding:2px; font-size:11px; margin-bottom:6px;">
+            <div style="flex:1; text-align:center; padding:4px 0; border-radius:5px; background:#fff; color:#333; box-shadow:0 1px 2px rgba(0,0,0,.12);">sRGB</div>
+            <div style="flex:1; text-align:center; padding:4px 0; color:#777;">CMYK-intent</div>
+          </div>
+          <div style="font-size:10.5px; color:#999;">CMYK-intent matches press color — fixes the royal-blue surprise.</div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-size:11.5px; color:#555;">Strip photo metadata</span>
+          <div style="width:28px; height:16px; border:1px solid #CC0000; border-radius:8px; background:#FBEBEB; position:relative;"><div style="position:absolute; right:2px; top:2px; width:12px; height:12px; background:#CC0000; border-radius:50%;"></div></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:7px;">
+          <div style="height:34px; background:#CC0000; color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:12.5px;">Export file</div>
+          <div style="height:30px; background:#fff; border:1px solid #cfcfcf; color:#555; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px;">Save back to order #58291</div>
+        </div>
+        <div>
+          <div class="wf-h" style="margin-bottom:8px;">Send to another tool</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="height:32px; border:1px solid #e0e0e0; border-radius:6px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; font-size:12px; color:#555;">Open in Layout Editor <span style="color:#999;">→</span></div>
+            <div style="height:32px; border:1px solid #e0e0e0; border-radius:6px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; font-size:12px; color:#555;">Resize &amp; imposition · N-up <span style="color:#999;">→</span></div>
+          </div>
+        </div>
+        <div style="font-size:10.5px; color:#999;">Full-resolution render happens server-side — keep working while it queues.</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">Format conversion is 93% daily — “Convert format” up top opens this same panel. Identical Export / Send-to options across the suite.</div>
+  </div>
+</div>
+
+<!-- ============================ SECTION C — PRINT-CORRECTNESS STRIP + FIX BLEED ============================ -->
+<div style="position:absolute; left:80px; top:2210px; font-weight:700; font-size:20px; color:#2b2b2b;">C · Print-correctness strip — three states</div>
+<div style="position:absolute; left:80px; top:2240px; font-weight:300; font-size:13px; color:#666; width:1240px;">Pinned above the canvas. Advisory, never blocking — amber and red are clickable and jump straight to the fix. Same guide language as Layout Editor preflight.</div>
+
+<div style="position:absolute; left:80px; top:2292px; display:flex; flex-direction:column; gap:12px;" data-screen-label="C · Print-correctness strip states">
+  <div style="display:flex; align-items:center; gap:18px;">
+    <div class="wf-card" style="width:1020px; height:40px; display:flex; align-items:center; padding:0 14px; gap:11px; font-size:11.5px;">
+      <span style="color:#777;">4032 × 3024 px</span><div style="width:1px; height:16px; background:#e6e6e6;"></div>
+      <span style="color:#555; font-weight:600;">Target: 4 × 6 in</span><div style="width:1px; height:16px; background:#e6e6e6;"></div>
+      <div style="display:flex; align-items:center; gap:6px; background:#EEF6EF; border:1px solid #cfe3d2; border-radius:10px; padding:2px 9px;"><div style="width:7px; height:7px; border-radius:50%; background:#4c9a5c;"></div><span style="font-size:10.5px; font-weight:600; color:#357040;">672 DPI — great at 4 × 6</span></div>
+      <div style="width:1px; height:16px; background:#e6e6e6;"></div><span style="color:#999;">Bleed: 0.125 in set</span>
+      <div style="width:1px; height:16px; background:#e6e6e6;"></div><span style="color:#999;">sRGB · converted at export</span>
+    </div>
+    <div style="width:380px;"><div style="font-size:12px; font-weight:600; color:#333;">Good — nothing to do</div><div style="font-size:11px; color:#888;">Quiet green chip; the strip stays out of the way.</div></div>
+  </div>
+  <div style="display:flex; align-items:center; gap:18px;">
+    <div class="wf-card" style="width:1020px; height:40px; display:flex; align-items:center; padding:0 14px; gap:11px; font-size:11.5px;">
+      <span style="color:#777;">1280 × 960 px</span><div style="width:1px; height:16px; background:#e6e6e6;"></div>
+      <span style="color:#555; font-weight:600;">Target: 8 × 10 in</span><div style="width:1px; height:16px; background:#e6e6e6;"></div>
+      <div style="display:flex; align-items:center; gap:6px; background:#FCF3E6; border:1px solid #ecd9b8; border-radius:10px; padding:2px 9px;"><div style="width:7px; height:7px; border-radius:50%; background:#c98a2b;"></div><span style="font-size:10.5px; font-weight:600; color:#9a6a1a;">148 DPI — may look soft at 8 × 10</span><span style="font-size:10.5px; font-weight:700; color:#9a6a1a; text-decoration:underline;">Fix →</span></div>
+      <div style="width:1px; height:16px; background:#e6e6e6;"></div><span style="color:#999;">Bleed: not set</span><span style="font-size:11px; color:#CC0000; font-weight:600;">Add →</span>
+      <div style="width:1px; height:16px; background:#e6e6e6;"></div><span style="color:#999;">sRGB · converted at export</span>
+    </div>
+    <div style="width:380px;"><div style="font-size:12px; font-weight:600; color:#333;">Soft warning — clickable</div><div style="font-size:11px; color:#888;">“Fix →” opens Fix for print with Upscale ready. Print anyway is always allowed.</div></div>
+  </div>
+  <div style="display:flex; align-items:center; gap:18px;">
+    <div class="wf-card" style="width:1020px; height:40px; display:flex; align-items:center; padding:0 14px; gap:11px; font-size:11.5px;">
+      <span style="color:#777;">1200 × 900 px</span><div style="width:1px; height:16px; background:#e6e6e6;"></div>
+      <span style="color:#555; font-weight:600;">Target: 16 × 20 in</span><div style="width:1px; height:16px; background:#e6e6e6;"></div>
+      <div style="display:flex; align-items:center; gap:6px; background:#FBEBEB; border:1px solid #f0c9c9; border-radius:10px; padding:2px 9px;"><div style="width:7px; height:7px; border-radius:50%; background:#CC0000;"></div><span style="font-size:10.5px; font-weight:600; color:#9a1818;">72 DPI — visible pixelation at 16 × 20</span><span style="font-size:10.5px; font-weight:700; color:#9a1818; text-decoration:underline;">Upscale →</span></div>
+      <div style="width:1px; height:16px; background:#e6e6e6;"></div><span style="color:#999;">Bleed: not set</span><span style="font-size:11px; color:#CC0000; font-weight:600;">Add →</span>
+      <div style="width:1px; height:16px; background:#e6e6e6;"></div><span style="color:#999;">sRGB · converted at export</span>
+    </div>
+    <div style="width:380px;"><div style="font-size:12px; font-weight:600; color:#333;">Problem — still advisory</div><div style="font-size:11px; color:#888;">The “pixelation on customers' images” ask. Red never blocks — the associate decides.</div></div>
+  </div>
+</div>
+
+<div style="position:absolute; left:80px; top:2510px; font-weight:600; font-size:14px; color:#2b2b2b;">Fix bleed — the headline quick fix, before and after</div>
+<div style="position:absolute; left:80px; top:2534px; font-weight:300; font-size:13px; color:#666; width:1100px;">Business card artwork that stops at the trim line — the #1 resubmission cause. One click extends the edges to the bleed line.</div>
+
+<div style="position:absolute; left:80px; top:2582px; display:flex; gap:24px; align-items:center;" data-screen-label="C · Fix bleed before/after">
+  <div style="width:520px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Before — artwork ends at the cut line</div>
+    <div class="wf-card" style="width:520px; height:330px; background:#d3d3d3; position:relative; display:flex; align-items:center; justify-content:center;">
+      <div style="position:relative; width:280px; height:170px;">
+        <div style="position:absolute; inset:-14px; background:rgba(204,0,0,.10); border:1.5px dashed #CC0000;"></div>
+        <div style="position:absolute; inset:0; background:#dcdcdc; box-shadow:0 2px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center;">
+          <svg width="40" height="40" viewBox="0 0 24 24" style="fill:none; stroke:#b8b8b8; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>
+        </div>
+        <div style="position:absolute; inset:0; border:1px solid #999;"></div>
+      </div>
+      <div style="position:absolute; left:14px; bottom:12px; background:#fff; border:1px solid #f0c9c9; border-radius:6px; padding:6px 10px; font-size:10.5px; color:#9a1818; box-shadow:0 1px 3px rgba(0,0,0,.12);">Artwork stops at the trim line — white slivers when cut</div>
+      <div style="position:absolute; right:14px; top:12px; background:#fff; border:1px solid #e2e2e2; border-radius:6px; padding:5px 9px; display:flex; flex-direction:column; gap:4px;">
+        <div style="display:flex; align-items:center; gap:6px;"><div style="width:14px; height:0; border-top:1px solid #999;"></div><span style="font-size:9.5px; color:#888;">Trim</span></div>
+        <div style="display:flex; align-items:center; gap:6px;"><div style="width:14px; height:0; border-top:1.5px dashed #CC0000;"></div><span style="font-size:9.5px; color:#888;">Bleed — unfilled</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="font-size:26px; color:#999;">→</div>
+  <div style="width:520px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">After — one click on “Fix bleed”</div>
+    <div class="wf-card" style="width:520px; height:330px; background:#d3d3d3; position:relative; display:flex; align-items:center; justify-content:center;">
+      <div style="position:relative; width:280px; height:170px;">
+        <div style="position:absolute; inset:-14px; background:#e9e9e9; border:1.5px dashed #CC0000; box-shadow:0 2px 10px rgba(0,0,0,.2); background-image:repeating-linear-gradient(45deg, rgba(0,0,0,.03) 0, rgba(0,0,0,.03) 4px, transparent 4px, transparent 8px);"></div>
+        <div style="position:absolute; inset:0; background:#dcdcdc; display:flex; align-items:center; justify-content:center;">
+          <svg width="40" height="40" viewBox="0 0 24 24" style="fill:none; stroke:#b8b8b8; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>
+        </div>
+        <div style="position:absolute; inset:0; border:1px solid #999;"></div>
+      </div>
+      <div style="position:absolute; left:50%; bottom:12px; transform:translateX(-50%); background:#fff; border:1px solid #e2e2e2; border-radius:7px; padding:7px 10px; display:flex; align-items:center; gap:9px; box-shadow:0 2px 8px rgba(0,0,0,.16);">
+        <span style="font-size:11px; color:#555;">Edge fill:</span>
+        <div style="height:22px; border:1px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; padding:0 9px; font-size:10.5px; font-weight:600; color:#9a1818;">Mirror · auto</div>
+        <div style="height:22px; border:1px solid #dcdcdc; background:#fff; border-radius:5px; display:flex; align-items:center; padding:0 9px; font-size:10.5px; color:#666;">Smear</div>
+        <div style="height:22px; border:1px solid #dcdcdc; background:#fff; border-radius:5px; display:flex; align-items:center; padding:0 9px; font-size:10.5px; color:#666;">Solid</div>
+        <div style="height:22px; background:#CC0000; color:#fff; border-radius:5px; display:flex; align-items:center; padding:0 11px; font-size:10.5px; font-weight:600;">Apply</div>
+      </div>
+      <div style="position:absolute; right:14px; top:12px; background:#fff; border:1px solid #e2e2e2; border-radius:6px; padding:6px 10px; font-size:10.5px; color:#357040; border-color:#cfe3d2;">Edges extended 0.125 in — passes the cut check</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ SECTION D — WORKING STATES ============================ -->
+<div style="position:absolute; left:80px; top:3020px; font-weight:700; font-size:20px; color:#2b2b2b;">D · Working states — rescue, history, approve</div>
+<div style="position:absolute; left:80px; top:3050px; font-weight:300; font-size:13px; color:#666; width:1240px;">Non-destructive throughout: every operation is a named step, nothing bakes until export. AI results always land as a previewed, approvable step.</div>
+
+<div style="position:absolute; left:80px; top:3104px; display:flex; gap:24px; align-items:flex-start;" data-screen-label="D · Working states">
+
+  <div style="width:460px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Low-res rescue — honest upscale offer</div>
+    <div class="wf-card" style="width:460px; height:360px; background:#d3d3d3; position:relative; display:flex; align-items:center; justify-content:center;">
+      <div style="position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:6px; background:#FCF3E6; border:1px solid #ecd9b8; border-radius:10px; padding:3px 10px;"><div style="width:7px; height:7px; border-radius:50%; background:#c98a2b;"></div><span style="font-size:10.5px; font-weight:600; color:#9a6a1a;">148 DPI at 8 × 10</span></div>
+      <div style="width:280px; height:200px; box-shadow:0 3px 14px rgba(0,0,0,.22); background:#dcdcdc; background-image:repeating-linear-gradient(0deg, transparent 0, transparent 11px, rgba(0,0,0,.05) 11px, rgba(0,0,0,.05) 12px), repeating-linear-gradient(90deg, transparent 0, transparent 11px, rgba(0,0,0,.05) 11px, rgba(0,0,0,.05) 12px); display:flex; align-items:center; justify-content:center;">
+        <svg width="44" height="44" viewBox="0 0 24 24" style="fill:none; stroke:#b0b0b0; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>
+      </div>
+      <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); width:400px; background:#fff; border:1px solid #e2e2e2; border-radius:8px; padding:10px 12px; box-shadow:0 2px 10px rgba(0,0,0,.16);">
+        <div style="font-size:11.5px; font-weight:600; color:#333;">Upscale on the server — about 10 seconds</div>
+        <div style="font-size:10.5px; color:#999; margin-top:3px;">Improves smoothness. It cannot invent detail that isn't there.</div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <div style="height:26px; background:#CC0000; color:#fff; border-radius:5px; display:flex; align-items:center; padding:0 12px; font-size:11px; font-weight:600;">Upscale to ~300 DPI</div>
+          <div style="height:26px; background:#fff; border:1px solid #cfcfcf; color:#666; border-radius:5px; display:flex; align-items:center; padding:0 12px; font-size:11px;">Print as-is</div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">Quality-capped and honestly labeled. Runs async — the associate can queue it and take the next customer.</div>
+  </div>
+
+  <div style="width:640px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Before / after + history — the recipe is the history</div>
+    <div class="wf-card" style="width:640px; height:360px; display:flex;">
+      <div style="flex:1; background:#d3d3d3; position:relative; display:flex; align-items:center; justify-content:center;">
+        <div style="position:relative; width:340px; height:250px; box-shadow:0 3px 14px rgba(0,0,0,.22);">
+          <div style="position:absolute; left:0; top:0; width:50%; height:100%; background:#e8e8e8;"></div>
+          <div style="position:absolute; right:0; top:0; width:50%; height:100%; background:#d8d8d8;"></div>
+          <div style="position:absolute; left:50%; top:0; width:2px; height:100%; background:#fff; box-shadow:0 0 4px rgba(0,0,0,.3);"></div>
+          <div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:22px; height:22px; background:#fff; border:1px solid #b0b0b0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; color:#888;">⇄</div>
+          <div style="position:absolute; left:8px; top:8px; background:rgba(255,255,255,.9); border-radius:4px; padding:2px 7px; font-size:9.5px; color:#777;">Before</div>
+          <div style="position:absolute; right:8px; top:8px; background:rgba(255,255,255,.9); border-radius:4px; padding:2px 7px; font-size:9.5px; color:#777;">After</div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:10px; transform:translateX(-50%); background:#fff; border:1px solid #e2e2e2; border-radius:6px; padding:4px 10px; font-size:10px; color:#888;">Split view · or press-and-hold anywhere to peek at the original</div>
+      </div>
+      <div style="width:210px; border-left:1px solid #ececec; display:flex; flex-direction:column;">
+        <div style="padding:11px 12px; border-bottom:1px solid #efefef; display:flex; align-items:center;"><div class="wf-h">History</div><div style="flex:1;"></div><span style="font-size:10px; color:#aaa;">6 steps</span></div>
+        <div style="flex:1; padding:8px;">
+          <div style="height:28px; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#777; border-radius:5px;">Open IMG_4823.heic</div>
+          <div style="height:28px; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#777; border-radius:5px;">Auto-enhance</div>
+          <div style="height:28px; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#777; border-radius:5px;">Crop to 4 × 6</div>
+          <div style="height:28px; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#777; border-radius:5px;">Brightness +12</div>
+          <div style="height:28px; display:flex; align-items:center; padding:0 9px; font-size:11px; color:#777; border-radius:5px;">Straighten −1.2°</div>
+          <div style="height:28px; display:flex; align-items:center; padding:0 9px; font-size:11px; font-weight:600; color:#9a1818; background:#FBEBEB; border-left:2px solid #CC0000; border-radius:0 5px 5px 0;">Expand bleed 0.125 in</div>
+        </div>
+        <div style="padding:9px 12px; border-top:1px solid #efefef; font-size:10px; color:#aaa;">Click any step to go back to that point.</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">Named steps, standard undo/redo shortcuts, autosaved continuously — a crash or station swap loses nothing.</div>
+  </div>
+
+  <div style="width:460px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Clean up — AI suggests, associate approves</div>
+    <div class="wf-card" style="width:460px; height:360px; background:#d3d3d3; position:relative; display:flex; align-items:center; justify-content:center;">
+      <div style="position:relative; width:300px; height:220px; background:#dcdcdc; box-shadow:0 3px 14px rgba(0,0,0,.22); display:flex; align-items:center; justify-content:center;">
+        <svg width="44" height="44" viewBox="0 0 24 24" style="fill:none; stroke:#b8b8b8; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>
+        <div style="position:absolute; right:18px; bottom:16px; width:110px; height:28px; border-radius:7px; background:rgba(204,0,0,.12); border:1.5px dashed #CC0000;"></div>
+        <div style="position:absolute; right:18px; bottom:48px; font-size:9.5px; color:#9a1818; font-weight:600;">brushed area</div>
+      </div>
+      <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); background:#fff; border:1px solid #e2e2e2; border-radius:7px; padding:8px 11px; display:flex; align-items:center; gap:10px; box-shadow:0 2px 8px rgba(0,0,0,.16);">
+        <span style="font-size:11.5px; color:#555;">Preview · date stamp removed</span>
+        <div style="height:24px; background:#CC0000; color:#fff; border-radius:5px; display:flex; align-items:center; padding:0 11px; font-size:11px; font-weight:600;">Apply</div>
+        <div style="height:24px; background:#fff; border:1px solid #cfcfcf; color:#666; border-radius:5px; display:flex; align-items:center; padding:0 11px; font-size:11px;">Discard</div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;">Server-side inpaint returns as a previewed step. Applying adds “Remove object” to the history — still reversible.</div>
+  </div>
+</div>
+
+<!-- ============================ SECTION E — EXPERIENCE LEVELS ============================ -->
+<div style="position:absolute; left:80px; top:3600px; font-weight:700; font-size:20px; color:#2b2b2b;">E · Simple / Standard / Pro — same file, different surface</div>
+<div style="position:absolute; left:80px; top:3630px; font-weight:300; font-size:13px; color:#666; width:1240px;">The suite-wide model: the level changes control density only, never the file. Progressive disclosure, never amputation — Pro is always reachable from Standard.</div>
+
+<div style="position:absolute; left:80px; top:3684px; display:flex; gap:24px; align-items:flex-start;" data-screen-label="E · Experience levels">
+
+  <div style="width:440px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Simple — the 80% counter job</div>
+    <div class="wf-card" style="width:440px; height:290px; display:flex; flex-direction:column;">
+      <div style="height:22px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 8px; gap:6px;"><div style="background:#CC0000; border-radius:2px; width:34px; height:10px;"></div><div style="width:70px; height:8px; background:#dcdcdc; border-radius:3px;"></div><div style="flex:1;"></div><div style="width:60px; height:10px; background:#e7e7e7; border-radius:3px;"></div></div>
+      <div style="height:26px; background:#fafafa; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 8px; gap:5px;">
+        <div style="width:64px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="flex:1;"></div>
+        <div style="width:52px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:52px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:60px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+      </div>
+      <div style="flex:1; display:flex;">
+        <div style="width:44px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:7px 0; gap:5px;">
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="flex:1;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+        </div>
+        <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center;"><div style="width:170px; height:115px; background:#dcdcdc; box-shadow:0 2px 8px rgba(0,0,0,.2);"></div></div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;"><b style="font-weight:600; color:#555;">Crop + Auto-enhance + the three quick fixes.</b> Rail holds Crop and Export only. An associate who learns nothing else still does 80% of the job.</div>
+  </div>
+
+  <div style="width:440px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Standard — the default (Section A above)</div>
+    <div class="wf-card" style="width:440px; height:290px; display:flex; flex-direction:column;">
+      <div style="height:22px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 8px; gap:6px;"><div style="background:#CC0000; border-radius:2px; width:34px; height:10px;"></div><div style="width:70px; height:8px; background:#dcdcdc; border-radius:3px;"></div><div style="flex:1;"></div><div style="width:60px; height:10px; background:#e7e7e7; border-radius:3px;"></div></div>
+      <div style="height:26px; background:#fafafa; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 8px; gap:5px;">
+        <div style="width:20px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:64px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:56px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="flex:1;"></div>
+        <div style="width:52px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:52px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:60px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+      </div>
+      <div style="flex:1; display:flex;">
+        <div style="width:44px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:7px 0; gap:5px;">
+          <div style="width:32px; height:26px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:4px;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="flex:1;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+        </div>
+        <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center;"><div style="width:150px; height:100px; background:#dcdcdc; box-shadow:0 2px 8px rgba(0,0,0,.2);"></div></div>
+        <div style="width:92px; border-left:1px solid #ececec; background:#fff; padding:8px 7px; display:flex; flex-direction:column; gap:5px;">
+          <div style="width:44px; height:7px; background:#e0e0e0; border-radius:3px;"></div>
+          <div style="height:12px; border:1px solid #e6e6e6; border-radius:3px;"></div>
+          <div style="height:12px; border:1px solid #e6e6e6; border-radius:3px;"></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px; margin-top:3px;"></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px;"></div>
+          <div style="height:14px; background:#CC0000; border-radius:3px; margin-top:5px;"></div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;"><b style="font-weight:600; color:#555;">Full P1 toolset</b> — the six-task rail, contextual panel, undo/redo, compare. What most associates live in.</div>
+  </div>
+
+  <div style="width:440px;">
+    <div style="font-weight:600; font-size:11px; color:#777; margin-bottom:6px;">Pro — for the Elements veterans</div>
+    <div class="wf-card" style="width:440px; height:290px; display:flex; flex-direction:column;">
+      <div style="height:22px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 8px; gap:6px;"><div style="background:#CC0000; border-radius:2px; width:34px; height:10px;"></div><div style="width:70px; height:8px; background:#dcdcdc; border-radius:3px;"></div><div style="flex:1;"></div><div style="width:60px; height:10px; background:#e7e7e7; border-radius:3px;"></div></div>
+      <div style="height:26px; background:#fafafa; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 8px; gap:5px;">
+        <div style="width:20px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:20px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:64px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:56px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:44px; height:16px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="flex:1;"></div>
+        <div style="width:52px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:52px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:60px; height:16px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+      </div>
+      <div style="flex:1; display:flex;">
+        <div style="width:44px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:7px 0; gap:5px;">
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:32px; height:26px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:4px;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="flex:1;"></div>
+          <div style="width:32px; height:26px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+        </div>
+        <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center;"><div style="width:130px; height:88px; background:#dcdcdc; box-shadow:0 2px 8px rgba(0,0,0,.2);"></div></div>
+        <div style="width:120px; border-left:1px solid #ececec; background:#fff; padding:8px 7px; display:flex; flex-direction:column; gap:5px;">
+          <div style="width:44px; height:7px; background:#e0e0e0; border-radius:3px;"></div>
+          <div style="height:34px; border:1px solid #e6e6e6; border-radius:3px; position:relative; overflow:hidden;"><svg width="100%" height="100%" viewBox="0 0 100 34" preserveAspectRatio="none"><path d="M4 30 C 30 28, 45 12, 96 4" style="fill:none; stroke:#b0b0b0; stroke-width:1.5;"/></svg></div>
+          <div style="display:flex; gap:4px;"><div style="flex:1; height:12px; border:1px solid #e6e6e6; border-radius:3px;"></div><div style="flex:1; height:12px; border:1px solid #e6e6e6; border-radius:3px;"></div></div>
+          <div style="display:flex; gap:4px;"><div style="flex:1; height:12px; border:1px solid #e6e6e6; border-radius:3px;"></div><div style="flex:1; height:12px; border:1px solid #e6e6e6; border-radius:3px;"></div></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px; margin-top:3px;"></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px;"></div>
+          <div style="height:14px; background:#CC0000; border-radius:3px; margin-top:5px;"></div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;"><b style="font-weight:600; color:#555;">Adds levels / curves-lite and numeric entry everywhere.</b> Same panels, denser — no floating palettes, no workspace config. The anti-Elements.</div>
+  </div>
+</div>
+
+
+<!-- ============================ SECTION F — EDIT A PLACED IMAGE (FLOW OPTIONS) ============================ -->
+<div style="position:absolute; left:80px; top:4110px; font-weight:700; font-size:20px; color:#2b2b2b;">F · Editing an image placed in the Layout Editor — the two-part flow</div>
+<div style="position:absolute; left:80px; top:4140px; font-weight:300; font-size:13px; color:#666; width:1240px;">An associate selects a picture on a layout page and needs photo fixes. In both parts the edit is a non-destructive recipe on the placed instance — the original file is untouched, and “Revert photo edits” stays available in the layout's history.</div>
+
+<div style="position:absolute; left:80px; top:4196px; display:flex; gap:24px; align-items:flex-start;" data-screen-label="F · Edit placed image — flow options">
+
+  <!-- F1 · Stay in layout -->
+  <div style="width:540px;" id="f1">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;"><div style="background:#CC0000; color:#fff; font-weight:700; font-size:10px; padding:2px 7px; border-radius:3px;">F1</div><span style="font-weight:600; font-size:11px; color:#777;">Stay in layout — quick fixes in the inspector</span></div>
+    <div class="wf-card" style="width:540px; height:400px; display:flex; flex-direction:column;">
+      <div style="height:22px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 8px; gap:6px;"><div style="background:#CC0000; border-radius:2px; width:34px; height:10px;"></div><div style="width:84px; height:8px; background:#dcdcdc; border-radius:3px;"></div><div style="flex:1;"></div><div style="width:60px; height:10px; background:#e7e7e7; border-radius:3px;"></div></div>
+      <div style="height:26px; background:#f7f7f7; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 8px; gap:5px;"><div style="width:38px; height:14px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div><div style="width:38px; height:14px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div><div style="width:38px; height:14px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div><div style="width:38px; height:14px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div></div>
+      <div style="flex:1; display:flex; min-height:0;">
+        <div style="width:28px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:6px 0; gap:4px;"><div style="width:18px; height:16px; border:1px solid #e0e0e0; border-radius:3px; background:#fff;"></div><div style="width:18px; height:16px; border:1px solid #e0e0e0; border-radius:3px; background:#fff;"></div><div style="width:18px; height:16px; border:1px solid #e0e0e0; border-radius:3px; background:#fff;"></div><div style="width:18px; height:16px; border:1px solid #e0e0e0; border-radius:3px; background:#fff;"></div></div>
+        <div style="width:52px; border-right:1px solid #ececec; display:flex; flex-direction:column; align-items:center; padding:8px 0;"><div style="width:32px; height:41px; background:#fff; border:1.5px solid #CC0000; border-radius:2px; box-shadow:0 1px 3px rgba(0,0,0,.14);"></div></div>
+        <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center; position:relative;">
+          <div style="position:relative; width:156px; height:200px; background:#fff; box-shadow:0 2px 10px rgba(0,0,0,.2);">
+            <div style="position:absolute; left:18px; top:22px; width:120px; height:78px; background:#e4e4e4; border:1.5px solid #CC0000; display:flex; align-items:center; justify-content:center;">
+              <svg width="24" height="24" viewBox="0 0 24 24" style="fill:none; stroke:#b8b8b8; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg>
+              <div style="position:absolute; left:-4px; top:-4px; width:6px; height:6px; background:#fff; border:1px solid #CC0000;"></div><div style="position:absolute; right:-4px; top:-4px; width:6px; height:6px; background:#fff; border:1px solid #CC0000;"></div><div style="position:absolute; left:-4px; bottom:-4px; width:6px; height:6px; background:#fff; border:1px solid #CC0000;"></div><div style="position:absolute; right:-4px; bottom:-4px; width:6px; height:6px; background:#fff; border:1px solid #CC0000;"></div>
+            </div>
+            <div style="position:absolute; left:18px; top:112px; width:120px; height:8px; background:#dcdcdc; border-radius:3px;"></div>
+            <div style="position:absolute; left:18px; top:126px; width:96px; height:6px; background:#ececec; border-radius:3px;"></div>
+            <div style="position:absolute; left:18px; top:138px; width:108px; height:6px; background:#ececec; border-radius:3px;"></div>
+          </div>
+          <div style="position:absolute; left:10px; bottom:8px; background:#fff; border:1px solid #e2e2e2; border-radius:5px; padding:3px 8px; font-size:9.5px; color:#888;">Picture selected on the page</div>
+        </div>
+        <div style="width:178px; border-left:1px solid #ececec; display:flex; flex-direction:column;">
+          <div style="height:24px; border-bottom:1px solid #ececec; display:flex; align-items:stretch; font-size:9px; color:#555;">
+            <div style="flex:1; display:flex; align-items:center; justify-content:center;">Properties</div>
+            <div style="position:relative; flex:1; display:flex; align-items:center; justify-content:center; font-weight:600;">Picture<div style="position:absolute; left:8px; right:8px; bottom:0; height:2px; background:#CC0000;"></div></div>
+            <div style="flex:1; display:flex; align-items:center; justify-content:center;">Page</div>
+          </div>
+          <div style="flex:1; padding:10px 11px; display:flex; flex-direction:column; gap:9px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:9.5px; color:#777;">At placed size</span><div style="display:flex; align-items:center; gap:4px; background:#EEF6EF; border:1px solid #cfe3d2; border-radius:8px; padding:1px 6px;"><div style="width:5px; height:5px; border-radius:50%; background:#4c9a5c;"></div><span style="font-size:9px; font-weight:600; color:#357040;">318 DPI</span></div></div>
+            <div style="height:24px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:#9a1818;">Auto-enhance</div>
+            <div><div style="display:flex; justify-content:space-between; font-size:9.5px; color:#666; margin-bottom:4px;"><span>Brightness</span><span style="color:#999;">+8</span></div><div style="height:3px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:58%; top:50%; transform:translate(-50%,-50%); width:9px; height:9px; background:#fff; border:1px solid #a8a8a8; border-radius:50%;"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:9.5px; color:#666; margin-bottom:4px;"><span>Contrast</span><span style="color:#999;">0</span></div><div style="height:3px; background:#e0e0e0; border-radius:2px; position:relative;"><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:9px; height:9px; background:#fff; border:1px solid #a8a8a8; border-radius:50%;"></div></div></div>
+            <div style="height:22px; border:1px solid #dcdcdc; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; color:#555;">Crop to frame</div>
+            <div style="height:1px; background:#efefef;"></div>
+            <div style="height:24px; border:1px solid #CC0000; border-radius:5px; background:#fff; display:flex; align-items:center; justify-content:center; gap:5px; font-size:10px; font-weight:600; color:#CC0000;">Edit in Photo Editor →</div>
+            <div style="font-size:8.5px; color:#aaa;">Full tools — comes right back to this page.</div>
+          </div>
+        </div>
+      </div>
+      <div style="height:16px; background:#ececec; border-top:1px solid #e0e0e0;"></div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;"><b style="font-weight:600; color:#555;">No context switch.</b> A “Picture” inspector tab appears on selection with the four most-used fixes + the placed-size DPI check. Capped on purpose — everything else is one click away.</div>
+  </div>
+
+  <!-- F2 · Round-trip -->
+  <div style="width:540px;" id="f2">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;"><div style="background:#CC0000; color:#fff; font-weight:700; font-size:10px; padding:2px 7px; border-radius:3px;">F2</div><span style="font-weight:600; font-size:11px; color:#777;">Round-trip — full Photo Editor, then back</span></div>
+    <div class="wf-card" style="width:540px; height:400px; display:flex; flex-direction:column;">
+      <div style="height:22px; background:#f0f0f0; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; padding:0 8px; gap:6px;"><div style="background:#CC0000; border-radius:2px; width:34px; height:10px;"></div><div style="width:84px; height:8px; background:#dcdcdc; border-radius:3px;"></div><div style="flex:1;"></div><div style="width:60px; height:10px; background:#e7e7e7; border-radius:3px;"></div></div>
+      <div style="height:28px; background:#FBEBEB; border-bottom:1px solid #f0c9c9; display:flex; align-items:center; padding:0 10px; gap:8px;">
+        <span style="font-size:10px; color:#9a1818; flex-shrink:0;">◀</span>
+        <span style="font-size:10px; color:#9a1818; font-weight:600; white-space:nowrap;">Editing picture from “Spring flyer”</span>
+        <span style="font-size:9.5px; color:#c98a8a; white-space:nowrap;">returns as one step</span>
+        <div style="flex:1;"></div>
+        <div style="height:18px; background:#CC0000; color:#fff; border-radius:4px; display:flex; align-items:center; padding:0 9px; font-size:9.5px; font-weight:600; white-space:nowrap; flex-shrink:0;">Done</div>
+        <div style="height:18px; border:1px solid #d9a5a5; background:#fff; color:#9a1818; border-radius:4px; display:flex; align-items:center; padding:0 9px; font-size:9.5px; white-space:nowrap; flex-shrink:0;">Cancel</div>
+      </div>
+      <div style="height:24px; background:#fafafa; border-bottom:1px solid #e6e6e6; display:flex; align-items:center; padding:0 8px; gap:5px;">
+        <div style="width:18px; height:14px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="width:56px; height:14px; border:1px solid #dcdcdc; border-radius:3px; background:#fff;"></div>
+        <div style="flex:1;"></div>
+        <div style="width:44px; height:14px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:44px; height:14px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+        <div style="width:52px; height:14px; border:1px solid #CC0000; background:#FBEBEB; border-radius:3px;"></div>
+      </div>
+      <div style="flex:1; display:flex; min-height:0;">
+        <div style="width:38px; background:#f4f4f4; border-right:1px solid #e4e4e4; display:flex; flex-direction:column; align-items:center; padding:6px 0; gap:4px;">
+          <div style="width:28px; height:22px; border:1.5px solid #CC0000; background:#FBEBEB; border-radius:4px;"></div>
+          <div style="width:28px; height:22px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:28px; height:22px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:28px; height:22px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+          <div style="width:28px; height:22px; border:1px solid #e0e0e0; border-radius:4px; background:#fff;"></div>
+        </div>
+        <div style="flex:1; background:#d3d3d3; display:flex; align-items:center; justify-content:center; position:relative;">
+          <div style="width:190px; height:126px; background:#dcdcdc; box-shadow:0 2px 10px rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center;"><svg width="30" height="30" viewBox="0 0 24 24" style="fill:none; stroke:#b8b8b8; stroke-width:1.3; stroke-linejoin:round;"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M5 17l4.5-4 3.5 2.6 3-2.4 3 3"/></svg></div>
+          <div style="position:absolute; left:10px; bottom:8px; background:#fff; border:1px solid #e2e2e2; border-radius:5px; padding:3px 8px; font-size:9.5px; color:#888;">Export is hidden — “Done” replaces it</div>
+        </div>
+        <div style="width:130px; border-left:1px solid #ececec; background:#fff; padding:9px 8px; display:flex; flex-direction:column; gap:6px;">
+          <div style="width:52px; height:7px; background:#e0e0e0; border-radius:3px;"></div>
+          <div style="height:14px; border:1px solid #e6e6e6; border-radius:3px;"></div>
+          <div style="height:14px; border:1px solid #e6e6e6; border-radius:3px;"></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px; margin-top:3px;"></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px;"></div>
+          <div style="height:3px; background:#e8e8e8; border-radius:2px;"></div>
+          <div style="height:16px; background:#CC0000; border-radius:3px; margin-top:5px;"></div>
+        </div>
+      </div>
+      <div style="height:16px; background:#ececec; border-top:1px solid #e0e0e0;"></div>
+    </div>
+    <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.5;"><b style="font-weight:600; color:#555;">One editor, one mental model.</b> Double-click the picture (or “Edit in Photo Editor”) → the full editor opens with a return banner; Done applies the recipe and lands back on the page. Needs the &lt;2 s open to feel instant.</div>
+  </div>
+
+</div>
+
+<div style="position:absolute; left:80px; top:4700px; width:1104px;" data-screen-label="F · Recommendation">
+  <div class="wf-card" style="padding:14px 18px; display:flex; gap:14px; align-items:flex-start;">
+    <div style="background:#CC0000; color:#fff; font-weight:700; font-size:10px; padding:2px 7px; border-radius:3px; margin-top:1px;">REC</div>
+    <div style="flex:1;">
+      <div style="font-size:13px; font-weight:600; color:#333;">Decision: <a href="#f1">F1</a> + <a href="#f2">F2</a> together</div>
+      <div style="font-size:12px; color:#666; margin-top:4px; font-weight:300; line-height:1.55;">Inline quick fixes in the inspector cover the everyday cases without leaving the page; “Edit in Photo Editor” / double-click round-trips for everything else. One editor to learn, no duplicated panels, and the recipe lands back in the layout as a single named, revertable history step.</div>
+    </div>
+  </div>
+</div></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;showAnnotations&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Wireframe&quot; },
+  &quot;dpiState&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;green&quot;, &quot;amber&quot;, &quot;red&quot;], &quot;default&quot;: &quot;green&quot;, &quot;tsType&quot;: &quot;'green' | 'amber' | 'red'&quot;, &quot;section&quot;: &quot;Section A strip&quot; }
+}">
+class Component extends DCLogic {
+  state = { tool: 'crop' };
+  renderVals() {
+    const t = this.state.tool;
+    const d = (c) => (c ? 'block' : 'none');
+    const f = (c) => (c ? 'flex' : 'none');
+    const set = (v) => () => this.setState({ tool: v });
+    const titles = {
+      crop: 'Crop & straighten', adjust: 'Adjust', fixprint: 'Fix for print',
+      text: 'Text & image', cleanup: 'Clean up', export: 'Export',
+    };
+    const status = {
+      none: 'No tool active · drag to pan, pick a task on the left',
+      crop: 'Crop · drag the handles — rule-of-thirds shown',
+      adjust: 'Adjust · sliders preview live on the proxy',
+      fixprint: 'Fix for print · trim and bleed guides shown',
+      text: 'Text & image · drag, scale, rotate on the image',
+      cleanup: 'Clean up · brush over the area to remove',
+      export: 'Export · full-res render is queued server-side',
+    };
+    const dpi = this.props.dpiState ?? 'green';
+    return {
+      pinsDisp: d(this.props.showAnnotations ?? true),
+      rCrop: d(t === 'crop'), rAdjust: d(t === 'adjust'), rFix: d(t === 'fixprint'),
+      rText: d(t === 'text'), rClean: d(t === 'cleanup'), rExport: d(t === 'export'),
+      panelOpen: t !== 'none',
+      pCrop: t === 'crop', pAdjust: t === 'adjust', pFix: t === 'fixprint',
+      pText: t === 'text', pClean: t === 'cleanup', pExport: t === 'export',
+      panelTitle: titles[t] || '',
+      ovCrop: d(t === 'crop'), ovFix: d(t === 'fixprint'), ovText: d(t === 'text'),
+      ovClean: d(t === 'cleanup'), ovAdj: d(t === 'adjust'),
+      barClean: f(t === 'cleanup'), legendFix: f(t === 'fixprint'),
+      toolStatus: status[t] || '',
+      dpiGreen: dpi === 'green', dpiAmber: dpi === 'amber', dpiRed: dpi === 'red',
+      h: {
+        tNone: set('none'), tCrop: set('crop'), tAdjust: set('adjust'),
+        tFix: set('fixprint'), tText: set('text'), tClean: set('cleanup'),
+        tExport: set('export'), msBleed: set('fixprint'), msFit: set('fixprint'),
+        msConvert: set('export'),
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>
