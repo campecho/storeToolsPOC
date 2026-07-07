@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { extractFirstPub } from "@/lib/import/cab";
+import { extractShapeTransforms } from "@/lib/import/escher";
+import { applyFlipCorrections } from "@/lib/import/flip-correct";
 import { MAX_PUB_BYTES } from "@/lib/import/limits";
 import { mapToLayoutDocument } from "@/lib/import/mapper";
 import { buildModel } from "@/lib/import/model";
@@ -112,7 +114,20 @@ export async function POST(req: Request) {
   }
 
   const name = file.name.replace(/\.(pub|puz)$/i, "") || "Imported publication";
-  const { doc, fidelity, fonts, notes, blobs } = mapToLayoutDocument(buildModel(parseTrace(converted.trace)), name);
+  let mapResult = mapToLayoutDocument(buildModel(parseTrace(converted.trace)), name);
+
+  // Flip correction (plan §10): the conversion toolchain folds mirrored text
+  // boxes into a bogus 180° rotation, dropping the mirror. Only the source
+  // bytes carry the truth, so re-read the Escher flip flags + geometry and
+  // restore those frames. Live mode only — fixture mode's trace is the canned
+  // demo, unrelated to `pub`. A malformed Escher read proceeds uncorrected
+  // (the honest fallback); it never fails the import.
+  if (converted.mode === "live") {
+    const escher = extractShapeTransforms(pub);
+    if (escher.ok) mapResult = applyFlipCorrections(mapResult, escher.shapes);
+  }
+
+  const { doc, fidelity, fonts, notes, blobs } = mapResult;
 
   const report: ImportReport = {
     mode: converted.mode,
