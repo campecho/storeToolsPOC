@@ -453,7 +453,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — the review of the inputs and the phased build plan for this POC (homepage + feedback tracker, built).
 - **[docs/LAYOUT_EDITOR_PLAN.md](docs/LAYOUT_EDITOR_PLAN.md)** — the phased build plan for the **page-layout editor** (the Publisher replacement), mounted behind the homepage's Layout card. In progress — L1–L13 shipped; the K-tranche (Konva render) and P-tranche (`.pub` import, incl. the §10.5 font library & mapping plan) are specified and next.
 - **[docs/CUSTOMER_PROOF_STATION_PLAN.md](docs/CUSTOMER_PROOF_STATION_PLAN.md)** — the build plan for the **customer proof station** (counter sign-off: customer view + associate "Send proof" + SSE session service, steps PS1–PS5), sequenced ahead of UAT. Implements [docs/Customer_Proof_Station_Spec.md](docs/Customer_Proof_Station_Spec.md).
-- **[docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md](docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md)** — the build plan for the **photo editor** (the raster quick-fix surface: crop, adjust, fix-for-print, convert, handoffs; steps PE0–PE9), mounted behind the homepage's Photo Edit card at `/photo`. Planned — not started. Implements [docs/PHOTO_EDITOR_PLAN.md](docs/PHOTO_EDITOR_PLAN.md).
+- **[docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md](docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md)** — the build plan for the **photo editor** (the raster quick-fix surface: crop, adjust, fix-for-print, convert, handoffs, the layout round-trip; steps PE0–PE10), mounted behind the homepage's Photo Edit card at `/photo`. Planned — not started. Implements [docs/PHOTO_EDITOR_PLAN.md](docs/PHOTO_EDITOR_PLAN.md) to the [docs/handoff/photo-editor/](docs/handoff/photo-editor/) wires.
 
 ## Reference documents
 
@@ -466,6 +466,10 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   - `README.md` — the design spec (regions, control groups, state model, tokens, growth scope).
   - `Layout Editor (offline).html` — runnable prototype of the editor shell; the behavioral source of truth.
   - `Layout Editor.dc.html` — readable source (markup + `Component` logic).
+- `docs/handoff/photo-editor/` — the photo-editor design handoff package:
+  - `README.md` — the design spec (shell anatomy, the six contextual panels, print-check states, working states, experience levels, the placed-image flow, tokens).
+  - `Photo Editor Wireframes.dc.html` — the annotated wireframe canvas (Sections A–F); open in a browser, the rail→panel interaction is live.
+  - `support.js` — wireframe runtime (reference only, not part of the build).
 - `docs/Desktop_Publisher_Design_Doc.md` — the desktop publishing application design doc (product vision, experience model, capability targets the editor serves).
 - `docs/Store_Tools_Suite_Implementation_Plan.md` — the overall suite implementation plan (prototype → open beta → production); the tracker is Track C, shipped early; the layout editor is Track B's custom-size layout core.
 - `docs/Customer_Proof_Station_Spec.md` — the customer-facing proof station functional/technical spec (transport, pairing, screens, signed-proof artifact, session hygiene).
