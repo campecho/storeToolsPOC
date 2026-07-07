@@ -86,10 +86,13 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   full frame and higher-z pictures cover it. Mitigation shipped (v1.11): a z-order-aware
   import note per covered frame ("text may be hidden behind an image"). Real wrap belongs to
   the K-tranche text-layout module (`src/lib/import/mapper.ts`).
-- **Page-number fields import as literal '#'** (upstream): the trace carries Publisher's
-  page-number field as plain text with no field callback. One aggregate import note names the
-  affected frame count; substituting the real page number at import is a cheap later add
-  (`src/lib/import/mapper.ts`).
+- **Page-number fields are substituted at import** (v1.11): the trace carries Publisher's
+  page-number field as a literal '#' with no field callback, so the importer fills in each
+  page's real number for STANDALONE '#' tokens in header/footer-band frames (shared rule:
+  `src/lib/import/page-number.ts`; glued '#'s like "#1 Store" are content and stay), reported
+  as one aggregate corrected-kind note. Honest limits: the substituted value is the 1-based
+  page index (a custom Publisher start number isn't recoverable from the trace), and a
+  mid-page page-number field wouldn't be caught by the band heuristic.
 - **Flip correction covers client-anchored shapes only** (v1.11): shapes inside groups carry
   child anchors needing the parent coordinate transform — they come back bbox-less from
   `escher.ts` and can never anchor a correction (conservative miss, never a guess). No corpus

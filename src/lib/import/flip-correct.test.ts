@@ -113,7 +113,11 @@ const escherShape = (
   bbox: { x: absX - PAGE_W / 2, y: absY - PAGE_H / 2, w, h },
 });
 
-const correctedNotes = (r: MapResult) => r.notes.filter((n) => n.kind === "corrected");
+// Flip-restoration notes specifically. kind:"corrected" is now shared with
+// other importer corrections (the page-number '#' field substitution also
+// emits one), so match the flip message to count only mirrored-box restorations.
+const correctedNotes = (r: MapResult) =>
+  r.notes.filter((n) => n.kind === "corrected" && n.message.includes("Mirrored text box restored upright"));
 const frame = (r: MapResult, pageIdx: number, objIdx: number) => r.doc.pages[pageIdx].objects[objIdx] as FrameObject;
 
 /* ── Unit lane ── */
@@ -272,7 +276,7 @@ describe("flip-correct: real corpus — ecl_workbook", () => {
     // …and none coming out: every one correlated to a flipped master shape
     // whose true rotation is 0.
     expect(textFramesAt180(corrected)).toHaveLength(0);
-    const notes = corrected.notes.filter((n) => n.kind === "corrected");
+    const notes = correctedNotes(corrected); // flip restorations only
     expect(notes).toHaveLength(56);
     for (const n of notes) {
       expect(n.tier).toBe(2);

@@ -5,6 +5,7 @@ import { LayoutDocumentSchema, type Paragraph, type TextRun } from "@/schema";
 import { textContent } from "@/lib/layout/text";
 import { buildModel } from "./model";
 import { mapToLayoutDocument, PUBLISHER_DEFAULT_LINE_SPACING } from "./mapper";
+import { inPageNumberBand } from "./page-number";
 import { parseTrace } from "./trace-parser";
 
 /**
@@ -232,6 +233,19 @@ describe("corpus: production_checkpoint_labels.pub (layered, vector-heavy)", () 
   it("notes the flattened source layers once", () => {
     expect(notes.filter((n) => n.message.includes("layers flattened"))).toHaveLength(1);
   });
+
+  it("keeps the mid-page body '#' literal — no page-number substitution off the band", () => {
+    // The lamination-range copy ("…5mil: #2-#4 … 7mil: #3-#4 … 10mil: #4-#5")
+    // sits at frame center ≈ 4.5in of 11 — out of band. Its '#' glyphs (glued
+    // to digits after same-style spans merge) import verbatim, no note.
+    const withHash = texts.find((o) => o.type === "text" && o.text && textContent(o.text).includes("#"));
+    if (!withHash || withHash.type !== "text" || !withHash.text) throw new Error("expected '#' body text");
+    const plain = textContent(withHash.text);
+    expect(plain).toContain("#2-#4");
+    expect(plain).toContain("#3-#4");
+    expect(plain).toContain("#4-#5");
+    expect(notes.some((n) => n.message.includes("Page numbers"))).toBe(false);
+  });
 });
 
 describe("corpus: business_card_template_10up.pub (master-page-only template)", () => {
@@ -294,12 +308,42 @@ describe("corpus: ecl_workbook.pub (39-page training workbook — flips, arcs, w
     expect(folded).toHaveLength(56);
   });
 
-  it("announces what the associate can't see: covered text and placeholder page numbers", () => {
+  it("fills in the placeholder page numbers and announces covered text", () => {
     const overlap = notes.filter((n) => n.message.includes("hidden behind an image"));
     expect(overlap).toHaveLength(21);
-    const pageNum = notes.filter((n) => n.message.includes("Page numbers aren't imported"));
+
+    // The '#' page-number field is SUBSTITUTED, not flagged as un-imported:
+    // one aggregate corrected note covering all 39 footers.
+    const pageNum = notes.filter((n) => n.message.includes("Page numbers filled in"));
     expect(pageNum).toHaveLength(1);
+    expect(pageNum[0].kind).toBe("corrected");
     expect(pageNum[0].message).toContain("39");
+    expect(notes.some((n) => n.message.includes("aren't imported"))).toBe(false);
+
+    // Per-page substitution, spot-pinned: page 1's footer reads "Page | 1",
+    // page 37's "Page | 37".
+    const footerOf = (page: number) =>
+      doc.pages[page - 1].objects.find(
+        (o) => o.type === "text" && o.text && textContent(o.text).includes("Page |"),
+      );
+    const p1 = footerOf(1);
+    const p37 = footerOf(37);
+    if (!p1 || p1.type !== "text" || !p1.text) throw new Error("expected page 1 footer");
+    if (!p37 || p37.type !== "text" || !p37.text) throw new Error("expected page 37 footer");
+    expect(textContent(p1.text)).toContain("Page | 1");
+    expect(textContent(p37.text)).toContain("Page | 37");
+
+    // No standalone '#' page-number token survives in ANY banded (header/footer)
+    // frame — all 39 footers filled in. (Two body-copy '#' remain mid-page,
+    // correctly untouched: "Total # of Cuts", "# of Trims".)
+    const bandedLiteralHash = objects.filter(
+      (o) =>
+        o.type === "text" &&
+        o.text &&
+        inPageNumberBand(o.y + o.h / 2, doc.size.h) &&
+        /(^|\s)#(?=\s|$)/.test(textContent(o.text)),
+    );
+    expect(bandedLiteralHash).toHaveLength(0);
   });
 
   it("maps the workbook's faces: metric-compatible stand-ins by name, unknown 'Teen' to the default", () => {

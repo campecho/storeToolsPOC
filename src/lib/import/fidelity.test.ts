@@ -499,6 +499,44 @@ describe("scoring: text matching is content-first", () => {
   });
 });
 
+describe("scoring: page-number field substitution (ref-side mirror)", () => {
+  // pub2xhtml keeps Publisher's literal '#' page-number field; the mapper fills
+  // in the real number. The harness must push the reference '#' through the
+  // SAME page-number.ts rule (like tspanToken mirrors the Wingdings table) or
+  // ~39 substituted footers would fail textFlow. The gate is the matched DOC
+  // frame's center-band — the mapper's exact criterion.
+  const footerTspans = `${tspan("Page")}\n${tspan(" | ")}\n${tspan("#")}`;
+
+  it("reconciles a banded footer '#' with the doc's substituted page number", () => {
+    // doc footer center 10.7in of 11 → in band, so the doc carries "Page | 1";
+    // the reference '#' is substituted the same way and flow reconciles.
+    const refXhtml = svgPage(`<svg:text x="72" y="770.4">\n${footerTspans}\n</svg:text>`);
+    const d = doc([textFrame("footer", 1, 10.5, 6, 0.4, [run("Page | 1")])]);
+    const s = score(refXhtml, d);
+    expect(cat(s, "textFlow")).toEqual({ pass: 1, total: 1 });
+    expect(cat(s, "position")).toEqual({ pass: 1, total: 1 });
+    expect(cat(s, "font")).toEqual({ pass: 3, total: 3 }); // Page | 1 → three content tspans
+    expect(cat(s, "textAttrs")).toEqual({ pass: 3, total: 3 });
+    expect(cat(s, "color")).toEqual({ pass: 3, total: 3 });
+    expect(s.unmatched).toBe(0);
+    expect(s.extras).toBe(0);
+  });
+
+  it("compares an out-of-band '#' literally — the doc frame's center decides, not the ref anchor", () => {
+    // The pub2xhtml baseline-anchor trap: a tall body frame anchors its text at
+    // the last-line baseline, which can sit deep in the band even though the
+    // frame center is mid-page. Here the ref anchor is mid-page and the matched
+    // doc frame's center is 5in (out of band), so NO substitution happens: a
+    // doc that kept the literal '#' passes flow, a doc carrying a (wrongly)
+    // filled-in "1" fails — exactly mirroring the mapper leaving it alone.
+    const refXhtml = svgPage(`<svg:text x="72" y="360">\n${footerTspans}\n</svg:text>`);
+    const literal = doc([textFrame("body", 1, 4.75, 6, 0.5, [run("Page | #")])]);
+    const substituted = doc([textFrame("body", 1, 4.75, 6, 0.5, [run("Page | 1")])]);
+    expect(cat(score(refXhtml, literal), "textFlow")).toEqual({ pass: 1, total: 1 });
+    expect(cat(score(refXhtml, substituted), "textFlow")).toEqual({ pass: 0, total: 1 });
+  });
+});
+
 describe("scoring: images", () => {
   const patternPage = (payloadB64: string) =>
     svgPage(

@@ -12,6 +12,7 @@ import { DEFAULT_TEXT_COLOR, textContent } from "@/lib/layout/text";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
 import { assetIdFor, decodeBase64, imageDimensions, isRenderableImage, sniffImageMime } from "./image-meta";
 import type { IRDoc, IRPage, IRParagraph, IRPathSeg, IRShape, IRSpan, IRStyle } from "./model";
+import { inPageNumberBand, substitutePageTokens } from "./page-number";
 import type { FontRemap, ImportAssetsPayload, ImportNote } from "./report";
 
 /**
@@ -328,20 +329,6 @@ function fillImageIsRectangular(shape: IRShape): boolean {
  */
 const WRAP_OVERLAP_MIN = 0.2;
 
-/**
- * Page-number-placeholder band (ecl_workbook corpus). The trace carries
- * Publisher's page-number FIELD as literal `insertText (#)` — zero insertField
- * callbacks in 43MB — so footers import reading "Page | #". We treat a '#' in
- * a text frame as that placeholder ONLY when the frame's vertical center sits
- * in the top or bottom band of its page, where headers/footers live. Scoping
- * to the band is what keeps body-copy '#' from false-triggering: e.g.
- * production_checkpoint_labels has one body frame ("…5mil: #…") at mid-page
- * (center ≈ 4.5in of 11in) that must NOT be flagged. 0.15 (top/bottom 15%)
- * clears it with margin while catching every ecl_workbook footer (center
- * ≈ 10.75in of 11in).
- */
-const PAGE_NUMBER_BAND = 0.15;
-
 /** Fraction of frame `a`'s area covered by its intersection with frame `b`. */
 function coverFraction(
   a: { x: number; y: number; w: number; h: number },
@@ -363,9 +350,10 @@ function mapPage(
     notes: ImportNote[];
     fontCtx: FontCtx;
     assets: AssetRegistry;
-    /** Header/footer frames carrying Publisher's '#' page-number placeholder —
-        collected across all pages, reported as ONE aggregate note by the
-        caller (this file has dozens of identical footers). */
+    /** Header/footer frames where a '#' page-number field was substituted with
+        the real page number — collected across all pages, reported as ONE
+        aggregate "corrected" note by the caller (this file has 39 identical
+        footers). */
     pageNumberFrames: { objectId: string; pageId: string }[];
   },
 ): LayoutPage {
@@ -545,12 +533,25 @@ function mapPage(
       }
     }
 
-    // (2) Page-number placeholder: a '#' in a header/footer band is Publisher's
-    // page-number field imported as literal text. Collected here; the caller
-    // emits a single aggregate note for the whole document.
-    if (plain.includes("#")) {
-      const cy = t.y + t.h / 2;
-      if (cy <= PAGE_NUMBER_BAND * ir.hIn || cy >= (1 - PAGE_NUMBER_BAND) * ir.hIn) {
+    // (2) Page-number field: Publisher's page-number FIELD arrives as a literal
+    // '#' (the trace has no insertField callbacks). In a header/footer band we
+    // SUBSTITUTE the real page number for each STANDALONE '#' token (the shared
+    // page-number.ts rule) — "Page | #" → "Page | 5". Frames where a token was
+    // actually replaced collect for the caller's single "corrected" note; a '#'
+    // glued to other glyphs, or one outside the band, is content and stays put.
+    if (plain.includes("#") && inPageNumberBand(t.y + t.h / 2, ir.hIn)) {
+      const pageNumber = pageIndex + 1;
+      let hits = 0;
+      const paragraphs = t.text.paragraphs.map((p) => ({
+        ...p,
+        runs: p.runs.map((r) => {
+          const sub = substitutePageTokens(r.text, pageNumber);
+          hits += sub.hits;
+          return sub.hits ? { ...r, text: sub.text } : r;
+        }),
+      }));
+      if (hits > 0) {
+        t.text = { ...t.text, paragraphs };
         ctx.pageNumberFrames.push({ objectId: t.id, pageId });
       }
     }
@@ -594,14 +595,16 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   if (ir.sawGroups) notes.push({ tier: 2, message: "grouped objects imported ungrouped (grouping is backlog)" });
   if (ctx.pageNumberFrames.length) {
     // Publisher's page-number field imported as a literal '#' (the trace has no
-    // insertField callbacks). One aggregate note anchored to the first such
-    // frame — dozens of identical footers would drown the report otherwise.
+    // insertField callbacks) — substituted with each page's number in the band
+    // pass above. One aggregate "corrected" note anchored to the first such
+    // frame — 39 identical footers would drown the report otherwise.
     const [{ objectId, pageId }] = ctx.pageNumberFrames;
     notes.push({
+      kind: "corrected",
       tier: 2,
       objectId,
       pageId,
-      message: `Page numbers aren't imported — ${ctx.pageNumberFrames.length} footer/header frames show Publisher's '#' placeholder where the page number would print.`,
+      message: `Page numbers filled in — Publisher's '#' placeholder replaced with each page's number in ${ctx.pageNumberFrames.length} footer/header frames.`,
     });
   }
   if (!ir.pages.length) {

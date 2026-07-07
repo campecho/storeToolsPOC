@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LayoutDocumentSchema } from "@/schema";
+import { LayoutDocumentSchema, type LayoutObject } from "@/schema";
 import { textContent } from "@/lib/layout/text";
 import { decodeBase64 } from "./image-meta";
 import { buildModel } from "./model";
@@ -515,10 +515,12 @@ describe("arc paths: A → cubics at the model boundary", () => {
  * Honest-reporting passes (ecl_workbook slice): text hidden behind a higher-z
  * picture (Publisher wraps text around inline pictures; libmspub emits no wrap
  * data, so text lays out through the full frame and the picture paints over
- * it), and page-number FIELDS that arrive as a literal '#'. Neither is fixable
- * at the data level in this slice — the fix is announcing them in the report.
+ * it) — announced, not fixable at the data level here — and page-number FIELDS
+ * that arrive as a literal '#', which we SUBSTITUTE: each header/footer-band
+ * frame imports with the real page number where the '#' stood, and the
+ * aggregate becomes a kind:"corrected" note.
  */
-describe("mapper honest-reporting passes: wrap-overlap + page-number placeholders", () => {
+describe("mapper honest-reporting passes: wrap-overlap + page-number substitution", () => {
   // Same real 8×8 PNG the golden trace ships → a renderable picture frame.
   const PNG =
     "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mM4w8CAFTEMLQkAIPQzAWg3IxUAAAAASUVORK5CYII=";
@@ -552,7 +554,11 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number placeholder
   const OVERLAP = "hidden behind an image";
   const overlapNotes = (notes: ImportNote[]) => notes.filter((n) => n.message.includes(OVERLAP));
   const pageNumberNotes = (notes: ImportNote[]) =>
-    notes.filter((n) => n.message.includes("Page numbers aren't imported"));
+    notes.filter((n) => n.message.includes("Page numbers filled in"));
+  const textOf = (o: LayoutObject): string => {
+    if (o.type !== "text" || !o.text) throw new Error("expected text frame");
+    return textContent(o.text);
+  };
 
   it("flags a text frame a higher-z picture covers past the 20% gate", () => {
     // text (idx0) then picture (idx1) → picture ABOVE. 2×2 over a 4×4 frame = 25%.
@@ -607,33 +613,52 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number placeholder
     expect(overlapNotes(notes)).toHaveLength(0);
   });
 
-  it("aggregates footer/header '#' placeholders into one document-level note", () => {
-    // two pages, each a bottom-band footer carrying Publisher's '#' field.
+  it("substitutes the per-page number for a banded footer '#' and reports one corrected note", () => {
+    // two pages, each a bottom-band footer carrying Publisher's '#' field →
+    // each fills in ITS OWN page number, and the aggregate is a corrected note.
     const { doc: d, notes } = convert(
       doc(
         page(textFrame(0.5, 10.5, 7.5, 0.4, "V. May-12   Page | #")),
         page(textFrame(0.5, 10.5, 7.5, 0.4, "V. May-12   Page | #")),
       ),
     );
+    expect(textOf(d.pages[0].objects[0])).toBe("V. May-12   Page | 1");
+    expect(textOf(d.pages[1].objects[0])).toBe("V. May-12   Page | 2");
+    // no literal '#' survives in the substituted footers
+    expect(textOf(d.pages[0].objects[0])).not.toContain("#");
+
     const flagged = pageNumberNotes(notes);
     expect(flagged).toHaveLength(1);
     expect(flagged[0].message).toContain("2 footer/header frames");
     expect(flagged[0]).toMatchObject({
+      kind: "corrected", // renders in the report panel's "Corrected" group
       tier: 2,
       objectId: d.pages[0].objects[0].id, // anchored to the first such frame
       pageId: "imp-p1",
     });
-    expect(flagged[0].kind).toBeUndefined();
+    // the old "aren't imported" wording is gone
+    expect(notes.some((n) => n.message.includes("aren't imported"))).toBe(false);
   });
 
-  it("does NOT flag a body-text '#' outside the header/footer bands", () => {
-    // center at 5.5in of 11in — squarely body copy, not a footer.
-    const { notes } = convert(doc(page(textFrame(1, 5, 4, 1, "Cut 12 pieces at 5mil: #"))));
+  it("leaves a '#' glued to other glyphs untouched even inside the band", () => {
+    // "#1" is a store number, not a page-number field — the '#' isn't a
+    // standalone token, so it imports verbatim and yields no corrected note.
+    const { doc: d, notes } = convert(doc(page(textFrame(0.5, 10.5, 7.5, 0.4, "Store #1 — Main St"))));
+    expect(textOf(d.pages[0].objects[0])).toBe("Store #1 — Main St");
+    expect(pageNumberNotes(notes)).toHaveLength(0);
+  });
+
+  it("does NOT substitute a standalone body-copy '#' outside the header/footer bands", () => {
+    // center at 5.5in of 11in — squarely body copy. The '#' is a standalone
+    // token but the frame is out of band, so it stays literal, no note.
+    const { doc: d, notes } = convert(doc(page(textFrame(1, 5, 4, 1, "Total # of Cuts per Order"))));
+    expect(textOf(d.pages[0].objects[0])).toBe("Total # of Cuts per Order");
     expect(pageNumberNotes(notes)).toHaveLength(0);
   });
 
   it("emits no page-number note when a banded frame has no '#'", () => {
-    const { notes } = convert(doc(page(textFrame(0.5, 10.5, 7.5, 0.4, "Confidential — do not copy"))));
+    const { doc: d, notes } = convert(doc(page(textFrame(0.5, 10.5, 7.5, 0.4, "Confidential — do not copy"))));
+    expect(textOf(d.pages[0].objects[0])).toBe("Confidential — do not copy");
     expect(pageNumberNotes(notes)).toHaveLength(0);
   });
 });

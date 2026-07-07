@@ -432,7 +432,10 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   covered frames announced, zero false positives on the rest of the corpus). The workbook
   joined the corpus and the scored harness: fidelity denominators more than tripled, still
   100% across all seven categories. Verified: 530 unit tests, 80 e2e, live import with
-  before/after screenshots on pages 1 and 37.
+  before/after screenshots on pages 1 and 37. Follow-up: **page numbers now fill in at
+  import** — standalone '#' tokens in header/footer frames become each page's real number
+  (one shared rule, mirrored on the harness's reference side; glued '#'s stay content),
+  reported as a corrected-kind note. Live-verified "Page | 1 / 20 / 37"; 549 unit tests.
 
 ## Where things live
 

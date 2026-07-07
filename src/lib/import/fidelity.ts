@@ -4,6 +4,7 @@ import { textContent } from "@/lib/layout/text";
 import { arcToCubics } from "./arc";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
 import { decodeBase64 } from "./image-meta";
+import { inPageNumberBand, substitutePageTokens } from "./page-number";
 import type { ImportAssetsPayload } from "./report";
 
 /**
@@ -464,20 +465,32 @@ const refTextPoint = (t: RefText) => (t.rotate ? { x: t.rotate.cx, y: t.rotate.c
 
 /* ── Text comparison ── */
 
-/** Dingbat tspans compare post-translation: the importer deliberately maps
-    Wingdings glyph bytes to Unicode symbols (font-remap.ts) — the SAME table
-    translates the reference side, so the comparison measures the pipeline,
-    not the documented glyph substitution. */
-function tspanToken(t: RefTspan): string {
-  const text = isDingbat(t.family) ? translateDingbats(t.text).text : t.text;
+/**
+ * Reference tspan → its comparison token. Two importer transforms are mirrored
+ * onto the reference side so the harness measures the pipeline, not a
+ * documented substitution:
+ *   - Dingbat tspans compare post-translation: the importer maps Wingdings
+ *     glyph bytes to Unicode symbols (font-remap.ts) — the SAME table runs here.
+ *   - Page-number fields: when `pageNumber` is supplied (the caller decides
+ *     per frame — see scoreMatchedText), each STANDALONE '#' is replaced with
+ *     the page number via the SAME page-number.ts rule the mapper applies, so
+ *     the substituted footer ("Page | 12") reconciles instead of failing flow.
+ * The page-number swap runs on the raw text (whose whitespace delimits the '#'
+ * token) before whitespace is normalized.
+ */
+function tspanToken(t: RefTspan, pageNumber?: number): string {
+  const translated = isDingbat(t.family) ? translateDingbats(t.text).text : t.text;
+  const text = pageNumber !== undefined ? substitutePageTokens(translated, pageNumber).text : translated;
   return normalizeText(text);
 }
 
 /** Whitespace-free content key for match-by-content (scoring stays strict —
     see alignTspans; this only decides WHICH frame a reference text pairs
-    with, before proximity breaks ties). */
-function refContentKey(t: RefText): string {
-  return t.tspans.map(tspanToken).join("").replace(/\s+/g, "");
+    with, before proximity breaks ties). `pageNumber` mirrors the mapper's
+    page-number substitution so a substituted footer's key matches its doc
+    frame's — supplied per candidate doc frame by the caller. */
+function refContentKey(t: RefText, pageNumber?: number): string {
+  return t.tspans.map((s) => tspanToken(s, pageNumber)).join("").replace(/\s+/g, "");
 }
 function docContentKey(t: TextProps): string {
   return normalizeText(textContent(t)).replace(/\s+/g, "");
@@ -502,7 +515,11 @@ function docChars(text: TextProps): DocChar[] {
  * returned map carries each tspan's aligned runs for the per-tspan
  * font/textAttrs/color checks. null = flow mismatch.
  */
-function alignTspans(tspans: RefTspan[], chars: DocChar[]): Map<number, TextRun[]> | null {
+function alignTspans(
+  tspans: RefTspan[],
+  chars: DocChar[],
+  pageNumber?: number,
+): Map<number, TextRun[]> | null {
   const isWs = (c: string) => /\s/.test(c);
   let pos = 0;
   const skipWs = () => {
@@ -510,7 +527,7 @@ function alignTspans(tspans: RefTspan[], chars: DocChar[]): Map<number, TextRun[
   };
   const out = new Map<number, TextRun[]>();
   for (let i = 0; i < tspans.length; i++) {
-    const token = tspanToken(tspans[i]);
+    const token = tspanToken(tspans[i], pageNumber);
     if (!token) continue; // empty/whitespace-only tspan (paragraph terminator)
     skipWs();
     const runs: TextRun[] = [];
@@ -558,7 +575,24 @@ class Tallies {
   }
 }
 
-function scoreMatchedText(ref: RefText, doc: DocText, t: Tallies, where: string): void {
+function scoreMatchedText(
+  ref: RefText,
+  doc: DocText,
+  t: Tallies,
+  where: string,
+  pageH: number,
+  pageNumber: number,
+): void {
+  // Page-number field: the mapper substitutes '#' → page number in frames whose
+  // CENTER sits in the header/footer band. Mirror it here under the SAME
+  // frame-center test — using the matched DOC frame's center (which the harness
+  // has), NOT the reference anchor. That distinction matters: pub2xhtml anchors
+  // a whole text frame at its last-line baseline, so a tall body frame carrying
+  // an incidental '#' ("Total # of Cuts") anchors deep in the bottom band even
+  // though its center is mid-page — gating on the doc center keeps that '#'
+  // literal on both sides, exactly as the mapper leaves it. When the frame is
+  // banded, the reference '#' becomes the page number so textFlow reconciles.
+  const pn = inPageNumberBand(doc.y + doc.h / 2, pageH) ? pageNumber : undefined;
   if (ref.rotate) {
     const d = dist({ x: ref.rotate.cx, y: ref.rotate.cy }, { x: doc.x + doc.w / 2, y: doc.y + doc.h / 2 });
     t.check(
@@ -576,17 +610,17 @@ function scoreMatchedText(ref: RefText, doc: DocText, t: Tallies, where: string)
     );
   }
 
-  const aligned = alignTspans(ref.tspans, docChars(doc.text));
+  const aligned = alignTspans(ref.tspans, docChars(doc.text), pn);
   t.check(
     "textFlow",
     aligned !== null,
-    `${where} text ${doc.id}: flow mismatch — ref "${normalizeText(ref.tspans.map(tspanToken).join(" ")).slice(0, 60)}" vs doc "${normalizeText(textContent(doc.text)).slice(0, 60)}"`,
+    `${where} text ${doc.id}: flow mismatch — ref "${normalizeText(ref.tspans.map((s) => tspanToken(s, pn)).join(" ")).slice(0, 60)}" vs doc "${normalizeText(textContent(doc.text)).slice(0, 60)}"`,
   );
 
   ref.tspans.forEach((span, i) => {
-    if (!tspanToken(span)) return; // no content to attribute
+    if (!tspanToken(span, pn)) return; // no content to attribute
     const runs = aligned?.get(i) ?? null;
-    const label = `${where} text ${doc.id} tspan "${tspanToken(span).slice(0, 30)}"`;
+    const label = `${where} text ${doc.id} tspan "${tspanToken(span, pn).slice(0, 30)}"`;
     if (!runs) {
       // flow didn't reconcile — the span's styling can't be attributed
       t.check("font", false, `${label}: unaligned`);
@@ -617,9 +651,11 @@ function scoreMatchedText(ref: RefText, doc: DocText, t: Tallies, where: string)
   });
 }
 
-/** An unmatched reference element fails every category applicable to it. */
+/** An unmatched reference element fails every category applicable to it. No
+    page-number substitution: there is no matched doc frame to mirror, and the
+    tokens here only build the miss label. */
 function failUnmatchedText(ref: RefText, t: Tallies, where: string): void {
-  const what = `${where} unmatched ref text "${normalizeText(ref.tspans.map(tspanToken).join(" ")).slice(0, 40)}"`;
+  const what = `${where} unmatched ref text "${normalizeText(ref.tspans.map((s) => tspanToken(s)).join(" ")).slice(0, 40)}"`;
   t.check("position", false, what);
   t.check("textFlow", false, what);
   for (const span of ref.tspans) {
@@ -702,16 +738,22 @@ export function scoreAgainstReference(input: FidelityInput): FileScore {
     const refPattern = refShapesAll.filter((s) => s.patternId);
     const refImagesById = new Map((ref?.images ?? []).map((i) => [i.id, i]));
 
-    /* Texts: content-equality first (tie-break nearest), then proximity. */
+    /* Texts: content-equality first (tie-break nearest), then proximity. The
+       page-number substitution is keyed on the CANDIDATE doc frame's band (the
+       mapper's criterion): a ref key is built with the page number only when
+       compared against a banded doc frame, so a substituted footer's key
+       ("…Page | 12") matches its doc frame while an incidental body '#' still
+       matches its (out-of-band) frame literally. */
     const textTaken = { ref: new Set<number>(), doc: new Set<number>() };
-    const refKeys = refTexts.map(refContentKey);
     const docKeys = docEls.texts.map((d) => docContentKey(d.text));
     const contentPairs: Pair[] = [];
     const anyPairs: Pair[] = [];
     refTexts.forEach((r, ri) => {
       docEls.texts.forEach((d, di) => {
         const dd = dist(refTextPoint(r), { x: d.x + d.w / 2, y: d.y + d.h / 2 });
-        if (refKeys[ri] && refKeys[ri] === docKeys[di]) contentPairs.push({ r: ri, d: di, dist: dd });
+        const pn = inPageNumberBand(d.y + d.h / 2, size.h) ? p + 1 : undefined;
+        const refKey = refContentKey(r, pn);
+        if (refKey && refKey === docKeys[di]) contentPairs.push({ r: ri, d: di, dist: dd });
         anyPairs.push({ r: ri, d: di, dist: dd });
       });
     });
@@ -723,7 +765,7 @@ export function scoreAgainstReference(input: FidelityInput): FileScore {
         unmatched++;
         failUnmatchedText(r, t, where);
       } else {
-        scoreMatchedText(r, docEls.texts[di], t, where);
+        scoreMatchedText(r, docEls.texts[di], t, where, size.h, p + 1);
       }
     });
     extras += docEls.texts.filter((_, di) => !textTaken.doc.has(di)).length;
