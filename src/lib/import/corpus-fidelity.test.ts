@@ -30,8 +30,10 @@ import { parseTrace } from "./trace-parser";
 
 const FIDELITY_TARGET = 0.9;
 
-/** The content-bearing corpus files the metric runs on. */
-const FILES = ["3up_tabs", "bcim_double_cut", "production_checkpoint_labels"];
+/** The content-bearing corpus files the metric runs on. ecl_workbook (39
+    pages, 508 elements — the field-contributed training workbook) joined
+    after the arc→cubic fix took its position score from 91.9% to 100%. */
+const FILES = ["3up_tabs", "bcim_double_cut", "production_checkpoint_labels", "ecl_workbook"];
 
 const read = (dir: string, file: string) =>
   readFileSync(join(process.cwd(), "fixtures", dir, file), "utf8");

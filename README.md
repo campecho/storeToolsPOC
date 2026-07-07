@@ -415,6 +415,24 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   fix the live check exposed: the canvas overflow badge's fixed 1px cushion flipped verdicts
   at high zoom on borderline frames — it now scales with zoom, matching the import check at
   every zoom. Verified: 462 unit tests, 80 e2e, live import before/after screenshots.
+- **`.pub` import — field-corpus fixes (plan v1.11): the first user-reported file, root-caused
+  to the bytes.** A 39-page training workbook imported with its title upside down on every
+  page, footers flipped on odd pages, and text hidden behind screenshots. Diagnosis went below
+  the conversion toolchain: Publisher stores mirroring as Escher flip flags and renders text
+  in flipped boxes upright, but libmspub folds the flags into a 180° rotation for text and
+  discards the mirror — so we built a pure-TS CFBF/Escher sidecar reader that pulls flip
+  flags, true rotation, and anchors from the `.pub` itself (Publisher's client anchor decoded
+  empirically: fieldId/EMU pairs, page-center origin), correlates by geometry, and restores
+  all 56 folded frames upright with deep-linkable "Corrected" notes — never touching genuine
+  180° rotations (tent cards are real). Along the way the fidelity harness caught arcs
+  degrading to invisible height-0 boxes: elliptical arcs now convert to exact cubic béziers
+  (quadrant-split so control hulls never overshoot), turning 41 invisible callout circles into
+  real vector shapes and the file's position score from 91.9% to 100%. Text wrap and
+  page-number fields — which libmspub simply doesn't emit — get honest import notes (21
+  covered frames announced, zero false positives on the rest of the corpus). The workbook
+  joined the corpus and the scored harness: fidelity denominators more than tripled, still
+  100% across all seven categories. Verified: 530 unit tests, 80 e2e, live import with
+  before/after screenshots on pages 1 and 37.
 
 ## Where things live
 

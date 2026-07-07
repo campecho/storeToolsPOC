@@ -248,3 +248,63 @@ describe("corpus: business_card_template_10up.pub (master-page-only template)", 
     expect(flag).toBeDefined();
   });
 });
+
+describe("corpus: ecl_workbook.pub (39-page training workbook — flips, arcs, wrap)", () => {
+  // The field-reported file (2026-07): flipped master text boxes, screenshot-
+  // heavy pages whose body copy Publisher wraps around images, numbered
+  // callout circles drawn as two-arc ellipses, and '#' page-number fields.
+  const { doc, fidelity, fonts, notes } = convert("ecl_workbook");
+  const objects = doc.pages.flatMap((p) => p.objects);
+
+  it("is a valid 39-page letter document carrying all 508 objects, nothing degraded", () => {
+    expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
+    expect(doc.pages).toHaveLength(39);
+    expect(doc.size).toEqual({ w: 8.5, h: 11 });
+    expect(objects).toHaveLength(508);
+    // 41 arc paths used to degrade to height-0 bbox rects; all real now
+    expect(fidelity).toEqual({ converted: 508, degraded: 0, flagged: 0 });
+  });
+
+  it("converts the 157 vector paths — including the 41 two-arc callout circles — with real segments", () => {
+    const paths = objects.filter((o) => o.type === "path");
+    expect(paths).toHaveLength(157);
+    for (const p of paths) {
+      if (p.type !== "path") throw new Error("path");
+      expect(p.d && p.d.length > 0).toBe(true);
+    }
+    expect(notes.some((n) => n.message.includes("bounding box"))).toBe(false);
+    // the page-3 callout circle: a real ~0.466×0.400in ellipse, not h=0
+    const circle = doc.pages[2].objects.find(
+      (o) => o.type === "path" && Math.abs(o.w - 0.466) < 0.001 && Math.abs(o.h - 0.4) < 0.001,
+    );
+    expect(circle).toBeDefined();
+  });
+
+  it("dedupes the 132 screenshot frames to 45 assets", () => {
+    expect(objects.filter((o) => o.type === "picture")).toHaveLength(132);
+    expect(Object.keys(doc.assets)).toHaveLength(45);
+  });
+
+  it("carries the folded flip rotation honestly at the mapper level — 56 frames at exactly 180", () => {
+    // The trace-level truth: the toolchain folds Publisher's flip flags into
+    // rotate:180 for text. The ROUTE corrects these from the source bytes
+    // (escher.ts + flip-correct.ts — integration-tested there with this same
+    // file: 56 of 56 restored upright); the mapper stays faithful to its input.
+    const folded = objects.filter((o) => o.type === "text" && o.rotation === 180);
+    expect(folded).toHaveLength(56);
+  });
+
+  it("announces what the associate can't see: covered text and placeholder page numbers", () => {
+    const overlap = notes.filter((n) => n.message.includes("hidden behind an image"));
+    expect(overlap).toHaveLength(21);
+    const pageNum = notes.filter((n) => n.message.includes("Page numbers aren't imported"));
+    expect(pageNum).toHaveLength(1);
+    expect(pageNum[0].message).toContain("39");
+  });
+
+  it("maps the workbook's faces: metric-compatible stand-ins by name, unknown 'Teen' to the default", () => {
+    expect(fonts.find((f) => f.source === "Arial")?.mappedTo).toBe("Arial");
+    expect(fonts.find((f) => f.source === "Times New Roman")?.mappedTo).toBe("Times New Roman");
+    expect(fonts.find((f) => f.source === "Teen")?.mappedTo).toBe("Motiva Sans");
+  });
+});

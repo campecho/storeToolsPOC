@@ -81,6 +81,19 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   re-run the fit**. The live overflow badge is the honest fallback there; a "re-fit" quick
   action on a badged frame is a later slice (`src/lib/import/overset.ts`,
   `src/components/layout-editor/OversetCheck.tsx`).
+- **Text wrap around pictures isn't imported** (upstream, corpus-verified): libmspub emits no
+  wrap data at all, so body copy Publisher wrapped around inline images lays out through the
+  full frame and higher-z pictures cover it. Mitigation shipped (v1.11): a z-order-aware
+  import note per covered frame ("text may be hidden behind an image"). Real wrap belongs to
+  the K-tranche text-layout module (`src/lib/import/mapper.ts`).
+- **Page-number fields import as literal '#'** (upstream): the trace carries Publisher's
+  page-number field as plain text with no field callback. One aggregate import note names the
+  affected frame count; substituting the real page number at import is a cheap later add
+  (`src/lib/import/mapper.ts`).
+- **Flip correction covers client-anchored shapes only** (v1.11): shapes inside groups carry
+  child anchors needing the parent coordinate transform — they come back bbox-less from
+  `escher.ts` and can never anchor a correction (conservative miss, never a guess). No corpus
+  case exercises this; pages with `sizeOverride` similarly fall back to uncorrected.
 - **Master pages don't survive `.pub` import** (upstream): libmspub never emits master-page
   content, so publications whose content lives on masters convert **empty** — real corpus
   case: `fixtures/pub-corpus/business_card_template_10up.pub`. The mapper flags it tier-3
