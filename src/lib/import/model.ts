@@ -1,6 +1,7 @@
 import { arcToCubics } from "./arc";
 import type { PropMap, PropValue, TraceEvent } from "./trace-parser";
 import { toInches, toMultiplier, toNumber, toPoints } from "./trace-parser";
+import { flattenFillColor } from "./gradient";
 
 /**
  * Intermediate layout model (plan §10.2) — the research doc's parse-side hub,
@@ -12,7 +13,9 @@ import { toInches, toMultiplier, toNumber, toPoints } from "./trace-parser";
  */
 
 export type IRStyle = {
-  fill: string | null; // hex color; null = none (gradients degrade in mapper)
+  /** hex color; null = none. Gradients carry their flattened color here
+      (gradient.ts) alongside fillKind — the mapper notes the degradation. */
+  fill: string | null;
   fillKind?: string; // raw draw:fill value when not solid/none (gradient…)
   /** draw:fill: bitmap WITH an embedded payload — the corpus's dominant image
       path. Carries the base64, its declared mime, and style:repeat. When a
@@ -95,7 +98,11 @@ function readStyle(props: PropMap): IRStyle {
     style.fill = typeof c === "string" ? c : null;
   } else if (typeof fill === "string" && fill !== "none") {
     const c = props["draw:fill-color"];
-    style.fill = typeof c === "string" ? c : null;
+    // libmspub puts a gradient's colors on svg:linearGradient stop vectors,
+    // NOT draw:fill-color (corpus: New_Rack_Card's full-page background) —
+    // without the fallback the fill imports null while the mapper's note
+    // still claims it was flattened.
+    style.fill = typeof c === "string" ? c : flattenFillColor(props);
     const image = fill === "bitmap" ? props["draw:fill-image"] : undefined;
     if (typeof image === "string") {
       // draw:fill: bitmap with a payload — the mapper extracts it to an asset

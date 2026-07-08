@@ -424,6 +424,51 @@ describe("mapper edge cases", () => {
 });
 
 /**
+ * Gradient fills (New_Rack_Card regression): libmspub carries a gradient's
+ * colors on svg:linearGradient stop vectors, never draw:fill-color, so the
+ * flat color must come from the stops — before gradient.ts the background
+ * imported with NO fill while the note still claimed it was "flattened".
+ */
+describe("gradient fill flattening", () => {
+  it("fills the shape with the stops' average color and notes the degradation", () => {
+    // the rack card's full-page background, verbatim from its pub2raw trace
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 8.5000in, svg:width: 3.6600in)",
+      "    setStyle(draw:angle: 0.0000in, draw:fill: gradient, draw:stroke: none, libmspub:shade: normal, " +
+        "svg:fill-rule: nonzero, svg:linearGradient: ((svg:offset: 0.0000%, svg:stop-color: #3b618e, " +
+        "svg:stop-opacity: 100.0000%), (svg:offset: 100.0000%, svg:stop-color: #7f7f7f, svg:stop-opacity: 100.0000%)))",
+      "    drawPolygon (svg:points: ((svg:x: 0.2500in, svg:y: 0.2500in), (svg:x: 3.4100in, svg:y: 0.2500in), " +
+        "(svg:x: 3.4100in, svg:y: 8.2500in), (svg:x: 0.2500in, svg:y: 8.2500in), (svg:x: 0.2500in, svg:y: 0.2500in)))",
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const o = result.doc.pages[0].objects[0];
+    if (o.type === "line") throw new Error("unexpected line");
+    expect(o.fill).toBe("#5d7087"); // per-channel midpoint of the two stops
+    expect(result.notes.some((n) => n.tier === 2 && n.message === "gradient fill flattened to the nearest flat color")).toBe(true);
+    expect(result.fidelity.degraded).toBe(1);
+  });
+
+  it("says a colorless non-solid fill was dropped, not flattened", () => {
+    const trace = [
+      "startDocument()",
+      "  startPage(svg:height: 11.0000in, svg:width: 8.5000in)",
+      "    setStyle(draw:fill: pattern, draw:stroke: none)",
+      "    drawRectangle (svg:height: 1.0000in, svg:width: 1.0000in, svg:x: 1.0000in, svg:y: 1.0000in)",
+      "  endPage",
+      "endDocument()",
+    ].join("\n");
+    const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
+    const o = result.doc.pages[0].objects[0];
+    if (o.type === "line") throw new Error("unexpected line");
+    expect(o.fill).toBeNull();
+    expect(result.notes.some((n) => n.message === "pattern fill dropped — the source carried no color to flatten to")).toBe(true);
+  });
+});
+
+/**
  * Arc paths (ecl_workbook slice): librevenge A segments lower to cubics at
  * the model boundary (arc.ts), the shape bbox derives from the CONVERTED
  * segment hull (raw arc props carry only endpoints — the corpus's two-arc

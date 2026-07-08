@@ -378,7 +378,14 @@ function mapPage(
       stroke: mapStroke(shape.style),
     };
     if (shape.style.fillKind) {
-      flag(`${shape.style.fillKind} fill flattened to the nearest flat color`);
+      // "flattened" only when a flat color was actually derived (gradient.ts);
+      // a pattern / payload-less bitmap with no usable color is dropped, and
+      // the note must not claim otherwise.
+      flag(
+        base.fill !== null
+          ? `${shape.style.fillKind} fill flattened to the nearest flat color`
+          : `${shape.style.fillKind} fill dropped — the source carried no color to flatten to`,
+      );
     }
 
     // Bitmap fills (P3) — the corpus's dominant image path: setStyle applies an
