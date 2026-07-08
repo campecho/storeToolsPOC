@@ -110,7 +110,7 @@ The Photo Edit card in `src/components/home/QuickJumpRow.tsx` gets `href: "/phot
 src/app/photo/page.tsx                      → <PhotoEditorShell/> (client, Suspense for search params)
 src/components/photo-editor/
   PhotoEditorShell.tsx                      → wire regions 1–7: TitleBar · ActionBar · (TaskRail · canvas · ContextPanel) · StatusBar; lg gate
-  TitleBar.tsx                              → ← back · Staples badge · filename + dims/MP · order chip (inert [INT]) · Simple/Standard/Pro · store · help
+  TitleBar.tsx                              → ← back · Staples badge · filename + dims/MP · order chip (inert [INT]) · Simple/Standard (two segments, dev #2) · store · help
   ActionBar.tsx                             → undo/redo · Auto-enhance · Compare (hold) · "Quick fixes": Fix bleed / Fit to size / Convert format · ⋯
   TaskRail.tsx                              → Crop · Adjust · Fix for print · Text & image · Clean up · [spacer] · Export; red inset active ring
   PrintStrip.tsx                            → dims · target + Change ▾ · DPI chip (green/amber/red) · bleed + Add → · color note + one-click Convert to CMYK (dev #6) · History · N
