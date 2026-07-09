@@ -352,6 +352,31 @@ describe("session gesture fields — cleared on tool + history moves", () => {
   });
 });
 
+describe("rendering flag — session-only (PE3 export)", () => {
+  it("defaults false and setRendering toggles it", () => {
+    expect(s().rendering).toBe(false);
+    s().setRendering(true);
+    expect(s().rendering).toBe(true);
+    s().setRendering(false);
+    expect(s().rendering).toBe(false);
+  });
+
+  it("closeDocument clears an in-flight rendering flag", () => {
+    s().openDocument(makeDoc());
+    s().setRendering(true);
+    s().closeDocument();
+    expect(s().rendering).toBe(false);
+  });
+
+  it("stays out of partialize (never persisted)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", rendering: true });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("rendering" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+  });
+});
+
 describe("persist merge guard", () => {
   const current = () => usePhotoStore.getInitialState();
 

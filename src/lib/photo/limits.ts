@@ -31,6 +31,15 @@ export const MAX_PHOTO_PIXELS = envInt("STP_MAX_PHOTO_PIXELS", 80_000_000);
 export const INTAKE_TIMEOUT_MS = envInt("STP_PHOTO_INTAKE_TIMEOUT_MS", 20_000);
 
 /**
+ * Wall-clock ceiling on a render (full-res replay) jail job; overrun ⇒ SIGKILL.
+ * Higher than intake (a 12 MP export replays a chain of geometry passes, ≈1.6 s
+ * per the v1.4 spike, but a deep recipe compounds), still bounded so a hang is
+ * a finding, not a wait (plan §4 PE3). Sits above the shared PHOTO_CPU_SECONDS
+ * rlimit, which stays the kernel-enforced backstop.
+ */
+export const RENDER_TIMEOUT_MS = envInt("STP_PHOTO_RENDER_TIMEOUT_MS", 60_000);
+
+/**
  * prlimit RLIMIT_CPU for jail subprocesses, seconds. Sits ABOVE the wall
  * timeout on purpose: the wall clock is the primary kill, the CPU rlimit is
  * the kernel-enforced backstop (the pub2raw rationale, verbatim).

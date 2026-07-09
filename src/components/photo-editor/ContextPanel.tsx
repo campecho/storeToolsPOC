@@ -4,6 +4,7 @@ import { Crop, Download, Eraser, Printer, SlidersHorizontal, Type } from "lucide
 import type { LucideIcon } from "lucide-react";
 import type { PhotoTool } from "@/lib/store/photo-store";
 import { CropPanel } from "./panels/CropPanel";
+import { ExportPanel } from "./panels/ExportPanel";
 
 /**
  * Contextual panel host (wire region 6). Renders only while a tool is active
@@ -81,6 +82,8 @@ export function ContextPanel({ activeTool, onClose }: { activeTool: PhotoTool; o
 
       {activeTool === "crop" ? (
         <CropPanel />
+      ) : activeTool === "export" ? (
+        <ExportPanel />
       ) : (
         <div className="flex-1 overflow-hidden p-4">
           <div className="rounded-[8px] border border-[#e6e6e6] bg-[#fafafa] p-4">

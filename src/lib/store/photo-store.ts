@@ -70,6 +70,11 @@ export interface PhotoEditorState {
   previewOp: PhotoOp | null;
   /** Press-and-hold "Compare" peek at the original (before any ops) — session-only. */
   comparing: boolean;
+  /** True while a full-resolution server render is in flight (PE3 export) —
+      session-only, never persisted. Drives the status-bar progress chip and the
+      Export panel's double-click guard; the canvas stays interactive throughout
+      (the render is async and blocks nothing). Cleared on closeDocument. */
+  rendering: boolean;
 
   /** Open a schema-validated document; a malformed shape is refused. Resets
       the active tool to "none" and clears every session gesture field (a fresh
@@ -85,6 +90,9 @@ export interface PhotoEditorState {
   setCropDraft: (draft: PhotoCropDraft) => void;
   setPreviewOp: (op: PhotoOp | null) => void;
   setComparing: (comparing: boolean) => void;
+  /** Toggle the full-res render-in-flight flag (Export panel wraps its render
+      call in setRendering(true)…setRendering(false)). */
+  setRendering: (rendering: boolean) => void;
   /** Append an op at the cursor, dropping the redo tail; cursor -> recipe end.
       No-op when there is no document.
 
@@ -174,6 +182,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
       cropDraft: null,
       previewOp: null,
       comparing: false,
+      rendering: false,
 
       openDocument: (doc) =>
         set((s) => {
@@ -192,7 +201,10 @@ export const usePhotoStore = create<PhotoEditorState>()(
         }),
 
       closeDocument: () =>
-        set({ doc: null, activeTool: "none", ...CLEAR_GESTURES }),
+        // Any in-flight render belongs to the document that's leaving — drop the
+        // flag with it (rendering is not a "gesture", so it's cleared explicitly
+        // rather than through CLEAR_GESTURES).
+        set({ doc: null, activeTool: "none", rendering: false, ...CLEAR_GESTURES }),
 
       setLevel: (level) => set({ level }),
       // Leaving a tool drops any half-composed crop / previewing gesture and ends
@@ -201,6 +213,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
       setCropDraft: (cropDraft) => set({ cropDraft }),
       setPreviewOp: (previewOp) => set({ previewOp }),
       setComparing: (comparing) => set({ comparing }),
+      setRendering: (rendering) => set({ rendering }),
       setReturnContext: (returnContext) => set({ returnContext }),
 
       pushOp: (op, opts) =>

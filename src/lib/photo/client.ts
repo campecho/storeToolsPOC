@@ -12,15 +12,18 @@
 import {
   IntakeResponseSchema,
   PhotoDiagnosticsSchema,
+  RenderErrorSchema,
   type IntakeError,
   type IntakeErrorCode,
   type IntakeImagePayload,
   type PhotoDiagnostics,
   type PhotoDocument,
+  type RenderError,
+  type RenderPayload,
 } from "@/lib/schema/photo";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { assetIdFor, decodeBase64, sniffImageMime } from "@/lib/import/image-meta";
-import { putAssetBlob } from "@/lib/assets/blob-store";
+import { getAssetUrl, putAssetBlob } from "@/lib/assets/blob-store";
 
 /** The result of an open attempt — a ready document, or a typed error for the
     CapabilityBanner (the server's friendly copy is shown verbatim). */
@@ -217,4 +220,141 @@ export async function fetchPhotoDiagnostics(): Promise<PhotoDiagnostics | null> 
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Render / export (POST /api/photo/render) — plan §3.3 "Export", PE3  */
+/* ------------------------------------------------------------------ */
+
+/** Build a RenderError-shaped object so EVERY failure out of `renderPhoto`
+    carries the same typed contract — a server error (parsed from the response),
+    a network fault, or a missing local master all reach the panel as one shape,
+    and the panel shows `.message` verbatim. */
+function renderFail(code: RenderError["code"], message: string): RenderError {
+  return { ok: false, code, message };
+}
+
+/** Narrow a caught value to a RenderError (the panel's `catch` is `unknown`).
+    `renderPhoto` only ever throws RenderErrors, but a type guard keeps the call
+    site honest against anything else that could bubble up. */
+export function isRenderError(err: unknown): err is RenderError {
+  return RenderErrorSchema.safeParse(err).success;
+}
+
+/** Read the working-master bytes back out of the blob store. The bytes live as a
+    Blob under `doc.source.assetId`; the store hands back a cached object URL, so
+    we fetch that URL to recover the Blob. A missing blob (cleared store, evicted
+    IndexedDB) is a friendly typed error rather than a thrown TypeError. */
+async function loadMasterBlob(assetId: string): Promise<Blob> {
+  const url = await getAssetUrl(assetId);
+  if (!url) {
+    throw renderFail(
+      "engine-error",
+      "This photo's image data is missing — reopen the photo and try exporting again.",
+    );
+  }
+  try {
+    const res = await fetch(url);
+    return await res.blob();
+  } catch {
+    throw renderFail(
+      "engine-error",
+      "Couldn't read this photo's image data — reopen the photo and try again.",
+    );
+  }
+}
+
+/** File-name stem + `-edited.` + the format's real extension.
+    "IMG_4823.jpg" + jpeg → "IMG_4823-edited.jpg"; png → ".png". */
+function suggestedExportName(name: string, format: "jpeg" | "png"): string {
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = format === "jpeg" ? "jpg" : "png";
+  return `${stem}-edited.${ext}`;
+}
+
+/**
+ * Full-resolution export (plan §4 PE3). Replays the recipe server-side against
+ * the working master and returns the encoded bytes ready to save.
+ *
+ * Contract (BINDING — the sibling's render route + schema):
+ *  - master bytes go up as multipart `file`; the render payload as `payload`
+ *    (JSON of {recipe, format, quality});
+ *  - `recipe` is `doc.recipe.slice(0, doc.cursor)` — the APPLIED ops only; the
+ *    redo tail after the cursor never renders (same rule the canvas draws by);
+ *  - SUCCESS = a binary image body (Content-Type image/jpeg|image/png);
+ *  - ERROR = a JSON RenderError + 4xx/5xx — parsed here and re-thrown typed so
+ *    the panel surfaces the server's friendly `message` verbatim;
+ *  - a network fault is reshaped to a RenderError too, so callers only ever see
+ *    the one typed failure shape.
+ */
+export async function renderPhoto(
+  doc: PhotoDocument,
+  opts: { format: "jpeg" | "png"; quality?: number },
+): Promise<{ blob: Blob; suggestedName: string }> {
+  const master = await loadMasterBlob(doc.source.assetId);
+
+  // Applied ops only — ops[0..cursor). The tail past the cursor is the redo
+  // stack and must not reach the render (plan §3.4 cursor semantics).
+  const payload: RenderPayload = {
+    recipe: doc.recipe.slice(0, doc.cursor),
+    format: opts.format,
+    quality: opts.quality ?? 90,
+  };
+
+  const body = new FormData();
+  body.append("file", master, doc.source.originalName);
+  body.append("payload", JSON.stringify(payload));
+
+  let res: Response;
+  try {
+    res = await fetch("/api/photo/render", { method: "POST", body });
+  } catch {
+    throw renderFail(
+      "engine-error",
+      "The render service is unreachable — check your connection and try again.",
+    );
+  }
+
+  if (!res.ok) {
+    // A typed server error — parse the RenderError JSON and re-throw it so its
+    // counter-ready copy reaches the panel unchanged.
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      throw renderFail("engine-error", "The render service returned an error we couldn't read.");
+    }
+    const parsed = RenderErrorSchema.safeParse(json);
+    throw parsed.success
+      ? parsed.data
+      : renderFail("engine-error", "The render service returned an unexpected error.");
+  }
+
+  // SUCCESS: the response body IS the encoded image.
+  const blob = await res.blob();
+  return { blob, suggestedName: suggestedExportName(doc.name, opts.format) };
+}
+
+/**
+ * Save a Blob to the associate's disk. THIS IS THE REPO'S FIRST SAVE-TO-DISK
+ * AFFORDANCE — nothing anywhere else in the POC writes a file out (plan §1.2
+ * finding 2: "no export/download path anywhere"). Handle this seam with care:
+ * we mint a throwaway object URL, drive a hidden `<a download>`, then revoke the
+ * URL so the bytes aren't pinned in memory. The revoke is deferred a tick — some
+ * browsers cancel an in-flight download if the URL dies in the same frame as the
+ * click.
+ */
+export function downloadBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.rel = "noopener";
+  // Attaching to the DOM makes the synthetic click fire in every browser
+  // (Firefox in particular ignores a click on a detached anchor).
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

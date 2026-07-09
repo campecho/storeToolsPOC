@@ -306,3 +306,58 @@ export const PhotoDiagnosticsSchema = z.object({
   }),
 });
 export type PhotoDiagnostics = z.infer<typeof PhotoDiagnosticsSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Render API (POST /api/photo/render) — the export spine, plan §4 PE3 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Export container formats the spine renders at PE3. TIFF and PDF·print carry
+ * the print-color and box math and land with PE7 — the enum is intentionally
+ * the JPG/PNG subset the Export panel v1 offers (plan §4 PE3, §3.3 "Export").
+ */
+export const RenderFormatSchema = z.enum(["jpeg", "png"]);
+export type RenderFormat = z.infer<typeof RenderFormatSchema>;
+
+/**
+ * The render request body: the recipe to replay at full resolution plus the
+ * output container. The master bytes ride the multipart `file` part (not this
+ * JSON) so a 12 MP upload never base64-inflates through a body field. `quality`
+ * is JPEG-only — ignored for PNG (which is lossless). Every field is validated
+ * server-side before a single byte reaches the jail (the client is untrusted,
+ * §3.6).
+ */
+export const RenderPayloadSchema = z.object({
+  recipe: z.array(PhotoOpSchema),
+  format: RenderFormatSchema,
+  /** JPEG encoder quality 1–100; ignored for PNG. */
+  quality: z.number().int().min(1).max(100).default(90),
+});
+export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
+
+/**
+ * Render failure codes (plan §4 PE3). `bad-recipe` = the payload didn't parse
+ * or validate; `unsupported-op` = a well-formed op this tranche can't render
+ * yet (adjust/overlay/bleed…); the rest mirror the intake jail's kill/typed
+ * classification. NOTE: a SUCCESSFUL render is BINARY — the image bytes stream
+ * back with an `image/jpeg`|`image/png` Content-Type, NOT a JSON envelope — so
+ * there is no success schema here; only failures are JSON (RenderErrorSchema).
+ */
+export const RenderErrorCodeSchema = z.enum([
+  "bad-recipe", // payload JSON/Zod invalid
+  "unsupported-op", // a valid op tag this tranche doesn't render (names the op + its tranche)
+  "too-large", // input over MAX_PHOTO_BYTES, or a pathological render output over the size bound
+  "too-many-pixels", // master over MAX_PHOTO_PIXELS (libvips refuses at load)
+  "decode-failed", // master unreadable / jail decode died
+  "timeout", // jail wall-clock kill
+  "engine-error", // engine missing or crashed outside decode
+]);
+export type RenderErrorCode = z.infer<typeof RenderErrorCodeSchema>;
+
+export const RenderErrorSchema = z.object({
+  ok: z.literal(false),
+  code: RenderErrorCodeSchema,
+  /** Friendly, counter-ready copy — shown verbatim in the UI. */
+  message: z.string(),
+});
+export type RenderError = z.infer<typeof RenderErrorSchema>;
