@@ -2,15 +2,18 @@
 
 import { Columns2, Frame, Maximize2, MoreHorizontal, RefreshCw, Redo2, Sparkles, Undo2 } from "lucide-react";
 import type { PhotoDocument } from "@/lib/schema/photo";
+import { usePhotoStore } from "@/lib/store/photo-store";
 import type { PhotoTool } from "@/lib/store/photo-store";
 
 /**
  * Action bar (wire region 2). Left: undo/redo (wired to the recipe cursor —
- * disabled at bounds), Auto-enhance and Compare (both PE4, rendered disabled
- * with honest tranche tooltips). Right, under the uppercase "Quick fixes"
- * label: Fix bleed / Fit to size / Convert format — these NAVIGATE (plan §1.1):
- * Fix bleed + Fit to size open Fix for print, Convert format opens Export. The
- * `⋯` overflow is inert.
+ * disabled at bounds), Auto-enhance (PE4, disabled with an honest tooltip) and
+ * Compare — a LIVE press-and-hold peek: holding it flips `comparing` on the
+ * store so the canvas swaps in the original; releasing (or the pointer leaving)
+ * clears it (the split view itself lands with PE4). Right, under the uppercase
+ * "Quick fixes" label: Fix bleed / Fit to size / Convert format — these NAVIGATE
+ * (plan §1.1): Fix bleed + Fit to size open Fix for print, Convert format opens
+ * Export. The `⋯` overflow is inert.
  */
 export function ActionBar({
   doc,
@@ -23,6 +26,8 @@ export function ActionBar({
   onRedo: () => void;
   onSelectTool: (tool: PhotoTool) => void;
 }) {
+  const setComparing = usePhotoStore((s) => s.setComparing);
+
   const canUndo = doc.cursor > 0;
   const canRedo = doc.cursor < doc.recipe.length;
 
@@ -66,9 +71,13 @@ export function ActionBar({
       </button>
       <button
         type="button"
-        disabled
-        title="Compare lands with the adjust tranche (PE4)"
-        className="flex h-7 cursor-not-allowed items-center gap-[6px] rounded-[5px] border border-[#dcdcdc] bg-white px-[10px] text-[12px] text-[#555] opacity-60"
+        data-testid="photo-compare"
+        title="Hold to peek the original · split view lands with PE4"
+        onPointerDown={() => setComparing(true)}
+        onPointerUp={() => setComparing(false)}
+        onPointerLeave={() => setComparing(false)}
+        onPointerCancel={() => setComparing(false)}
+        className="flex h-7 cursor-pointer items-center gap-[6px] rounded-[5px] border border-[#dcdcdc] bg-white px-[10px] text-[12px] text-[#555] hover:bg-[#f4f4f4]"
       >
         <Columns2 size={13} strokeWidth={1.6} className="text-[#666]" />
         Compare <span className="text-[10px] text-[#aaa]">hold</span>

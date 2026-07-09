@@ -3,6 +3,7 @@
 import { Crop, Download, Eraser, Printer, SlidersHorizontal, Type } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PhotoTool } from "@/lib/store/photo-store";
+import { CropPanel } from "./panels/CropPanel";
 
 /**
  * Contextual panel host (wire region 6). Renders only while a tool is active
@@ -78,18 +79,22 @@ export function ContextPanel({ activeTool, onClose }: { activeTool: PhotoTool; o
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden p-4">
-        <div className="rounded-[8px] border border-[#e6e6e6] bg-[#fafafa] p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-white shadow-[0_1px_4px_rgba(0,0,0,.10)]">
-            <Icon size={20} strokeWidth={1.7} className="text-[#666]" />
-          </div>
-          <div className="mt-3 text-[13px] font-semibold text-[#333]">{info.title}</div>
-          <div className="mt-1 text-[12px] leading-relaxed text-[#777]">{info.line}</div>
-          <div className="mt-3 inline-flex items-center rounded-full border border-[#e0e0e0] bg-white px-[9px] py-[2px] text-[10.5px] font-semibold text-[#8a8a8a]">
-            Lands with {info.tranche}
+      {activeTool === "crop" ? (
+        <CropPanel />
+      ) : (
+        <div className="flex-1 overflow-hidden p-4">
+          <div className="rounded-[8px] border border-[#e6e6e6] bg-[#fafafa] p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-white shadow-[0_1px_4px_rgba(0,0,0,.10)]">
+              <Icon size={20} strokeWidth={1.7} className="text-[#666]" />
+            </div>
+            <div className="mt-3 text-[13px] font-semibold text-[#333]">{info.title}</div>
+            <div className="mt-1 text-[12px] leading-relaxed text-[#777]">{info.line}</div>
+            <div className="mt-3 inline-flex items-center rounded-full border border-[#e0e0e0] bg-white px-[9px] py-[2px] text-[10.5px] font-semibold text-[#8a8a8a]">
+              Lands with {info.tranche}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

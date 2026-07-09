@@ -2,17 +2,29 @@
 
 import { Clock } from "lucide-react";
 import type { PhotoDocument } from "@/lib/schema/photo";
+import { effectiveDims } from "@/lib/photo/geometry";
 
 /**
- * Print-correctness strip (wire region 4), pinned above the canvas. Live pixel
- * dims from the doc; the target/DPI/bleed segments render as honest PE5
- * placeholders (the live effective-resolution math and target picker land with
- * Fix for print), and the right-pinned History button is disabled until the
- * geometry & history tranche (PE2). The color note reads from the source color
+ * Print-correctness strip (wire region 4), pinned above the canvas. The pixel
+ * dims segment reflects the EFFECTIVE image (the master with the applied recipe,
+ * ops[0..cursor)) so it tracks crops/rotates live under undo/redo. The
+ * target/DPI/bleed segments render as honest PE5 placeholders (the live
+ * effective-resolution math and target picker land with Fix for print). The
+ * right-pinned `History · N` button (N = cursor + 1, the Open step counts)
+ * toggles the docked history panel. The color note reads from the source color
  * space (deviation #6 default logic).
  */
-export function PrintStrip({ doc }: { doc: PhotoDocument }) {
-  const { source, target, cursor } = doc;
+export function PrintStrip({
+  doc,
+  historyOpen,
+  onToggleHistory,
+}: {
+  doc: PhotoDocument;
+  historyOpen: boolean;
+  onToggleHistory: () => void;
+}) {
+  const { source, target, recipe, cursor } = doc;
+  const eff = effectiveDims({ w: source.width, h: source.height }, recipe.slice(0, cursor));
   const targetLabel = target.size ? `${target.size.w} × ${target.size.h} in` : "not set";
   const colorNote = source.colorSpace === "cmyk" ? "CMYK · GRACoL at export" : "sRGB · converted for press at export";
 
@@ -22,7 +34,7 @@ export function PrintStrip({ doc }: { doc: PhotoDocument }) {
       className="flex h-9 shrink-0 items-center gap-[11px] border-b border-[#e6e6e6] bg-white px-[14px] text-[11.5px]"
     >
       <span data-testid="photo-strip-dims" className="whitespace-nowrap text-[#777]">
-        {source.width} × {source.height} px
+        {Math.round(eff.w)} × {Math.round(eff.h)} px
       </span>
 
       <Divider />
@@ -65,12 +77,18 @@ export function PrintStrip({ doc }: { doc: PhotoDocument }) {
       <button
         type="button"
         data-testid="photo-history"
-        disabled
-        title="History opens with the geometry & history tranche (PE2)"
-        className="flex h-6 cursor-not-allowed items-center gap-[6px] rounded-[5px] border border-[#dcdcdc] bg-white px-[9px] text-[11px] text-[#666] opacity-60"
+        data-history-toggle=""
+        onClick={onToggleHistory}
+        aria-expanded={historyOpen}
+        title="Show edit history"
+        className={`flex h-6 cursor-pointer items-center gap-[6px] rounded-[5px] border px-[9px] text-[11px] ${
+          historyOpen
+            ? "border-brand bg-[#fff7f7] text-brand-deep"
+            : "border-[#dcdcdc] bg-white text-[#666] hover:border-[#c8c8c8]"
+        }`}
       >
-        <Clock size={12} strokeWidth={1.7} className="text-[#777]" />
-        History · {cursor}
+        <Clock size={12} strokeWidth={1.7} className={historyOpen ? "text-brand" : "text-[#777]"} />
+        History · {cursor + 1}
       </button>
     </div>
   );

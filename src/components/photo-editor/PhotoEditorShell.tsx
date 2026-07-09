@@ -12,6 +12,7 @@ import { TitleBar } from "./TitleBar";
 import { ActionBar } from "./ActionBar";
 import { TaskRail } from "./TaskRail";
 import { PrintStrip } from "./PrintStrip";
+import { HistoryDock } from "./HistoryDock";
 import { ContextPanel } from "./ContextPanel";
 import { StatusBar } from "./StatusBar";
 import { CapabilityBanner } from "./CapabilityBanner";
@@ -81,6 +82,30 @@ export function PhotoEditorShell() {
   const [orderContext, setOrderContext] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImageBitmap | null>(null);
   const [zoomPct, setZoomPct] = useState<number | null>(null);
+  // History dock open state lives here so the print-strip button can toggle it
+  // and the dock renders anchored under the strip.
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Keyboard undo/redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y). Ignored
+  // while typing in a field. undo/redo are stable store actions, so this installs
+  // once; the cleanup keeps it StrictMode-safe (no duplicate listener).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   // Instant local preview — close the previous bitmap when a new open replaces
   // it so decoded frames don't accumulate across opens.
@@ -178,9 +203,18 @@ export function PhotoEditorShell() {
           {showWorkArea ? (
             <>
               {doc && <TaskRail level={level} activeTool={activeTool} onSelect={handleToggleTool} />}
-              <div className="flex min-w-0 flex-1 flex-col">
-                {doc && <PrintStrip doc={doc} />}
+              <div className="relative flex min-w-0 flex-1 flex-col">
+                {doc && (
+                  <PrintStrip
+                    doc={doc}
+                    historyOpen={historyOpen}
+                    onToggleHistory={() => setHistoryOpen((v) => !v)}
+                  />
+                )}
                 <PhotoCanvas doc={doc} previewBitmap={preview} onZoom={setZoomPct} />
+                {doc && (
+                  <HistoryDock doc={doc} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+                )}
               </div>
               {doc && level !== "simple" && (
                 <ContextPanel activeTool={activeTool} onClose={() => setActiveTool("none")} />
