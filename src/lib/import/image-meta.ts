@@ -26,11 +26,43 @@ function matchAt(bytes: Uint8Array, offset: number, sig: (number | null)[]): boo
   return true;
 }
 
+/** ISO-BMFF `ftyp` brands that mean a HEIF still we treat as HEIC (v1.4 —
+    the photo intake gates these behind the heif-convert probe, §3.5). AVIF's
+    "avif"/"avis" brands are deliberately absent: they aren't in this set. */
+const HEIC_BRANDS = new Set(["heic", "heix", "hevc", "heif", "mif1", "msf1"]);
+
+/** The 4-byte ASCII brand at `offset`, or "" if it runs off the end. */
+function brandAt(bytes: Uint8Array, offset: number): string {
+  if (bytes.length < offset + 4) return "";
+  return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+}
+
+/**
+ * SVG probe (v1.4): a text vector, so there is no binary magic — skip a UTF-8
+ * BOM and leading ASCII whitespace, then require `<?xml` or `<svg` within a
+ * bounded prefix. A cheap heuristic, never a parse: a generic `<?xml` doc is
+ * admitted here and rejected later when the jailed rasterizer can't decode it
+ * (UTF-16-encoded SVG is out of this probe's scope — vanishingly rare here).
+ */
+function looksLikeSvg(bytes: Uint8Array): boolean {
+  let i = matchAt(bytes, 0, [0xef, 0xbb, 0xbf]) ? 3 : 0; // UTF-8 BOM
+  const limit = Math.min(bytes.length, i + 256);
+  const isWs = (b: number) =>
+    b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d || b === 0x0c || b === 0x0b;
+  while (i < limit && isWs(bytes[i])) i++;
+  return (
+    matchAt(bytes, i, [0x3c, 0x3f, 0x78, 0x6d, 0x6c]) || // "<?xml"
+    matchAt(bytes, i, [0x3c, 0x73, 0x76, 0x67]) // "<svg"
+  );
+}
+
 /**
  * Magic-number sniff → a `image/*` MIME, or undefined when nothing matches.
  * Covers what the real corpus and Publisher's clipboard formats ship: raster
  * (png/jpeg/gif/bmp/webp/tiff) plus the two Windows metafile vectors
- * (emf/wmf) that arrive embedded but can't render in a browser <img>.
+ * (emf/wmf) that arrive embedded but can't render in a browser <img>. The
+ * HEIC and SVG cases are new (v1.4) — the photo intake needs them, and both
+ * stay isomorphic (no node imports) so the browser can pre-reject too.
  */
 export function sniffImageMime(bytes: Uint8Array): string | undefined {
   if (matchAt(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image/png";
@@ -41,6 +73,20 @@ export function sniffImageMime(bytes: Uint8Array): string | undefined {
     return "image/webp"; // "RIFF"…"WEBP"
   if (matchAt(bytes, 0, [0x49, 0x49, 0x2a, 0x00]) || matchAt(bytes, 0, [0x4d, 0x4d, 0x00, 0x2a]))
     return "image/tiff"; // little / big endian
+  // HEIC/HEIF: an ISO-BMFF `ftyp` box (size u32 · "ftyp" · major brand · minor
+  // version · compatible-brand list). A HEIC brand in the major-brand slot (8)
+  // OR the compatible list (16+) wins — iPhone stills ship "heic"/"mif1". The
+  // declared box size bounds the scan, clamped so a hostile size can't run us
+  // off the end or walk megabytes.
+  if (matchAt(bytes, 4, [0x66, 0x74, 0x79, 0x70])) {
+    const declared =
+      ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+    const end = Math.min(declared || bytes.length, bytes.length, 64);
+    if (HEIC_BRANDS.has(brandAt(bytes, 8))) return "image/heic";
+    for (let o = 16; o + 4 <= end; o += 4) {
+      if (HEIC_BRANDS.has(brandAt(bytes, o))) return "image/heic";
+    }
+  }
   // EMF: an ENHMETAHEADER (record type 01 00 00 00) with the " EMF" signature
   // at byte 40 — the type prefix alone collides with WMF, so require the sig.
   if (matchAt(bytes, 0, [0x01, 0x00, 0x00, 0x00]) && matchAt(bytes, 40, [0x20, 0x45, 0x4d, 0x46]))
@@ -48,6 +94,8 @@ export function sniffImageMime(bytes: Uint8Array): string | undefined {
   // WMF: placeable header (Aldous magic) or a bare standard header.
   if (matchAt(bytes, 0, [0xd7, 0xcd, 0xc6, 0x9a]) || matchAt(bytes, 0, [0x01, 0x00, 0x09, 0x00]))
     return "image/wmf";
+  // SVG: text-probe last, after every binary signature has had its say.
+  if (looksLikeSvg(bytes)) return "image/svg+xml";
   return undefined;
 }
 
