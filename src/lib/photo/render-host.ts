@@ -3,6 +3,9 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
+import type { PhotoOp, RenderErrorCode, RenderPayload } from "@/lib/schema/photo";
+import { straightenScale } from "./geometry";
 import {
   INTAKE_TIMEOUT_MS,
   MASTER_JPEG_QUALITY,
@@ -11,6 +14,7 @@ import {
   PHOTO_CPU_SECONDS,
   PROXY_JPEG_QUALITY,
   PROXY_MAX_EDGE,
+  RENDER_TIMEOUT_MS,
   WORKER_MAX_OUTPUT_BYTES,
 } from "./limits";
 
@@ -121,6 +125,7 @@ async function runWorker(
   job: Record<string, unknown>,
   input: Buffer | null,
   outputNames: string[],
+  timeoutMs: number = INTAKE_TIMEOUT_MS,
 ): Promise<WorkerRun> {
   const jail = await mkdtemp(join(tmpdir(), "photo-host-"));
   try {
@@ -151,7 +156,7 @@ async function runWorker(
     let spawnErr: ExecErr | null = null;
     try {
       await execFileP(argv[0], argv.slice(1), {
-        timeout: INTAKE_TIMEOUT_MS,
+        timeout: timeoutMs,
         killSignal: "SIGKILL",
         // The worker communicates through files, not stdout — keep the pipe
         // buffer small; a hostile encoder can't bloat us through stdout.
@@ -327,4 +332,215 @@ export async function intakeImage(bytes: Buffer, mime: string): Promise<IntakeHo
     colorSpace: r.colorSpace === "cmyk" ? "cmyk" : "rgb",
     notes: Array.isArray(r.notes) ? (r.notes as string[]) : [],
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Render — recipe → dumb worker steps (the PARITY-BY-SHARED-CODE seam) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A single dumb instruction for the render worker. The HOST compiles the recipe
+ * into these using the SAME geometry.ts the client canvas uses (so the export
+ * matches the preview by construction, not by trusting two engines to agree,
+ * §1.3); photo-worker.mjs — plain JS that cannot import TS — just executes them
+ * in order, materializing a buffer per step.
+ *
+ * Coordinate contract (binding, geometry.ts header): every step addresses the
+ * CURRENT EFFECTIVE image (the result of all prior steps), not the source.
+ *
+ *  • extract  — crop to an axis-aligned window; `shape` (rounded|circle) → an
+ *               alpha mask is composited dest-in, so the output carries alpha.
+ *  • rotate   — `turns` quarter-turns CLOCKWISE (normalized to 1..3; a 0-turn
+ *               op emits no step). Odd turns swap w↔h.
+ *  • flip     — mirror; horizontal = left↔right (sharp `.flop`), vertical =
+ *               top↔bottom (sharp `.flip`). Dims unchanged.
+ *  • straighten — rotate `degrees` about centre, cover-scale by `scale`
+ *               (= geometry.straightenScale of the pre-op dims), then re-extract
+ *               the CENTERED `width`×`height` (the pre-op dims) window. Dims
+ *               unchanged — a quality cost, not a size cost.
+ */
+export type RenderStep =
+  | {
+      kind: "extract";
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      shape?: "rounded" | "circle";
+    }
+  | { kind: "rotate"; turns: number }
+  | { kind: "flip"; axis: "horizontal" | "vertical" }
+  | { kind: "straighten"; degrees: number; scale: number; width: number; height: number };
+
+/**
+ * Thrown by `compileRenderPlan` when the recipe carries an op this tranche
+ * can't render (anything but crop/rotate/flip/straighten). The route catches it
+ * and answers `unsupported-op` — but the route ALSO pre-screens the op tags, so
+ * this is defence in depth, not the primary gate.
+ */
+export class UnsupportedRenderOp extends Error {
+  constructor(public readonly op: string) {
+    super(`Render does not support '${op}' ops in this tranche.`);
+    this.name = "UnsupportedRenderOp";
+  }
+}
+
+/** Same integer-dimension folding rule as geometry.effectiveDims (≥ 1). */
+function intDim(v: number): number {
+  return Math.max(1, Math.round(v));
+}
+function clampN(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/**
+ * Compile a geometry recipe into worker steps, tracking effective dims by the
+ * SAME folding rules as geometry.effectiveDims (cross-checked in the tests). The
+ * returned `out` is the final effective size. Throws `UnsupportedRenderOp` on
+ * the first non-geometry op — the route turns that into `unsupported-op`.
+ *
+ * Crop rects are expected in-bounds of the current effective image (the client
+ * clamps via geometry.clampRectToImage); the extract offsets are clamped here
+ * too so a rounded rect can never address a pixel outside the frame.
+ */
+export function compileRenderPlan(
+  recipe: PhotoOp[],
+  source: { w: number; h: number },
+): { steps: RenderStep[]; out: { w: number; h: number } } {
+  let curW = intDim(source.w);
+  let curH = intDim(source.h);
+  const steps: RenderStep[] = [];
+
+  for (const op of recipe) {
+    switch (op.op) {
+      case "crop": {
+        const width = intDim(op.rect.w);
+        const height = intDim(op.rect.h);
+        const eW = Math.min(width, curW);
+        const eH = Math.min(height, curH);
+        const left = clampN(Math.round(op.rect.x), 0, curW - eW);
+        const top = clampN(Math.round(op.rect.y), 0, curH - eH);
+        const step: RenderStep = { kind: "extract", left, top, width: eW, height: eH };
+        if (op.shape === "rounded" || op.shape === "circle") step.shape = op.shape;
+        steps.push(step);
+        curW = eW;
+        curH = eH;
+        break;
+      }
+      case "rotate": {
+        // Normalize to 0..3; parity with effectiveDims' abs(q)%2 swap rule is
+        // preserved (mod-2 parity survives the mod-4 fold).
+        const turns = ((op.quarterTurns % 4) + 4) % 4;
+        if (turns !== 0) {
+          steps.push({ kind: "rotate", turns });
+          if (turns % 2 === 1) {
+            const t = curW;
+            curW = curH;
+            curH = t;
+          }
+        }
+        break;
+      }
+      case "flip": {
+        steps.push({ kind: "flip", axis: op.axis });
+        break;
+      }
+      case "straighten": {
+        // scale from the SHARED geometry module — the parity guarantee. Pre-op
+        // dims (curW×curH) are the re-extract window; dims are unchanged.
+        const scale = straightenScale({ w: curW, h: curH }, op.degrees);
+        steps.push({ kind: "straighten", degrees: op.degrees, scale, width: curW, height: curH });
+        break;
+      }
+      default:
+        // adjust / autoEnhance / bleedExpand / fitToSize / resize / textOverlay
+        // / logoOverlay / erase — not geometry, not renderable here yet.
+        throw new UnsupportedRenderOp(op.op);
+    }
+  }
+
+  return { steps, out: { w: curW, h: curH } };
+}
+
+/** Interpret a render worker's typed failure (result.json ok:false). */
+function typedRenderFailure(
+  result: Record<string, unknown>,
+): { ok: false; code: RenderErrorCode; message: string } {
+  if (result.error === "too-many-pixels")
+    return { ok: false, code: "too-many-pixels", message: "That image has more pixels than we can render here." };
+  if (result.error === "engine-error")
+    return { ok: false, code: "engine-error", message: "The image engine failed while rendering." };
+  return { ok: false, code: "decode-failed", message: "We couldn't render that image — the source may be damaged." };
+}
+
+/**
+ * Replay a geometry recipe on `master` at full resolution in the jail, returning
+ * the encoded export bytes (binary — the route streams them with the right
+ * Content-Type; there is no JSON success envelope). The master's pixel dims come
+ * from a cheap, safe HEADER read (`imageDimensions` — no decode, same posture as
+ * the intake content-sniff), since masters are always our own jpeg/png; an
+ * unreadable header means the bytes won't decode either → `decode-failed`.
+ *
+ * Determinism (the PE3 done-when): the compile is pure integer/trig math and the
+ * worker's encoder options are fixed, so the same recipe + bytes yields
+ * byte-identical output across runs (proven in render-replay.test.ts).
+ */
+export async function renderImage(
+  master: Buffer,
+  payload: RenderPayload,
+): Promise<{ ok: true; bytes: Buffer; mime: string } | { ok: false; code: RenderErrorCode; message: string }> {
+  const mime = sniffImageMime(master);
+  const dims = mime ? imageDimensions(master, mime) : undefined;
+  if (!dims || dims.width < 1 || dims.height < 1) {
+    return { ok: false, code: "decode-failed", message: "The image to render couldn't be read." };
+  }
+
+  let plan: { steps: RenderStep[]; out: { w: number; h: number } };
+  try {
+    plan = compileRenderPlan(payload.recipe, { w: dims.width, h: dims.height });
+  } catch (err) {
+    if (err instanceof UnsupportedRenderOp) {
+      return { ok: false, code: "unsupported-op", message: err.message };
+    }
+    return { ok: false, code: "engine-error", message: "The recipe couldn't be compiled for rendering." };
+  }
+
+  const run = await runWorker(
+    {
+      kind: "render",
+      steps: plan.steps,
+      format: payload.format,
+      quality: payload.quality,
+      limits: { maxPixels: MAX_PHOTO_PIXELS },
+    },
+    master,
+    ["output.bin"],
+    RENDER_TIMEOUT_MS,
+  );
+
+  // Jail kills first (no typed result to trust) — mirrors intakeImage.
+  if (run.kill === "timeout")
+    return { ok: false, code: "timeout", message: `Rendering took longer than ${RENDER_TIMEOUT_MS / 1000}s and was stopped.` };
+  if (run.kill === "resource-limit")
+    // SIGXCPU: the CPU rlimit backstop fired. Like intake, this surfaces as a
+    // decode-class failure (the recipe was too heavy for this image here).
+    return { ok: false, code: "decode-failed", message: "Rendering hit the processing limit — try a simpler edit or a smaller image." };
+  if (run.kill === "decode-failed") {
+    if (run.result && run.result.ok === false) return typedRenderFailure(run.result);
+    return { ok: false, code: "decode-failed", message: "The renderer crashed on that image." };
+  }
+
+  if (!run.result) return { ok: false, code: "engine-error", message: "The renderer produced no result." };
+  if (run.result.ok === false) return typedRenderFailure(run.result);
+
+  // A pathological encoder blew the output size bound — the file's fault.
+  if (run.oversizeOutput)
+    return { ok: false, code: "too-large", message: "The rendered image came out larger than we can return." };
+
+  const out = run.outputs["output.bin"];
+  if (!out)
+    return { ok: false, code: "engine-error", message: "The renderer reported success but wrote no image." };
+
+  const outMime = run.result.mime === "image/png" ? "image/png" : "image/jpeg";
+  return { ok: true, bytes: out, mime: outMime };
 }
