@@ -12,7 +12,7 @@ const TOOLS: { icon: LucideIcon; label: string; desc: string; href?: Route }[] =
   { icon: FileText, label: "Document", desc: "Word, PDF & text" },
   { icon: PanelsTopLeft, label: "Layout", desc: "Design & arrange", href: "/layout" },
   { icon: Wrench, label: "Quick Fix", desc: "Auto-repair file content" },
-  { icon: Image, label: "Photo Edit", desc: "Crop, retouch, color" },
+  { icon: Image, label: "Photo Edit", desc: "Crop, retouch, color", href: "/photo" },
   { icon: Printer, label: "Print Setup", desc: "Size, bleed & imposition" },
 ];
 
