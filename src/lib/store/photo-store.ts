@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { PhotoDocumentSchema, type PhotoDocument, type PhotoOp } from "@/lib/schema/photo";
+import {
+  PhotoDocumentSchema,
+  type PhotoDocument,
+  type PhotoOp,
+  type PixelRect,
+} from "@/lib/schema/photo";
 
 /**
  * Photo-editor state (plan §3.4). The recipe IS the document, and history is a
@@ -35,6 +40,17 @@ export type PhotoLevel = "simple" | "standard";
     through PE1's standalone open, but the field + setter exist now). */
 export type PhotoReturnContext = { originName: string; objectId: string } | null;
 
+/** The in-flight crop the CropOverlay + CropPanel share while the Crop tool is
+    open — the rect being dragged, the aspect preset id driving the lock, and the
+    Shape choice — before "Apply crop" commits it as a `crop` op (plan §4 PE2).
+    Session-only and stale the moment history moves, so it is cleared on any
+    cursor change; null when no crop is being composed. */
+export type PhotoCropDraft = {
+  rect: PixelRect;
+  ratioId: string;
+  shape: "rect" | "rounded" | "circle";
+} | null;
+
 export interface PhotoEditorState {
   /** The working document — the recipe. Null until a photo is opened (PE1). */
   doc: PhotoDocument | null;
@@ -45,21 +61,47 @@ export interface PhotoEditorState {
   /** Set when the editor was entered from a layout picture (PE8) — session-only. */
   returnContext: PhotoReturnContext;
 
+  /** The crop being composed while the Crop tool is open (session-only, null
+      otherwise). Cleared whenever the tool changes or history moves. */
+  cropDraft: PhotoCropDraft;
+  /** A live-gesture preview op (a straighten mid-drag, a crop being framed)
+      rendered on top of ops[0..cursor) WITHOUT entering the recipe — session-only.
+      Null when no gesture is previewing. */
+  previewOp: PhotoOp | null;
+  /** Press-and-hold "Compare" peek at the original (before any ops) — session-only. */
+  comparing: boolean;
+
   /** Open a schema-validated document; a malformed shape is refused. Resets
-      the active tool to "none" (a fresh document opens with no panel). */
+      the active tool to "none" and clears every session gesture field (a fresh
+      document opens with no panel, no draft, no preview, not comparing). */
   openDocument: (doc: PhotoDocument) => void;
-  /** Close the working document and collapse any open tool. */
+  /** Close the working document, collapse any open tool, and clear the session
+      gesture fields. */
   closeDocument: () => void;
   setLevel: (level: PhotoLevel) => void;
+  /** Switch tools; clears the crop draft + preview op and ends any compare peek
+      (a stale gesture must never survive leaving its tool). */
   setActiveTool: (tool: PhotoTool) => void;
+  setCropDraft: (draft: PhotoCropDraft) => void;
+  setPreviewOp: (op: PhotoOp | null) => void;
+  setComparing: (comparing: boolean) => void;
   /** Append an op at the cursor, dropping the redo tail; cursor -> recipe end.
-      No-op when there is no document. */
-  pushOp: (op: PhotoOp) => void;
-  /** Step the cursor back one (clamped at 0). No-op when there is no document. */
+      No-op when there is no document.
+
+      `opts.coalesce`: when set and the op immediately before the cursor carries
+      the SAME `op` tag, REPLACE it in place (cursor unchanged) instead of
+      appending — the straighten-slider anti-spam rule (plan §3.4 gesture rule),
+      so a whole drag collapses to one history step. With no matching trailing op
+      (empty recipe, cursor at 0, or a different tag) it appends normally. */
+  pushOp: (op: PhotoOp, opts?: { coalesce?: boolean }) => void;
+  /** Step the cursor back one (clamped at 0); clears the crop draft + preview op
+      (both stale once history moves). No-op when there is no document. */
   undo: () => void;
-  /** Step the cursor forward one (clamped at recipe end). No-op with no doc. */
+  /** Step the cursor forward one (clamped at recipe end); clears the crop draft +
+      preview op. No-op with no doc. */
   redo: () => void;
-  /** Jump the cursor to a history position, clamped into [0, recipe.length]. */
+  /** Jump the cursor to a history position, clamped into [0, recipe.length];
+      clears the crop draft + preview op. */
   setCursor: (cursor: number) => void;
   setReturnContext: (ctx: PhotoReturnContext) => void;
 }
@@ -102,6 +144,15 @@ export function mergePhotoState(
   };
 }
 
+// Partial-state fragments spread into `set` returns so every history/tool move
+// clears the same session gesture fields the same way (session-only — never
+// persisted, so clearing them touches no saved state).
+//   CLEAR_DRAFT    — a history move: the draft + live preview are stale, but a
+//                    compare peek is independent and survives.
+//   CLEAR_GESTURES — leaving/opening/closing the surface: everything resets.
+const CLEAR_DRAFT = { cropDraft: null, previewOp: null } as const;
+const CLEAR_GESTURES = { cropDraft: null, previewOp: null, comparing: false } as const;
+
 // SSR and the vitest node env have no localStorage — persistence becomes a
 // silent no-op there (mirrors layout-store's noopStorage).
 const noopStorage: Storage = {
@@ -120,6 +171,9 @@ export const usePhotoStore = create<PhotoEditorState>()(
       level: "standard",
       activeTool: "none",
       returnContext: null,
+      cropDraft: null,
+      previewOp: null,
+      comparing: false,
 
       openDocument: (doc) =>
         set((s) => {
@@ -130,22 +184,46 @@ export const usePhotoStore = create<PhotoEditorState>()(
             console.warn("[photo-store] openDocument refused an invalid document");
             return s;
           }
-          return { doc: parsed.data, activeTool: "none" };
+          return {
+            doc: parsed.data,
+            activeTool: "none",
+            ...CLEAR_GESTURES,
+          };
         }),
 
-      closeDocument: () => set({ doc: null, activeTool: "none" }),
+      closeDocument: () =>
+        set({ doc: null, activeTool: "none", ...CLEAR_GESTURES }),
 
       setLevel: (level) => set({ level }),
-      setActiveTool: (activeTool) => set({ activeTool }),
+      // Leaving a tool drops any half-composed crop / previewing gesture and ends
+      // a compare peek — a stale gesture must never survive its tool.
+      setActiveTool: (activeTool) => set({ activeTool, ...CLEAR_GESTURES }),
+      setCropDraft: (cropDraft) => set({ cropDraft }),
+      setPreviewOp: (previewOp) => set({ previewOp }),
+      setComparing: (comparing) => set({ comparing }),
       setReturnContext: (returnContext) => set({ returnContext }),
 
-      pushOp: (op) =>
+      pushOp: (op, opts) =>
         set((s) => {
           if (!s.doc) return s;
+          const { recipe, cursor } = s.doc;
+          // Coalesce: replace the trailing same-tag op in place, cursor unchanged
+          // (the straighten-slider anti-spam rule, plan §3.4) — still dropping any
+          // redo tail beyond the cursor, as every commit does.
+          if (opts?.coalesce && cursor > 0 && recipe[cursor - 1]?.op === op.op) {
+            const next = [...recipe.slice(0, cursor - 1), op];
+            return {
+              doc: { ...s.doc, recipe: next, cursor },
+              ...CLEAR_DRAFT,
+            };
+          }
           // Truncate the redo tail at the cursor, then append (plan §3.4:
           // "a new edit truncates it"). The cursor lands at the new recipe end.
-          const recipe = [...s.doc.recipe.slice(0, s.doc.cursor), op];
-          return { doc: { ...s.doc, recipe, cursor: recipe.length } };
+          const next = [...recipe.slice(0, cursor), op];
+          return {
+            doc: { ...s.doc, recipe: next, cursor: next.length },
+            ...CLEAR_DRAFT,
+          };
         }),
 
       undo: () =>
@@ -153,7 +231,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
           if (!s.doc) return s;
           const cursor = Math.max(0, s.doc.cursor - 1);
           if (cursor === s.doc.cursor) return s;
-          return { doc: { ...s.doc, cursor } };
+          return { doc: { ...s.doc, cursor }, ...CLEAR_DRAFT };
         }),
 
       redo: () =>
@@ -161,7 +239,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
           if (!s.doc) return s;
           const cursor = Math.min(s.doc.recipe.length, s.doc.cursor + 1);
           if (cursor === s.doc.cursor) return s;
-          return { doc: { ...s.doc, cursor } };
+          return { doc: { ...s.doc, cursor }, ...CLEAR_DRAFT };
         }),
 
       setCursor: (cursor) =>
@@ -169,7 +247,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
           if (!s.doc) return s;
           const next = clampCursor(s.doc, cursor);
           if (next === s.doc.cursor) return s;
-          return { doc: { ...s.doc, cursor: next } };
+          return { doc: { ...s.doc, cursor: next }, ...CLEAR_DRAFT };
         }),
     }),
     {

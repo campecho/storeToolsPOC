@@ -57,6 +57,18 @@ function cropOp(): PhotoOp {
   };
 }
 
+function straightenOp(degrees: number): PhotoOp {
+  return { op: "straighten", label: `Straighten ${degrees}`, degrees };
+}
+
+function sampleDraft() {
+  return {
+    rect: { x: 10, y: 10, w: 200, h: 150 },
+    ratioId: "4x6",
+    shape: "rounded" as const,
+  };
+}
+
 const s = () => usePhotoStore.getState();
 const recipeLabels = () => s().doc?.recipe.map((o) => o.label) ?? [];
 
@@ -77,6 +89,12 @@ describe("photo store defaults", () => {
     expect(s().level).toBe("standard");
     expect(s().activeTool).toBe("none");
     expect(s().returnContext).toBeNull();
+  });
+
+  it("boots with no session gesture state", () => {
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+    expect(s().comparing).toBe(false);
   });
 });
 
@@ -204,6 +222,136 @@ describe("recipe cursor — pushOp / undo / redo / setCursor", () => {
   });
 });
 
+describe("session gesture fields — setters", () => {
+  it("setCropDraft / setPreviewOp / setComparing round-trip", () => {
+    s().openDocument(makeDoc());
+    s().setCropDraft(sampleDraft());
+    expect(s().cropDraft).toEqual(sampleDraft());
+    s().setPreviewOp(straightenOp(-1.2));
+    expect(s().previewOp).toEqual(straightenOp(-1.2));
+    s().setComparing(true);
+    expect(s().comparing).toBe(true);
+
+    s().setCropDraft(null);
+    s().setPreviewOp(null);
+    s().setComparing(false);
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+    expect(s().comparing).toBe(false);
+  });
+});
+
+describe("pushOp coalesce — the straighten-slider anti-spam rule", () => {
+  it("replaces the trailing same-tag op in place, cursor unchanged", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(straightenOp(1));
+    expect(s().doc?.cursor).toBe(1);
+    s().pushOp(straightenOp(2), { coalesce: true });
+    s().pushOp(straightenOp(3.5), { coalesce: true });
+    // one op, updated label + value, cursor never grew
+    expect(s().doc?.recipe).toHaveLength(1);
+    expect(s().doc?.cursor).toBe(1);
+    const only = s().doc?.recipe[0];
+    expect(only?.op).toBe("straighten");
+    expect((only as { degrees: number }).degrees).toBe(3.5);
+    expect(only?.label).toBe("Straighten 3.5");
+  });
+
+  it("appends when the trailing op has a different tag, even with coalesce", () => {
+    s().openDocument(makeDoc([straightenOp(1)]));
+    s().pushOp(cropOp(), { coalesce: true });
+    expect(recipeLabels()).toEqual(["Straighten 1", "Crop to 4 × 6"]);
+    expect(s().doc?.cursor).toBe(2);
+  });
+
+  it("appends when the recipe is empty (nothing to coalesce onto)", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(straightenOp(2), { coalesce: true });
+    expect(s().doc?.recipe).toHaveLength(1);
+    expect(s().doc?.cursor).toBe(1);
+  });
+
+  it("coalesce drops any redo tail beyond the cursor, like every commit", () => {
+    s().openDocument(makeDoc([straightenOp(1), op("b"), op("c")])); // cursor 3
+    s().undo();
+    s().undo(); // cursor 1 — [straighten] applied, [b, c] the redo tail
+    expect(s().doc?.cursor).toBe(1);
+    s().pushOp(straightenOp(9), { coalesce: true });
+    expect(recipeLabels()).toEqual(["Straighten 9"]); // b, c dropped, replaced in place
+    expect(s().doc?.cursor).toBe(1);
+  });
+
+  it("pushOp without coalesce still appends a same-tag op (no accidental merge)", () => {
+    s().openDocument(makeDoc([straightenOp(1)]));
+    s().pushOp(straightenOp(2)); // no opts
+    expect(s().doc?.recipe).toHaveLength(2);
+    expect(s().doc?.cursor).toBe(2);
+  });
+});
+
+describe("session gesture fields — cleared on tool + history moves", () => {
+  function seedGestures() {
+    s().setCropDraft(sampleDraft());
+    s().setPreviewOp(straightenOp(-1.2));
+    s().setComparing(true);
+  }
+
+  it("setActiveTool clears cropDraft + previewOp and ends the compare peek", () => {
+    s().openDocument(makeDoc([op("a")]));
+    seedGestures();
+    s().setActiveTool("adjust");
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+    expect(s().comparing).toBe(false);
+  });
+
+  it("undo / redo clear cropDraft + previewOp (stale once history moves)", () => {
+    s().openDocument(makeDoc([op("a"), op("b")])); // cursor 2
+    seedGestures();
+    s().undo();
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+    seedGestures();
+    s().redo();
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+  });
+
+  it("setCursor clears cropDraft + previewOp", () => {
+    s().openDocument(makeDoc([op("a"), op("b")]));
+    seedGestures();
+    s().setCursor(0);
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+  });
+
+  it("pushOp clears cropDraft + previewOp (the gesture committed)", () => {
+    s().openDocument(makeDoc());
+    seedGestures();
+    s().pushOp(cropOp());
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+  });
+
+  it("openDocument clears all three session fields", () => {
+    s().openDocument(makeDoc());
+    seedGestures();
+    s().openDocument(makeDoc([op("a")]));
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+    expect(s().comparing).toBe(false);
+  });
+
+  it("closeDocument clears all three session fields", () => {
+    s().openDocument(makeDoc());
+    seedGestures();
+    s().closeDocument();
+    expect(s().cropDraft).toBeNull();
+    expect(s().previewOp).toBeNull();
+    expect(s().comparing).toBe(false);
+  });
+});
+
 describe("persist merge guard", () => {
   const current = () => usePhotoStore.getInitialState();
 
@@ -235,5 +383,27 @@ describe("persist merge guard", () => {
     const merged = mergePhotoState(undefined, current());
     expect(merged.doc).toBeNull();
     expect(merged.level).toBe("standard");
+  });
+});
+
+describe("partialize — only the document + level persist", () => {
+  it("excludes activeTool, returnContext, and every session gesture field", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    // A fully-populated live state, gesture fields included.
+    usePhotoStore.setState({
+      doc: makeDoc([op("a")]),
+      level: "simple",
+      activeTool: "crop",
+      returnContext: { originName: "Flyer", objectId: "obj-1" },
+      cropDraft: sampleDraft(),
+      previewOp: straightenOp(-1.2),
+      comparing: true,
+    });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+    expect("cropDraft" in persisted).toBe(false);
+    expect("previewOp" in persisted).toBe(false);
+    expect("comparing" in persisted).toBe(false);
+    expect(persisted.level).toBe("simple");
   });
 });
