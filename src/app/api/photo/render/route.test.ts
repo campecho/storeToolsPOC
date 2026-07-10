@@ -77,6 +77,27 @@ describe("POST /api/photo/render — happy path (binary out)", () => {
     },
     30_000,
   );
+
+  it(
+    "renders an adjust (tone/colour) recipe to PNG — PE4 ops are now supported, dims unchanged",
+    async () => {
+      const res = await post(new Uint8Array(await png(400, 300)), "master.png", {
+        recipe: [
+          { op: "adjust", label: "Brightness +20", param: "brightness", value: 20 },
+          { op: "adjust", label: "Saturation +30", param: "saturation", value: 30 },
+        ],
+        format: "png",
+        quality: 90,
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      const out = Buffer.from(await res.arrayBuffer());
+      const meta = await sharp(out).metadata();
+      // A pointwise tone pass never moves the frame.
+      expect([meta.width, meta.height]).toEqual([400, 300]);
+    },
+    30_000,
+  );
 });
 
 describe("POST /api/photo/render — request-shape gates (bad-recipe)", () => {
@@ -120,20 +141,44 @@ describe("POST /api/photo/render — request-shape gates (bad-recipe)", () => {
     expect(res.status).toBe(400);
     expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
   });
+
+  it("rejects an out-of-range adjust value (hostile contrast 259) as bad-recipe (400) — the schema bound's teeth", async () => {
+    // 259 would divide the classic contrast factor by zero (259 − v). The
+    // AdjustOpSchema −100..+100 bound rejects it before a byte reaches the jail.
+    const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
+      recipe: [{ op: "adjust", label: "Contrast +259", param: "contrast", value: 259 }],
+      format: "png",
+      quality: 90,
+    });
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
 });
 
 describe("POST /api/photo/render — op screening (unsupported-op)", () => {
-  it("rejects an adjust op with 422 unsupported-op, naming the op and its tranche", async () => {
+  it("rejects a textOverlay op with 422 unsupported-op, naming the op and its PE6 tranche", async () => {
     const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
-      recipe: [{ op: "adjust", label: "Brightness", param: "brightness", value: 12 }],
+      recipe: [
+        {
+          op: "textOverlay",
+          label: "Text",
+          id: "t1",
+          text: "hi",
+          font: { family: "Arimo", size: 24, bold: false, italic: false },
+          color: "#000000",
+          align: "left",
+          box: { x: 0, y: 0, w: 50, h: 20 },
+          rotation: 0,
+        },
+      ],
       format: "png",
       quality: 90,
     });
     expect(res.status).toBe(422);
     const body = await parsedError(res);
     expect(body).toMatchObject({ ok: false, code: "unsupported-op" });
-    expect(body.message).toContain("adjust");
-    expect(body.message).toContain("PE4");
+    expect(body.message).toContain("textOverlay");
+    expect(body.message).toContain("PE6");
   });
 
   it("rejects a resize op naming its PE5 tranche", async () => {

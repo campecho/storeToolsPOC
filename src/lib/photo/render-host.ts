@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
 import type { PhotoOp, RenderErrorCode, RenderPayload } from "@/lib/schema/photo";
+import { collectAdjustState, compileAdjust, isAdjustIdentity } from "./adjust-math";
 import { straightenScale } from "./geometry";
 import {
   INTAKE_TIMEOUT_MS,
@@ -358,6 +359,16 @@ export async function intakeImage(bytes: Buffer, mime: string): Promise<IntakeHo
  *               (= geometry.straightenScale of the pre-op dims), then re-extract
  *               the CENTERED `width`×`height` (the pre-op dims) window. Dims
  *               unchanged — a quality cost, not a size cost.
+ *  • adjust   — the ONE POINTWISE tone/colour pass (plan §3.3 "compiles the
+ *               recipe's adjust ops into one LUT + one matrix → single pass").
+ *               The whole recipe's adjust/autoEnhance ops fold (last-wins, §3.4)
+ *               into three 256-entry LUTs + one 3×3 saturation matrix, and this
+ *               step is appended AFTER all geometry so it runs terminally — a
+ *               pointwise op commutes with geometry, so recipe order among the
+ *               adjust ops (and their position relative to crops) never changes
+ *               the result. Dims UNCHANGED (per-pixel only). The LUTs ride as
+ *               plain `number[]` (not Uint8Array) so the step JSON-serializes for
+ *               the committed golden `compiled` block and deep-equals in tests.
  */
 export type RenderStep =
   | {
@@ -370,13 +381,25 @@ export type RenderStep =
     }
   | { kind: "rotate"; turns: number }
   | { kind: "flip"; axis: "horizontal" | "vertical" }
-  | { kind: "straighten"; degrees: number; scale: number; width: number; height: number };
+  | { kind: "straighten"; degrees: number; scale: number; width: number; height: number }
+  | {
+      kind: "adjust";
+      /** Per-channel 256-entry tone+temperature LUTs (0..255 ints as numbers). */
+      lutR: number[];
+      lutG: number[];
+      lutB: number[];
+      /** Row-major 3×3 saturation matrix (9 entries). */
+      matrix: number[];
+      /** When true the worker skips the matrix (tone-only path). */
+      identityMatrix: boolean;
+    };
 
 /**
  * Thrown by `compileRenderPlan` when the recipe carries an op this tranche
- * can't render (anything but crop/rotate/flip/straighten). The route catches it
- * and answers `unsupported-op` — but the route ALSO pre-screens the op tags, so
- * this is defence in depth, not the primary gate.
+ * can't render (anything but crop/rotate/flip/straighten geometry and
+ * adjust/autoEnhance tone). The route catches it and answers `unsupported-op` —
+ * but the route ALSO pre-screens the op tags, so this is defence in depth, not
+ * the primary gate.
  */
 export class UnsupportedRenderOp extends Error {
   constructor(public readonly op: string) {
@@ -394,10 +417,22 @@ function clampN(v: number, lo: number, hi: number): number {
 }
 
 /**
- * Compile a geometry recipe into worker steps, tracking effective dims by the
- * SAME folding rules as geometry.effectiveDims (cross-checked in the tests). The
+ * Compile a recipe into worker steps, tracking effective dims by the SAME
+ * folding rules as geometry.effectiveDims (cross-checked in the tests). The
  * returned `out` is the final effective size. Throws `UnsupportedRenderOp` on
- * the first non-geometry op — the route turns that into `unsupported-op`.
+ * the first op that is neither geometry nor tone/colour — the route turns that
+ * into `unsupported-op`.
+ *
+ * Two op classes compile here:
+ *   • GEOMETRY (crop/rotate/flip/straighten) folds inline, changing the effective
+ *     dims and emitting one step each (the §3.3 geometry seam).
+ *   • TONE/COLOUR (adjust/autoEnhance) is POINTWISE — it never changes dims and
+ *     never emits a step inside the loop. Instead the WHOLE recipe's adjust state
+ *     is folded once (collectAdjustState — last-wins setpoint semantics, §3.4)
+ *     and, when it isn't identity, a SINGLE terminal `adjust` step (one LUT +
+ *     one matrix) is appended AFTER all geometry. A pointwise op commutes with
+ *     geometry, so an adjust op sitting before a crop in the recipe still lands
+ *     terminally — the result is identical either way.
  *
  * Crop rects are expected in-bounds of the current effective image (the client
  * clamps via geometry.clampRectToImage); the extract offsets are clamped here
@@ -452,11 +487,36 @@ export function compileRenderPlan(
         steps.push({ kind: "straighten", degrees: op.degrees, scale, width: curW, height: curH });
         break;
       }
+      case "adjust":
+      case "autoEnhance":
+        // POINTWISE tone/colour — folded terminally after the loop (below), not
+        // per-op. Dims are untouched; nothing to emit here.
+        break;
       default:
-        // adjust / autoEnhance / bleedExpand / fitToSize / resize / textOverlay
-        // / logoOverlay / erase — not geometry, not renderable here yet.
+        // bleedExpand / fitToSize / resize / textOverlay / logoOverlay / erase —
+        // not geometry, not tone, not renderable here yet.
         throw new UnsupportedRenderOp(op.op);
     }
+  }
+
+  // ONE terminal tone/colour pass: fold the whole recipe's adjust ops (last-wins
+  // setpoint semantics, adjust-math.ts) into three LUTs + one saturation matrix,
+  // appended AFTER all geometry. Skipped entirely when nothing moves a pixel
+  // (isAdjustIdentity), so a geometry-only recipe compiles to exactly the same
+  // steps it did before PE4 (the existing goldens don't regenerate). The LUTs
+  // ride as plain number[] so the step JSON-serializes for the golden `compiled`
+  // block and deep-equals under `toEqual`.
+  const adjustState = collectAdjustState(recipe);
+  if (!isAdjustIdentity(adjustState)) {
+    const compiled = compileAdjust(adjustState);
+    steps.push({
+      kind: "adjust",
+      lutR: Array.from(compiled.lutR),
+      lutG: Array.from(compiled.lutG),
+      lutB: Array.from(compiled.lutB),
+      matrix: compiled.matrix,
+      identityMatrix: compiled.identityMatrix,
+    });
   }
 
   return { steps, out: { w: curW, h: curH } };

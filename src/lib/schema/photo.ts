@@ -103,18 +103,32 @@ export const ResizeOpSchema = z.object({
   percent: z.number().min(1).optional(),
 });
 
+/**
+ * Adjust setpoint bound (schema v1). An adjust `value` is an ABSOLUTE setpoint,
+ * an integer in −100..+100 with 0 = identity (adjust-math.ts binding model). The
+ * bound is load-bearing, not cosmetic: the classic contrast factor
+ * `f = 259·(v+255) / (255·(259−v))` DIVIDES BY ZERO at v = 259, so an unbounded
+ * hostile `contrast: 259` would poison every compiled LUT entry with Infinity.
+ * −100..+100 is the surface's own range (the sliders never leave it) and keeps
+ * the denominator away from zero. Pre-release schema v1 — this only ever
+ * TIGHTENS the accepted set, so no persisted document migrates.
+ */
+const AdjustValueSchema = z.number().min(-100).max(100);
+
 export const AdjustOpSchema = z.object({
   op: z.literal("adjust"),
   label: opLabel,
   param: AdjustParamSchema,
-  value: z.number(),
+  value: AdjustValueSchema,
 });
 
-/** Auto-enhance: computed once, STORED EXPLICIT (plan §3.4) — one named step. */
+/** Auto-enhance: computed once, STORED EXPLICIT (plan §3.4) — one named step.
+    Its chosen params are setpoints too, so they carry the same −100..+100 bound
+    (computeAutoEnhance already clamps tighter — ±40/±50/±30). */
 export const AutoEnhanceOpSchema = z.object({
   op: z.literal("autoEnhance"),
   label: opLabel,
-  params: z.record(AdjustParamSchema, z.number()),
+  params: z.record(AdjustParamSchema, AdjustValueSchema),
 });
 
 export const BleedExpandOpSchema = z.object({

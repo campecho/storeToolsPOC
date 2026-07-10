@@ -9,6 +9,7 @@ import { renderImage } from "@/lib/photo/render-host";
 import {
   RenderErrorSchema,
   RenderPayloadSchema,
+  type PhotoOp,
   type RenderError,
   type RenderErrorCode,
 } from "@/lib/schema/photo";
@@ -43,13 +44,12 @@ const STATUS_FOR: Record<RenderErrorCode, number> = {
 };
 
 /**
- * The tranche each non-geometry op renders from, for the `unsupported-op`
- * message ("'adjust' ops render from PE4"). Geometry ops (crop/rotate/flip/
- * straighten) render here and are absent from this map.
+ * The tranche each still-unsupported op renders from, for the `unsupported-op`
+ * message ("'resize' ops render from PE5"). Ops that render HERE — geometry
+ * (crop/rotate/flip/straighten) and tone/colour (adjust/autoEnhance, PE4) — are
+ * absent from this map.
  */
 const OP_TRANCHE: Record<string, string> = {
-  adjust: "ops render from PE4",
-  autoEnhance: "ops render from PE4",
   resize: "ops render from PE5",
   bleedExpand: "ops render from PE5",
   fitToSize: "ops render from PE5",
@@ -57,6 +57,11 @@ const OP_TRANCHE: Record<string, string> = {
   logoOverlay: "ops render from PE6",
   erase: "ops render from PE9",
 };
+
+/** The op tags the render spine can replay today: geometry + PE4 tone/colour. */
+function isRenderableOp(op: PhotoOp): boolean {
+  return isGeometryOp(op) || op.op === "adjust" || op.op === "autoEnhance";
+}
 
 /** Build a schema-checked JSON error (dev asserts the contract; tests too). */
 function fail(status: number, code: RenderErrorCode, message: string): NextResponse {
@@ -105,12 +110,13 @@ export async function POST(req: Request) {
   }
   const payload = payloadResult.data;
 
-  // 4. Op-tag screen: only crop/rotate/flip/straighten render at PE3. Name the
-  //    first offender and its tranche so the panel can explain the wait.
+  // 4. Op-tag screen: geometry (crop/rotate/flip/straighten) and tone/colour
+  //    (adjust/autoEnhance, PE4) render here. Name the first offender and its
+  //    tranche so the panel can explain the wait.
   for (const op of payload.recipe) {
-    if (!isGeometryOp(op)) {
+    if (!isRenderableOp(op)) {
       const tranche = OP_TRANCHE[op.op] ?? "ops aren't supported yet";
-      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, and straighten for now.`);
+      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, straighten, and tone/colour adjust for now.`);
     }
   }
 

@@ -1,7 +1,9 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import type { PhotoOp } from "@/lib/schema/photo";
+import type { AdjustParam, PhotoOp } from "@/lib/schema/photo";
+import { collectAdjustState, compileAdjust } from "./adjust-math";
 import { effectiveDims, straightenScale } from "./geometry";
+import { applyAdjust } from "./ops";
 import { compileRenderPlan, renderImage, UnsupportedRenderOp } from "./render-host";
 
 /**
@@ -30,7 +32,29 @@ const crop = (
 const rotate = (quarterTurns: number): PhotoOp => ({ op: "rotate", label: "Rotate", quarterTurns });
 const flip = (axis: "horizontal" | "vertical"): PhotoOp => ({ op: "flip", label: "Flip", axis });
 const straighten = (degrees: number): PhotoOp => ({ op: "straighten", label: "Straighten", degrees });
-const adjust = (): PhotoOp => ({ op: "adjust", label: "Brightness", param: "brightness", value: 12 });
+const adjust = (param: AdjustParam, value: number): PhotoOp => ({
+  op: "adjust",
+  label: `${param} ${value}`,
+  param,
+  value,
+});
+/** A still-unsupported op (renders from PE5) — the op-screen negative case. */
+const resize = (): PhotoOp => ({ op: "resize", label: "Resize", mode: "percent", percent: 50 });
+
+/**
+ * The expected RGBA for a source pixel under a recipe's TERMINAL adjust pass —
+ * run through the SAME isomorphic core the worker copies (collectAdjustState →
+ * compileAdjust → applyAdjust). Sampling a rendered pixel against this is a
+ * per-pixel parity check; parity.test.ts covers the whole-image byte-exactness.
+ */
+function expectedPixel(
+  src: [number, number, number, number],
+  recipe: PhotoOp[],
+): [number, number, number, number] {
+  const buf = Uint8Array.from(src);
+  applyAdjust(buf, compileAdjust(collectAdjustState(recipe)));
+  return [buf[0], buf[1], buf[2], buf[3]];
+}
 
 /**
  * A 400×300 four-quadrant marker: TL red, TR green, BL blue, BR yellow — so a
@@ -107,14 +131,56 @@ describe("compileRenderPlan — folded dims equal geometry.effectiveDims", () =>
 });
 
 describe("compileRenderPlan — op screening + step shape", () => {
-  it("throws UnsupportedRenderOp on the first non-geometry op, naming it", () => {
+  it("throws UnsupportedRenderOp on the first un-renderable op (not geometry, not tone), naming it", () => {
     try {
-      compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), adjust()], SRC);
+      compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), resize()], SRC);
       throw new Error("expected a throw");
     } catch (err) {
       expect(err).toBeInstanceOf(UnsupportedRenderOp);
-      expect((err as UnsupportedRenderOp).op).toBe("adjust");
+      expect((err as UnsupportedRenderOp).op).toBe("resize");
     }
+  });
+
+  it("does NOT throw on adjust/autoEnhance — they compile to a terminal pass", () => {
+    expect(() =>
+      compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), adjust("brightness", 12)], SRC),
+    ).not.toThrow();
+  });
+
+  it("appends ONE terminal adjust step after geometry; dims unchanged by it", () => {
+    const { steps, out } = compileRenderPlan(
+      [crop({ x: 0, y: 0, w: 200, h: 150 }), adjust("brightness", 20), adjust("saturation", 40)],
+      SRC,
+    );
+    // extract first, adjust last.
+    expect(steps.map((s) => s.kind)).toEqual(["extract", "adjust"]);
+    const last = steps[steps.length - 1];
+    expect(last.kind).toBe("adjust");
+    if (last.kind === "adjust") {
+      expect(last.lutR).toHaveLength(256);
+      expect(last.lutG).toHaveLength(256);
+      expect(last.lutB).toHaveLength(256);
+      expect(last.matrix).toHaveLength(9);
+      expect(last.identityMatrix).toBe(false); // saturation ≠ 0 → real matrix
+    }
+    // adjust never moves the frame — out equals the crop's dims.
+    expect(out).toEqual({ w: 200, h: 150 });
+    expect(out).toEqual(effectiveDims(SRC, [crop({ x: 0, y: 0, w: 200, h: 150 })]));
+  });
+
+  it("emits NO adjust step when the adjust ops fold to identity (value 0)", () => {
+    const { steps } = compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), adjust("brightness", 0)], SRC);
+    expect(steps.map((s) => s.kind)).toEqual(["extract"]);
+  });
+
+  it("folds adjust ops last-wins, independent of position relative to geometry (pointwise commutes)", () => {
+    // adjust BEFORE the crop and adjust AFTER the crop compile to the same
+    // terminal step — a pointwise op commutes with the geometry around it.
+    const before = compileRenderPlan([adjust("brightness", 15), crop({ x: 0, y: 0, w: 100, h: 100 })], SRC);
+    const after = compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), adjust("brightness", 15)], SRC);
+    const bAdj = before.steps.find((s) => s.kind === "adjust");
+    const aAdj = after.steps.find((s) => s.kind === "adjust");
+    expect(bAdj).toEqual(aAdj);
   });
 
   it("carries scale=straightenScale and the pre-op dims on the straighten step", () => {
@@ -266,17 +332,17 @@ describe("renderImage — geometry replays at full resolution", () => {
   );
 
   it(
-    "reports unsupported-op (never renders) when a non-geometry op sneaks into the recipe",
+    "reports unsupported-op (never renders) when an un-renderable op sneaks into the recipe",
     async () => {
       const out = await renderImage(await quadPng(), {
-        recipe: [adjust()],
+        recipe: [resize()],
         format: "png",
         quality: 90,
       });
       expect(out.ok).toBe(false);
       if (out.ok) return;
       expect(out.code).toBe("unsupported-op");
-      expect(out.message).toContain("adjust");
+      expect(out.message).toContain("resize");
     },
     30_000,
   );
@@ -289,6 +355,69 @@ describe("renderImage — geometry replays at full resolution", () => {
       expect(out.ok).toBe(false);
       if (out.ok) return;
       expect(out.code).toBe("decode-failed");
+    },
+    30_000,
+  );
+});
+
+/* ========================================================================== */
+/* renderImage — the terminal tone/colour pass (PE4)                           */
+/* ========================================================================== */
+
+describe("renderImage — adjust replays as one terminal pointwise pass", () => {
+  // A recipe that exercises BOTH the LUT (brightness) and the matrix
+  // (saturation) legs of applyAdjust, so the sampled pixel proves the full path.
+  const tone: PhotoOp[] = [adjust("brightness", 30), adjust("saturation", 50)];
+
+  it(
+    "adjust-only recipe: dims unchanged, sampled pixel matches the shared-core expectation",
+    async () => {
+      const out = await renderImage(await quadPng(), { recipe: tone, format: "png", quality: 90 });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const s = await sample(out.bytes, 100, 75); // deep inside the solid TL (red) quadrant
+      expect([s.width, s.height]).toEqual([400, 300]); // pointwise → dims untouched
+      // The TL quadrant is a solid [220,30,30]; PNG→PNG is lossless, so the
+      // rendered pixel equals the isomorphic core's output byte-for-byte.
+      expect(s.rgba).toEqual(expectedPixel([220, 30, 30, 255], tone));
+    },
+    30_000,
+  );
+
+  it(
+    "crop THEN adjust: geometry first (frame moves), then the terminal tone pass on the cropped pixels",
+    async () => {
+      const recipe: PhotoOp[] = [crop({ x: 200, y: 0, w: 200, h: 150 }), ...tone]; // crop to TR (green)
+      const out = await renderImage(await quadPng(), { recipe, format: "png", quality: 90 });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const s = await sample(out.bytes, 100, 75); // centre of the 200×150 cropped frame
+      expect([s.width, s.height]).toEqual([200, 150]);
+      // collectAdjustState ignores the crop, so the expectation is the tone pass
+      // on the cropped (green) pixel.
+      expect(s.rgba).toEqual(expectedPixel([30, 200, 30, 255], recipe));
+    },
+    30_000,
+  );
+
+  it(
+    "adjust BEFORE a crop still applies terminally — identical to crop-then-adjust (pointwise commutes)",
+    async () => {
+      // A pointwise op commutes with the geometry around it, and compileRenderPlan
+      // ALWAYS appends the folded adjust after all geometry, so recipe order
+      // between the adjust and the crop cannot change the pixels. We prove it by
+      // rendering both orders and asserting the shared sampled pixel agrees.
+      const adjustFirst: PhotoOp[] = [...tone, crop({ x: 200, y: 0, w: 200, h: 150 })];
+      const cropFirst: PhotoOp[] = [crop({ x: 200, y: 0, w: 200, h: 150 }), ...tone];
+      const a = await renderImage(await quadPng(), { recipe: adjustFirst, format: "png", quality: 90 });
+      const b = await renderImage(await quadPng(), { recipe: cropFirst, format: "png", quality: 90 });
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      const sa = await sample(a.bytes, 100, 75);
+      const sb = await sample(b.bytes, 100, 75);
+      expect([sa.width, sa.height]).toEqual([200, 150]);
+      expect(sa.rgba).toEqual(sb.rgba);
+      expect(sa.rgba).toEqual(expectedPixel([30, 200, 30, 255], adjustFirst));
     },
     30_000,
   );

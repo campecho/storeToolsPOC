@@ -153,6 +153,7 @@ async function intake(sharp, job) {
 /* ------------------------------------------------------------------ */
 
 const clampN = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const clampByte = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 /**
  * An SVG alpha mask sized to the crop window: a white shape on a transparent
@@ -238,6 +239,56 @@ async function render(sharp, job) {
             .png()
             .toBuffer();
         }
+      } else if (step.kind === "adjust") {
+        // The ONE pointwise tone/colour pass. This block is DUPLICATED FROM
+        // ops.ts `applyAdjust` BY CONTRACT — this plain-JS worker cannot import
+        // the TS parity core, so the loop is copied byte-for-byte and
+        // parity.test.ts is the guard that the two stay identical (a byte drift
+        // there is a red test, not a broken export). Model (adjust-math.ts):
+        // LUT-FIRST then MATRIX, alpha untouched, single Math.round + clamp
+        // 0..255 per channel.
+        //
+        // Materialize the current image to raw RGBA (ensureAlpha so alpha always
+        // exists and rides through untouched), transform in place, re-wrap as a
+        // 4-channel raw buffer for the next step / final encode.
+        const { data, info } = await sharp(buf)
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        const lutR = step.lutR;
+        const lutG = step.lutG;
+        const lutB = step.lutB;
+        const len = data.length - (data.length % 4);
+        if (step.identityMatrix) {
+          // Tone/temperature only — three table lookups per pixel.
+          for (let i = 0; i < len; i += 4) {
+            data[i] = lutR[data[i]];
+            data[i + 1] = lutG[data[i + 1]];
+            data[i + 2] = lutB[data[i + 2]];
+            // data[i + 3] — alpha — untouched.
+          }
+        } else {
+          const m = step.matrix;
+          const m0 = m[0], m1 = m[1], m2 = m[2];
+          const m3 = m[3], m4 = m[4], m5 = m[5];
+          const m6 = m[6], m7 = m[7], m8 = m[8];
+          for (let i = 0; i < len; i += 4) {
+            // LUT first…
+            const r = lutR[data[i]];
+            const g = lutG[data[i + 1]];
+            const b = lutB[data[i + 2]];
+            // …then the saturation matrix, rounded + clamped once per channel.
+            data[i] = clampByte(Math.round(m0 * r + m1 * g + m2 * b));
+            data[i + 1] = clampByte(Math.round(m3 * r + m4 * g + m5 * b));
+            data[i + 2] = clampByte(Math.round(m6 * r + m7 * g + m8 * b));
+            // data[i + 3] — alpha — untouched.
+          }
+        }
+        buf = await sharp(data, {
+          raw: { width: info.width, height: info.height, channels: 4 },
+        })
+          .png()
+          .toBuffer();
       } else {
         // The host compiled these, so an unknown kind is our bug, not the file's.
         throw new Error(`unknown render step: ${String(step?.kind)}`);
