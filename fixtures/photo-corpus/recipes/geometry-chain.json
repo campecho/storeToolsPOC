@@ -1,0 +1,57 @@
+{
+  "source": "photo-demo.jpg",
+  "payload": {
+    "format": "jpeg",
+    "quality": 90,
+    "recipe": [
+      {
+        "op": "crop",
+        "label": "Crop to 4 × 6",
+        "rect": {
+          "x": 0,
+          "y": 168,
+          "w": 4032,
+          "h": 2688
+        },
+        "ratio": "4 × 6",
+        "shape": "rect"
+      },
+      {
+        "op": "rotate",
+        "label": "Rotate 90° right",
+        "quarterTurns": 1
+      },
+      {
+        "op": "straighten",
+        "label": "Straighten −1.2°",
+        "degrees": -1.2
+      }
+    ]
+  },
+  "compiled": {
+    "steps": [
+      {
+        "kind": "extract",
+        "left": 0,
+        "top": 168,
+        "width": 4032,
+        "height": 2688
+      },
+      {
+        "kind": "rotate",
+        "turns": 1
+      },
+      {
+        "kind": "straighten",
+        "degrees": -1.2,
+        "scale": 1.0311943132998809,
+        "width": 2688,
+        "height": 4032
+      }
+    ],
+    "out": {
+      "w": 2688,
+      "h": 4032
+    }
+  }
+}

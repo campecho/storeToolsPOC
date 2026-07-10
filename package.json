@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "refresh:corpus": "node scripts/refresh-corpus.mjs",
+    "refresh:photo-goldens": "node scripts/refresh-photo-goldens.mjs",
     "fidelity": "vitest run src/lib/import/corpus-fidelity.test.ts"
   },
   "dependencies": {
