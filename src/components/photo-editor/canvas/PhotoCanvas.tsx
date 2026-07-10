@@ -5,6 +5,13 @@ import { useAssetUrl } from "@/lib/assets/use-asset-url";
 import type { PhotoDocument, PhotoOp } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
 import { effectiveDims, straightenScale, type Dims } from "@/lib/photo/geometry";
+import {
+  collectAdjustState,
+  compileAdjust,
+  isAdjustIdentity,
+  type AdjustState,
+} from "@/lib/photo/adjust-math";
+import { applyAdjust } from "@/lib/photo/ops";
 import { CropOverlay } from "./CropOverlay";
 import { StraightenOverlay } from "./StraightenOverlay";
 
@@ -165,20 +172,63 @@ function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
   return true;
 }
 
+/** Fixed field order for a cheap, stable AdjustState serialization — the adjust
+    cache key. Any change to the folded setpoints re-runs ONLY the LUT pass. */
+const ADJUST_KEYS = [
+  "brightness",
+  "contrast",
+  "exposure",
+  "highlights",
+  "shadows",
+  "saturation",
+  "temperature",
+] as const satisfies readonly (keyof AdjustState)[];
+
+function adjustKeyOf(s: AdjustState): string {
+  return ADJUST_KEYS.map((k) => s[k]).join("|");
+}
+
+/** Run the compiled adjust LUT+matrix over a COPY of the geometry compose,
+    returning a fresh canvas (the geometry compose is never mutated — split view
+    needs the untouched "before" half). This is the only per-drag work: the
+    geometry replay stays cached, this pass is the <100 ms budget. */
+function applyAdjustPass(geom: HTMLCanvasElement, state: AdjustState): HTMLCanvasElement {
+  const out = makeCanvas(geom.width, geom.height);
+  const octx = ctxOf(out);
+  octx.drawImage(geom, 0, 0);
+  const img = octx.getImageData(0, 0, out.width, out.height);
+  applyAdjust(img.data, compileAdjust(state));
+  octx.putImageData(img, 0, 0);
+  return out;
+}
+
 /**
- * The proxy canvas (wire region 5). PE1 drew the fit-to-viewport proxy on the
- * pasteboard; PE2 adds the GEOMETRY REPLAY: ops[0..cursor) + the live `previewOp`
- * are folded through an offscreen pipeline (crop / rotate / flip / straighten)
- * and the composed bitmap is what gets contain-fit + shadowed onto the visible
- * canvas. The compose is cached by (source, cursor, recipe, previewOp) so a pure
- * resize never re-runs it, and the whole thing stays rAF-coalesced.
+ * The proxy canvas (wire region 5). PE1 drew the fit-to-viewport proxy; PE2 added
+ * the GEOMETRY REPLAY (crop / rotate / flip / straighten folded through an
+ * offscreen pipeline); PE4 adds the ADJUST PASS and SPLIT VIEW.
  *
- * `comparing` (the Compare peek — also driven by the space-peek listener below)
- * skips ALL ops and the preview and paints the raw proxy with an "Original" chip.
+ * TWO-LAYER CACHE (the <100 ms slider budget rides on this):
+ *   1. GEOMETRY compose — keyed by (base, cursor, recipe, GEOMETRY preview only).
+ *      An adjust preview does NOT enter this key, so a slider drag never triggers
+ *      a geometry replay.
+ *   2. ADJUST result — a separate cache of the LUT+matrix pass over the cached
+ *      geometry compose, keyed by (geometry-canvas identity, adjust-state string).
+ *      A slider drag re-runs ONLY this pass on the already-composed geometry.
+ * The folded adjust state = collectAdjustState(applied slice + the live preview
+ * op) — a preview adjust participates so the canvas previews live.
  *
- * The displayed-image box + display scale are published as `layout` so the crop
- * and straighten overlays render their chrome exactly over the drawn image; the
- * layout only changes on resize / doc / ops / preview, never on a crop-draft drag.
+ * `comparing` (the Compare hold-peek / space-peek) overrides everything: it skips
+ * all ops and paints the raw proxy with an "Original" chip — and it also overrides
+ * split view (both halves become the original while held).
+ *
+ * SPLIT VIEW (store.splitView, Section D): draws the geometry-only compose (BEFORE)
+ * on the left of a draggable divider and geometry+adjust (AFTER) on the right, both
+ * from the SAME cached geometry compose at the SAME box so the halves align
+ * pixel-perfect. The divider + Before/After chips are a DOM overlay (SplitDivider).
+ *
+ * The displayed-image box + display scale are published as `layout` so the crop /
+ * straighten overlays and the split divider land their chrome exactly over the
+ * drawn image; the layout only changes on resize / doc / ops / preview.
  */
 export function PhotoCanvas({
   doc,
@@ -201,6 +251,12 @@ export function PhotoCanvas({
   const previewOp = usePhotoStore((s) => s.previewOp);
   const comparing = usePhotoStore((s) => s.comparing);
   const setComparing = usePhotoStore((s) => s.setComparing);
+  const splitView = usePhotoStore((s) => s.splitView);
+
+  // Split-view divider position, fraction of the displayed image width [0.05,0.95].
+  const [splitPos, setSplitPos] = useState(0.5);
+  const splitPosRef = useRef(splitPos);
+  splitPosRef.current = splitPos;
 
   // Latest inputs read through refs so the draw closure never goes stale and the
   // resize listener stays installed once.
@@ -214,11 +270,19 @@ export function PhotoCanvas({
   previewOpRef.current = previewOp;
   const comparingRef = useRef(comparing);
   comparingRef.current = comparing;
+  const splitViewRef = useRef(splitView);
+  splitViewRef.current = splitView;
 
-  // Composed-bitmap memo, keyed by (source, baseW, cursor, recipe, previewOp, s).
-  const composeCacheRef = useRef<{ key: readonly unknown[]; canvas: HTMLCanvasElement } | null>(
-    null,
-  );
+  // GEOMETRY compose memo — key excludes the adjust preview so a slider drag is a
+  // cache HIT here (no geometry replay).
+  const geomCacheRef = useRef<{ key: readonly unknown[]; canvas: HTMLCanvasElement } | null>(null);
+  // ADJUST result memo — the LUT+matrix pass over the cached geometry compose.
+  // Invalidated when the geometry canvas identity OR the folded adjust state moves.
+  const adjustCacheRef = useRef<{
+    geom: HTMLCanvasElement;
+    key: string;
+    canvas: HTMLCanvasElement;
+  } | null>(null);
 
   // Overlay layout, published from draw() with change-detection (no render loop).
   const [layout, setLayout] = useState<CanvasImageLayout | null>(null);
@@ -281,22 +345,55 @@ export function PhotoCanvas({
     const appliedOps = d ? d.recipe.slice(0, d.cursor) : [];
     const preview = previewOpRef.current;
     const isComparing = comparingRef.current;
+    const splitOn = splitViewRef.current && d != null;
 
-    let source: CanvasImageSource = base;
+    // The live preview folds on top of the applied slice. A geometry-shaped
+    // preview (straighten/crop/…) re-composes geometry; an ADJUST preview does
+    // NOT enter the geometry key, so it can never bust the geometry cache mid-drag.
+    const combinedOps = preview ? [...appliedOps, preview] : appliedOps;
+    const geomPreview = preview && preview.op !== "adjust" ? preview : null;
+
+    // Folded adjust state — the preview adjust participates so it previews live.
+    const adjustState: AdjustState | null =
+      !isComparing && d ? collectAdjustState(combinedOps) : null;
+    const adjustActive = adjustState != null && !isAdjustIdentity(adjustState);
+
+    // A geometry canvas is needed whenever there are ops, an active adjust (the
+    // LUT pass reads pixels off a canvas), or split view (both halves come from
+    // the geometry compose). Otherwise the raw base draws straight through.
+    const needGeom =
+      !isComparing && (appliedOps.length > 0 || geomPreview != null || adjustActive || splitOn);
+
+    // BEFORE = geometry-only; AFTER = geometry + adjust. Default both to base.
+    let before: CanvasImageSource = base;
+    let after: CanvasImageSource = base;
     let srcW = baseW;
     let srcH = baseH;
-    const needsCompose = !isComparing && (appliedOps.length > 0 || preview != null);
-    if (needsCompose) {
-      const key: readonly unknown[] = [base, baseW, d?.recipe, d?.cursor, preview, runningScale];
-      let cache = composeCacheRef.current;
-      if (!cache || !sameKey(cache.key, key)) {
-        const ops = preview ? [...appliedOps, preview] : appliedOps;
-        cache = { key, canvas: composeGeometry(base, baseW, baseH, ops, runningScale) };
-        composeCacheRef.current = cache;
+
+    if (needGeom) {
+      // LAYER 1 — geometry compose (cache key EXCLUDES the adjust preview).
+      const geomOps = geomPreview ? [...appliedOps, geomPreview] : appliedOps;
+      const key: readonly unknown[] = [base, baseW, d?.recipe, d?.cursor, geomPreview, runningScale];
+      let gc = geomCacheRef.current;
+      if (!gc || !sameKey(gc.key, key)) {
+        gc = { key, canvas: composeGeometry(base, baseW, baseH, geomOps, runningScale) };
+        geomCacheRef.current = gc;
       }
-      source = cache.canvas;
-      srcW = cache.canvas.width;
-      srcH = cache.canvas.height;
+      before = gc.canvas;
+      after = gc.canvas;
+      srcW = gc.canvas.width;
+      srcH = gc.canvas.height;
+
+      // LAYER 2 — adjust LUT pass over the cached geometry compose (its own cache).
+      if (adjustActive && adjustState) {
+        const aKey = adjustKeyOf(adjustState);
+        let ac = adjustCacheRef.current;
+        if (!ac || ac.geom !== gc.canvas || ac.key !== aKey) {
+          ac = { geom: gc.canvas, key: aKey, canvas: applyAdjustPass(gc.canvas, adjustState) };
+          adjustCacheRef.current = ac;
+        }
+        after = ac.canvas;
+      }
     }
 
     const pad = 24;
@@ -308,14 +405,29 @@ export function PhotoCanvas({
     const x = (cssW - dispW) / 2;
     const y = (cssH - dispH) / 2;
 
+    // Paint. Comparing wins (raw original); then split; then the plain composite.
+    // The drop shadow is drawn once (with the AFTER/base pass) so the split seam
+    // never double-shadows — the BEFORE half overpaints inside the box, shadowless.
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.22)";
     ctx.shadowBlur = 16;
     ctx.shadowOffsetY = 3;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(source, x, y, dispW, dispH);
+    ctx.drawImage(isComparing ? base : after, x, y, dispW, dispH);
     ctx.restore();
+
+    if (!isComparing && splitOn) {
+      const f = Math.min(0.95, Math.max(0.05, splitPosRef.current));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, dispW * f, dispH);
+      ctx.clip();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(before, x, y, dispW, dispH);
+      ctx.restore();
+    }
 
     if (isComparing) drawOriginalChip(ctx, x, y);
 
@@ -375,14 +487,16 @@ export function PhotoCanvas({
   useEffect(() => {
     if (!proxyUrl) {
       proxyImgRef.current = null;
-      composeCacheRef.current = null;
+      geomCacheRef.current = null;
+      adjustCacheRef.current = null;
       schedule();
       return;
     }
     const img = new Image();
     img.onload = () => {
       proxyImgRef.current = img;
-      composeCacheRef.current = null; // new base — invalidate the compose memo
+      geomCacheRef.current = null; // new base — invalidate both compose memos
+      adjustCacheRef.current = null;
       schedule();
     };
     img.src = proxyUrl;
@@ -392,10 +506,12 @@ export function PhotoCanvas({
   }, [proxyUrl, schedule]);
 
   // Repaint when the preview bitmap, the document (recipe/cursor), the live
-  // preview op, or the compare peek changes.
+  // preview op, the compare peek, or the split view / divider position changes.
+  // (The offscreen caches are independent of splitView — it only changes the final
+  // composition — but the split divider drag and toggle still need a redraw.)
   useEffect(() => {
     schedule();
-  }, [previewBitmap, doc, previewOp, comparing, schedule]);
+  }, [previewBitmap, doc, previewOp, comparing, splitView, splitPos, schedule]);
 
   // Space-peek: hold Space to compare against the original (mirrors the panel's
   // Compare button hold). Ignores typing targets, cleans up StrictMode-safely.
@@ -441,12 +557,122 @@ export function PhotoCanvas({
   }, [setComparing]);
 
   const showCropChrome = doc != null && layout != null && activeTool === "crop";
+  // Split-view chrome rides above the canvas; the compare peek overrides split
+  // view (both halves become the original while held), so hide the divider then.
+  const showSplit = doc != null && layout != null && splitView && !comparing;
 
   return (
     <div ref={containerRef} className="relative flex-1 overflow-hidden bg-[#d3d3d3]">
       <canvas ref={canvasRef} data-testid="photo-canvas" className="block" />
       {showCropChrome && previewOp?.op === "straighten" && <StraightenOverlay layout={layout} />}
       {showCropChrome && <CropOverlay layout={layout} />}
+      {showSplit && layout && <SplitDivider layout={layout} pos={splitPos} onChange={setSplitPos} />}
+    </div>
+  );
+}
+
+/**
+ * Split-view divider (wire Section D). A DOM overlay over the displayed image box:
+ * a "Before" chip top-left, an "After" chip top-right, a white divider line, and a
+ * draggable circular handle (pointer-capture, clamped to 5%..95% of the image
+ * width). It only positions chrome — the actual before/after halves are composited
+ * on the canvas from the same cached geometry compose, so they align pixel-perfect.
+ */
+function SplitDivider({
+  layout,
+  pos,
+  onChange,
+}: {
+  layout: CanvasImageLayout;
+  pos: number;
+  onChange: (p: number) => void;
+}) {
+  const { x, y, w, h } = layout;
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const lineX = x + w * pos;
+
+  const chipStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,.9)",
+    boxShadow: "0 1px 2px rgba(0,0,0,.12)",
+  };
+
+  const updateFromClientX = (clientX: number) => {
+    const el = overlayRef.current;
+    if (!el || w <= 0) return;
+    // The overlay is inset-0 over the same container `layout.x` is measured from,
+    // so its left edge is the shared basis for both the canvas draw and this drag.
+    const rect = el.getBoundingClientRect();
+    const f = (clientX - rect.left - x) / w;
+    onChange(Math.min(0.95, Math.max(0.05, f)));
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    dragging.current = true;
+    updateFromClientX(e.clientX);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (dragging.current) updateFromClientX(e.clientX);
+  };
+  const endDrag = () => {
+    dragging.current = false;
+  };
+
+  return (
+    <div ref={overlayRef} className="pointer-events-none absolute inset-0">
+      <div
+        data-testid="photo-split-before"
+        className="absolute rounded-[4px] px-[7px] py-[2px] text-[9.5px] text-[#777]"
+        style={{ left: x + 8, top: y + 8, ...chipStyle }}
+      >
+        Before
+      </div>
+      <div
+        data-testid="photo-split-after"
+        className="absolute rounded-[4px] px-[7px] py-[2px] text-[9.5px] text-[#777]"
+        style={{ left: x + w - 8, top: y + 8, transform: "translateX(-100%)", ...chipStyle }}
+      >
+        After
+      </div>
+      <div
+        className="absolute"
+        style={{
+          left: lineX - 1,
+          top: y,
+          width: 2,
+          height: h,
+          background: "#fff",
+          boxShadow: "0 0 4px rgba(0,0,0,.35)",
+        }}
+      />
+      <div
+        data-testid="photo-split-divider"
+        role="slider"
+        aria-label="Before / after split"
+        aria-valuemin={5}
+        aria-valuemax={95}
+        aria-valuenow={Math.round(pos * 100)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className="absolute flex items-center justify-center rounded-full border border-[#b0b0b0] bg-white text-[10px] text-[#888] shadow-[0_1px_3px_rgba(0,0,0,.28)]"
+        style={{
+          left: lineX,
+          top: y + h / 2,
+          width: 24,
+          height: 24,
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "auto",
+          cursor: "ew-resize",
+          touchAction: "none",
+        }}
+      >
+        ⇄
+      </div>
     </div>
   );
 }

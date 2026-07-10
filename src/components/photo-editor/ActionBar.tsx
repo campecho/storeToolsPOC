@@ -1,20 +1,46 @@
 "use client";
 
-import { Columns2, Frame, Maximize2, MoreHorizontal, RefreshCw, Redo2, Sparkles, Undo2 } from "lucide-react";
+import { useRef } from "react";
+import {
+  Check,
+  Columns2,
+  Frame,
+  Loader2,
+  Maximize2,
+  MoreHorizontal,
+  RefreshCw,
+  Redo2,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
 import type { PhotoDocument } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
 import type { PhotoTool } from "@/lib/store/photo-store";
+import { useAutoEnhance } from "./useAutoEnhance";
 
 /**
- * Action bar (wire region 2). Left: undo/redo (wired to the recipe cursor —
- * disabled at bounds), Auto-enhance (PE4, disabled with an honest tooltip) and
- * Compare — a LIVE press-and-hold peek: holding it flips `comparing` on the
- * store so the canvas swaps in the original; releasing (or the pointer leaving)
- * clears it (the split view itself lands with PE4). Right, under the uppercase
- * "Quick fixes" label: Fix bleed / Fit to size / Convert format — these NAVIGATE
- * (plan §1.1): Fix bleed + Fit to size open Fix for print, Convert format opens
- * Export. The `⋯` overflow is inert.
+ * Action bar (wire region 2). Left: undo/redo (recipe-cursor bounds), Auto-enhance
+ * (PE4 — LIVE via the shared useAutoEnhance hook), and Compare.
+ *
+ * COMPARE is now dual-mode (PE4), disambiguated by press duration measured from a
+ * pointerdown timestamp against COMPARE_HOLD_MS (300 ms):
+ *   • quick CLICK (< 300 ms)  → toggles SPLIT VIEW (store.splitView; aria-pressed,
+ *     active red tint). No peek flashes on a click — the peek only begins if the
+ *     press crosses the threshold.
+ *   • press-and-HOLD (≥ 300 ms) → the original peek: `comparing` flips true while
+ *     held and clears on release, with NO split-view toggle.
+ * A timer arms the visible peek at the threshold; the release path reads the
+ * timestamp to decide click-vs-hold.
+ *
+ * Right, under the uppercase "Quick fixes" label: Fix bleed / Fit to size /
+ * Convert format NAVIGATE (Fix bleed + Fit to size → Fix for print, Convert
+ * format → Export). The `⋯` overflow is inert.
  */
+
+/** Press-duration threshold splitting a Compare click (toggle split view) from a
+    hold (peek the original). */
+const COMPARE_HOLD_MS = 300;
+
 export function ActionBar({
   doc,
   onUndo,
@@ -27,11 +53,51 @@ export function ActionBar({
   onSelectTool: (tool: PhotoTool) => void;
 }) {
   const setComparing = usePhotoStore((s) => s.setComparing);
+  const splitView = usePhotoStore((s) => s.splitView);
+  const setSplitView = usePhotoStore((s) => s.setSplitView);
+  const autoEnhance = useAutoEnhance();
+
+  // Compare press bookkeeping: the pointerdown timestamp, the peek-arming timer,
+  // and whether the peek actually engaged (so release knows it was a hold).
+  const press = useRef<{ t: number; timer: number | null; peeking: boolean } | null>(null);
 
   const canUndo = doc.cursor > 0;
   const canRedo = doc.cursor < doc.recipe.length;
 
   const iconBtn = "flex h-7 w-[30px] items-center justify-center rounded-[5px] border border-[#dcdcdc] bg-white";
+
+  const onComparePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const timer = window.setTimeout(() => {
+      // Crossed the hold threshold → begin the peek.
+      setComparing(true);
+      if (press.current) press.current.peeking = true;
+    }, COMPARE_HOLD_MS);
+    press.current = { t: Date.now(), timer, peeking: false };
+  };
+
+  const endComparePress = () => {
+    const p = press.current;
+    if (!p) return;
+    press.current = null;
+    if (p.timer != null) clearTimeout(p.timer);
+    if (p.peeking || Date.now() - p.t >= COMPARE_HOLD_MS) {
+      // It was a hold-peek — release it, never toggle.
+      setComparing(false);
+    } else {
+      // A quick click toggles split view.
+      setSplitView(!splitView);
+    }
+  };
+
+  const cancelComparePress = () => {
+    const p = press.current;
+    if (!p) return;
+    press.current = null;
+    if (p.timer != null) clearTimeout(p.timer);
+    setComparing(false);
+  };
 
   return (
     <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[#e6e6e6] bg-[#fafafa] px-3">
@@ -62,25 +128,47 @@ export function ActionBar({
 
       <button
         type="button"
-        disabled
-        title="Auto-enhance lands with the adjust tranche (PE4)"
-        className="flex h-7 cursor-not-allowed items-center gap-[6px] rounded-[5px] border border-[#dcdcdc] bg-white px-[10px] text-[12px] text-[#555] opacity-60"
+        data-testid="photo-auto-enhance"
+        onClick={autoEnhance.run}
+        disabled={autoEnhance.busy}
+        title="Auto-enhance — histogram stretch + white balance, one undoable step"
+        className={`flex h-7 items-center gap-[6px] rounded-[5px] border border-[#dcdcdc] bg-white px-[10px] text-[12px] text-[#555] ${
+          autoEnhance.busy ? "cursor-wait opacity-70" : "cursor-pointer hover:bg-[#f4f4f4]"
+        }`}
       >
-        <Sparkles size={13} strokeWidth={1.6} className="text-brand" />
-        Auto-enhance
+        {autoEnhance.busy ? (
+          <>
+            <Loader2 size={13} strokeWidth={2} className="animate-spin text-[#666]" />
+            Enhancing…
+          </>
+        ) : autoEnhance.balanced ? (
+          <>
+            <Check size={13} strokeWidth={2.2} className="text-brand" />
+            Already balanced
+          </>
+        ) : (
+          <>
+            <Sparkles size={13} strokeWidth={1.6} className="text-brand" />
+            Auto-enhance
+          </>
+        )}
       </button>
       <button
         type="button"
         data-testid="photo-compare"
-        title="Hold to peek the original · split view lands with PE4"
-        onPointerDown={() => setComparing(true)}
-        onPointerUp={() => setComparing(false)}
-        onPointerLeave={() => setComparing(false)}
-        onPointerCancel={() => setComparing(false)}
-        className="flex h-7 cursor-pointer items-center gap-[6px] rounded-[5px] border border-[#dcdcdc] bg-white px-[10px] text-[12px] text-[#555] hover:bg-[#f4f4f4]"
+        aria-pressed={splitView}
+        title="Click for split view · hold to peek the original"
+        onPointerDown={onComparePointerDown}
+        onPointerUp={endComparePress}
+        onPointerCancel={cancelComparePress}
+        className={`flex h-7 cursor-pointer items-center gap-[6px] rounded-[5px] border px-[10px] text-[12px] ${
+          splitView
+            ? "border-brand bg-brand-tint text-brand-deep"
+            : "border-[#dcdcdc] bg-white text-[#555] hover:bg-[#f4f4f4]"
+        }`}
       >
-        <Columns2 size={13} strokeWidth={1.6} className="text-[#666]" />
-        Compare <span className="text-[10px] text-[#aaa]">hold</span>
+        <Columns2 size={13} strokeWidth={1.6} className={splitView ? "text-brand-deep" : "text-[#666]"} />
+        Compare <span className={`text-[10px] ${splitView ? "text-brand-muted" : "text-[#aaa]"}`}>hold</span>
       </button>
 
       <div className="flex-1" />
