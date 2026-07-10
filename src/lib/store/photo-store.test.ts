@@ -6,6 +6,7 @@ import {
 } from "./photo-store";
 import {
   PhotoDocumentSchema,
+  type AdjustParam,
   type PhotoDocument,
   type PhotoOp,
   type PhotoSource,
@@ -45,6 +46,11 @@ function makeDoc(recipe: PhotoOp[] = [], cursor: number = recipe.length): PhotoD
 /** A labelled adjust op — the label makes recipe order easy to assert. */
 function op(label: string): PhotoOp {
   return { op: "adjust", label, param: "brightness", value: 1 };
+}
+
+/** A param-specific adjust op — for the param-aware coalesce tests. */
+function adjustOp(param: AdjustParam, value: number): PhotoOp {
+  return { op: "adjust", label: `${param} ${value}`, param, value };
 }
 
 function cropOp(): PhotoOp {
@@ -289,6 +295,47 @@ describe("pushOp coalesce — the straighten-slider anti-spam rule", () => {
   });
 });
 
+describe("pushOp coalesce — PARAM-AWARE for adjust", () => {
+  it("brightness dragged twice collapses to one step (same param coalesces)", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(adjustOp("brightness", 5));
+    s().pushOp(adjustOp("brightness", 12), { coalesce: true });
+    expect(s().doc?.recipe).toHaveLength(1);
+    expect(s().doc?.cursor).toBe(1);
+    const only = s().doc?.recipe[0];
+    expect((only as { param: string }).param).toBe("brightness");
+    expect((only as { value: number }).value).toBe(12);
+  });
+
+  it("brightness THEN contrast makes two steps (Brightness must not swallow Contrast)", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(adjustOp("brightness", 5));
+    s().pushOp(adjustOp("contrast", 20), { coalesce: true }); // different param
+    expect(s().doc?.recipe).toHaveLength(2);
+    expect(s().doc?.cursor).toBe(2);
+    expect(recipeLabels()).toEqual(["brightness 5", "contrast 20"]);
+  });
+
+  it("a contrast drag after the brightness+contrast pair coalesces onto contrast only", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(adjustOp("brightness", 5));
+    s().pushOp(adjustOp("contrast", 20));
+    s().pushOp(adjustOp("contrast", 35), { coalesce: true }); // same param as trailing
+    expect(s().doc?.recipe).toHaveLength(2);
+    const [b, c] = s().doc!.recipe;
+    expect((b as { value: number }).value).toBe(5);
+    expect((c as { value: number }).value).toBe(35);
+  });
+
+  it("straighten coalesce (non-adjust tag) still collapses on the tag alone", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(straightenOp(1));
+    s().pushOp(straightenOp(2.5), { coalesce: true });
+    expect(s().doc?.recipe).toHaveLength(1);
+    expect((s().doc?.recipe[0] as { degrees: number }).degrees).toBe(2.5);
+  });
+});
+
 describe("session gesture fields — cleared on tool + history moves", () => {
   function seedGestures() {
     s().setCropDraft(sampleDraft());
@@ -373,6 +420,31 @@ describe("rendering flag — session-only (PE3 export)", () => {
     usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", rendering: true });
     const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
     expect("rendering" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+  });
+});
+
+describe("splitView — Adjust before/after slider (session-only, Section D)", () => {
+  it("defaults false and setSplitView toggles it", () => {
+    expect(s().splitView).toBe(false);
+    s().setSplitView(true);
+    expect(s().splitView).toBe(true);
+    s().setSplitView(false);
+    expect(s().splitView).toBe(false);
+  });
+
+  it("closeDocument clears an active split-view", () => {
+    s().openDocument(makeDoc());
+    s().setSplitView(true);
+    s().closeDocument();
+    expect(s().splitView).toBe(false);
+  });
+
+  it("stays out of partialize (never persisted)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", splitView: true });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("splitView" in persisted).toBe(false);
     expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
   });
 });

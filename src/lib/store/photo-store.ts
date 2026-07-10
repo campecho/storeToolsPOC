@@ -75,6 +75,11 @@ export interface PhotoEditorState {
       Export panel's double-click guard; the canvas stays interactive throughout
       (the render is async and blocks nothing). Cleared on closeDocument. */
   rendering: boolean;
+  /** The Adjust panel's before/after SPLIT-VIEW slider (Section D) — session-only,
+      never persisted. Distinct from `comparing` (the press-and-hold peek at the
+      original): split-view is a sticky mode, the peek is momentary. Cleared on
+      closeDocument. */
+  splitView: boolean;
 
   /** Open a schema-validated document; a malformed shape is refused. Resets
       the active tool to "none" and clears every session gesture field (a fresh
@@ -93,6 +98,8 @@ export interface PhotoEditorState {
   /** Toggle the full-res render-in-flight flag (Export panel wraps its render
       call in setRendering(true)…setRendering(false)). */
   setRendering: (rendering: boolean) => void;
+  /** Toggle the Adjust before/after split-view slider (Section D). */
+  setSplitView: (splitView: boolean) => void;
   /** Append an op at the cursor, dropping the redo tail; cursor -> recipe end.
       No-op when there is no document.
 
@@ -118,6 +125,22 @@ export interface PhotoEditorState {
     (rounded — the schema stores cursor as an int). */
 function clampCursor(doc: PhotoDocument, cursor: number): number {
   return Math.max(0, Math.min(doc.recipe.length, Math.round(cursor)));
+}
+
+/**
+ * Whether a coalescing `pushOp` should REPLACE the trailing op `prev` with the
+ * incoming `next` (the straighten-slider anti-spam rule, plan §3.4). Matches on
+ * the `op` tag — but is PARAM-AWARE for `adjust`: two `adjust` ops coalesce only
+ * when they target the SAME param, so a Brightness drag never swallows a
+ * preceding Contrast op (both share `op: "adjust"`). Every other tag coalesces on
+ * the tag alone.
+ */
+function coalesceMatch(prev: PhotoOp, next: PhotoOp): boolean {
+  if (prev.op !== next.op) return false;
+  if (prev.op === "adjust" && next.op === "adjust") {
+    return prev.param === next.param;
+  }
+  return true;
 }
 
 /**
@@ -183,6 +206,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
       previewOp: null,
       comparing: false,
       rendering: false,
+      splitView: false,
 
       openDocument: (doc) =>
         set((s) => {
@@ -202,9 +226,9 @@ export const usePhotoStore = create<PhotoEditorState>()(
 
       closeDocument: () =>
         // Any in-flight render belongs to the document that's leaving — drop the
-        // flag with it (rendering is not a "gesture", so it's cleared explicitly
-        // rather than through CLEAR_GESTURES).
-        set({ doc: null, activeTool: "none", rendering: false, ...CLEAR_GESTURES }),
+        // flag with it (rendering + splitView are not "gestures", so they clear
+        // explicitly rather than through CLEAR_GESTURES).
+        set({ doc: null, activeTool: "none", rendering: false, splitView: false, ...CLEAR_GESTURES }),
 
       setLevel: (level) => set({ level }),
       // Leaving a tool drops any half-composed crop / previewing gesture and ends
@@ -214,16 +238,19 @@ export const usePhotoStore = create<PhotoEditorState>()(
       setPreviewOp: (previewOp) => set({ previewOp }),
       setComparing: (comparing) => set({ comparing }),
       setRendering: (rendering) => set({ rendering }),
+      setSplitView: (splitView) => set({ splitView }),
       setReturnContext: (returnContext) => set({ returnContext }),
 
       pushOp: (op, opts) =>
         set((s) => {
           if (!s.doc) return s;
           const { recipe, cursor } = s.doc;
-          // Coalesce: replace the trailing same-tag op in place, cursor unchanged
-          // (the straighten-slider anti-spam rule, plan §3.4) — still dropping any
-          // redo tail beyond the cursor, as every commit does.
-          if (opts?.coalesce && cursor > 0 && recipe[cursor - 1]?.op === op.op) {
+          // Coalesce: replace the trailing coalescible op in place, cursor
+          // unchanged (the straighten-slider anti-spam rule, plan §3.4) — still
+          // dropping any redo tail beyond the cursor, as every commit does. The
+          // match is PARAM-AWARE for adjust (Brightness must not swallow Contrast).
+          const prev = cursor > 0 ? recipe[cursor - 1] : undefined;
+          if (opts?.coalesce && prev && coalesceMatch(prev, op)) {
             const next = [...recipe.slice(0, cursor - 1), op];
             return {
               doc: { ...s.doc, recipe: next, cursor },
