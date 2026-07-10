@@ -1,8 +1,33 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+import { tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { RenderErrorSchema } from "@/lib/schema/photo";
 import { POST } from "./route";
+
+const GRACOL_PATH = join(process.cwd(), "src", "lib", "photo", "profiles", "GRACoL2013_CRPC6.icc");
+// tificc is ABSENT on this dev container by design — the preserved-CMYK leg
+// then falls back to sharp re-separation (always testable); the preserve leg is
+// exercised only where the binary is installed (CI live-import lane).
+const HAVE_TIFICC = await tificcAvailable();
+
+/** The four box numbers for a named box in the PDF page dict (pdf-wrap.test.ts
+    parser — no PDF library, that's the point). */
+function boxOf(pdf: Buffer, name: string): number[] {
+  const m = new RegExp(`/${name} \\[([-\\d. ]+)\\]`).exec(pdf.toString("latin1"));
+  if (!m) throw new Error(`no /${name} in page`);
+  return m[1].trim().split(/\s+/).map(Number);
+}
+
+/** A CMYK TIFF (4-channel, PhotometricInterpretation 5) — a "CMYK arrival". */
+function cmykTiff(w = 64, h = 48): Promise<Buffer> {
+  return sharp({ create: { width: w, height: h, channels: 3, background: "#884422" } })
+    .toColourspace("cmyk")
+    .tiff()
+    .toBuffer();
+}
 
 /**
  * Adversarial + happy-path proof for POST /api/photo/render (plan §5, §4 PE3).
@@ -181,21 +206,226 @@ describe("POST /api/photo/render — op screening (unsupported-op)", () => {
     expect(body.message).toContain("PE6");
   });
 
-  it("rejects a resize op naming its PE5 tranche", async () => {
+  it("rejects an erase op naming its PE9 tranche (still unsupported)", async () => {
     const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
-      // targetPx present so the op passes schema (PE5 print-math tighten) and
-      // the screening — not validation — produces the 422.
-      recipe: [
-        { op: "resize", label: "Resize", mode: "percent", percent: 50, targetPx: { width: 32, height: 32 } },
-      ],
+      recipe: [{ op: "erase", label: "Remove object", maskAssetId: "mask-1" }],
       format: "png",
       quality: 90,
     });
     expect(res.status).toBe(422);
     const body = await parsedError(res);
     expect(body).toMatchObject({ ok: false, code: "unsupported-op" });
-    expect(body.message).toContain("PE5");
+    expect(body.message).toContain("PE9");
   });
+});
+
+describe("POST /api/photo/render — PE5 print-geometry ops now render (200)", () => {
+  it(
+    "resize renders 200 with the target dims",
+    async () => {
+      const res = await post(new Uint8Array(await png(400, 300)), "m.png", {
+        recipe: [{ op: "resize", label: "Resize", mode: "px", px: { width: 120, height: 90 }, targetPx: { width: 120, height: 90 } }],
+        format: "png",
+        quality: 90,
+      });
+      expect(res.status).toBe(200);
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect([meta.width, meta.height]).toEqual([120, 90]);
+    },
+    30_000,
+  );
+
+  it(
+    "bleedExpand renders 200, growing the canvas by 2·px",
+    async () => {
+      const res = await post(new Uint8Array(await png(400, 300)), "m.png", {
+        recipe: [{ op: "bleedExpand", label: "Expand bleed", strategy: "mirror", amount: 0.125, px: 20 }],
+        format: "png",
+        quality: 90,
+      });
+      expect(res.status).toBe(200);
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect([meta.width, meta.height]).toEqual([440, 340]);
+    },
+    30_000,
+  );
+
+  it(
+    "fitToSize (fit/pad) renders 200 with padded dims",
+    async () => {
+      const res = await post(new Uint8Array(await png(400, 300)), "m.png", {
+        recipe: [{ op: "fitToSize", label: "Fit", mode: "fit", anchor: "center", pad: { l: 0, t: 50, r: 0, b: 50 } }],
+        format: "png",
+        quality: 90,
+      });
+      expect(res.status).toBe(200);
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect([meta.width, meta.height]).toEqual([400, 400]);
+    },
+    30_000,
+  );
+});
+
+describe("POST /api/photo/render — colour intent", () => {
+  it(
+    "intent cmyk + jpeg → a 4-channel CMYK JPEG with the GRACoL profile embedded",
+    async () => {
+      const res = await post(new Uint8Array(await png(400, 300)), "master.png", {
+        recipe: [{ op: "crop", label: "Crop", rect: { x: 0, y: 0, w: 200, h: 150 }, ratio: null, shape: "rect" }],
+        format: "jpeg",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/jpeg");
+      // RGB arrival → first-time separation, NOT a re-separation.
+      expect(res.headers.get("x-photo-reseparated")).toBeNull();
+      const out = Buffer.from(await res.arrayBuffer());
+      const meta = await sharp(out).metadata();
+      expect(meta.space).toBe("cmyk");
+      expect(meta.channels).toBe(4);
+      expect(meta.icc?.equals(readFileSync(GRACOL_PATH))).toBe(true);
+    },
+    30_000,
+  );
+
+  it(
+    "intent cmyk + png → sRGB PNG with X-Photo-Intent-Downgraded (PNG has no CMYK)",
+    async () => {
+      const res = await post(new Uint8Array(await png(200, 150)), "master.png", {
+        recipe: [],
+        format: "png",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      expect(res.headers.get("x-photo-intent-downgraded")).toBe("srgb");
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect(meta.space).not.toBe("cmyk");
+    },
+    30_000,
+  );
+});
+
+describe("POST /api/photo/render — PDF export", () => {
+  it(
+    "pdf + printTarget + cmyk → application/pdf with print boxes, DeviceCMYK, and a GRACoL OutputIntent",
+    async () => {
+      const res = await post(new Uint8Array(await png(400, 300)), "master.png", {
+        recipe: [{ op: "crop", label: "Crop", rect: { x: 0, y: 0, w: 210, h: 120 }, ratio: null, shape: "rect" }],
+        format: "pdf",
+        quality: 80,
+        intent: "cmyk",
+        printTarget: { w: 3.5, h: 2, bleed: 0.125 },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/pdf");
+      const pdf = Buffer.from(await res.arrayBuffer());
+      const s = pdf.toString("latin1");
+      expect(s.startsWith("%PDF-1.6")).toBe(true);
+      // 3.5×2 in + 0.125 bleed → MediaBox [0 0 270 162], TrimBox [9 9 261 153].
+      expect(boxOf(pdf, "MediaBox")).toEqual([0, 0, 270, 162]);
+      expect(boxOf(pdf, "TrimBox")).toEqual([9, 9, 261, 153]);
+      expect(s).toContain("/OutputIntents");
+      expect(s).toContain("/S /GTS_PDFX");
+      expect(s).toContain("/ColorSpace /DeviceCMYK");
+    },
+    30_000,
+  );
+
+  it(
+    "pdf + srgb + no printTarget → application/pdf, image-sized page, DeviceRGB, no OutputIntent",
+    async () => {
+      const res = await post(new Uint8Array(await png(300, 300)), "master.png", {
+        recipe: [],
+        format: "pdf",
+        quality: 80,
+        intent: "srgb",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/pdf");
+      const s = Buffer.from(await res.arrayBuffer()).toString("latin1");
+      expect(s).not.toContain("/OutputIntents");
+      expect(s).toContain("/ColorSpace /DeviceRGB");
+    },
+    30_000,
+  );
+});
+
+describe("POST /api/photo/render — CMYK TIFF arrival decision table", () => {
+  it.skipIf(HAVE_TIFICC)(
+    "tificc ABSENT: an unedited CMYK TIFF re-separates through sharp (X-Photo-Reseparated), still 4-channel CMYK",
+    async () => {
+      const res = await post(new Uint8Array(await cmykTiff()), "press.tiff", {
+        recipe: [],
+        format: "tiff",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/tiff");
+      expect(res.headers.get("x-photo-reseparated")).toBe("1");
+      expect(res.headers.get("x-photo-cmyk-preserved")).toBeNull();
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect(meta.space).toBe("cmyk");
+      expect(meta.channels).toBe(4);
+    },
+    30_000,
+  );
+
+  it.runIf(HAVE_TIFICC)(
+    "tificc PRESENT: an unedited CMYK TIFF is preserved (X-Photo-Cmyk-Preserved), not re-separated",
+    async () => {
+      const res = await post(new Uint8Array(await cmykTiff()), "press.tiff", {
+        recipe: [],
+        format: "tiff",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/tiff");
+      expect(res.headers.get("x-photo-cmyk-preserved")).toBe("1");
+      expect(res.headers.get("x-photo-reseparated")).toBeNull();
+    },
+    30_000,
+  );
+
+  it(
+    "a CMYK TIFF WITH edits always re-separates (recipe non-empty ⇒ never preserved), regardless of tificc",
+    async () => {
+      const res = await post(new Uint8Array(await cmykTiff(200, 150)), "press.tiff", {
+        recipe: [{ op: "crop", label: "Crop", rect: { x: 0, y: 0, w: 100, h: 100 }, ratio: null, shape: "rect" }],
+        format: "tiff",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/tiff");
+      expect(res.headers.get("x-photo-reseparated")).toBe("1");
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect([meta.width, meta.height]).toEqual([100, 100]);
+      expect(meta.space).toBe("cmyk");
+    },
+    30_000,
+  );
+
+  it(
+    "a CMYK TIFF exported as PDF re-separates (non-TIFF output ⇒ never preserved)",
+    async () => {
+      const res = await post(new Uint8Array(await cmykTiff(120, 90)), "press.tiff", {
+        recipe: [],
+        format: "pdf",
+        quality: 90,
+        intent: "cmyk",
+        printTarget: { w: 6, h: 4, bleed: 0.125 },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/pdf");
+      expect(res.headers.get("x-photo-reseparated")).toBe("1");
+    },
+    30_000,
+  );
 });
 
 describe("POST /api/photo/render — size cap (413) fires before the jail", () => {

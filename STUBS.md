@@ -38,6 +38,7 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 | Photo decode jail (PE1) | `src/lib/photo/render-host.ts`, `src/lib/photo/photo-worker.mjs` | **Built, not stubbed** — `sharp` loads only in a spawned per-job jail (`mkdtemp` wiped in `finally`, `prlimit --cpu --as` where available, wall-clock SIGKILL, kill classification, bounded output). Worker path resolves from `process.cwd()` — correct for dev/start/vitest; the Docker/standalone story is owed at the live-lane tranche (in-code note). | Production render service; microVM-class isolation, egress jail stay deferred (photo plan §3.6). |
 | HEIC ingest (PE1) | `src/lib/photo/heic.ts` | `heif-convert` probe exists and gates the capability matrix; conversion returns a typed `unsupported-here` until PE7 | Docker/live lane add `libheif-examples` (+ `lcms2-utils` for the PE5 CMYK-preserving path); the subprocess fills this seam (photo plan §3.5, v1.4). |
 | Photo intake transport (PE1) | `src/lib/photo/client.ts`, `src/app/api/photo/intake/route.ts` | Master + proxy bytes ride the response as base64 JSON and seed client IndexedDB (`photo:`-namespaced, non-destructive writes — the shared blob store's replace/clear helpers are never called) | A production service stores assets and returns URLs; `client.ts` is the only caller (import seam #2 pattern). Photo intake calls the shared `avScanHook` (still the logging stub). |
+| CMYK-preserving path (PE5) | `src/lib/photo/lcms.ts` | `tificc` (lcms2-utils) probe + jailed identity-intent re-encode — the v1.4 named fallback for sharp's forced CMYK→sRGB unpack. Where absent (plain dev), `cmykPreserve: false` in diagnostics, no `cmykMaster` intake leg, and every CMYK export re-separates through GRACoL with an honest `X-Photo-Reseparated` header. Preserve is TIFF-output-only (no sharp-free CMYK→JPEG/PDF path at POC — documented decision table in the render route). | Docker/live lane install `lcms2-utils`; a production color service (or a libvips built with CMYK passthrough) widens the preserve path beyond TIFF. |
 | `.puz` CAB compression (P4) | `src/lib/import/cab.ts` | Pure-TS MSCF reader unpacks STORED + MSZIP folders; Quantum/LZX return an honest `unsupported-compression` 422. P5 adds an adversarial suite (`cab-adversarial.test.ts`): decompression-bomb cap, entry-count storm, truncation/size-lie handling, path-traversal names proven inert (extraction is fully in-memory — hostile names never reach a filesystem sink). | Untested against a real Publisher pack-and-go (no sample exists); MSZIP inverts our own encoder in tests but byte-compatibility with Publisher's packer is unconfirmed. If field `.puz` files use LZX, add a decoder (or `cabextract` in the image) here — the route seam is unchanged. |
 
 ## Inert-by-design affordances (`PROTOTYPE-ONLY:`)
@@ -67,7 +68,10 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   strip's Target/DPI-chip/Bleed segments inert (PE5) and History disabled (PE2); the
   title-bar order chip is demo-only session state (dev #4, `[INT]`); Simple/Standard is the
   two-segment control (dev #2). Quick fixes navigate to the placeholder panels — guaranteed
-  entry points from day one.
+  entry points from day one. PE5 additions: Fix for print's "Pick a catalog product →"
+  (dev #5, spec-sync slice), the upscale rescue card's Upscale button (dev #3, model
+  service) with "Print as-is" as the honest path, and the "New to bleed? 60-second guide →"
+  link (help pass). The DPI chip is advisory by design — red/amber never gate export.
 
 ## Known gaps (`PROD-TODO:`)
 

@@ -14,6 +14,7 @@ import {
 import { applyAdjust } from "@/lib/photo/ops";
 import { CropOverlay } from "./CropOverlay";
 import { StraightenOverlay } from "./StraightenOverlay";
+import { GuideChrome } from "./GuideChrome";
 
 /**
  * The displayed image's box within the canvas container (CSS px), the display
@@ -51,12 +52,89 @@ function ctxOf(c: HTMLCanvasElement): CanvasRenderingContext2D {
 }
 
 /**
+ * MIRROR edge fill (bleedExpand) — reflect each edge strip (and each corner
+ * block) outward, matching sharp's `extendWith: "mirror"`. The center image is
+ * drawn separately at (px, px); this fills only the outer band + corners.
+ */
+function drawMirrorBorder(
+  octx: CanvasRenderingContext2D,
+  src: CanvasImageSource,
+  px: number,
+  cw: number,
+  ch: number,
+): void {
+  // Top / bottom / left / right strips, each reflected across the image edge.
+  octx.save();
+  octx.translate(px, px);
+  octx.scale(1, -1);
+  octx.drawImage(src, 0, 0, cw, px, 0, 0, cw, px); // top
+  octx.restore();
+
+  octx.save();
+  octx.translate(px, px + ch);
+  octx.scale(1, -1);
+  octx.drawImage(src, 0, ch - px, cw, px, 0, -px, cw, px); // bottom
+  octx.restore();
+
+  octx.save();
+  octx.translate(px, px);
+  octx.scale(-1, 1);
+  octx.drawImage(src, 0, 0, px, ch, 0, 0, px, ch); // left
+  octx.restore();
+
+  octx.save();
+  octx.translate(px + cw, px);
+  octx.scale(-1, 1);
+  octx.drawImage(src, cw - px, 0, px, ch, -px, 0, px, ch); // right
+  octx.restore();
+
+  // Corners — reflect the px×px corner block across both axes so they stay
+  // continuous with both adjacent edges.
+  const corner = (sx: number, sy: number, dx: number, dy: number) => {
+    octx.save();
+    octx.translate(dx + px, dy + px);
+    octx.scale(-1, -1);
+    octx.drawImage(src, sx, sy, px, px, 0, 0, px, px);
+    octx.restore();
+  };
+  corner(0, 0, 0, 0); // top-left
+  corner(cw - px, 0, px + cw, 0); // top-right
+  corner(0, ch - px, 0, px + ch); // bottom-left
+  corner(cw - px, ch - px, px + cw, px + ch); // bottom-right
+}
+
+/**
+ * SMEAR edge fill (bleedExpand) — stretch the 1px edge line across the band (and
+ * the single corner pixel across each corner block). This is the client-side
+ * equivalent of sharp's `extendWith: "copy"`: SMEAR ≡ COPY (a directional edge
+ * stretch), the manual-only strategy analyzeEdges never auto-picks.
+ */
+function drawSmearBorder(
+  octx: CanvasRenderingContext2D,
+  src: CanvasImageSource,
+  px: number,
+  cw: number,
+  ch: number,
+): void {
+  octx.drawImage(src, 0, 0, cw, 1, px, 0, cw, px); // top edge line
+  octx.drawImage(src, 0, ch - 1, cw, 1, px, px + ch, cw, px); // bottom
+  octx.drawImage(src, 0, 0, 1, ch, 0, px, px, ch); // left
+  octx.drawImage(src, cw - 1, 0, 1, ch, px + cw, px, px, ch); // right
+  octx.drawImage(src, 0, 0, 1, 1, 0, 0, px, px); // corner pixels
+  octx.drawImage(src, cw - 1, 0, 1, 1, px + cw, 0, px, px);
+  octx.drawImage(src, 0, ch - 1, 1, 1, 0, px + ch, px, px);
+  octx.drawImage(src, cw - 1, ch - 1, 1, 1, px + cw, px + ch, px, px);
+}
+
+/**
  * Apply ONE geometry op to the running offscreen canvas, returning a fresh
  * canvas. Crop rects are effective-MASTER-space, so they scale to proxy pixels by
- * `runningScale` (proxy/master — invariant under crop/rotate/flip, and straighten
- * leaves dims unchanged, so it is a single constant for the whole recipe).
- * Non-geometry ops (adjust, …) are a later tranche's LUT pass and pass through
- * untouched here.
+ * `runningScale` (proxy/master — invariant under crop/rotate/flip/bleed/fit/resize,
+ * since each scales the added/removed region by the same factor; straighten leaves
+ * dims unchanged, so it is a single constant for the whole recipe). The three
+ * print-geometry ops (bleedExpand / fitToSize / resize) replay their STORED-EXPLICIT
+ * pixels here in parity with the worker's sharp mapping (extend / extract+extend /
+ * resize). Non-geometry ops (adjust, …) are the LUT pass and pass through untouched.
  */
 function applyGeometryOp(
   current: HTMLCanvasElement,
@@ -125,6 +203,61 @@ function applyGeometryOp(
       octx.rotate((op.degrees * Math.PI) / 180);
       octx.scale(k, k);
       octx.drawImage(current, -cw / 2, -ch / 2);
+      return out;
+    }
+    case "bleedExpand": {
+      // Grow every edge by op.px (master px) → op.px·runningScale proxy px, with
+      // the strategy's fill in the new band (parity: sharp `extend`).
+      const px = Math.max(1, Math.round(op.px * runningScale));
+      const out = makeCanvas(cw + 2 * px, ch + 2 * px);
+      const octx = ctxOf(out);
+      if (op.strategy === "solid") {
+        octx.fillStyle = op.color ?? "#ffffff";
+        octx.fillRect(0, 0, out.width, out.height);
+      } else if (op.strategy === "smear") {
+        drawSmearBorder(octx, current, px, cw, ch);
+      } else {
+        drawMirrorBorder(octx, current, px, cw, ch);
+      }
+      octx.drawImage(current, px, px);
+      return out;
+    }
+    case "fitToSize": {
+      if (op.rect) {
+        // fill → an anchored crop (parity: sharp extract). rect is master-space.
+        let sx = Math.round(op.rect.x * runningScale);
+        let sy = Math.round(op.rect.y * runningScale);
+        let sw = Math.round(op.rect.w * runningScale);
+        let sh = Math.round(op.rect.h * runningScale);
+        sx = Math.min(Math.max(sx, 0), cw);
+        sy = Math.min(Math.max(sy, 0), ch);
+        sw = Math.min(Math.max(sw, 1), cw - sx);
+        sh = Math.min(Math.max(sh, 1), ch - sy);
+        const out = makeCanvas(sw, sh);
+        ctxOf(out).drawImage(current, sx, sy, sw, sh, 0, 0, sw, sh);
+        return out;
+      }
+      if (op.pad) {
+        // fit → anchored white padding (parity: sharp extend with background).
+        const l = Math.round(op.pad.l * runningScale);
+        const t = Math.round(op.pad.t * runningScale);
+        const r = Math.round(op.pad.r * runningScale);
+        const b = Math.round(op.pad.b * runningScale);
+        const out = makeCanvas(cw + l + r, ch + t + b);
+        const octx = ctxOf(out);
+        octx.fillStyle = "#ffffff";
+        octx.fillRect(0, 0, out.width, out.height);
+        octx.drawImage(current, l, t);
+        return out;
+      }
+      return current;
+    }
+    case "resize": {
+      // Stored-explicit output dims (master px) → proxy px (parity: sharp resize).
+      const nw = Math.max(1, Math.round(op.targetPx.width * runningScale));
+      const nh = Math.max(1, Math.round(op.targetPx.height * runningScale));
+      const out = makeCanvas(nw, nh);
+      ctxOf(out).drawImage(current, 0, 0, cw, ch, 0, 0, nw, nh);
       return out;
     }
     default:
@@ -560,10 +693,16 @@ export function PhotoCanvas({
   // Split-view chrome rides above the canvas; the compare peek overrides split
   // view (both halves become the original while held), so hide the divider then.
   const showSplit = doc != null && layout != null && splitView && !comparing;
+  // Trim/bleed/safe guides: whenever a target size is set and the crop tool ISN'T
+  // active (the crop overlay owns that surface) — toggle-free at PE5. Hidden while
+  // comparing (the raw original is shown then, so the effective-dims box mismatches).
+  const showGuides =
+    doc != null && layout != null && doc.target.size != null && activeTool !== "crop" && !comparing;
 
   return (
     <div ref={containerRef} className="relative flex-1 overflow-hidden bg-[#d3d3d3]">
       <canvas ref={canvasRef} data-testid="photo-canvas" className="block" />
+      {showGuides && layout && <GuideChrome layout={layout} />}
       {showCropChrome && previewOp?.op === "straighten" && <StraightenOverlay layout={layout} />}
       {showCropChrome && <CropOverlay layout={layout} />}
       {showSplit && layout && <SplitDivider layout={layout} pos={splitPos} onChange={setSplitPos} />}

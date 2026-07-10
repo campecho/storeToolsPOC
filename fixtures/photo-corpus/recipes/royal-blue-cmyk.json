@@ -1,0 +1,16 @@
+{
+  "source": "royal-blue.png",
+  "payload": {
+    "format": "tiff",
+    "quality": 90,
+    "intent": "cmyk",
+    "recipe": []
+  },
+  "compiled": {
+    "steps": [],
+    "out": {
+      "w": 400,
+      "h": 300
+    }
+  }
+}

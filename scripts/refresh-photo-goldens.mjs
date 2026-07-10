@@ -46,6 +46,7 @@ const recipesDir = join(corpusDir, "recipes");
 const goldensDir = join(corpusDir, "goldens");
 const publicDir = join(root, "public");
 const WORKER_PATH = join(root, "src", "lib", "photo", "photo-worker.mjs");
+const GRACOL_PROFILE_PATH = join(root, "src", "lib", "photo", "profiles", "GRACoL2013_CRPC6.icc");
 
 // limits.ts shipped defaults (STP_* overrides are harness-only; goldens are cut
 // against the production caps so the drift gate reflects what users get).
@@ -54,7 +55,18 @@ const RENDER_TIMEOUT_MS = 60_000;
 // A 12 MP export is a few MB; keep generous headroom for the file-channel read.
 const MAX_BUFFER = 64 * 1024 * 1024;
 
-const EXT = { jpeg: "jpg", png: "png" };
+const EXT = { jpeg: "jpg", png: "png", tiff: "tiff" };
+
+/**
+ * Resolve a recipe's `source` image. Fixtures-local sources (e.g. the synthetic
+ * royal-blue.png that ships in the corpus) win over public/ — the shared demo
+ * photo. Mirrors golden.test.ts's resolver so the drift gate reads the same bytes.
+ */
+async function resolveSource(source) {
+  const local = join(corpusDir, source);
+  if (await stat(local).then(() => true).catch(() => false)) return local;
+  return join(publicDir, source);
+}
 
 /**
  * Run photo-worker.mjs on a render job in a throwaway jail and return the
@@ -63,11 +75,16 @@ const EXT = { jpeg: "jpg", png: "png" };
  * WITHOUT the prlimit wrapper — a dev/CI regenerator does not need the untrusted
  * server's resource cage, and the cap never affects the output bytes.
  */
-async function renderWithWorker(job, input) {
+async function renderWithWorker(job, input, extraFiles) {
   const jail = await mkdtemp(join(tmpdir(), "photo-golden-"));
   try {
     await writeFile(join(jail, "job.json"), JSON.stringify(job));
     await writeFile(join(jail, "input.bin"), input);
+    if (extraFiles) {
+      for (const [name, buf] of Object.entries(extraFiles)) {
+        await writeFile(join(jail, name), buf);
+      }
+    }
     await run(process.execPath, [WORKER_PATH, jail], {
       timeout: RENDER_TIMEOUT_MS,
       killSignal: "SIGKILL",
@@ -119,22 +136,31 @@ for (const file of recipes) {
     process.exit(1);
   }
 
-  const master = await readFile(join(publicDir, source));
+  const master = await readFile(await resolveSource(source));
 
-  // Replicate render-host's render job EXACTLY (kind/steps/format/quality/limits)
-  // so the worker produces the same bytes renderImage would — that identity is
-  // what the golden test verifies.
+  // CMYK output (jpeg/tiff with cmyk intent) separates through the GRACoL
+  // profile — copy it INTO the jail exactly as render-host does, so the worker
+  // reads a jail-local profile and the bytes match renderImage's byte-for-byte.
+  const intent = payload.intent === "cmyk" ? "cmyk" : "srgb";
+  const wantsCmyk = intent === "cmyk" && payload.format !== "png";
+  const extraFiles = wantsCmyk ? { "profile.icc": await readFile(GRACOL_PROFILE_PATH) } : undefined;
+
+  // Replicate render-host's render job EXACTLY (kind/steps/format/quality/intent/
+  // iccProfile/limits) so the worker produces the same bytes renderImage would —
+  // that identity is what the golden test verifies.
   const job = {
     kind: "render",
     steps: compiled.steps,
     format: payload.format,
     quality: payload.quality,
+    intent,
+    iccProfile: wantsCmyk ? "profile.icc" : undefined,
     limits: { maxPixels: MAX_PHOTO_PIXELS },
   };
 
   let out;
   try {
-    out = await renderWithWorker(job, master);
+    out = await renderWithWorker(job, master, extraFiles);
   } catch (err) {
     console.error(`ERROR: rendering ${file}: ${err.message}`);
     process.exit(1);

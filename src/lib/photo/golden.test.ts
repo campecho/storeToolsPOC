@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
 import { RenderPayloadSchema } from "@/lib/schema/photo";
@@ -32,22 +33,31 @@ import { compileRenderPlan, renderImage } from "./render-host";
  */
 
 const ROOT = process.cwd();
-const RECIPES_DIR = join(ROOT, "fixtures", "photo-corpus", "recipes");
-const GOLDENS_DIR = join(ROOT, "fixtures", "photo-corpus", "goldens");
-const MASTER_PATH = join(ROOT, "public", "photo-demo.jpg");
-const EXT: Record<string, string> = { jpeg: "jpg", png: "png" };
+const CORPUS_DIR = join(ROOT, "fixtures", "photo-corpus");
+const RECIPES_DIR = join(CORPUS_DIR, "recipes");
+const GOLDENS_DIR = join(CORPUS_DIR, "goldens");
+const PUBLIC_DIR = join(ROOT, "public");
+const GRACOL_PATH = join(ROOT, "src", "lib", "photo", "profiles", "GRACoL2013_CRPC6.icc");
+const EXT: Record<string, string> = { jpeg: "jpg", png: "png", tiff: "tiff" };
 
-const haveFixtures = existsSync(RECIPES_DIR) && existsSync(MASTER_PATH);
+/**
+ * Resolve a recipe's `source` image. Fixtures-local sources (the synthetic
+ * royal-blue.png that ships in the corpus) win over public/ — the shared demo
+ * photo. Mirrors refresh-photo-goldens.mjs so the drift gate reads the same bytes.
+ */
+function resolveSource(source: string): string | null {
+  const local = join(CORPUS_DIR, source);
+  if (existsSync(local)) return local;
+  const pub = join(PUBLIC_DIR, source);
+  return existsSync(pub) ? pub : null;
+}
+
+const haveFixtures = existsSync(RECIPES_DIR);
 const recipeFiles = haveFixtures
   ? readdirSync(RECIPES_DIR).filter((f) => f.endsWith(".json")).sort()
   : [];
 
-// The master's SOURCE dims by the SAME cheap header read renderImage does, so
-// the compile-parity assertion compiles against exactly what the host will.
-const master = haveFixtures ? readFileSync(MASTER_PATH) : Buffer.alloc(0);
-const demoDims = haveFixtures ? imageDimensions(master, sniffImageMime(master) ?? "") : undefined;
-
-if (!haveFixtures || recipeFiles.length === 0 || !demoDims) {
+if (!haveFixtures || recipeFiles.length === 0) {
   describe("golden-recipe harness", () => {
     it.skip("photo-corpus fixtures missing — run `npm run refresh:photo-goldens` to generate them", () => {});
   });
@@ -62,12 +72,21 @@ if (!haveFixtures || recipeFiles.length === 0 || !demoDims) {
     // The client is untrusted (§3.6): validate the payload exactly as the route
     // does before it reaches the compiler — this also fills schema defaults.
     const payload = RenderPayloadSchema.parse(raw.payload);
+    const srcPath = resolveSource(raw.source);
+    const srcExists = srcPath !== null;
     const goldenPath = join(GOLDENS_DIR, `${name}.${EXT[payload.format]}`);
-    const goldenExists = existsSync(goldenPath);
+    const goldenExists = srcExists && existsSync(goldenPath);
+    const isCmykTiffGolden = payload.intent === "cmyk" && payload.format === "tiff";
 
     describe(`golden: ${name}`, () => {
-      it("compiles to the recipe's committed plan (compile parity)", () => {
-        const plan = compileRenderPlan(payload.recipe, { w: demoDims.width, h: demoDims.height });
+      const compileIt = it.skipIf(!srcExists);
+      compileIt("compiles to the recipe's committed plan (compile parity)", () => {
+        // The source's dims by the SAME cheap header read renderImage does, so the
+        // compile-parity assertion compiles against exactly what the host will.
+        const master = readFileSync(srcPath!);
+        const dims = imageDimensions(master, sniffImageMime(master) ?? "");
+        expect(dims).toBeDefined();
+        const plan = compileRenderPlan(payload.recipe, { w: dims!.width, h: dims!.height });
         expect(plan).toEqual(raw.compiled);
       });
 
@@ -75,6 +94,7 @@ if (!haveFixtures || recipeFiles.length === 0 || !demoDims) {
       golden(
         "renders byte-identical to the committed golden across two runs (drift gate + determinism)",
         async () => {
+          const master = readFileSync(srcPath!);
           const expected = readFileSync(goldenPath);
           const a = await renderImage(master, payload);
           const b = await renderImage(master, payload);
@@ -85,6 +105,18 @@ if (!haveFixtures || recipeFiles.length === 0 || !demoDims) {
           expect(a.bytes.equals(expected)).toBe(true);
           // (c) determinism — the two independent renders agree byte-for-byte.
           expect(a.bytes.equals(b.bytes)).toBe(true);
+
+          // CMYK print goldens carry the PE5 done-when extras: the output is a real
+          // 4-channel CMYK separation with the committed GRACoL profile embedded
+          // byte-identical (the Royal-Blue case).
+          if (isCmykTiffGolden) {
+            expect(a.mime).toBe("image/tiff");
+            const meta = await sharp(a.bytes).metadata();
+            expect(meta.space).toBe("cmyk");
+            expect(meta.channels).toBe(4);
+            expect(meta.icc).toBeDefined();
+            expect(meta.icc!.equals(readFileSync(GRACOL_PATH))).toBe(true);
+          }
         },
         45_000,
       );

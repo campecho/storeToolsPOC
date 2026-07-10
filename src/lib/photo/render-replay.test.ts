@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import type { AdjustParam, PhotoOp } from "@/lib/schema/photo";
@@ -38,8 +40,42 @@ const adjust = (param: AdjustParam, value: number): PhotoOp => ({
   param,
   value,
 });
-/** A still-unsupported op (renders from PE5) — the op-screen negative case. */
-const resize = (): PhotoOp => ({ op: "resize", label: "Resize", mode: "percent", percent: 50, targetPx: { width: 100, height: 75 } });
+/* -- PE5 print-geometry op builders (stored-explicit, schema §3.4) ---------- */
+const resizeOp = (width: number, height: number): PhotoOp => ({
+  op: "resize",
+  label: "Resize",
+  mode: "px",
+  px: { width, height },
+  targetPx: { width, height },
+});
+const bleed = (
+  px: number,
+  strategy: "mirror" | "smear" | "solid" = "mirror",
+  color?: string,
+): PhotoOp => ({
+  op: "bleedExpand",
+  label: "Expand bleed 0.125 in",
+  strategy,
+  amount: 0.125,
+  px,
+  ...(color ? { color } : {}),
+});
+const fitFill = (rect: { x: number; y: number; w: number; h: number }): PhotoOp => ({
+  op: "fitToSize",
+  label: "Fit (fill)",
+  mode: "fill",
+  anchor: "center",
+  rect,
+});
+const fitPad = (pad: { l: number; t: number; r: number; b: number }): PhotoOp => ({
+  op: "fitToSize",
+  label: "Fit (pad)",
+  mode: "fit",
+  anchor: "center",
+  pad,
+});
+/** A still-unsupported op (renders from PE9) — the op-screen negative case. */
+const eraseOp = (): PhotoOp => ({ op: "erase", label: "Remove object", maskAssetId: "mask-1" });
 
 /**
  * The expected RGBA for a source pixel under a recipe's TERMINAL adjust pass —
@@ -120,6 +156,14 @@ describe("compileRenderPlan — folded dims equal geometry.effectiveDims", () =>
       ops: [crop({ x: 10, y: 10, w: 300, h: 200 }), straighten(2), flip("vertical")],
     },
     { name: "rotate then crop (new frame)", ops: [rotate(1), crop({ x: 0, y: 0, w: 100, h: 120 })] },
+    // PE5 print-geometry ops (resize / bleedExpand / fitToSize) fold here too.
+    { name: "resize", ops: [resizeOp(120, 90)] },
+    { name: "bleed mirror", ops: [bleed(20, "mirror")] },
+    { name: "bleed solid", ops: [bleed(15, "solid", "#ffffff")] },
+    { name: "crop then bleed", ops: [crop({ x: 10, y: 10, w: 200, h: 150 }), bleed(12)] },
+    { name: "fit fill (crop to aspect)", ops: [fitFill({ x: 20, y: 0, w: 300, h: 300 })] },
+    { name: "fit pad (white padding)", ops: [fitPad({ l: 10, t: 0, r: 10, b: 0 })] },
+    { name: "resize then bleed", ops: [resizeOp(200, 200), bleed(10, "smear")] },
   ];
 
   for (const { name, ops } of recipes) {
@@ -133,12 +177,35 @@ describe("compileRenderPlan — folded dims equal geometry.effectiveDims", () =>
 describe("compileRenderPlan — op screening + step shape", () => {
   it("throws UnsupportedRenderOp on the first un-renderable op (not geometry, not tone), naming it", () => {
     try {
-      compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), resize()], SRC);
+      compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), eraseOp()], SRC);
       throw new Error("expected a throw");
     } catch (err) {
       expect(err).toBeInstanceOf(UnsupportedRenderOp);
-      expect((err as UnsupportedRenderOp).op).toBe("resize");
+      expect((err as UnsupportedRenderOp).op).toBe("erase");
     }
+  });
+
+  it("compiles the PE5 print-geometry ops (resize / bleedExpand / fitToSize) into steps", () => {
+    // bleedExpand → an extend step on all four edges (mirror carries no colour).
+    expect(compileRenderPlan([bleed(20, "mirror")], SRC).steps).toEqual([
+      { kind: "extend", left: 20, top: 20, right: 20, bottom: 20, strategy: "mirror" },
+    ]);
+    // a solid bleed carries its fill colour.
+    expect(compileRenderPlan([bleed(15, "solid", "#abcdef")], SRC).steps).toEqual([
+      { kind: "extend", left: 15, top: 15, right: 15, bottom: 15, strategy: "solid", color: "#abcdef" },
+    ]);
+    // fitToSize fill → an extract step (REUSING the crop step kind, no shape).
+    expect(compileRenderPlan([fitFill({ x: 20, y: 0, w: 300, h: 300 })], SRC).steps).toEqual([
+      { kind: "extract", left: 20, top: 0, width: 300, height: 300 },
+    ]);
+    // fitToSize fit → a solid-white extend step per the pad.
+    expect(compileRenderPlan([fitPad({ l: 10, t: 5, r: 10, b: 5 })], SRC).steps).toEqual([
+      { kind: "extend", left: 10, top: 5, right: 10, bottom: 5, strategy: "solid", color: "#ffffff" },
+    ]);
+    // resize → a resize step with the resolved dims.
+    expect(compileRenderPlan([resizeOp(120, 90)], SRC).steps).toEqual([
+      { kind: "resize", width: 120, height: 90 },
+    ]);
   });
 
   it("does NOT throw on adjust/autoEnhance — they compile to a terminal pass", () => {
@@ -341,7 +408,7 @@ describe("renderImage — geometry replays at full resolution", () => {
     "reports unsupported-op (never renders) when an un-renderable op sneaks into the recipe",
     async () => {
       const out = await renderImage(await quadPng(), {
-        recipe: [resize()],
+        recipe: [eraseOp()],
         format: "png",
         quality: 90,
         intent: "srgb",
@@ -349,7 +416,7 @@ describe("renderImage — geometry replays at full resolution", () => {
       expect(out.ok).toBe(false);
       if (out.ok) return;
       expect(out.code).toBe("unsupported-op");
-      expect(out.message).toContain("resize");
+      expect(out.message).toContain("erase");
     },
     30_000,
   );
@@ -362,6 +429,130 @@ describe("renderImage — geometry replays at full resolution", () => {
       expect(out.ok).toBe(false);
       if (out.ok) return;
       expect(out.code).toBe("decode-failed");
+    },
+    30_000,
+  );
+});
+
+/* ========================================================================== */
+/* renderImage — the PE5 print-geometry ops replay live                        */
+/* ========================================================================== */
+
+describe("renderImage — print-geometry ops (resize / bleedExpand / fitToSize)", () => {
+  it(
+    "bleedExpand mirror grows the canvas by 2·px on each axis",
+    async () => {
+      const out = await renderImage(await quadPng(), {
+        recipe: [bleed(20, "mirror")],
+        format: "png",
+        quality: 90,
+        intent: "srgb",
+      });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const meta = await sharp(out.bytes).metadata();
+      expect([meta.width, meta.height]).toEqual([440, 340]);
+    },
+    30_000,
+  );
+
+  it(
+    "resize renders the exact target dims (fill)",
+    async () => {
+      const out = await renderImage(await quadPng(), {
+        recipe: [resizeOp(120, 90)],
+        format: "png",
+        quality: 90,
+        intent: "srgb",
+      });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const meta = await sharp(out.bytes).metadata();
+      expect([meta.width, meta.height]).toEqual([120, 90]);
+    },
+    30_000,
+  );
+
+  it(
+    "fitToSize fit pads with white to the target dims (the far pad column is white)",
+    async () => {
+      const out = await renderImage(await quadPng(), {
+        recipe: [fitPad({ l: 0, t: 0, r: 100, b: 0 })],
+        format: "png",
+        quality: 90,
+        intent: "srgb",
+      });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const s = await sample(out.bytes, 495, 150); // deep in the right white pad
+      expect([s.width, s.height]).toEqual([500, 300]);
+      expect(s.rgba[0]).toBeGreaterThan(240);
+      expect(s.rgba[1]).toBeGreaterThan(240);
+      expect(s.rgba[2]).toBeGreaterThan(240);
+    },
+    30_000,
+  );
+
+  it(
+    "fitToSize fill crops to the anchored rect (dims = rect)",
+    async () => {
+      const out = await renderImage(await quadPng(), {
+        recipe: [fitFill({ x: 100, y: 0, w: 200, h: 300 })],
+        format: "png",
+        quality: 90,
+        intent: "srgb",
+      });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const meta = await sharp(out.bytes).metadata();
+      expect([meta.width, meta.height]).toEqual([200, 300]);
+    },
+    30_000,
+  );
+});
+
+/* ========================================================================== */
+/* renderImage — the terminal CMYK colour pass (PE5)                           */
+/* ========================================================================== */
+
+describe("renderImage — CMYK separates through the GRACoL profile", () => {
+  const GRACOL = join(process.cwd(), "src", "lib", "photo", "profiles", "GRACoL2013_CRPC6.icc");
+
+  it(
+    "intent cmyk + tiff → a 4-channel CMYK TIFF with the committed GRACoL profile embedded byte-identical",
+    async () => {
+      const out = await renderImage(await quadPng(), {
+        recipe: [crop({ x: 0, y: 0, w: 200, h: 150 })],
+        format: "tiff",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.mime).toBe("image/tiff");
+      const meta = await sharp(out.bytes).metadata();
+      expect(meta.space).toBe("cmyk");
+      expect(meta.channels).toBe(4);
+      expect(meta.icc).toBeDefined();
+      expect(meta.icc!.equals(readFileSync(GRACOL))).toBe(true);
+    },
+    30_000,
+  );
+
+  it(
+    "intent cmyk + png → downgraded to sRGB (PNG has no CMYK), never 4-channel",
+    async () => {
+      const out = await renderImage(await quadPng(), {
+        recipe: [],
+        format: "png",
+        quality: 90,
+        intent: "cmyk",
+      });
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.mime).toBe("image/png");
+      const meta = await sharp(out.bytes).metadata();
+      expect(meta.space).not.toBe("cmyk");
     },
     30_000,
   );

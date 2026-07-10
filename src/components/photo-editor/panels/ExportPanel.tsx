@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import type { RenderFormat } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
 import { downloadBlob, isRenderError, renderPhoto } from "@/lib/photo/client";
 
@@ -9,21 +10,19 @@ import { downloadBlob, isRenderError, renderPhoto } from "@/lib/photo/client";
  * Export panel (wire Section B "Export", ~lines 397–434). Mounts in the
  * ContextPanel body while the Export tool is active.
  *
- * PE3 scope: the JPG/PNG + Quality path is LIVE — this is the first tranche
- * where a recipe replays server-side at full resolution and the bytes come back
- * to the associate's disk (plan §4 PE3). Everything else the wire draws is
- * rendered "drawn-but-honest" per the house pattern: TIFF / PDF·print tiles, the
- * CMYK·GRACoL intent, save-back, and the send-to links are all visibly present
- * but disabled, each with a tooltip naming the tranche it goes live with — so
- * the ceiling reads as reachable rather than silently missing.
+ * PE5 scope: the full format grid is LIVE — JPG/PNG (screen) and TIFF/PDF·print
+ * (the print pair, which carry the print-colour + MediaBox/TrimBox/BleedBox math).
+ * The intent segment is LIVE and reflects the document (dev #6): sRGB / CMYK·GRACoL
+ * both flip `target.intent` via setIntent; for an RGB arrival still on sRGB intent
+ * with a print format selected, a prominent one-click "Convert to CMYK (GRACoL) →"
+ * line appears (the same affordance the strip carries). PNG can't carry CMYK, so
+ * PNG + CMYK-intent shows an honest note. Save-back and the imposition send-to
+ * stay drawn-but-inert (devs #4/#9).
  *
  * The export flow is fire-and-forget from the UI's point of view: setRendering
  * flips a session flag (status-bar chip + this button's guard), the fetch runs
- * async, and the canvas/shell stay fully interactive throughout — nothing here
- * disables the rest of the editor.
+ * async, and the canvas/shell stay fully interactive throughout.
  */
-
-type ExportFormat = "jpeg" | "png";
 
 const WF_H = "text-[11px] font-semibold uppercase tracking-[0.04em] text-[#5f5f5f]";
 
@@ -36,30 +35,53 @@ export function ExportPanel() {
   const doc = usePhotoStore((s) => s.doc);
   const rendering = usePhotoStore((s) => s.rendering);
   const setRendering = usePhotoStore((s) => s.setRendering);
+  const setIntent = usePhotoStore((s) => s.setIntent);
 
-  const [format, setFormat] = useState<ExportFormat>("jpeg");
+  const [format, setFormat] = useState<RenderFormat>("jpeg");
   const [quality, setQuality] = useState(QUALITY_DEFAULT);
   const [error, setError] = useState<string | null>(null);
+  const [postNote, setPostNote] = useState<string | null>(null);
 
   if (!doc) return null;
 
+  const intent = doc.target.intent;
   // PNG is lossless — Quality only applies to JPG (plan: "Selecting PNG
-  // hides/disables Quality").
+  // hides/disables Quality"); TIFF/PDF ignore it too (schema: JPEG-only).
   const qualityVisible = format === "jpeg";
+  const isPrintFormat = format === "tiff" || format === "pdf";
+  // The one-click convert appears only where it applies: an RGB arrival still on
+  // sRGB intent, exporting a print format (dev #6).
+  const showConvert = doc.source.colorSpace === "rgb" && intent === "srgb" && isPrintFormat;
+  // PNG can't carry CMYK — say so honestly instead of silently downgrading.
+  const showPngCmykNote = format === "png" && intent === "cmyk";
 
   async function onExport() {
     // Double-click guard: the button is also disabled while rendering, this is
     // belt-and-suspenders against a queued second click.
     if (rendering) return;
     setError(null);
+    setPostNote(null);
     setRendering(true);
     try {
-      const { blob, suggestedName } = await renderPhoto(doc!, {
+      const result = await renderPhoto(doc!, {
         format,
         quality: format === "jpeg" ? quality : undefined,
+        // The document's export intent rides the render (dev #6); the print
+        // target (inches) rides only when a size is set — for the PDF box math.
+        intent: doc!.target.intent,
+        printTarget: doc!.target.size
+          ? { w: doc!.target.size.w, h: doc!.target.size.h, bleed: doc!.target.bleed }
+          : undefined,
       });
       // The one save-to-disk seam in the repo (see client.downloadBlob).
-      downloadBlob(blob, suggestedName);
+      downloadBlob(result.blob, result.suggestedName);
+      // Advisory colour-path notes surfaced from the render's response headers
+      // (only if the sibling render route shipped them — false otherwise).
+      if (result.intentDowngraded) {
+        setPostNote("Exported in sRGB — this format can't carry CMYK.");
+      } else if (result.reseparated) {
+        setPostNote("Re-separated to CMYK through the GRACoL profile.");
+      }
     } catch (err) {
       // The server's friendly RenderError.message shows verbatim; anything
       // unexpected falls back to a generic, counter-ready line.
@@ -76,7 +98,7 @@ export function ExportPanel() {
   return (
     <div data-testid="photo-export-panel" className="flex-1 overflow-y-auto p-4">
       <div className="flex flex-col gap-[15px]">
-        {/* FORMAT — 2×2 tile grid. JPG active default · PNG live; TIFF + PDF drawn disabled. */}
+        {/* FORMAT — 2×2 tile grid. JPG/PNG (screen) + TIFF/PDF·print, all live. */}
         <div>
           <div className={`${WF_H} mb-2`}>Format</div>
           <div className="grid grid-cols-2 gap-[6px]">
@@ -92,15 +114,25 @@ export function ExportPanel() {
               active={format === "png"}
               onClick={() => setFormat("png")}
             />
-            <FormatTile testId="export-format-tiff" label="TIFF" disabledReason="Lands with PE7" />
-            <FormatTile testId="export-format-pdf" label="PDF · print" disabledReason="Lands with PE7" />
+            <FormatTile
+              testId="export-format-tiff"
+              label="TIFF"
+              active={format === "tiff"}
+              onClick={() => setFormat("tiff")}
+            />
+            <FormatTile
+              testId="export-format-pdf"
+              label="PDF · print"
+              active={format === "pdf"}
+              onClick={() => setFormat("pdf")}
+            />
           </div>
           <div className="mt-[6px] text-[10.5px] text-[#999]">
             PDF carries correct trim + bleed boxes. HEIC always converts on the way in.
           </div>
         </div>
 
-        {/* SETTINGS — Quality (JPG only) + intent segment. */}
+        {/* SETTINGS — Quality (JPG only) + live intent segment. */}
         <div>
           <div className={`${WF_H} mb-2`}>Settings</div>
 
@@ -124,32 +156,43 @@ export function ExportPanel() {
             </div>
           ) : (
             <div className="mb-3 text-[10.5px] text-[#999]">
-              PNG is lossless — there&rsquo;s no quality setting.
+              {format === "png"
+                ? "PNG is lossless — there’s no quality setting."
+                : "Print formats encode at full fidelity — no quality setting."}
             </div>
           )}
 
-          {/* Intent — sRGB selected; CMYK · GRACoL drawn disabled (deviation #6). */}
+          {/* Intent — both segments live; reflects doc.target.intent (dev #6). */}
           <div className="flex rounded-[6px] bg-[#ececec] p-[2px] text-[11px]">
-            <button
-              type="button"
-              data-testid="export-intent-srgb"
-              aria-pressed
-              className="flex-1 cursor-default rounded-[5px] py-1 text-center text-[#333] shadow-[0_1px_2px_rgba(0,0,0,.12)] bg-white"
-            >
-              sRGB
-            </button>
-            <button
-              type="button"
-              data-testid="export-intent-cmyk"
-              disabled
-              title="Goes live with PE5"
-              className="flex-1 cursor-not-allowed rounded-[5px] py-1 text-center text-[#aaa]"
-            >
-              CMYK · GRACoL
-            </button>
+            <IntentSegment
+              testId="export-intent-srgb"
+              label="sRGB"
+              active={intent === "srgb"}
+              onClick={() => setIntent("srgb")}
+            />
+            <IntentSegment
+              testId="export-intent-cmyk"
+              label="CMYK · GRACoL"
+              active={intent === "cmyk"}
+              onClick={() => setIntent("cmyk")}
+            />
           </div>
+
+          {showConvert && (
+            <button
+              type="button"
+              data-testid="export-convert-cmyk"
+              onClick={() => setIntent("cmyk")}
+              className="mt-[8px] flex h-[30px] w-full cursor-pointer items-center justify-center rounded-[6px] border-[1.5px] border-brand bg-brand-tint text-[11.5px] font-semibold text-brand-deep hover:bg-[#f7dede]"
+            >
+              Convert to CMYK (GRACoL) →
+            </button>
+          )}
+
           <div className="mt-[6px] text-[10.5px] text-[#999]">
-            CMYK-intent matches press color — fixes the royal-blue surprise.
+            {showPngCmykNote
+              ? "PNG exports sRGB — CMYK rides JPG/TIFF/PDF."
+              : "CMYK-intent matches press color — fixes the royal-blue surprise."}
           </div>
         </div>
 
@@ -204,6 +247,16 @@ export function ExportPanel() {
           </button>
         </div>
 
+        {/* Post-export advisory note — the render's colour-path headers, if any. */}
+        {postNote && (
+          <div
+            data-testid="export-note"
+            className="rounded-[6px] border border-[#e0e0e0] bg-[#fafafa] px-[10px] py-2 text-[11px] leading-relaxed text-[#666]"
+          >
+            {postNote}
+          </div>
+        )}
+
         {/* Inline error — the server's RenderError.message, verbatim (dev-honest copy). */}
         {error && (
           <div
@@ -237,34 +290,18 @@ export function ExportPanel() {
   );
 }
 
-/** A 30px format tile. Live tiles select; drawn-disabled tiles carry a tooltip
-    naming the tranche they land with. */
+/** A 30px live format tile — selecting sets the export container. */
 function FormatTile({
   testId,
   label,
   active,
   onClick,
-  disabledReason,
 }: {
   testId: string;
   label: string;
-  active?: boolean;
-  onClick?: () => void;
-  disabledReason?: string;
+  active: boolean;
+  onClick: () => void;
 }) {
-  if (disabledReason) {
-    return (
-      <button
-        type="button"
-        data-testid={testId}
-        disabled
-        title={disabledReason}
-        className="flex h-[30px] cursor-not-allowed items-center justify-center rounded-[5px] border border-[#dcdcdc] bg-white text-[11.5px] text-[#999] opacity-70"
-      >
-        {label}
-      </button>
-    );
-  }
   return (
     <button
       type="button"
@@ -275,6 +312,35 @@ function FormatTile({
         active
           ? "border-[1.5px] border-brand bg-brand-tint font-semibold text-brand-deep"
           : "border border-[#dcdcdc] bg-white text-[#555] hover:border-[#c8c8c8]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** One live segment of the sRGB / CMYK intent control. */
+function IntentSegment({
+  testId,
+  label,
+  active,
+  onClick,
+}: {
+  testId: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex-1 cursor-pointer rounded-[5px] py-1 text-center ${
+        active
+          ? "bg-white text-[#333] shadow-[0_1px_2px_rgba(0,0,0,.12)]"
+          : "text-[#777] hover:text-[#555]"
       }`}
     >
       {label}

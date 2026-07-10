@@ -7,6 +7,7 @@ import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
 import type { PhotoOp, RenderErrorCode, RenderPayload } from "@/lib/schema/photo";
 import { collectAdjustState, compileAdjust, isAdjustIdentity } from "./adjust-math";
 import { straightenScale } from "./geometry";
+import { tiffDimensions } from "./lcms";
 import {
   INTAKE_TIMEOUT_MS,
   MASTER_JPEG_QUALITY,
@@ -52,6 +53,27 @@ const WORKER_LIMITS = {
   proxyJpegQuality: PROXY_JPEG_QUALITY,
   proxyMaxEdge: PROXY_MAX_EDGE,
 };
+
+/* ------------------------------------------------------------------ */
+/* GRACoL press profile (dev #6) — read once, copied INTO each jail     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The committed GRACoL2013_CRPC6 press profile (ICC v4 CMYK). Two consumers:
+ * the render host COPIES its bytes into each CMYK render jail beside job.json (so
+ * the worker separates through a jail-local profile and never reaches outside its
+ * scratch dir, §3.6), and the render route reads it for a PDF `/OutputIntent`
+ * (pdf-wrap.ts). Cached per process — it is 3.4 MB and immutable.
+ */
+const GRACOL_PROFILE_PATH = join(process.cwd(), "src", "lib", "photo", "profiles", "GRACoL2013_CRPC6.icc");
+/** The OutputConditionIdentifier the PDF writer records for the GRACoL intent. */
+export const GRACOL_IDENTIFIER = "GRACoL2013_CRPC6";
+
+let gracolCache: Buffer | null = null;
+export async function gracolProfileBytes(): Promise<Buffer> {
+  if (!gracolCache) gracolCache = await readFile(GRACOL_PROFILE_PATH);
+  return gracolCache;
+}
 
 /* ------------------------------------------------------------------ */
 /* prlimit probe (cached) — the pub2raw pattern                        */
@@ -127,11 +149,19 @@ async function runWorker(
   input: Buffer | null,
   outputNames: string[],
   timeoutMs: number = INTAKE_TIMEOUT_MS,
+  /** Extra files written INTO the jail before the spawn (e.g. the GRACoL ICC for
+      a CMYK render) — the worker only ever reaches files inside its own jail. */
+  extraFiles?: Record<string, Buffer>,
 ): Promise<WorkerRun> {
   const jail = await mkdtemp(join(tmpdir(), "photo-host-"));
   try {
     await writeFile(join(jail, "job.json"), JSON.stringify(job));
     if (input) await writeFile(join(jail, "input.bin"), input);
+    if (extraFiles) {
+      for (const [name, buf] of Object.entries(extraFiles)) {
+        await writeFile(join(jail, name), buf);
+      }
+    }
 
     // rlimit wrapper (plan §3.6): `prlimit --cpu=<soft:hard> --as -- node
     // <worker> <jail>`. prlimit exec()s the target (no intermediate process),
@@ -383,6 +413,31 @@ export type RenderStep =
   | { kind: "flip"; axis: "horizontal" | "vertical" }
   | { kind: "straighten"; degrees: number; scale: number; width: number; height: number }
   | {
+      /**
+       * Grow the canvas on every edge (the print-geometry ops bleedExpand and
+       * fitToSize-fit, PE5). `strategy` selects the worker's `sharp.extend`
+       * fill: mirror → libvips `'mirror'` (reflect the border), smear → libvips
+       * `'copy'` (replicate the edge pixel outward — the documented mapping),
+       * solid → `'background'` with `color`. bleedExpand sets all four edges to
+       * its px; fitToSize-fit sets the per-edge white padding solveFit chose.
+       */
+      kind: "extend";
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+      strategy: "mirror" | "smear" | "solid";
+      /** Solid strategy only — the fill colour (hex); worker defaults to white. */
+      color?: string;
+    }
+  | {
+      /** Fill-resize to stored-explicit resolved dims (resize op / fitToSize
+          math resolves aspect host-side; the worker just executes the target). */
+      kind: "resize";
+      width: number;
+      height: number;
+    }
+  | {
       kind: "adjust";
       /** Per-channel 256-entry tone+temperature LUTs (0..255 ints as numbers). */
       lutR: number[];
@@ -403,17 +458,17 @@ export type RenderStep =
  */
 export class UnsupportedRenderOp extends Error {
   constructor(public readonly op: string) {
-    // Named tranches keep the reject honest ("lands with PE5/PE6/PE9"), and
-    // shrink as each tranche makes its ops renderable.
+    // Named tranches keep the reject honest ("lands with PE6/PE9"), and shrink
+    // as each tranche makes its ops renderable. PE5 folded the print-geometry
+    // ops (resize / bleedExpand / fitToSize) in — they compile now, so they no
+    // longer reach this throw.
     super(
       `Render does not support '${op}' ops yet — ` +
-        (op === "resize" || op === "bleedExpand" || op === "fitToSize"
-          ? "they land with PE5."
-          : op === "textOverlay" || op === "logoOverlay"
-            ? "they land with PE6."
-            : op === "erase"
-              ? "it lands with PE9."
-              : "unsupported op."),
+        (op === "textOverlay" || op === "logoOverlay"
+          ? "they land with PE6."
+          : op === "erase"
+            ? "it lands with PE9."
+            : "unsupported op."),
     );
     this.name = "UnsupportedRenderOp";
   }
@@ -498,14 +553,68 @@ export function compileRenderPlan(
         steps.push({ kind: "straighten", degrees: op.degrees, scale, width: curW, height: curH });
         break;
       }
+      case "bleedExpand": {
+        // Grow every edge by the stored-explicit px → an extend step (matches
+        // effectiveDims: w+2·px, h+2·px). `strategy` rides to sharp.extend; the
+        // solid colour rides only for the solid strategy (mirror/smear ignore it).
+        const px = Math.max(1, Math.round(op.px));
+        const step: RenderStep = {
+          kind: "extend",
+          left: px,
+          top: px,
+          right: px,
+          bottom: px,
+          strategy: op.strategy,
+        };
+        if (op.strategy === "solid" && op.color) step.color = op.color;
+        steps.push(step);
+        curW = intDim(curW + 2 * px);
+        curH = intDim(curH + 2 * px);
+        break;
+      }
+      case "fitToSize": {
+        // fill → an anchored crop (REUSE the extract step kind, no shape);
+        // fit → anchored white padding via a solid extend step. Exactly one of
+        // rect/pad is present (schema invariant); dims fold as effectiveDims does.
+        if (op.rect) {
+          const width = intDim(op.rect.w);
+          const height = intDim(op.rect.h);
+          const eW = Math.min(width, curW);
+          const eH = Math.min(height, curH);
+          const left = clampN(Math.round(op.rect.x), 0, curW - eW);
+          const top = clampN(Math.round(op.rect.y), 0, curH - eH);
+          steps.push({ kind: "extract", left, top, width: eW, height: eH });
+          curW = eW;
+          curH = eH;
+        } else if (op.pad) {
+          const l = Math.max(0, Math.round(op.pad.l));
+          const t = Math.max(0, Math.round(op.pad.t));
+          const r = Math.max(0, Math.round(op.pad.r));
+          const b = Math.max(0, Math.round(op.pad.b));
+          steps.push({ kind: "extend", left: l, top: t, right: r, bottom: b, strategy: "solid", color: "#ffffff" });
+          curW = intDim(curW + l + r);
+          curH = intDim(curH + t + b);
+        }
+        break;
+      }
+      case "resize": {
+        // Stored-explicit resolved output dims → a fill resize (matches
+        // effectiveDims' targetPx fold).
+        const width = intDim(op.targetPx.width);
+        const height = intDim(op.targetPx.height);
+        steps.push({ kind: "resize", width, height });
+        curW = width;
+        curH = height;
+        break;
+      }
       case "adjust":
       case "autoEnhance":
         // POINTWISE tone/colour — folded terminally after the loop (below), not
         // per-op. Dims are untouched; nothing to emit here.
         break;
       default:
-        // bleedExpand / fitToSize / resize / textOverlay / logoOverlay / erase —
-        // not geometry, not tone, not renderable here yet.
+        // textOverlay / logoOverlay / erase — not geometry, not tone, not
+        // renderable here yet (they land with PE6/PE9).
         throw new UnsupportedRenderOp(op.op);
     }
   }
@@ -548,9 +657,10 @@ function typedRenderFailure(
  * Replay a geometry recipe on `master` at full resolution in the jail, returning
  * the encoded export bytes (binary — the route streams them with the right
  * Content-Type; there is no JSON success envelope). The master's pixel dims come
- * from a cheap, safe HEADER read (`imageDimensions` — no decode, same posture as
- * the intake content-sniff), since masters are always our own jpeg/png; an
- * unreadable header means the bytes won't decode either → `decode-failed`.
+ * from a cheap, safe HEADER read (`imageDimensions`, or `tiffDimensions` for the
+ * preserved-CMYK TIFF a CMYK arrival re-sends — no decode, same posture as the
+ * intake content-sniff), since masters are always our own encodes; an unreadable
+ * header means the bytes won't decode either → `decode-failed`.
  *
  * Determinism (the PE3 done-when): the compile is pure integer/trig math and the
  * worker's encoder options are fixed, so the same recipe + bytes yields
@@ -560,8 +670,13 @@ export async function renderImage(
   master: Buffer,
   payload: RenderPayload,
 ): Promise<{ ok: true; bytes: Buffer; mime: string } | { ok: false; code: RenderErrorCode; message: string }> {
+  // Masters are our own encodes — jpeg/png normally, but a CMYK arrival re-sends
+  // the preserved TIFF (§1.3), so fall back to the TIFF header reader for that.
   const mime = sniffImageMime(master);
-  const dims = mime ? imageDimensions(master, mime) : undefined;
+  let dims = mime ? imageDimensions(master, mime) : undefined;
+  if ((!dims || dims.width < 1 || dims.height < 1) && mime === "image/tiff") {
+    dims = tiffDimensions(master);
+  }
   if (!dims || dims.width < 1 || dims.height < 1) {
     return { ok: false, code: "decode-failed", message: "The image to render couldn't be read." };
   }
@@ -576,17 +691,28 @@ export async function renderImage(
     return { ok: false, code: "engine-error", message: "The recipe couldn't be compiled for rendering." };
   }
 
+  // CMYK output (jpeg/tiff with cmyk intent) separates through the committed
+  // GRACoL profile — the HOST copies the .icc INTO the jail so the worker never
+  // reaches outside its scratch dir for it (§3.6). PNG can't carry CMYK, so it
+  // never triggers the copy (the worker downgrades PNG to sRGB regardless).
+  const wantsCmyk = payload.intent === "cmyk" && payload.format !== "png";
+  const extraFiles = wantsCmyk ? { "profile.icc": await gracolProfileBytes() } : undefined;
+
   const run = await runWorker(
     {
       kind: "render",
       steps: plan.steps,
       format: payload.format,
       quality: payload.quality,
+      intent: payload.intent,
+      // Jail-local basename (never an absolute host path); set only when CMYK.
+      iccProfile: wantsCmyk ? "profile.icc" : undefined,
       limits: { maxPixels: MAX_PHOTO_PIXELS },
     },
     master,
     ["output.bin"],
     RENDER_TIMEOUT_MS,
+    extraFiles,
   );
 
   // Jail kills first (no typed result to trust) — mirrors intakeImage.
@@ -612,6 +738,9 @@ export async function renderImage(
   if (!out)
     return { ok: false, code: "engine-error", message: "The renderer reported success but wrote no image." };
 
-  const outMime = run.result.mime === "image/png" ? "image/png" : "image/jpeg";
+  // Trust the worker's reported container mime (png / jpeg / tiff), defaulting
+  // to jpeg for anything else.
+  const rm = String(run.result.mime);
+  const outMime = rm === "image/png" ? "image/png" : rm === "image/tiff" ? "image/tiff" : "image/jpeg";
   return { ok: true, bytes: out, mime: outMime };
 }

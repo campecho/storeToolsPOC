@@ -337,6 +337,13 @@ export const IntakeSuccessSchema = z.object({
   ok: z.literal(true),
   master: IntakeImagePayloadSchema,
   proxy: IntakeImagePayloadSchema,
+  /** The preserved-CMYK working master (a TIFF), present ONLY when a CMYK arrival
+      rode the jailed tificc (lcms2-utils) seam that keeps 4 channels off sharp's
+      RGB-unpacking decoder (§1.3, PE5, v1.4). The client stores it under
+      `photo:<id>:cmyk` and sets `source.cmykAssetId`. Additive/optional — absent
+      for the dominant RGB path and wherever tificc isn't installed; no persisted
+      shape migrates (pre-release v1). */
+  cmykMaster: IntakeImagePayloadSchema.optional(),
   meta: z.object({
     originalName: z.string(),
     colorSpace: PhotoColorSpaceSchema,

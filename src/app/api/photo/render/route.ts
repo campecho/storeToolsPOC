@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
+import { sniffImageMime } from "@/lib/import/image-meta";
 // One AV seam for the whole suite: reuse the import stack's logging stub
 // (plan §3.6 — "same seam as import"). Nothing scans yet; the call site exists
 // so the engine decision has a single place to fill.
 import { avScanHook } from "@/lib/import/pub2raw";
 import { isGeometryOp } from "@/lib/photo/geometry";
+import { cmykPreservePath, isCmykTiff, tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
-import { renderImage } from "@/lib/photo/render-host";
+import { scanJpeg, wrapImagePdf } from "@/lib/photo/pdf-wrap";
+import { GRACOL_IDENTIFIER, gracolProfileBytes, renderImage } from "@/lib/photo/render-host";
 import {
   RenderErrorSchema,
   RenderPayloadSchema,
   type PhotoOp,
   type RenderError,
   type RenderErrorCode,
+  type RenderPayload,
 } from "@/lib/schema/photo";
 
 /**
@@ -45,20 +49,18 @@ const STATUS_FOR: Record<RenderErrorCode, number> = {
 
 /**
  * The tranche each still-unsupported op renders from, for the `unsupported-op`
- * message ("'resize' ops render from PE5"). Ops that render HERE — geometry
- * (crop/rotate/flip/straighten) and tone/colour (adjust/autoEnhance, PE4) — are
- * absent from this map.
+ * message ("'textOverlay' ops render from PE6"). Ops that render HERE — geometry
+ * (crop/rotate/flip/straighten + the PE5 print-geometry resize/bleedExpand/
+ * fitToSize) and tone/colour (adjust/autoEnhance, PE4) — are absent from this map.
  */
 const OP_TRANCHE: Record<string, string> = {
-  resize: "ops render from PE5",
-  bleedExpand: "ops render from PE5",
-  fitToSize: "ops render from PE5",
   textOverlay: "ops render from PE6",
   logoOverlay: "ops render from PE6",
   erase: "ops render from PE9",
 };
 
-/** The op tags the render spine can replay today: geometry + PE4 tone/colour. */
+/** The op tags the render spine can replay today: geometry (incl. the PE5
+    print-geometry ops, via isGeometryOp) + PE4 tone/colour. */
 function isRenderableOp(op: PhotoOp): boolean {
   return isGeometryOp(op) || op.op === "adjust" || op.op === "autoEnhance";
 }
@@ -116,7 +118,7 @@ export async function POST(req: Request) {
   for (const op of payload.recipe) {
     if (!isRenderableOp(op)) {
       const tranche = OP_TRANCHE[op.op] ?? "ops aren't supported yet";
-      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, straighten, and tone/colour adjust for now.`);
+      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, straighten, resize, bleed, fit-to-size, and tone/colour adjust for now.`);
     }
   }
 
@@ -125,8 +127,56 @@ export async function POST(req: Request) {
   // AV seam (§3.6) — same logging stub as import; nothing scans yet.
   await avScanHook(file.name, master);
 
-  // 5. Replay in the jail. The master bytes drop out of scope after this call
-  //    (nothing persists them — the stateless-server posture, §1.4).
+  // 5. CMYK-arrival decision (PE5, §1.3 v1.4). The client sends the preserved
+  //    CMYK master (a tificc TIFF) as `file` ONLY when there are no edits and the
+  //    intent is cmyk; anything else arrives as the sharp RGB working master. The
+  //    server decides purely from the bytes it holds:
+  const inputIsCmykTiff = sniffImageMime(master) === "image/tiff" && isCmykTiff(master);
+  const recipeEmpty = payload.recipe.length === 0;
+
+  // PRESERVE path (no re-separation): a CMYK TIFF, unedited, exported as CMYK
+  // TIFF rides the jailed tificc identity re-encode that KEEPS the original
+  // separation. POC rule (documented): TIFF output ONLY — a CMYK TIFF → CMYK
+  // JPEG/PDF without a sharp RGB unpack isn't possible here, so those (and any
+  // edited or tificc-absent case) fall to the sharp separate-through-GRACoL path
+  // below, marked X-Photo-Reseparated so the UI can say the separation was
+  // recomputed. tificc absent (this dev container) → always the fallback.
+  if (
+    payload.intent === "cmyk" &&
+    payload.format === "tiff" &&
+    recipeEmpty &&
+    inputIsCmykTiff &&
+    (await tificcAvailable())
+  ) {
+    const preserved = await cmykPreservePath(master);
+    if (preserved.ok) {
+      return new NextResponse(new Uint8Array(preserved.tiff), {
+        status: 200,
+        headers: {
+          "Content-Type": "image/tiff",
+          "Content-Length": String(preserved.tiff.length),
+          "Cache-Control": "no-store",
+          "X-Photo-Cmyk-Preserved": "1",
+        },
+      });
+    }
+    // tificc failed on a genuine CMYK TIFF — fall through to re-separation.
+  }
+
+  // A CMYK arrival that did NOT preserve above gets re-separated through GRACoL
+  // by sharp; mark it honestly so the UI can surface the recomputed separation.
+  const reseparated = payload.intent === "cmyk" && inputIsCmykTiff;
+
+  // 6. PDF: the worker renders a JPEG (quality ≥ 92, colour per intent) and
+  //    pdf-wrap frames it with the print boxes + (for cmyk) the GRACoL
+  //    OutputIntent. pdf-wrap scans the JPEG internally for the Adobe /Decode
+  //    inversion, so we don't double-handle it here.
+  if (payload.format === "pdf") {
+    return renderPdf(master, payload, reseparated);
+  }
+
+  // 7. Normal raster render (jpeg/png/tiff). Replay in the jail; the master
+  //    bytes drop out of scope after (nothing persists them — §1.4).
   const result = await renderImage(master, payload);
   if (!result.ok) {
     return fail(STATUS_FOR[result.code] ?? 500, result.code, result.message);
@@ -134,12 +184,60 @@ export async function POST(req: Request) {
 
   // SUCCESS: stream the encoded bytes back as binary (never cached — the render
   // is derived from client-held bytes, not a durable resource).
-  return new NextResponse(new Uint8Array(result.bytes), {
-    status: 200,
-    headers: {
-      "Content-Type": result.mime,
-      "Content-Length": String(result.bytes.length),
-      "Cache-Control": "no-store",
-    },
+  const headers: Record<string, string> = {
+    "Content-Type": result.mime,
+    "Content-Length": String(result.bytes.length),
+    "Cache-Control": "no-store",
+  };
+  // PNG can't carry CMYK — the worker downgraded to sRGB; surface it (dev #6).
+  if (payload.format === "png" && payload.intent === "cmyk") headers["X-Photo-Intent-Downgraded"] = "srgb";
+  if (reseparated) headers["X-Photo-Reseparated"] = "1";
+  return new NextResponse(new Uint8Array(result.bytes), { status: 200, headers });
+}
+
+/**
+ * PDF export (plan §4 PE5): the render worker encodes a JPEG (bumped to ≥ 92
+ * quality — a PDF is a keep-forever artifact — and separated per intent), then
+ * `wrapImagePdf` frames it with the print geometry. The page is the payload's
+ * `printTarget` (trim + bleed boxes) or, absent one, the image's own size at
+ * 300 DPI (a sensible print default). The GRACoL `/OutputIntent` rides only the
+ * CMYK path (omitted for sRGB at POC — noted in pdf-wrap).
+ */
+async function renderPdf(
+  master: Buffer,
+  payload: RenderPayload,
+  reseparated: boolean,
+): Promise<NextResponse> {
+  const jpegPayload: RenderPayload = { ...payload, format: "jpeg", quality: Math.max(payload.quality, 92) };
+  const result = await renderImage(master, jpegPayload);
+  if (!result.ok) return fail(STATUS_FOR[result.code] ?? 500, result.code, result.message);
+
+  const scan = scanJpeg(result.bytes);
+  if (scan.width < 1 || scan.height < 1) {
+    return fail(500, "engine-error", "The renderer produced an unreadable image for the PDF.");
+  }
+
+  const t = payload.printTarget;
+  const hasTarget = t !== undefined && t.w > 0 && t.h > 0;
+  const pdf = wrapImagePdf({
+    jpeg: result.bytes,
+    width: scan.width,
+    height: scan.height,
+    colorSpace: payload.intent === "cmyk" ? "cmyk" : "rgb",
+    page: hasTarget
+      ? { kind: "print", trimW: t!.w, trimH: t!.h, bleed: t!.bleed }
+      : { kind: "image", dpi: 300 },
+    outputIntent:
+      payload.intent === "cmyk"
+        ? { iccBytes: await gracolProfileBytes(), identifier: GRACOL_IDENTIFIER }
+        : undefined,
   });
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/pdf",
+    "Content-Length": String(pdf.length),
+    "Cache-Control": "no-store",
+  };
+  if (reseparated) headers["X-Photo-Reseparated"] = "1";
+  return new NextResponse(new Uint8Array(pdf), { status: 200, headers });
 }

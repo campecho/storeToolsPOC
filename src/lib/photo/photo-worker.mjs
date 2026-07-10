@@ -177,9 +177,14 @@ function shapeMaskSvg(shape, w, h) {
 async function render(sharp, job) {
   const input = await readFile(p("input.bin"));
   const steps = Array.isArray(job.steps) ? job.steps : [];
-  const format = job.format === "png" ? "png" : "jpeg";
+  const format = job.format === "png" ? "png" : job.format === "tiff" ? "tiff" : "jpeg";
   const quality = Number.isInteger(job.quality) ? clampN(job.quality, 1, 100) : 90;
   const limitInputPixels = job.limits?.maxPixels ?? 80_000_000;
+  // Colour intent for the terminal colour pass (PE5). CMYK needs a jail-local
+  // ICC profile the HOST copied in (job.iccProfile is a basename inside the jail,
+  // never a host path) — absent → honest sRGB fallback.
+  const intent = job.intent === "cmyk" ? "cmyk" : "srgb";
+  const iccProfile = typeof job.iccProfile === "string" ? p(job.iccProfile) : null;
   const notes = [];
 
   try {
@@ -239,6 +244,28 @@ async function render(sharp, job) {
             .png()
             .toBuffer();
         }
+      } else if (step.kind === "extend") {
+        // Grow the canvas (bleedExpand / fitToSize-fit). extendWith maps the
+        // host's strategy: mirror → libvips 'mirror' (reflect the border),
+        // smear → libvips 'copy' (replicate the edge pixel outward — the
+        // documented smear↔copy mapping), solid → 'background' with the
+        // host-supplied colour (default white). Edge sizes are host-validated
+        // ints; re-clamped defensively.
+        const top = Math.max(0, Math.round(step.top));
+        const bottom = Math.max(0, Math.round(step.bottom));
+        const left = Math.max(0, Math.round(step.left));
+        const right = Math.max(0, Math.round(step.right));
+        const extendWith =
+          step.strategy === "mirror" ? "mirror" : step.strategy === "smear" ? "copy" : "background";
+        const extendOpts = { top, bottom, left, right, extendWith };
+        if (extendWith === "background") extendOpts.background = step.color || "#ffffff";
+        buf = await sharp(buf).extend(extendOpts).png().toBuffer();
+      } else if (step.kind === "resize") {
+        // Stored-explicit resolved dims → a fill resize (aspect was resolved
+        // host-side by geometry.ts/fit.ts; the worker just hits the target).
+        const w = Math.max(1, Math.round(step.width));
+        const h = Math.max(1, Math.round(step.height));
+        buf = await sharp(buf).resize(w, h, { fit: "fill" }).png().toBuffer();
       } else if (step.kind === "adjust") {
         // The ONE pointwise tone/colour pass. This block is DUPLICATED FROM
         // ops.ts `applyAdjust` BY CONTRACT — this plain-JS worker cannot import
@@ -295,28 +322,60 @@ async function render(sharp, job) {
       }
     }
 
-    // Final encode. Metadata is stripped by default (CDR — no withMetadata()).
+    // Final encode + the TERMINAL colour pass (PE5). Metadata is stripped by
+    // default (CDR — no withMetadata()). Keyed on (format, intent):
+    //   • png            → ALWAYS sRGB. PNG has no CMYK representation, so a cmyk
+    //                      intent DOWNGRADES to sRGB and is noted (the route
+    //                      surfaces X-Photo-Intent-Downgraded). withIccProfile
+    //                      tags the sRGB profile.
+    //   • jpeg/tiff cmyk → toColourspace('cmyk') + withIccProfile(<jail GRACoL>):
+    //                      4-channel CMYK separated through the committed profile,
+    //                      byte-identical embed (v1.4 spike). Needs the jail-local
+    //                      profile; without one, honest sRGB fallback.
+    //   • jpeg/tiff srgb → withIccProfile('srgb') tag.
+    // TIFF ships LZW (lossless) — a sane print default; `quality` only bites the
+    // JPEG encoder.
     const finalMeta = await sharp(buf).metadata();
+    const wantsCmyk = intent === "cmyk" && iccProfile !== null && format !== "png";
     let encoded;
     let mime;
+    let space;
+
     if (format === "png") {
-      encoded = await sharp(buf).png().toBuffer({ resolveWithObject: true });
+      if (intent === "cmyk") notes.push("PNG has no CMYK — exported as sRGB");
+      encoded = await sharp(buf).withIccProfile("srgb").png().toBuffer({ resolveWithObject: true });
       mime = "image/png";
+      space = "srgb";
     } else {
-      // JPEG has no alpha: flatten onto white (a no-op when already opaque) and
-      // note it when transparency was actually present.
-      if (finalMeta.hasAlpha) notes.push("Transparency flattened onto white for JPEG");
-      encoded = await sharp(buf)
-        .flatten({ background: "#ffffff" })
-        .jpeg({ quality, mozjpeg: true })
-        .toBuffer({ resolveWithObject: true });
-      mime = "image/jpeg";
+      // jpeg or tiff. Flatten alpha when the container can't carry it (jpeg) or a
+      // CMYK separation would otherwise choke on a 4th channel.
+      let pipe = sharp(buf);
+      const mustFlatten = Boolean(finalMeta.hasAlpha) && (format === "jpeg" || wantsCmyk);
+      if (mustFlatten) {
+        if (format === "jpeg") notes.push("Transparency flattened onto white for JPEG");
+        pipe = pipe.flatten({ background: "#ffffff" });
+      }
+      if (wantsCmyk) {
+        pipe = pipe.toColourspace("cmyk").withIccProfile(iccProfile);
+        space = "cmyk";
+      } else {
+        pipe = pipe.withIccProfile("srgb");
+        space = "srgb";
+      }
+      if (format === "tiff") {
+        encoded = await pipe.tiff({ quality, compression: "lzw" }).toBuffer({ resolveWithObject: true });
+        mime = "image/tiff";
+      } else {
+        encoded = await pipe.jpeg({ quality, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+        mime = "image/jpeg";
+      }
     }
 
     await writeFile(p("output.bin"), encoded.data);
     await writeResult({
       ok: true,
       mime,
+      space,
       width: encoded.info.width,
       height: encoded.info.height,
       notes,

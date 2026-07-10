@@ -1,8 +1,13 @@
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { IntakeResponseSchema } from "@/lib/schema/photo";
 import { POST } from "./route";
+
+// tificc is ABSENT on this dev container by design — the preserved-CMYK leg is
+// then omitted (honest degradation); present only where lcms2-utils is installed.
+const HAVE_TIFICC = await tificcAvailable();
 
 /**
  * Adversarial + happy-path proof for POST /api/photo/intake (plan §5, §4 PE1).
@@ -127,6 +132,33 @@ describe("POST /api/photo/intake — live jail decode", () => {
       expect(await parsed(res)).toMatchObject({ ok: false, code: "decode-failed" });
     },
     15_000,
+  );
+});
+
+describe("POST /api/photo/intake — CMYK arrival (the CMYK-preserve seam)", () => {
+  it(
+    "opens a CMYK TIFF: colorSpace cmyk; the preserved cmykMaster leg is present only where tificc is installed",
+    async () => {
+      const cmyk = await sharp({ create: { width: 120, height: 90, channels: 3, background: "#884422" } })
+        .toColourspace("cmyk")
+        .tiff()
+        .toBuffer();
+      const res = await post(cmyk, "press.tiff");
+      expect(res.status).toBe(200);
+      const body = await parsed(res); // the additive optional cmykMaster still validates
+      expect(body.ok).toBe(true);
+      expect(body.meta.colorSpace).toBe("cmyk");
+      if (HAVE_TIFICC) {
+        expect(body.cmykMaster).toBeDefined();
+        expect(body.cmykMaster.mime).toBe("image/tiff");
+        expect(body.cmykMaster.width).toBe(120);
+        expect(body.meta.notes).toContain("Press-ready CMYK preserved alongside the working copy");
+      } else {
+        // Honest degradation on this dev container: no preserved leg.
+        expect(body.cmykMaster).toBeUndefined();
+      }
+    },
+    20_000,
   );
 });
 

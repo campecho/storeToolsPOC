@@ -1,0 +1,51 @@
+{
+  "source": "photo-demo.jpg",
+  "payload": {
+    "format": "jpeg",
+    "quality": 90,
+    "recipe": [
+      {
+        "op": "crop",
+        "label": "Crop to 4 × 6",
+        "rect": {
+          "x": 0,
+          "y": 168,
+          "w": 4032,
+          "h": 2688
+        },
+        "ratio": "4 × 6",
+        "shape": "rect"
+      },
+      {
+        "op": "bleedExpand",
+        "label": "Expand bleed 0.125 in",
+        "strategy": "mirror",
+        "amount": 0.125,
+        "px": 84
+      }
+    ]
+  },
+  "compiled": {
+    "steps": [
+      {
+        "kind": "extract",
+        "left": 0,
+        "top": 168,
+        "width": 4032,
+        "height": 2688
+      },
+      {
+        "kind": "extend",
+        "left": 84,
+        "top": 84,
+        "right": 84,
+        "bottom": 84,
+        "strategy": "mirror"
+      }
+    ],
+    "out": {
+      "w": 4200,
+      "h": 2856
+    }
+  }
+}

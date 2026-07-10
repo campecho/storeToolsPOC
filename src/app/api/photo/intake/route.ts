@@ -5,9 +5,10 @@ import { sniffImageMime } from "@/lib/import/image-meta";
 // the engine decision (ClamAV vs commercial) has a single call site to fill.
 import { avScanHook } from "@/lib/import/pub2raw";
 import { convertHeicToJpeg, heicAvailable } from "@/lib/photo/heic";
+import { cmykPreservePath, tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES, MAX_PHOTO_PIXELS } from "@/lib/photo/limits";
 import { intakeImage, type IntakeHostOutcome } from "@/lib/photo/render-host";
-import { IntakeResponseSchema, type IntakeResponse } from "@/lib/schema/photo";
+import { IntakeResponseSchema, type IntakeImagePayload, type IntakeResponse } from "@/lib/schema/photo";
 
 /**
  * POST /api/photo/intake — the photo on-ramp (plan §3.3, §4 PE1). The client
@@ -141,6 +142,31 @@ export async function POST(req: Request) {
   const outcome = await intakeImage(bytes, mime);
   if (!outcome.ok) return mapHostFailure(outcome);
 
+  // CMYK-preserve seam (§1.3, PE5, v1.4): when a TIFF/JPEG arrives CMYK AND the
+  // jailed tificc (lcms2-utils) path is available, keep the ORIGINAL bytes'
+  // 4-channel separation — sharp's working master unpacked it to sRGB on decode.
+  // The preserved TIFF rides back as a SECOND leg (cmykMaster) the client stores
+  // under `photo:<id>:cmyk` and binds to source.cmykAssetId. Gated on the probe;
+  // absent (this dev container) → the working RGB master is the only leg, honest.
+  // (tificc reads TIFF only — a CMYK JPEG here fails the transform and falls back.)
+  const notes = [...outcome.notes];
+  let cmykMaster: IntakeImagePayload | undefined;
+  const preserveEligible = (mime === "image/tiff" || mime === "image/jpeg") && outcome.colorSpace === "cmyk";
+  if (preserveEligible && (await tificcAvailable())) {
+    const preserved = await cmykPreservePath(bytes);
+    if (preserved.ok) {
+      cmykMaster = {
+        b64: preserved.tiff.toString("base64"),
+        mime: "image/tiff",
+        // tificc preserves pixel dims and the working master keeps full res, so
+        // the two legs share dimensions.
+        width: outcome.master.width,
+        height: outcome.master.height,
+      };
+      notes.push("Press-ready CMYK preserved alongside the working copy");
+    }
+  }
+
   return reply(200, {
     ok: true,
     master: {
@@ -155,10 +181,11 @@ export async function POST(req: Request) {
       width: outcome.proxy.width,
       height: outcome.proxy.height,
     },
+    ...(cmykMaster ? { cmykMaster } : {}),
     meta: {
       originalName: file.name,
       colorSpace: outcome.colorSpace,
-      notes: outcome.notes,
+      notes,
     },
   });
 }

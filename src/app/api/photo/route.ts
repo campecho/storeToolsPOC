@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { heicAvailable } from "@/lib/photo/heic";
+import { tificcAvailable } from "@/lib/photo/lcms";
 import { probeEngine, rlimitsEnforced } from "@/lib/photo/render-host";
 import { PhotoDiagnosticsSchema, type PhotoDiagnostics } from "@/lib/schema/photo";
 
@@ -16,10 +17,11 @@ import { PhotoDiagnosticsSchema, type PhotoDiagnostics } from "@/lib/schema/phot
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [engine, rlimits, heic] = await Promise.all([
+  const [engine, rlimits, heic, cmykPreserve] = await Promise.all([
     probeEngine(),
     rlimitsEnforced(),
     heicAvailable(),
+    tificcAvailable(),
   ]);
 
   // The core raster codecs ride sharp/libvips: present iff the engine probed.
@@ -30,9 +32,10 @@ export async function GET() {
   const diagnostics: PhotoDiagnostics = {
     engine,
     jailed: { rlimits },
-    // tificc (lcms2-utils) probe lands with the PE5 server stream — until the
-    // seam exists, CMYK preservation is honestly absent everywhere.
-    cmykPreserve: false,
+    // The CMYK-preserving path is live iff the jailed `tificc` (lcms2-utils)
+    // probes OK — a colour-path capability independent of the codecs (§1.3, PE5).
+    // Absent here (dev container) → the no-re-separation path is honestly off.
+    cmykPreserve,
     formats: {
       jpeg: hasEngine,
       png: hasEngine,

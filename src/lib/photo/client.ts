@@ -18,7 +18,9 @@ import {
   type IntakeImagePayload,
   type PhotoDiagnostics,
   type PhotoDocument,
+  type PhotoIntent,
   type RenderError,
+  type RenderFormat,
   type RenderPayload,
 } from "@/lib/schema/photo";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
@@ -152,6 +154,13 @@ export async function openPhotoFile(file: File, onLocalPreview?: LocalPreview): 
 
   const success = parsed.data;
 
+  // Optional CMYK-preserving intake leg (§1.3, v1.4): a CMYK arrival that rode
+  // the jailed lcms (tificc) seam ships a 4-channel `cmykMaster` payload ALONGSIDE
+  // the sRGB working master, so the no-re-separation TIFF export (renderPhoto)
+  // can send those 4-channel bytes untouched. Additive/optional on the intake
+  // response — present only for CMYK arrivals; the dominant RGB path omits it.
+  const cmykPayload = success.cmykMaster;
+
   // Namespaced, content-derived ids (v1.4): the blob store is shared with layout
   // assets, so photo writes carry a `photo:` prefix and never call the store's
   // replace/clear helpers (those wipe the whole shared store).
@@ -160,6 +169,14 @@ export async function openPhotoFile(file: File, onLocalPreview?: LocalPreview): 
   const proxyId = `${base}:proxy`;
   await putAssetBlob(masterId, payloadToBlob(success.master));
   await putAssetBlob(proxyId, payloadToBlob(success.proxy));
+
+  // The preserved-CMYK master rides its own namespaced blob (`photo:<id>:cmyk`)
+  // and its id enters source.cmykAssetId (the no-re-separation upload rule).
+  let cmykId: string | undefined;
+  if (cmykPayload) {
+    cmykId = `${base}:cmyk`;
+    await putAssetBlob(cmykId, payloadToBlob(cmykPayload));
+  }
 
   const doc: PhotoDocument = {
     version: 1,
@@ -174,6 +191,7 @@ export async function openPhotoFile(file: File, onLocalPreview?: LocalPreview): 
       proxyHeight: success.proxy.height,
       originalName: success.meta.originalName,
       colorSpace: success.meta.colorSpace,
+      ...(cmykId ? { cmykAssetId: cmykId } : {}),
       intakeNotes: success.meta.notes,
     },
     target: {
@@ -265,44 +283,115 @@ async function loadMasterBlob(assetId: string): Promise<Blob> {
 }
 
 /** File-name stem + `-edited.` + the format's real extension.
-    "IMG_4823.jpg" + jpeg → "IMG_4823-edited.jpg"; png → ".png". */
-function suggestedExportName(name: string, format: "jpeg" | "png"): string {
+    "IMG_4823.jpg" + jpeg → "IMG_4823-edited.jpg"; png → ".png"; tiff → ".tif";
+    pdf → ".pdf" (the print pair, PE5). */
+const EXPORT_EXT: Record<RenderFormat, string> = {
+  jpeg: "jpg",
+  png: "png",
+  tiff: "tif",
+  pdf: "pdf",
+};
+
+function suggestedExportName(name: string, format: RenderFormat): string {
   const dot = name.lastIndexOf(".");
   const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = format === "jpeg" ? "jpg" : "png";
-  return `${stem}-edited.${ext}`;
+  return `${stem}-edited.${EXPORT_EXT[format]}`;
+}
+
+/** Read a boolean-ish response header the render route MAY set (X-Photo-*).
+    Present + not "0"/"false"/"" → true; absent → false. Robust to the header
+    not being shipped yet (the sibling render route is mid-flight). */
+function headerFlag(res: Response, name: string): boolean {
+  const v = res.headers.get(name);
+  if (v == null) return false;
+  const t = v.trim().toLowerCase();
+  return t !== "" && t !== "0" && t !== "false" && t !== "no";
+}
+
+/** The outcome of a successful export: the bytes, a suggested filename, and the
+    two advisory response-header flags the render route MAY set (PE5) — surfaced
+    as a small post-export note in the panel. Both default false when the route
+    hasn't shipped the headers yet. */
+export interface RenderResult {
+  blob: Blob;
+  suggestedName: string;
+  /** X-Photo-Reseparated: the export re-separated RGB→CMYK through GRACoL (vs.
+      passing preserved 4-channel CMYK straight through). */
+  reseparated: boolean;
+  /** X-Photo-Intent-Downgraded: a requested CMYK intent fell back to sRGB (e.g.
+      PNG can't carry CMYK), so the file shipped sRGB. */
+  intentDowngraded: boolean;
+  /** X-Photo-Cmyk-Preserved: the export shipped the preserved 4-channel CMYK
+      master untouched (the no-re-separation path, §1.3 v1.4). */
+  cmykPreserved: boolean;
 }
 
 /**
- * Full-resolution export (plan §4 PE3). Replays the recipe server-side against
- * the working master and returns the encoded bytes ready to save.
+ * Full-resolution export (plan §4 PE3, print colour + boxes PE5). Replays the
+ * recipe server-side against the working master and returns the encoded bytes
+ * ready to save.
  *
  * Contract (BINDING — the sibling's render route + schema):
  *  - master bytes go up as multipart `file`; the render payload as `payload`
- *    (JSON of {recipe, format, quality});
+ *    (JSON of {recipe, format, quality, intent, printTarget?});
  *  - `recipe` is `doc.recipe.slice(0, doc.cursor)` — the APPLIED ops only; the
  *    redo tail after the cursor never renders (same rule the canvas draws by);
- *  - SUCCESS = a binary image body (Content-Type image/jpeg|image/png);
+ *  - SUCCESS = a binary image body (image/jpeg|png|tiff, application/pdf);
  *  - ERROR = a JSON RenderError + 4xx/5xx — parsed here and re-thrown typed so
  *    the panel surfaces the server's friendly `message` verbatim;
  *  - a network fault is reshaped to a RenderError too, so callers only ever see
  *    the one typed failure shape.
+ *
+ * PRESERVED-CMYK UPLOAD RULE (§1.3, v1.4 — the no-re-separation path): when the
+ * export intent is CMYK, the source carried a preserved-CMYK master
+ * (`source.cmykAssetId`, from the lcms intake leg), the applied recipe is EMPTY
+ * (no op forces a re-decode through sRGB), and the format is TIFF, we upload the
+ * 4-channel CMYK master blob INSTEAD of the sRGB working master — so those bytes
+ * ride to the encoder untouched, never round-tripping through RGB. EVERY OTHER
+ * combination (any op applied, non-TIFF, RGB arrival, sRGB intent) uploads the
+ * working master and lets the render host's colour pass do the separation.
  */
 export async function renderPhoto(
   doc: PhotoDocument,
-  opts: { format: "jpeg" | "png"; quality?: number },
-): Promise<{ blob: Blob; suggestedName: string }> {
-  const master = await loadMasterBlob(doc.source.assetId);
-
+  opts: {
+    format: RenderFormat;
+    quality?: number;
+    /** Defaults to the document's export intent (dev #6) when omitted. */
+    intent?: PhotoIntent;
+    /** Print target in INCHES for the PDF box math; defaults from doc.target. */
+    printTarget?: { w: number; h: number; bleed: number };
+  },
+): Promise<RenderResult> {
   // Applied ops only — ops[0..cursor). The tail past the cursor is the redo
   // stack and must not reach the render (plan §3.4 cursor semantics).
+  const recipe = doc.recipe.slice(0, doc.cursor);
+  const intent = opts.intent ?? doc.target.intent;
+
+  // Preserved-CMYK rule — send the 4-channel master bytes only when EVERY
+  // condition holds; otherwise the sRGB working master.
+  const preserveCmyk =
+    intent === "cmyk" &&
+    doc.source.cmykAssetId != null &&
+    recipe.length === 0 &&
+    opts.format === "tiff";
+  const uploadAssetId = preserveCmyk ? doc.source.cmykAssetId! : doc.source.assetId;
+  const master = await loadMasterBlob(uploadAssetId);
+
+  // The print target rides the payload only when a size is set (PDF box math).
+  const printTarget =
+    opts.printTarget ??
+    (doc.target.size
+      ? { w: doc.target.size.w, h: doc.target.size.h, bleed: doc.target.bleed }
+      : undefined);
+
   const payload: RenderPayload = {
-    recipe: doc.recipe.slice(0, doc.cursor),
+    recipe,
     format: opts.format,
     quality: opts.quality ?? 90,
     // The document's export intent rides every render (dev #6) — the PE5
     // panel makes it user-switchable; CMYK separates through GRACoL.
-    intent: doc.target.intent,
+    intent,
+    ...(printTarget ? { printTarget } : {}),
   };
 
   const body = new FormData();
@@ -334,9 +423,16 @@ export async function renderPhoto(
       : renderFail("engine-error", "The render service returned an unexpected error.");
   }
 
-  // SUCCESS: the response body IS the encoded image.
+  // SUCCESS: the response body IS the encoded image. Surface the two advisory
+  // colour-path headers if the render route set them (both false if not shipped).
   const blob = await res.blob();
-  return { blob, suggestedName: suggestedExportName(doc.name, opts.format) };
+  return {
+    blob,
+    suggestedName: suggestedExportName(doc.name, opts.format),
+    reseparated: headerFlag(res, "X-Photo-Reseparated"),
+    intentDowngraded: headerFlag(res, "X-Photo-Intent-Downgraded"),
+    cmykPreserved: headerFlag(res, "X-Photo-Cmyk-Preserved"),
+  };
 }
 
 /**
