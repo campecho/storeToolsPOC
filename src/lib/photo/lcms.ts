@@ -7,7 +7,7 @@ import { PHOTO_AS_BYTES, PHOTO_CPU_SECONDS, RENDER_TIMEOUT_MS } from "./limits";
 
 /**
  * The CMYK-preserving lcms seam (plan §1.3, §4 PE5, v1.4) — the ONE module that
- * knows a CMYK separation is round-tripped by a jailed `tificc` (lcms2-utils)
+ * knows a CMYK separation is round-tripped by a jailed `tificc` (liblcms2-utils)
  * subprocess. Prebuilt `sharp` FORCE-UNPACKS CMYK input to sRGB on decode (no
  * passthrough; `keepIccProfile` only re-tags 3-channel pixels), so "a CMYK
  * arrival stays CMYK end-to-end" cannot ride sharp's decoder. `tificc` transforms
@@ -16,7 +16,7 @@ import { PHOTO_AS_BYTES, PHOTO_CPU_SECONDS, RENDER_TIMEOUT_MS } from "./limits";
  * render-host / pub2raw.
  *
  * WHERE ABSENT (this dev container, a plain `npm run dev` laptop — expected):
- * `tificc` ships in `lcms2-utils`, which the Docker image and the CI live-import
+ * `tificc` ships in `liblcms2-utils`, which the Docker image and the CI live-import
  * lane install but a bare box does not. `probeTificc()` reports it honestly, the
  * GET /api/photo diagnostic surfaces `cmykPreserve:false`, and every CMYK path
  * degrades to today's behaviour — the working RGB master + a sharp
@@ -121,7 +121,7 @@ export type CmykPreserveOutcome =
  */
 export async function cmykPreservePath(input: Buffer): Promise<CmykPreserveOutcome> {
   if (!(await tificcAvailable())) {
-    return { ok: false, error: "unsupported-here", detail: "tificc (lcms2-utils) is not installed on this host" };
+    return { ok: false, error: "unsupported-here", detail: "tificc (liblcms2-utils) is not installed on this host" };
   }
 
   const jail = await mkdtemp(join(tmpdir(), "photo-lcms-"));

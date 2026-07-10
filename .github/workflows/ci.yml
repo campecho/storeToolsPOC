@@ -70,10 +70,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Ubuntu ships pub2raw + pub2xhtml in libmspub-tools (0.1.4); lcms2-utils
+      # Ubuntu ships pub2raw + pub2xhtml in libmspub-tools (0.1.4); liblcms2-utils
       # provides `tificc` (the CMYK-preserving path, PE5); poppler-utils powers
       # pdf-wrap's skip-if-absent external-viewer preflight (pdfinfo/pdftoppm).
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools lcms2-utils poppler-utils
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools liblcms2-utils poppler-utils
       - run: npm ci
       - run: npm run refresh:corpus
       # Drift gate: the checked-in corpus artifacts must match what today's
