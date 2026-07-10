@@ -1,0 +1,36 @@
+{
+  "source": "photo-demo.jpg",
+  "payload": {
+    "format": "png",
+    "quality": 90,
+    "recipe": [
+      {
+        "op": "crop",
+        "label": "Crop",
+        "rect": {
+          "x": 1008,
+          "y": 756,
+          "w": 2016,
+          "h": 1512
+        },
+        "ratio": null,
+        "shape": "rect"
+      }
+    ]
+  },
+  "compiled": {
+    "steps": [
+      {
+        "kind": "extract",
+        "left": 1008,
+        "top": 756,
+        "width": 2016,
+        "height": 1512
+      }
+    ],
+    "out": {
+      "w": 2016,
+      "h": 1512
+    }
+  }
+}

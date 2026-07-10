@@ -66,6 +66,47 @@ describe("sniffImageMime", () => {
     expect(sniffImageMime(bytes([0x01, 0x00, 0x09, 0x00]))).toBe("image/wmf");
   });
 
+  // ISO-BMFF `ftyp` (v1.4): [size u32][ 'ftyp' ][major brand][minor u32][compat…].
+  const ftyp = (major: string, compat: string[] = []): Uint8Array => {
+    const brands = [major, "0000", ...compat]; // minor-version slot is filler
+    const size = 8 + brands.length * 4;
+    const b = new Uint8Array(size);
+    b.set([(size >> 24) & 0xff, (size >> 16) & 0xff, (size >> 8) & 0xff, size & 0xff], 0);
+    b.set([0x66, 0x74, 0x79, 0x70], 4); // "ftyp"
+    brands.forEach((brand, k) => {
+      for (let j = 0; j < 4; j++) b[8 + k * 4 + j] = brand.charCodeAt(j);
+    });
+    return b;
+  };
+
+  it("recognizes HEIC by the major brand", () => {
+    for (const brand of ["heic", "heix", "hevc", "heif", "mif1", "msf1"])
+      expect(sniffImageMime(ftyp(brand)), brand).toBe("image/heic");
+  });
+
+  it("recognizes HEIC by a compatible brand (iPhone stills carry mif1 in the list)", () => {
+    expect(sniffImageMime(ftyp("mp42", ["mif1", "heic"]))).toBe("image/heic");
+  });
+
+  it("does not mistake a non-HEIC ISO-BMFF (avif/mp4) for HEIC", () => {
+    expect(sniffImageMime(ftyp("avif", ["avis"]))).toBeUndefined();
+    expect(sniffImageMime(ftyp("isom", ["mp41"]))).toBeUndefined();
+  });
+
+  it("recognizes SVG after a leading whitespace/BOM prefix", () => {
+    const enc = (s: string) => new TextEncoder().encode(s);
+    expect(sniffImageMime(enc("<svg xmlns='...'></svg>"))).toBe("image/svg+xml");
+    expect(sniffImageMime(enc("<?xml version='1.0'?><svg/>"))).toBe("image/svg+xml");
+    expect(sniffImageMime(enc("  \n\t <svg/>"))).toBe("image/svg+xml");
+    // UTF-8 BOM then <?xml
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...enc("<?xml ?>")]);
+    expect(sniffImageMime(bom)).toBe("image/svg+xml");
+  });
+
+  it("does not treat arbitrary leading '<' text as SVG", () => {
+    expect(sniffImageMime(new TextEncoder().encode("<html><body>no</body>"))).toBeUndefined();
+  });
+
   it("returns undefined for unknown bytes", () => {
     expect(sniffImageMime(bytes([0x00, 0x01, 0x02, 0x03]))).toBeUndefined();
   });

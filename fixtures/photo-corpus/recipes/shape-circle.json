@@ -1,0 +1,37 @@
+{
+  "source": "photo-demo.jpg",
+  "payload": {
+    "format": "png",
+    "quality": 90,
+    "recipe": [
+      {
+        "op": "crop",
+        "label": "Crop to 1:1",
+        "rect": {
+          "x": 504,
+          "y": 0,
+          "w": 3024,
+          "h": 3024
+        },
+        "ratio": "1:1",
+        "shape": "circle"
+      }
+    ]
+  },
+  "compiled": {
+    "steps": [
+      {
+        "kind": "extract",
+        "left": 504,
+        "top": 0,
+        "width": 3024,
+        "height": 3024,
+        "shape": "circle"
+      }
+    ],
+    "out": {
+      "w": 3024,
+      "h": 3024
+    }
+  }
+}

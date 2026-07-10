@@ -70,8 +70,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Ubuntu ships pub2raw + pub2xhtml in libmspub-tools (0.1.4).
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools
+      # Ubuntu ships pub2raw + pub2xhtml in libmspub-tools (0.1.4); liblcms2-utils
+      # provides `tificc` (the CMYK-preserving path, PE5); poppler-utils powers
+      # pdf-wrap's skip-if-absent external-viewer preflight (pdfinfo/pdftoppm).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools liblcms2-utils poppler-utils
       - run: npm ci
       - run: npm run refresh:corpus
       # Drift gate: the checked-in corpus artifacts must match what today's
@@ -87,6 +89,25 @@ jobs:
             echo "::error::Corpus fixture drift: the checked-in artifacts under fixtures/pub-traces and fixtures/pub-refs no longer match what refresh:corpus produces from today's binaries."
             echo "Either a fixture was edited by hand, or the libmspub toolchain moved."
             echo "If the new output is correct, run 'npm run refresh:corpus' locally and commit the result; otherwise fix the fixture edit."
+            exit 1
+          fi
+      # Photo goldens (plan §4 PE3): replay the committed recipes through the same
+      # sharp/photo-worker path the render host drives, then drift-gate the bytes.
+      # `sharp` ships with `npm ci`, so no extra toolchain — this rides the
+      # live-import lane only to keep every fixture drift gate in one place.
+      - run: npm run refresh:photo-goldens
+      - name: Check photo goldens for drift
+        run: |
+          # Same porcelain-over-diff rule as the corpus gate: a fresh golden the
+          # refresh script wrote (untracked) is drift too, not just a byte change
+          # to a tracked one. Covers recipes + generated goldens under one root.
+          drift="$(git status --porcelain -- fixtures/photo-corpus)"
+          if [ -n "$drift" ]; then
+            git status -- fixtures/photo-corpus
+            git diff -- fixtures/photo-corpus | head -100
+            echo "::error::Photo golden drift: the checked-in bytes under fixtures/photo-corpus no longer match what refresh:photo-goldens produces from today's render path."
+            echo "Either a golden/recipe was edited by hand, or the render/encoder path moved."
+            echo "If the new output is correct, run 'npm run refresh:photo-goldens' locally and commit the result; otherwise fix the edit."
             exit 1
           fi
       - run: STP_LIVE_IMPORT=1 npm test
