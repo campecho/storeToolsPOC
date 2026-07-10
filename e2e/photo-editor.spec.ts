@@ -768,3 +768,501 @@ test.describe("Export spine (PE3)", () => {
     await expect(page.getByTestId("export-file")).toBeEnabled();
   });
 });
+
+/**
+ * Tone & colour (plan step PE4 done-when, docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md
+ * §4 PE4): the Adjust panel's LIVE bound sliders (absolute setpoints, param-aware
+ * coalescing), the one-named-step Auto-enhance, the Compare click-vs-hold split
+ * view, the hold-still peek that overrides split, and the server render honouring
+ * an adjust recipe. Every case opens through openDemoInAdjust — the demo master is
+ * 4032×3024, wrapped as IMG_4823.jpg by the `?demo=1` deep link.
+ *
+ * WAIT/SAMPLE DISCIPLINE (the house rule, commit 3cacdd0): openDemoInAdjust gates
+ * on the settled fit-zoom readout; `settleCanvas` then waits for two identical
+ * centre samples so the canvas has swapped the instant local preview for the
+ * server proxy before any pixel is read (the proxy is the byte source undo/redo
+ * must reproduce exactly). Slider drags are real boundingBox mouse gestures that
+ * START on the current thumb (never fill()), so the down-move-up cycle fires the
+ * live previews and the onPointerUp that commits one coalesced op.
+ */
+
+/** The demo master aspect (4032×3024). The proxy preserves it, so the contain-fit
+    math that reconstructs the drawn-image box (PhotoCanvas' pad-24 model, shared
+    with the PE3 parity test) only needs this ratio. */
+const MASTER_ASPECT = 4032 / 3024;
+
+/** The seven bound adjust sliders, by schema param (temperature reads "Warmth"). */
+const ADJUST_PARAMS = [
+  "brightness",
+  "contrast",
+  "exposure",
+  "highlights",
+  "shadows",
+  "saturation",
+  "temperature",
+] as const;
+
+/**
+ * Open the demo through the `?demo=1` deep link (wire-pinned "IMG_4823.jpg") and
+ * enter the Adjust tool — the shared setup for every PE4 case. Mirrors
+ * openDemoInCrop: waits for the settled fit-zoom readout before driving.
+ */
+async function openDemoInAdjust(page: Page) {
+  await page.goto("/photo?demo=1");
+  await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+  await expect(page.getByTestId("photo-filename")).toHaveText("IMG_4823.jpg", { timeout: 30_000 });
+  await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+  await page.getByTestId("photo-rail-adjust").click();
+  await expect(page.getByTestId("photo-adjust-panel")).toBeVisible();
+}
+
+/** Sum + raw bytes of a 16×16 block at the canvas backing-store centre. The sum
+    detects change; the bytes prove an exact (byte-for-byte) undo/redo restore. */
+async function sampleCentre(page: Page): Promise<{ sum: number; bytes: number[] }> {
+  return page.getByTestId("photo-canvas").evaluate((el) => {
+    const c = el as HTMLCanvasElement;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    const x = Math.floor(c.width * 0.5);
+    const y = Math.floor(c.height * 0.5);
+    const d = ctx.getImageData(x - 8, y - 8, 16, 16).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i++) sum += d[i];
+    return { sum, bytes: Array.from(d) };
+  });
+}
+
+/** Wait until the canvas has settled (two identical centre samples) — the instant
+    local preview has been replaced by the server proxy and no repaint is pending,
+    so every downstream pixel read is stable. */
+async function settleCanvas(page: Page): Promise<void> {
+  let prev: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const cur = (await sampleCentre(page)).sum;
+        const same = prev !== null && cur === prev;
+        prev = cur;
+        return same;
+      },
+      { timeout: 15_000, intervals: [150, 200, 300, 400, 600] },
+    )
+    .toBe(true);
+}
+
+/**
+ * Reconstruct the drawn-image box (PhotoCanvas' contain-fit, pad 24) and sum a
+ * 12×12 block at the far-left quarter (30%) and far-right quarter (70%) of the
+ * image, both at mid-height. With the split divider at 50%, the left quarter is on
+ * the BEFORE side and the right quarter on the AFTER side.
+ */
+async function sampleHalves(page: Page, aspect: number): Promise<{ left: number; right: number }> {
+  return page.getByTestId("photo-canvas").evaluate((el, asp) => {
+    const c = el as HTMLCanvasElement;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    const container = c.parentElement as HTMLElement;
+    const PAD = 24;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = container.clientWidth;
+    const cssH = container.clientHeight;
+    const availW = Math.max(1, cssW - PAD * 2);
+    const availH = Math.max(1, cssH - PAD * 2);
+    const dispW = Math.min(availW, availH * asp);
+    const dispH = Math.min(availH, availW / asp);
+    const x = (cssW - dispW) / 2;
+    const y = (cssH - dispH) / 2;
+    const at = (fx: number, fy: number) => {
+      const px = Math.round((x + dispW * fx) * dpr);
+      const py = Math.round((y + dispH * fy) * dpr);
+      const d = ctx.getImageData(px - 6, py - 6, 12, 12).data;
+      let s = 0;
+      for (let i = 0; i < d.length; i++) s += d[i];
+      return s;
+    };
+    return { left: at(0.3, 0.5), right: at(0.7, 0.5) };
+  }, aspect);
+}
+
+/**
+ * Drive a bound adjust slider with a real mouse drag. The drag STARTS on the
+ * current thumb (computed from the bound value, −100..+100) so it grabs the thumb
+ * wherever the recipe left it, then drags to `targetFrac` of the track. The
+ * down-move-up cycle fires the live onChange previews and the onPointerUp that
+ * commits exactly one coalesced op (fill() would bypass the pointer gestures the
+ * coalesce rule hangs off).
+ */
+async function dragAdjust(page: Page, param: string, targetFrac: number) {
+  const slider = page.getByTestId(`adjust-${param}`);
+  const box = await slider.boundingBox();
+  if (!box) throw new Error(`adjust-${param} slider has no bounding box`);
+  const y = box.y + box.height / 2;
+  const cur = Number(await slider.inputValue());
+  const curFrac = (cur + 100) / 200;
+  await page.mouse.move(box.x + curFrac * box.width, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + targetFrac * box.width, y, { steps: 8 });
+  await page.mouse.up();
+}
+
+/** A quick Compare click (< COMPARE_HOLD_MS): down-then-up with no dwell toggles
+    split view (a hold would peek). Manual gesture so the press duration is pinned. */
+async function quickClickCompare(page: Page) {
+  const box = await page.getByTestId("photo-compare").boundingBox();
+  if (!box) throw new Error("compare button has no bounding box");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
+/** `History · N` → N. */
+async function historyCount(page: Page): Promise<number> {
+  const t = (await page.getByTestId("photo-history").textContent()) ?? "";
+  const m = t.match(/(\d+)/u);
+  return m ? Number(m[1]) : NaN;
+}
+
+/** Open the history dock (idempotent) and return its step labels in order. */
+async function historyStepLabels(page: Page): Promise<string[]> {
+  const dock = page.getByTestId("photo-history-dock");
+  if (!(await dock.isVisible())) {
+    await page.getByTestId("photo-history").click();
+    await expect(dock).toBeVisible();
+  }
+  return dock.locator("[data-testid^='history-step-']").allTextContents();
+}
+
+/** Close the history dock if open (Escape — the dock's own listener). */
+async function closeHistoryDock(page: Page) {
+  const dock = page.getByTestId("photo-history-dock");
+  if (await dock.isVisible()) {
+    await page.keyboard.press("Escape");
+    await expect(dock).toHaveCount(0);
+  }
+}
+
+/**
+ * Arm a latch on the Auto-enhance button BEFORE clicking it, so the async
+ * (fetch proxy → decode → computeAutoEnhance → maybe push) can be waited on
+ * deterministically. A MutationObserver records: the busy toggle (the button's
+ * `disabled` attribute goes true then false — reliable even if fast, since the
+ * two flips are separated by the fetch await), and whether the transient
+ * "Already looks balanced" text ever appeared (caught even if it reverts before
+ * the next poll). Same latch pattern as the PE3 rendering-chip observer.
+ */
+async function installEnhanceLatch(page: Page, testid: string) {
+  await page.evaluate((id) => {
+    const w = window as unknown as {
+      __ae?: { sawBusy: boolean; busyEnded: boolean; balancedSeen: boolean };
+      __aeObs?: MutationObserver;
+    };
+    const btn = document.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement | null;
+    if (!btn) throw new Error("auto-enhance button not found");
+    w.__aeObs?.disconnect();
+    const st = { sawBusy: false, busyEnded: false, balancedSeen: false };
+    w.__ae = st;
+    const check = () => {
+      if (btn.disabled) st.sawBusy = true;
+      else if (st.sawBusy) st.busyEnded = true;
+      if ((btn.textContent ?? "").includes("balanced")) st.balancedSeen = true;
+    };
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(btn, {
+      attributes: true,
+      attributeFilter: ["disabled"],
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    w.__aeObs = obs;
+  }, testid);
+}
+
+/** Wait for the armed Auto-enhance run to resolve (busy toggled back off, or the
+    balanced flag flashed for the no-op branch). */
+async function waitEnhanceSettled(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const s = (window as unknown as { __ae?: { busyEnded: boolean; balancedSeen: boolean } }).__ae;
+          return !!s && (s.busyEnded || s.balancedSeen);
+        }),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+}
+
+/** Did the Auto-enhance latch ever see the "Already looks balanced" state? */
+async function enhanceBalancedSeen(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () => (window as unknown as { __ae?: { balancedSeen: boolean } }).__ae?.balancedSeen ?? false,
+  );
+}
+
+test.describe("Tone & color (PE4)", () => {
+  test("slider chain: Brightness coalesces, Contrast is param-aware, the proxy repaints", async ({
+    page,
+  }) => {
+    await openDemoInAdjust(page);
+    await settleCanvas(page);
+    const before = await sampleCentre(page);
+    await expectHistory(page, 1);
+
+    // First Brightness drag commits one adjust op → Open + Brightness = 2 steps.
+    await dragAdjust(page, "brightness", 0.78);
+    await expectHistory(page, 2);
+    // A second, SEPARATE Brightness drag REPLACES the trailing same-param op in
+    // place (the coalesce rule) — the count must not climb.
+    await dragAdjust(page, "brightness", 0.86);
+    await expectHistory(page, 2);
+
+    // The dock confirms exactly one Brightness step, no stacking.
+    const steps = await historyStepLabels(page);
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toBe("Open IMG_4823.jpg");
+    expect(steps[1]).toMatch(/^Brightness [+−]\d+$/u);
+    await closeHistoryDock(page);
+
+    // Contrast is a DIFFERENT param, so it APPENDS (param-aware coalesce never
+    // swallows it) → History · 3 with a distinct Contrast step.
+    await dragAdjust(page, "contrast", 0.7);
+    await expectHistory(page, 3);
+    const steps2 = await historyStepLabels(page);
+    expect(steps2).toHaveLength(3);
+    expect(steps2[1]).toMatch(/^Brightness [+−]\d+$/u);
+    expect(steps2[2]).toMatch(/^Contrast [+−]\d+$/u);
+    await closeHistoryDock(page);
+
+    // The tone edits actually repainted the proxy: the centre moved off its
+    // pre-drag value.
+    await expect.poll(async () => (await sampleCentre(page)).sum !== before.sum).toBe(true);
+  });
+
+  test("auto-enhance is one coalesced named step (re-run never adds a second)", async ({ page }) => {
+    await openDemoInAdjust(page);
+    await expectHistory(page, 1);
+
+    await installEnhanceLatch(page, "adjust-auto-enhance");
+    await page.getByTestId("adjust-auto-enhance").click();
+    await waitEnhanceSettled(page);
+
+    const n1 = await historyCount(page);
+    let autoCount1: number;
+    if (n1 === 2) {
+      // The demo carries a colour cast, so auto-enhance chooses real setpoints:
+      // one "Auto-enhance" step lands and the bound sliders reflect the values.
+      const steps = await historyStepLabels(page);
+      expect(steps).toHaveLength(2);
+      expect(steps[0]).toBe("Open IMG_4823.jpg");
+      expect(steps[1]).toBe("Auto-enhance");
+      autoCount1 = steps.filter((s) => s === "Auto-enhance").length;
+      await closeHistoryDock(page);
+
+      const readouts = await Promise.all(
+        ADJUST_PARAMS.map((p) => page.getByTestId(`adjust-${p}`).inputValue()),
+      );
+      expect(readouts.some((v) => v !== "0")).toBe(true);
+    } else {
+      // Defensive branch: the proxy was already balanced — no step is pushed
+      // (an identity op would be a dishonest history entry) and the transient
+      // "Already looks balanced" state showed instead.
+      expect(n1).toBe(1);
+      expect(await enhanceBalancedSeen(page)).toBe(true);
+      autoCount1 = 0;
+    }
+
+    // Run it again. Coalesce REPLACES the trailing auto-enhance (changed branch)
+    // or it stays balanced — either way the count is unchanged and NO second
+    // "Auto-enhance" step ever appears.
+    await installEnhanceLatch(page, "adjust-auto-enhance");
+    await page.getByTestId("adjust-auto-enhance").click();
+    await waitEnhanceSettled(page);
+
+    expect(await historyCount(page)).toBe(n1);
+    const steps2 = await historyStepLabels(page);
+    const autoCount2 = steps2.filter((s) => s === "Auto-enhance").length;
+    expect(autoCount2).toBe(autoCount1);
+    expect(autoCount2).toBeLessThanOrEqual(1);
+    await closeHistoryDock(page);
+  });
+
+  test("undo restores the pre-adjust pixel exactly; redo re-applies it", async ({ page }) => {
+    await openDemoInAdjust(page);
+    await settleCanvas(page);
+    const p0 = await sampleCentre(page);
+    const p0key = JSON.stringify(p0.bytes);
+
+    // Auto-enhance is the tone op under test (per the done-when). If the proxy
+    // happened to be balanced, fall back to a manual Brightness so there is a
+    // real op to undo — the invariant (exact restore) is identical either way.
+    await installEnhanceLatch(page, "adjust-auto-enhance");
+    await page.getByTestId("adjust-auto-enhance").click();
+    await waitEnhanceSettled(page);
+    if ((await historyCount(page)) !== 2) {
+      await dragAdjust(page, "brightness", 0.85);
+      await expectHistory(page, 2);
+    }
+
+    // The tone op moved the centre off its pre-adjust bytes.
+    await expect.poll(async () => JSON.stringify((await sampleCentre(page)).bytes) !== p0key).toBe(true);
+    const p1key = JSON.stringify((await sampleCentre(page)).bytes);
+
+    // Undo → the integer LUT is deterministic, so the centre returns to its EXACT
+    // pre-adjust bytes; redo re-applies them exactly.
+    await page.getByTestId("photo-undo").click();
+    await expect.poll(async () => JSON.stringify((await sampleCentre(page)).bytes)).toBe(p0key);
+    await page.getByTestId("photo-redo").click();
+    await expect.poll(async () => JSON.stringify((await sampleCentre(page)).bytes)).toBe(p1key);
+  });
+
+  test("Compare quick-click opens split view; before/after differ; divider drags; toggles off", async ({
+    page,
+  }) => {
+    await openDemoInAdjust(page);
+    await settleCanvas(page);
+
+    // Original references at the two quarter points (before any adjust).
+    const orig = await sampleHalves(page, MASTER_ASPECT);
+
+    // A strong Brightness so the after side is unmistakably lifted.
+    await dragAdjust(page, "brightness", 0.9);
+    await expectHistory(page, 2);
+    await expect
+      .poll(async () => (await sampleHalves(page, MASTER_ASPECT)).right > orig.right + 1000)
+      .toBe(true);
+
+    // Quick-click Compare → split view on, chrome visible.
+    await quickClickCompare(page);
+    await expect(page.getByTestId("photo-compare")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("photo-split-divider")).toBeVisible();
+    await expect(page.getByTestId("photo-split-before")).toBeVisible();
+    await expect(page.getByTestId("photo-split-after")).toBeVisible();
+
+    // Divider at 50%: right quarter is the AFTER side (brightened), left quarter
+    // the BEFORE side (original). The after side is clearly lifted; the before
+    // side tracks the original — the two halves genuinely differ.
+    const split = await sampleHalves(page, MASTER_ASPECT);
+    const brightShift = split.right - orig.right;
+    expect(brightShift).toBeGreaterThan(1500);
+    expect(Math.abs(split.left - orig.left)).toBeLessThan(brightShift * 0.3);
+
+    // Drag the divider ~200px left → the handle box moves left.
+    const box0 = await page.getByTestId("photo-split-divider").boundingBox();
+    if (!box0) throw new Error("divider has no bounding box");
+    const hx = box0.x + box0.width / 2;
+    const hy = box0.y + box0.height / 2;
+    await page.mouse.move(hx, hy);
+    await page.mouse.down();
+    await page.mouse.move(hx - 200, hy, { steps: 10 });
+    await page.mouse.up();
+    const box1 = await page.getByTestId("photo-split-divider").boundingBox();
+    if (!box1) throw new Error("divider has no bounding box after drag");
+    expect(box1.x).toBeLessThan(box0.x - 50);
+
+    // Quick-click Compare again → split off, divider gone.
+    await quickClickCompare(page);
+    await expect(page.getByTestId("photo-compare")).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByTestId("photo-split-divider")).toHaveCount(0);
+  });
+
+  test("hold-still peek during split equalizes both halves; release restores after", async ({
+    page,
+  }) => {
+    await openDemoInAdjust(page);
+    await settleCanvas(page);
+    const orig = await sampleHalves(page, MASTER_ASPECT);
+
+    await dragAdjust(page, "brightness", 0.9);
+    await expectHistory(page, 2);
+
+    // Enter split view (quick click). The after side is now lifted vs original.
+    await quickClickCompare(page);
+    await expect(page.getByTestId("photo-split-divider")).toBeVisible();
+    const split = await sampleHalves(page, MASTER_ASPECT);
+    const adjDelta = split.right - orig.right;
+    expect(adjDelta).toBeGreaterThan(1500);
+
+    // Press-and-HOLD the Compare button: crossing COMPARE_HOLD_MS arms the peek,
+    // which OVERRIDES split view — both halves paint the raw original. (Shipped
+    // mechanism: the ActionBar Compare button pointer-hold, the PE4-specific path;
+    // the canvas Space-peek is already covered by the PE2 compare test.)
+    const cb = await page.getByTestId("photo-compare").boundingBox();
+    if (!cb) throw new Error("compare button has no bounding box");
+    await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    await page.mouse.down();
+    try {
+      // While held: poll until the after side reverts to its original value
+      // (the timer arms the peek at 300 ms; the poll only resolves once it has,
+      // so the effective hold is well past the threshold).
+      await expect
+        .poll(async () => Math.abs((await sampleHalves(page, MASTER_ASPECT)).right - orig.right) < adjDelta * 0.25)
+        .toBe(true);
+      // Both halves now read raw original (equalized).
+      const held = await sampleHalves(page, MASTER_ASPECT);
+      expect(Math.abs(held.right - orig.right)).toBeLessThan(adjDelta * 0.25);
+      expect(Math.abs(held.left - orig.left)).toBeLessThan(adjDelta * 0.25);
+    } finally {
+      await page.mouse.up();
+    }
+
+    // Release → split view resumes, the after side is lifted again.
+    await expect
+      .poll(async () => Math.abs((await sampleHalves(page, MASTER_ASPECT)).right - split.right) < adjDelta * 0.25)
+      .toBe(true);
+  });
+
+  test("server export honors the adjust recipe: the exported centre is brighter", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    await openDemoInAdjust(page);
+
+    // Sum a 64×64 central block of an exported file (RGB, JPEG has no alpha).
+    const centreSum = async (file: string): Promise<number> => {
+      const meta = await sharp(file).metadata();
+      const w = meta.width ?? 0;
+      const h = meta.height ?? 0;
+      const raw = await sharp(file)
+        .extract({ left: Math.floor(w / 2) - 32, top: Math.floor(h / 2) - 32, width: 64, height: 64 })
+        .raw()
+        .toBuffer();
+      let s = 0;
+      for (let i = 0; i < raw.length; i++) s += raw[i];
+      return s;
+    };
+
+    // Baseline export — an empty recipe (no tone ops).
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    const [dlBase] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+    const baseFile = testInfo.outputPath("pe4-export-base.jpg");
+    await dlBase.saveAs(baseFile);
+    const baseSum = await centreSum(baseFile);
+
+    // Apply a strong Brightness in the Adjust tool, then export again.
+    await page.getByTestId("photo-rail-adjust").click();
+    await expect(page.getByTestId("photo-adjust-panel")).toBeVisible();
+    await dragAdjust(page, "brightness", 0.78);
+    await expectHistory(page, 2);
+
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    const [dlBright] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+    expect(dlBright.suggestedFilename()).toBe("IMG_4823-edited.jpg");
+    const brightFile = testInfo.outputPath("pe4-export-bright.jpg");
+    await dlBright.saveAs(brightFile);
+    const brightSum = await centreSum(brightFile);
+
+    // The server replayed the Brightness op → the same centre region is
+    // measurably lighter (well beyond JPEG noise).
+    expect(brightSum).toBeGreaterThan(baseSum + 5000);
+  });
+});
