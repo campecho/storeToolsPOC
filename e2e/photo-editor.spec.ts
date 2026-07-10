@@ -1,4 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import sharp from "sharp";
 
 /**
  * Photo editor shell (plan step PE1): the Photo Edit card opens `/photo`, the
@@ -469,5 +471,300 @@ test.describe("Geometry & history (PE2)", () => {
     // The peek is display-only: it never mutated the recipe (no accidental rotate).
     await expect(stripDims(page)).toHaveText("3024 × 4032 px");
     await expectHistory(page, 2);
+  });
+});
+
+/**
+ * Export spine (plan step PE3 done-when, docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md
+ * §4 PE3): the Export panel's LIVE JPG/PNG path — the recipe replays server-side
+ * at full resolution and the encoded bytes land on the associate's disk. These
+ * are the first tests in the suite that assert on real downloaded bytes, so they
+ * decode the download with `sharp` (Playwright drives node, so the encoder runs
+ * in-process here). Every case opens through the shared openDemoInCrop helper —
+ * the demo master is 4032×3024, wrapped as IMG_4823.jpg by the deep link — builds
+ * a recipe in the Crop tool, then drives Export.
+ *
+ * Wait discipline mirrors the house rule: openDemoInCrop already gates on the
+ * settled fit-zoom readout, and each geometry op is confirmed through the print
+ * strip (a store-backed signal) before Export is driven. The render route
+ * compiles + spawns the sharp jail on first hit and a full-res 12 MP replay is
+ * real work, so the block runs with extra headroom and downloads get 60 s.
+ */
+test.describe("Export spine (PE3)", () => {
+  test.describe.configure({ timeout: 90_000 });
+
+  /** Switch from the Crop tool to Export and confirm the panel mounted. */
+  async function openExportPanel(page: Page) {
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+  }
+
+  test("export round-trip renders the recipe at full resolution (2688 × 4032 JPEG)", async ({
+    page,
+  }, testInfo) => {
+    await openDemoInCrop(page);
+
+    // Recipe: crop to 4 × 6 (landscape 4032×2688) then rotate right (portrait
+    // 2688×4032) — the exact manual-verified done-when path.
+    await page.getByTestId("crop-aspect-4x6").click();
+    await page.getByTestId("crop-apply").click();
+    await expect(stripDims(page)).toHaveText("4032 × 2688 px");
+    await page.getByTestId("crop-rotate-right").click();
+    await expect(stripDims(page)).toHaveText("2688 × 4032 px");
+
+    await openExportPanel(page);
+
+    // Arm a chip-visibility latch BEFORE the click. A MutationObserver records
+    // the rendering chip's INSERTION (from the addedNodes, not a live query) so
+    // the signal survives even if the render finishes fast enough that the node
+    // is already gone by the time we poll.
+    await page.evaluate(() => {
+      const w = window as unknown as { __chipSeen?: boolean };
+      const sel = '[data-testid="photo-rendering-chip"]';
+      w.__chipSeen = document.querySelector(sel) != null;
+      const obs = new MutationObserver((muts) => {
+        for (const m of muts) {
+          for (const node of Array.from(m.addedNodes)) {
+            if (!(node instanceof Element)) continue;
+            if (node.matches(sel) || node.querySelector(sel)) w.__chipSeen = true;
+          }
+        }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+    });
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+
+    // Suggested name = the wire-pinned stem + "-edited" + the real extension.
+    expect(download.suggestedFilename()).toBe("IMG_4823-edited.jpg");
+
+    const out = testInfo.outputPath("export-roundtrip.jpg");
+    await download.saveAs(out);
+
+    // The whole point of PE3: full resolution, correctly oriented — EXACTLY
+    // 2688 × 4032 JPEG bytes on disk.
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(meta.width).toBe(2688);
+    expect(meta.height).toBe(4032);
+
+    // The rendering chip was visible at some point during the round-trip …
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __chipSeen?: boolean }).__chipSeen))
+      .toBe(true);
+    // … and it clears once the render resolves, with the button re-enabled.
+    await expect(page.getByTestId("photo-rendering-chip")).toHaveCount(0);
+    await expect(page.getByTestId("export-file")).toBeEnabled();
+  });
+
+  test("PNG export of a Circle crop carries alpha with a transparent corner", async ({
+    page,
+  }, testInfo) => {
+    await openDemoInCrop(page);
+
+    // Circle shape forces a centered 1:1 crop → 3024×3024 on the 4032×3024 master.
+    await page.getByTestId("crop-shape-circle").click();
+    await expect(page.getByTestId("crop-shape-circle")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("crop-apply").click();
+    await expect(stripDims(page)).toHaveText("3024 × 3024 px");
+
+    await openExportPanel(page);
+    // PNG is lossless — selecting it hides Quality and switches the encoder.
+    await page.getByTestId("export-format-png").click();
+    await expect(page.getByTestId("export-format-png")).toHaveAttribute("aria-pressed", "true");
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+    expect(download.suggestedFilename()).toBe("IMG_4823-edited.png");
+
+    const out = testInfo.outputPath("export-circle.png");
+    await download.saveAs(out);
+
+    // 4-channel PNG (alpha survives the shaped crop).
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe("png");
+    expect(meta.width).toBe(3024);
+    expect(meta.height).toBe(3024);
+    expect(meta.channels).toBe(4);
+    expect(meta.hasAlpha).toBe(true);
+
+    // A corner sits OUTSIDE the inscribed circle → fully transparent; the center
+    // sits inside → fully opaque. Read a 1×1 raw RGBA sample at each.
+    const corner = await sharp(out).extract({ left: 2, top: 2, width: 1, height: 1 }).raw().toBuffer();
+    expect(corner[3]).toBe(0);
+    const center = await sharp(out)
+      .extract({ left: 1512, top: 1512, width: 1, height: 1 })
+      .raw()
+      .toBuffer();
+    expect(center[3]).toBe(255);
+  });
+
+  test("undo drops the redo tail from the render: only the applied crop ships", async ({
+    page,
+  }, testInfo) => {
+    await openDemoInCrop(page);
+
+    // crop 4 × 6 → rotate right → UNDO once. The rotate is now a redo tail; the
+    // client renders recipe[0..cursor) only, so it must not reach the server.
+    await page.getByTestId("crop-aspect-4x6").click();
+    await page.getByTestId("crop-apply").click();
+    await expect(stripDims(page)).toHaveText("4032 × 2688 px");
+    await page.getByTestId("crop-rotate-right").click();
+    await expect(stripDims(page)).toHaveText("2688 × 4032 px");
+    await page.getByTestId("photo-undo").click();
+    await expect(stripDims(page)).toHaveText("4032 × 2688 px");
+
+    await openExportPanel(page);
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+
+    const out = testInfo.outputPath("export-redotail.jpg");
+    await download.saveAs(out);
+
+    // Crop applied, rotate NOT applied → landscape 4032×2688 (proves the redo
+    // tail never rendered; a rendered rotate would be 2688×4032).
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(meta.width).toBe(4032);
+    expect(meta.height).toBe(2688);
+  });
+
+  test("client canvas and server render agree on geometry (tolerance parity)", async ({
+    page,
+  }, testInfo) => {
+    await openDemoInCrop(page);
+
+    // A crop + rotate recipe so both the app canvas and the server render carry
+    // real geometry to compare.
+    await page.getByTestId("crop-aspect-4x6").click();
+    await page.getByTestId("crop-apply").click();
+    await expect(stripDims(page)).toHaveText("4032 × 2688 px");
+    await page.getByTestId("crop-rotate-right").click();
+    await expect(stripDims(page)).toHaveText("2688 × 4032 px");
+
+    await openExportPanel(page);
+    // Settled zoom = the canvas has drawn the composed portrait geometry.
+    await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/);
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+    const out = testInfo.outputPath("export-parity.jpg");
+    await download.saveAs(out);
+    const exportB64 = (await readFile(out)).toString("base64");
+
+    // In-page: fetch the exported full-res bytes back in, then compare a central
+    // region of (a) the app canvas's drawn image box against (b) the exported
+    // frame — both downscaled to the SAME N×N so resampler noise, not geometry,
+    // dominates. The drawn box is reconstructed from PhotoCanvas' contain-fit
+    // math: dispW/dispH depend only on the drawn image's aspect (the proxy/master
+    // running-scale cancels), which is exactly the exported bitmap's aspect.
+    const result = await page.evaluate(async (b64) => {
+      const PAD = 24; // PhotoCanvas pasteboard margin
+      const N = 220; // common sampling grid
+
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const bmp = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
+
+      const canvas = document.querySelector('[data-testid="photo-canvas"]') as HTMLCanvasElement;
+      const container = canvas.parentElement as HTMLElement;
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = container.clientWidth;
+      const cssH = container.clientHeight;
+
+      const aspect = bmp.width / bmp.height;
+      const availW = Math.max(1, cssW - PAD * 2);
+      const availH = Math.max(1, cssH - PAD * 2);
+      const dispW = Math.min(availW, availH * aspect);
+      const dispH = Math.min(availH, availW / aspect);
+      const x = (cssW - dispW) / 2;
+      const y = (cssH - dispH) / 2;
+
+      const sample = (
+        src: CanvasImageSource,
+        sx: number,
+        sy: number,
+        sw: number,
+        sh: number,
+      ): Uint8ClampedArray => {
+        const c = document.createElement("canvas");
+        c.width = N;
+        c.height = N;
+        const ctx = c.getContext("2d")!;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(src, sx, sy, sw, sh, 0, 0, N, N);
+        return ctx.getImageData(0, 0, N, N).data;
+      };
+
+      // App canvas image box addressed in DEVICE px; exported bitmap full frame.
+      const app = sample(canvas, x * dpr, y * dpr, dispW * dpr, dispH * dpr);
+      const exp = sample(bmp, 0, 0, bmp.width, bmp.height);
+
+      // Mean-abs-diff over RGB across the central region — exclude a 15% margin
+      // so the anti-aliased image edge and drop shadow never enter the compare.
+      const lo = Math.floor(N * 0.15);
+      const hi = Math.ceil(N * 0.85);
+      let sum = 0;
+      let count = 0;
+      for (let yy = lo; yy < hi; yy++) {
+        for (let xx = lo; xx < hi; xx++) {
+          const i = (yy * N + xx) * 4;
+          sum +=
+            Math.abs(app[i] - exp[i]) +
+            Math.abs(app[i + 1] - exp[i + 1]) +
+            Math.abs(app[i + 2] - exp[i + 2]);
+          count += 3;
+        }
+      }
+      return { diff: sum / count, dpr, dispW: Math.round(dispW), dispH: Math.round(dispH) };
+    }, exportB64);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[PE3 parity] mean-abs-diff=${result.diff.toFixed(3)} dpr=${result.dpr} disp=${result.dispW}x${result.dispH}`,
+    );
+    testInfo.annotations.push({ type: "parity-diff", description: result.diff.toFixed(3) });
+
+    // Resampler + JPEG differences are expected (single digits); a geometry
+    // misalignment (wrong crop window or orientation) would blow far past this.
+    expect(result.diff).toBeLessThan(12);
+  });
+
+  test("a server error surfaces verbatim, clears the chip, and re-enables the button", async ({
+    page,
+  }) => {
+    await openDemoInCrop(page);
+    await openExportPanel(page);
+
+    // Intercept the render POST with a typed 422 RenderError (the master-blob
+    // load that precedes it reads a same-page object URL, never this route).
+    await page.route("**/api/photo/render", async (route) => {
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, code: "decode-failed", message: "Test error copy" }),
+      });
+    });
+
+    await page.getByTestId("export-file").click();
+
+    // The server's RenderError.message shows verbatim in the inline alert.
+    await expect(page.getByTestId("export-error")).toBeVisible();
+    await expect(
+      page.getByTestId("export-error").getByText("Test error copy", { exact: true }),
+    ).toBeVisible();
+
+    // The finally ran: the chip cleared and the button is interactive again.
+    await expect(page.getByTestId("photo-rendering-chip")).toHaveCount(0);
+    await expect(page.getByTestId("export-file")).toBeEnabled();
   });
 });
