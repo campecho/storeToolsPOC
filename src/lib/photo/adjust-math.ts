@@ -278,15 +278,15 @@ export function computeAutoEnhance(
   if (n <= 0 || rgba.length < n * 4) return out;
 
   const hist = new Float64Array(256);
+  // Gray-world only needs the r/b means — temperature is derived from their
+  // imbalance; green anchors the luma histogram but not the cast estimate.
   let rSum = 0;
-  let gSum = 0;
   let bSum = 0;
   for (let i = 0; i < n * 4; i += 4) {
     const r = rgba[i];
     const g = rgba[i + 1];
     const b = rgba[i + 2];
     rSum += r;
-    gSum += g;
     bSum += b;
     const luma = WR * r + WG * g + WB * b;
     hist[Math.round(luma)]++;
