@@ -183,7 +183,11 @@ describe("POST /api/photo/render — op screening (unsupported-op)", () => {
 
   it("rejects a resize op naming its PE5 tranche", async () => {
     const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
-      recipe: [{ op: "resize", label: "Resize", mode: "percent", percent: 50 }],
+      // targetPx present so the op passes schema (PE5 print-math tighten) and
+      // the screening — not validation — produces the 422.
+      recipe: [
+        { op: "resize", label: "Resize", mode: "percent", percent: 50, targetPx: { width: 32, height: 32 } },
+      ],
       format: "png",
       quality: 90,
     });

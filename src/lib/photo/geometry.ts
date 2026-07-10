@@ -24,12 +24,21 @@ import type { PhotoOp, PixelRect } from "@/lib/schema/photo";
  *                         a SIZE cost. (The upscale is what fills the corners the
  *                         rotation would otherwise expose.)
  *
- * Every other op tag (adjust, autoEnhance, bleedExpand, fitToSize, resize,
- * textOverlay, logoOverlay, erase) is NOT a geometry op for this module —
- * `isGeometryOp` is the single source of truth and `effectiveDims` folds only
- * the four ops above, ignoring the rest. (bleedExpand / fitToSize / resize do
- * change pixels downstream, but their sizing is print-target math handled in
- * their own modules; PE2's crop/DPI surface reasons purely over the four.)
+ * The three print-geometry ops (PE5) also change the effective raster, and they
+ * are STORED-EXPLICIT (schema/photo.ts): the UI resolved their pixel result at
+ * push time, so folding reads ONLY the stored fields — never the document target:
+ *
+ *   • bleedExpand {px}  → grows every edge by `px`: w+2·px, h+2·px.
+ *   • fitToSize {rect|pad} → fill stores an anchored crop `rect` (dims become
+ *                         rect.w × rect.h); fit stores anchored white padding
+ *                         `pad` (dims become w+l+r × h+t+b). Exactly one is
+ *                         present per the schema's mode invariant.
+ *   • resize {targetPx} → dims become targetPx.width × targetPx.height.
+ *
+ * Every remaining op tag (adjust, autoEnhance, textOverlay, logoOverlay, erase)
+ * is NOT a geometry op — it changes pixels or composites without changing the
+ * raster's dimensions. `isGeometryOp` is the single source of truth; `effectiveDims`
+ * folds exactly the seven dimensioning ops above and ignores the rest.
  */
 
 export interface Dims {
@@ -37,13 +46,17 @@ export interface Dims {
   h: number;
 }
 
-/** The four ops that change the effective raster's dimensions (see header). */
+/** The ops that change the effective raster's dimensions (see header): the four
+    interactive geometry ops plus the three stored-explicit print-geometry ops. */
 export function isGeometryOp(op: PhotoOp): boolean {
   return (
     op.op === "crop" ||
     op.op === "rotate" ||
     op.op === "flip" ||
-    op.op === "straighten"
+    op.op === "straighten" ||
+    op.op === "bleedExpand" ||
+    op.op === "fitToSize" ||
+    op.op === "resize"
   );
 }
 
@@ -71,6 +84,27 @@ export function effectiveDims(source: Dims, ops: PhotoOp[]): Dims {
           w = h;
           h = t;
         }
+        break;
+      case "bleedExpand":
+        // Stored-explicit px per edge → grow both axes by 2·px.
+        w = intDim(w + 2 * op.px);
+        h = intDim(h + 2 * op.px);
+        break;
+      case "fitToSize":
+        // fill stores an anchored crop rect; fit stores anchored white padding.
+        // The schema guarantees exactly one is present, matching the mode.
+        if (op.rect) {
+          w = intDim(op.rect.w);
+          h = intDim(op.rect.h);
+        } else if (op.pad) {
+          w = intDim(w + op.pad.l + op.pad.r);
+          h = intDim(h + op.pad.t + op.pad.b);
+        }
+        break;
+      case "resize":
+        // Stored-explicit resolved output dims — never re-derived from the target.
+        w = intDim(op.targetPx.width);
+        h = intDim(op.targetPx.height);
         break;
       // flip + straighten leave dims unchanged; every other op is not geometry.
       default:
@@ -147,6 +181,47 @@ export function dpiVerdict(dpi: number): DpiVerdict {
   if (dpi >= 300) return "green";
   if (dpi >= 100) return "amber";
   return "red";
+}
+
+/**
+ * Format a print size as the strip/chip label — "4 × 6" style: a spaced
+ * multiplication sign (U+00D7), trailing ".0" dropped so a whole number prints
+ * bare ("4", "16") while a real fraction survives ("8.5" stays "8.5", "3.5"
+ * stays "3.5"). `toFixed(2)` first absorbs any float noise before the trailing
+ * zeros are trimmed.
+ */
+export function printSizeLabel(size: Dims): string {
+  const fmt = (n: number) => Number(n.toFixed(2)).toString();
+  return `${fmt(size.w)} × ${fmt(size.h)}`;
+}
+
+/**
+ * The print-check chip's size-qualified copy (wire-pinned — handoff Section C,
+ * plan §5). Green and amber NAME the size; red is deliberately size-agnostic
+ * ("too low at this size" — a red chip means no realistic size rescues the file,
+ * so the wire drops the label rather than implying a smaller size would pass):
+ *
+ *   green → "672 DPI — great at 4 × 6"
+ *   amber → "120 DPI — may look soft at 8 × 10"
+ *   red   → "56 DPI — too low at this size"
+ *
+ * `dpi` is an effectiveDpi() result, `verdict` its dpiVerdict() (the caller
+ * pairs them so colour and copy always agree), and `sizeLabel` a
+ * printSizeLabel() string. PE5's strip renders exactly this string.
+ */
+export function dpiChipCopy(
+  dpi: number,
+  verdict: DpiVerdict,
+  sizeLabel: string,
+): string {
+  switch (verdict) {
+    case "green":
+      return `${dpi} DPI — great at ${sizeLabel}`;
+    case "amber":
+      return `${dpi} DPI — may look soft at ${sizeLabel}`;
+    case "red":
+      return `${dpi} DPI — too low at this size`;
+  }
 }
 
 function clamp(v: number, lo: number, hi: number): number {

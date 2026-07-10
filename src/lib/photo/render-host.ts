@@ -403,7 +403,18 @@ export type RenderStep =
  */
 export class UnsupportedRenderOp extends Error {
   constructor(public readonly op: string) {
-    super(`Render does not support '${op}' ops in this tranche.`);
+    // Named tranches keep the reject honest ("lands with PE5/PE6/PE9"), and
+    // shrink as each tranche makes its ops renderable.
+    super(
+      `Render does not support '${op}' ops yet — ` +
+        (op === "resize" || op === "bleedExpand" || op === "fitToSize"
+          ? "they land with PE5."
+          : op === "textOverlay" || op === "logoOverlay"
+            ? "they land with PE6."
+            : op === "erase"
+              ? "it lands with PE9."
+              : "unsupported op."),
+    );
     this.name = "UnsupportedRenderOp";
   }
 }

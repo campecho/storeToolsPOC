@@ -30,6 +30,9 @@ export async function GET() {
   const diagnostics: PhotoDiagnostics = {
     engine,
     jailed: { rlimits },
+    // tificc (lcms2-utils) probe lands with the PE5 server stream — until the
+    // seam exists, CMYK preservation is honestly absent everywhere.
+    cmykPreserve: false,
     formats: {
       jpeg: hasEngine,
       png: hasEngine,

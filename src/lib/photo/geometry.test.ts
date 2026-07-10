@@ -5,6 +5,8 @@ import {
   straightenScale,
   effectiveDpi,
   dpiVerdict,
+  dpiChipCopy,
+  printSizeLabel,
   aspectRectFor,
   clampRectToImage,
   resizeCropRect,
@@ -41,6 +43,21 @@ function straighten(degrees: number): PhotoOp {
 function adjust(): PhotoOp {
   return { op: "adjust", label: "Brightness +1", param: "brightness", value: 1 };
 }
+// The three stored-explicit print-geometry ops (PE5) — schema-shaped so the
+// fixtures stay contract-true (px on bleedExpand, rect|pad on fitToSize, targetPx
+// on resize are all required/mode-matched now).
+function bleedExpand(px: number): PhotoOp {
+  return { op: "bleedExpand", label: "Expand bleed 0.125 in", strategy: "mirror", amount: 0.125, px };
+}
+function fitFill(rect: PixelRect): PhotoOp {
+  return { op: "fitToSize", label: "Fit to size", mode: "fill", anchor: "center", rect };
+}
+function fitPad(pad: { l: number; t: number; r: number; b: number }): PhotoOp {
+  return { op: "fitToSize", label: "Fit to size", mode: "fit", anchor: "center", pad };
+}
+function resize(w: number, h: number): PhotoOp {
+  return { op: "resize", label: "Resize", mode: "px", px: { width: w, height: h }, targetPx: { width: w, height: h } };
+}
 
 const area = (r: PixelRect) => r.w * r.h;
 
@@ -49,27 +66,25 @@ const area = (r: PixelRect) => r.w * r.h;
 /* ================================================================== */
 
 describe("isGeometryOp", () => {
-  it("is true only for crop / rotate / flip / straighten", () => {
+  it("is true for the four interactive geometry ops", () => {
     expect(isGeometryOp(crop(10, 10))).toBe(true);
     expect(isGeometryOp(rotate(1))).toBe(true);
     expect(isGeometryOp(flip("horizontal"))).toBe(true);
     expect(isGeometryOp(straighten(2))).toBe(true);
   });
-  it("is false for adjust and other non-geometry ops", () => {
+  it("is true for the three print-geometry ops (PE5): bleedExpand / fitToSize / resize", () => {
+    expect(isGeometryOp(bleedExpand(84))).toBe(true);
+    expect(isGeometryOp(fitFill({ x: 0, y: 0, w: 100, h: 100 }))).toBe(true);
+    expect(isGeometryOp(fitPad({ l: 0, t: 0, r: 10, b: 0 }))).toBe(true);
+    expect(isGeometryOp(resize(800, 600))).toBe(true);
+  });
+  it("is false for pixel/composite ops that don't change the raster's dims", () => {
     expect(isGeometryOp(adjust())).toBe(false);
     expect(
       isGeometryOp({ op: "autoEnhance", label: "Auto-enhance", params: {} }),
     ).toBe(false);
     expect(
-      isGeometryOp({
-        op: "bleedExpand",
-        label: "Expand bleed",
-        strategy: "mirror",
-        amount: 0.125,
-      }),
-    ).toBe(false);
-    expect(
-      isGeometryOp({ op: "fitToSize", label: "Fit", mode: "fit", anchor: "center" }),
+      isGeometryOp({ op: "erase", label: "Remove object", maskAssetId: "photo:mask-1" }),
     ).toBe(false);
   });
 });
@@ -127,6 +142,46 @@ describe("effectiveDims", () => {
   it("clamps crop dims to integers ≥ 1", () => {
     expect(effectiveDims(src, [crop(0.2, 0.2)])).toEqual({ w: 1, h: 1 });
     expect(effectiveDims(src, [crop(99.6, 100.4)])).toEqual({ w: 100, h: 100 });
+  });
+
+  it("bleedExpand grows both axes by 2·px (stored-explicit)", () => {
+    // 4000×3000 + 84px per edge → 4000+168 × 3000+168.
+    expect(effectiveDims(src, [bleedExpand(84)])).toEqual({ w: 4168, h: 3168 });
+  });
+
+  it("fitToSize fill folds to the stored rect's dims", () => {
+    expect(effectiveDims(src, [fitFill({ x: 100, y: 50, w: 2000, h: 1333 })])).toEqual({
+      w: 2000,
+      h: 1333,
+    });
+  });
+
+  it("fitToSize fit folds to source + the stored pad (both axes)", () => {
+    // 4000×3000 + pad {l:250,r:250,t:0,b:0} → 4500 × 3000.
+    expect(effectiveDims(src, [fitPad({ l: 250, t: 0, r: 250, b: 0 })])).toEqual({
+      w: 4500,
+      h: 3000,
+    });
+    expect(effectiveDims(src, [fitPad({ l: 0, t: 100, r: 0, b: 300 })])).toEqual({
+      w: 4000,
+      h: 3400,
+    });
+  });
+
+  it("resize folds to the stored targetPx (never re-derived)", () => {
+    expect(effectiveDims(src, [resize(1200, 900)])).toEqual({ w: 1200, h: 900 });
+  });
+
+  it("folds a chained crop → bleedExpand → resize against the current effective image", () => {
+    // 4000×3000 → crop 2000×1500 → bleedExpand 10px (2020×1520) → resize 800×600.
+    const ops = [crop(2000, 1500), bleedExpand(10), resize(800, 600)];
+    expect(effectiveDims(src, ops)).toEqual({ w: 800, h: 600 });
+  });
+
+  it("folds crop → fill → bleedExpand (fill reads the cropped frame, bleed grows it)", () => {
+    // 4000×3000 → crop 3000×2000 → fill rect 1500×1000 → bleedExpand 25px → 1550×1050.
+    const ops = [crop(3000, 2000), fitFill({ x: 0, y: 0, w: 1500, h: 1000 }), bleedExpand(25)];
+    expect(effectiveDims(src, ops)).toEqual({ w: 1550, h: 1050 });
   });
 });
 
@@ -253,6 +308,51 @@ describe("effectiveDpi + dpiVerdict — plan §5 worked examples", () => {
 
   it("guards zero inches", () => {
     expect(effectiveDpi({ w: 100, h: 100 }, { w: 0, h: 5 })).toBe(0);
+  });
+});
+
+/* ================================================================== */
+/* printSizeLabel                                                      */
+/* ================================================================== */
+
+describe("printSizeLabel", () => {
+  it("drops trailing .0 on whole numbers", () => {
+    expect(printSizeLabel({ w: 4, h: 6 })).toBe("4 × 6");
+    expect(printSizeLabel({ w: 16, h: 20 })).toBe("16 × 20");
+    expect(printSizeLabel({ w: 4.0, h: 6.0 })).toBe("4 × 6");
+  });
+  it("keeps real fractions", () => {
+    expect(printSizeLabel({ w: 8.5, h: 11 })).toBe("8.5 × 11");
+    expect(printSizeLabel({ w: 3.5, h: 2 })).toBe("3.5 × 2");
+  });
+  it("uses a spaced U+00D7 multiplication sign, not an ASCII x", () => {
+    expect(printSizeLabel({ w: 5, h: 7 })).toBe("5 × 7");
+  });
+});
+
+/* ================================================================== */
+/* dpiChipCopy — the wires' size-qualified strip strings                */
+/* ================================================================== */
+
+describe("dpiChipCopy — wire-pinned strings", () => {
+  it("green names the size", () => {
+    expect(dpiChipCopy(672, "green", "4 × 6")).toBe("672 DPI — great at 4 × 6");
+  });
+  it("amber names the size", () => {
+    expect(dpiChipCopy(120, "amber", "8 × 10")).toBe("120 DPI — may look soft at 8 × 10");
+  });
+  it("red is size-agnostic ('too low at this size')", () => {
+    expect(dpiChipCopy(56, "red", "16 × 20")).toBe("56 DPI — too low at this size");
+  });
+
+  it("end-to-end: dims + print size → the exact strip string (the §5 fixtures)", () => {
+    const chip = (px: Dims, inches: Dims) => {
+      const dpi = effectiveDpi(px, inches);
+      return dpiChipCopy(dpi, dpiVerdict(dpi), printSizeLabel(inches));
+    };
+    expect(chip({ w: 4032, h: 3024 }, { w: 4, h: 6 })).toBe("672 DPI — great at 4 × 6");
+    expect(chip({ w: 1280, h: 960 }, { w: 8, h: 10 })).toBe("120 DPI — may look soft at 8 × 10");
+    expect(chip({ w: 1200, h: 900 }, { w: 16, h: 20 })).toBe("56 DPI — too low at this size");
   });
 });
 

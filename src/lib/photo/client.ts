@@ -300,6 +300,9 @@ export async function renderPhoto(
     recipe: doc.recipe.slice(0, doc.cursor),
     format: opts.format,
     quality: opts.quality ?? 90,
+    // The document's export intent rides every render (dev #6) — the PE5
+    // panel makes it user-switchable; CMYK separates through GRACoL.
+    intent: doc.target.intent,
   };
 
   const body = new FormData();

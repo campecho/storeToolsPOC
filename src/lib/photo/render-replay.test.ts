@@ -39,7 +39,7 @@ const adjust = (param: AdjustParam, value: number): PhotoOp => ({
   value,
 });
 /** A still-unsupported op (renders from PE5) — the op-screen negative case. */
-const resize = (): PhotoOp => ({ op: "resize", label: "Resize", mode: "percent", percent: 50 });
+const resize = (): PhotoOp => ({ op: "resize", label: "Resize", mode: "percent", percent: 50, targetPx: { width: 100, height: 75 } });
 
 /**
  * The expected RGBA for a source pixel under a recipe's TERMINAL adjust pass —
@@ -232,6 +232,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [crop({ x: 200, y: 0, w: 200, h: 150 })],
         format: "png",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
@@ -250,6 +251,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [rotate(1)],
         format: "png",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
@@ -267,6 +269,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [flip("horizontal")],
         format: "png",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
@@ -284,6 +287,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [straighten(2.5)],
         format: "png",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
@@ -300,6 +304,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [crop({ x: 100, y: 50, w: 200, h: 200 }, "circle")],
         format: "png",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
@@ -320,6 +325,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [crop({ x: 100, y: 50, w: 200, h: 200 }, "circle")],
         format: "jpeg",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
@@ -338,6 +344,7 @@ describe("renderImage — geometry replays at full resolution", () => {
         recipe: [resize()],
         format: "png",
         quality: 90,
+        intent: "srgb",
       });
       expect(out.ok).toBe(false);
       if (out.ok) return;
@@ -351,7 +358,7 @@ describe("renderImage — geometry replays at full resolution", () => {
     "fails decode-failed on an unreadable master rather than throwing",
     async () => {
       const garbage = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
-      const out = await renderImage(garbage, { recipe: [rotate(1)], format: "png", quality: 90 });
+      const out = await renderImage(garbage, { recipe: [rotate(1)], format: "png", quality: 90, intent: "srgb" });
       expect(out.ok).toBe(false);
       if (out.ok) return;
       expect(out.code).toBe("decode-failed");
@@ -372,7 +379,7 @@ describe("renderImage — adjust replays as one terminal pointwise pass", () => 
   it(
     "adjust-only recipe: dims unchanged, sampled pixel matches the shared-core expectation",
     async () => {
-      const out = await renderImage(await quadPng(), { recipe: tone, format: "png", quality: 90 });
+      const out = await renderImage(await quadPng(), { recipe: tone, format: "png", quality: 90, intent: "srgb" });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
       const s = await sample(out.bytes, 100, 75); // deep inside the solid TL (red) quadrant
@@ -388,7 +395,7 @@ describe("renderImage — adjust replays as one terminal pointwise pass", () => 
     "crop THEN adjust: geometry first (frame moves), then the terminal tone pass on the cropped pixels",
     async () => {
       const recipe: PhotoOp[] = [crop({ x: 200, y: 0, w: 200, h: 150 }), ...tone]; // crop to TR (green)
-      const out = await renderImage(await quadPng(), { recipe, format: "png", quality: 90 });
+      const out = await renderImage(await quadPng(), { recipe, format: "png", quality: 90, intent: "srgb" });
       expect(out.ok).toBe(true);
       if (!out.ok) return;
       const s = await sample(out.bytes, 100, 75); // centre of the 200×150 cropped frame
@@ -409,8 +416,8 @@ describe("renderImage — adjust replays as one terminal pointwise pass", () => 
       // rendering both orders and asserting the shared sampled pixel agrees.
       const adjustFirst: PhotoOp[] = [...tone, crop({ x: 200, y: 0, w: 200, h: 150 })];
       const cropFirst: PhotoOp[] = [crop({ x: 200, y: 0, w: 200, h: 150 }), ...tone];
-      const a = await renderImage(await quadPng(), { recipe: adjustFirst, format: "png", quality: 90 });
-      const b = await renderImage(await quadPng(), { recipe: cropFirst, format: "png", quality: 90 });
+      const a = await renderImage(await quadPng(), { recipe: adjustFirst, format: "png", quality: 90, intent: "srgb" });
+      const b = await renderImage(await quadPng(), { recipe: cropFirst, format: "png", quality: 90, intent: "srgb" });
       expect(a.ok && b.ok).toBe(true);
       if (!a.ok || !b.ok) return;
       const sa = await sample(a.bytes, 100, 75);
@@ -439,8 +446,8 @@ describe("renderImage — determinism (same recipe + bytes → byte-identical)",
     "produces byte-identical JPEG across two independent renders",
     async () => {
       const master = await quadPng();
-      const a = await renderImage(master, { recipe, format: "jpeg", quality: 88 });
-      const b = await renderImage(master, { recipe, format: "jpeg", quality: 88 });
+      const a = await renderImage(master, { recipe, format: "jpeg", quality: 88, intent: "srgb" });
+      const b = await renderImage(master, { recipe, format: "jpeg", quality: 88, intent: "srgb" });
       expect(a.ok && b.ok).toBe(true);
       if (!a.ok || !b.ok) return;
       expect(a.bytes.equals(b.bytes)).toBe(true);
@@ -452,8 +459,8 @@ describe("renderImage — determinism (same recipe + bytes → byte-identical)",
     "produces byte-identical PNG across two independent renders",
     async () => {
       const master = await quadPng();
-      const a = await renderImage(master, { recipe, format: "png", quality: 90 });
-      const b = await renderImage(master, { recipe, format: "png", quality: 90 });
+      const a = await renderImage(master, { recipe, format: "png", quality: 90, intent: "srgb" });
+      const b = await renderImage(master, { recipe, format: "png", quality: 90, intent: "srgb" });
       expect(a.ok && b.ok).toBe(true);
       if (!a.ok || !b.ok) return;
       expect(a.bytes.equals(b.bytes)).toBe(true);

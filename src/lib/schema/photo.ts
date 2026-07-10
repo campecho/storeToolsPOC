@@ -92,6 +92,16 @@ export const StraightenOpSchema = z.object({
   degrees: z.number(),
 });
 
+/**
+ * STORED-EXPLICIT rule (PE5, the three geometry-of-print ops going live —
+ * bleedExpand / fitToSize / resize): the UI computes the pixel result at push
+ * time and stores it ON the op; replay (client canvas + server compile) reads
+ * ONLY the stored pixels and NEVER re-derives them from the document's
+ * `target`. So `mode`/`px`/`inchesAtDpi`/`percent` are the operator's INTENT
+ * (kept for the panel + history label), while `targetPx` is the RESOLVED output
+ * dimensions that both engines fold and render. Pre-release schema v1 — no
+ * migration; `targetPx` is required from day one.
+ */
 export const ResizeOpSchema = z.object({
   op: z.literal("resize"),
   label: opLabel,
@@ -101,6 +111,9 @@ export const ResizeOpSchema = z.object({
     .object({ w: z.number().min(0), h: z.number().min(0), dpi: z.number().min(1) })
     .optional(),
   percent: z.number().min(1).optional(),
+  /** Resolved output dimensions (stored-explicit) — the ONLY field replay reads.
+      effectiveDims folds resize → targetPx (geometry.ts). */
+  targetPx: z.object({ width: z.number().int().min(1), height: z.number().int().min(1) }),
 });
 
 /**
@@ -135,17 +148,44 @@ export const BleedExpandOpSchema = z.object({
   op: z.literal("bleedExpand"),
   label: opLabel,
   strategy: z.enum(["mirror", "smear", "solid"]),
-  /** Expansion per edge, inches (the wires' canonical 0.125 in). */
+  /** Expansion per edge, inches (the wires' canonical 0.125 in) — operator
+      intent, kept for the history label. */
   amount: z.number().min(0),
   /** Solid strategy only (hex). */
   color: z.string().optional(),
+  /** STORED-EXPLICIT (see ResizeOpSchema): pixels added per edge, computed by
+      the UI at push time via bleedPx(amount, image, target); replay reads ONLY
+      this and never re-derives from `amount` × the target DPI. effectiveDims
+      folds bleedExpand → w+2·px, h+2·px (geometry.ts). Required (pre-release v1). */
+  px: z.number().int().min(1),
 });
 
+/** Anchored white padding per edge, pixels — the fit-mode result of solveFit. */
+const FitPadSchema = z.object({
+  l: z.number().int().min(0),
+  t: z.number().int().min(0),
+  r: z.number().int().min(0),
+  b: z.number().int().min(0),
+});
+
+/**
+ * STORED-EXPLICIT (see ResizeOpSchema). Exactly one of `rect`/`pad` is present
+ * and it MATCHES the mode — enforced by a refine on PhotoOpSchema (a
+ * discriminated-union member can't carry its own refine, so the invariant rides
+ * one level up):
+ *   • fill → `rect` (an anchored crop of the source, PixelRect), no `pad`.
+ *   • fit  → `pad`  (anchored white padding per edge),        no `rect`.
+ * effectiveDims folds fitToSize → rect ? {rect.w, rect.h} : {w+l+r, h+t+b}.
+ */
 export const FitToSizeOpSchema = z.object({
   op: z.literal("fitToSize"),
   label: opLabel,
   mode: z.enum(["fit", "fill"]),
   anchor: FitAnchorSchema,
+  /** fill only: the anchored crop rect solveFit chose. */
+  rect: PixelRectSchema.optional(),
+  /** fit only: the anchored per-edge white padding solveFit chose. */
+  pad: FitPadSchema.optional(),
 });
 
 export const TextOverlayOpSchema = z.object({
@@ -183,7 +223,7 @@ export const EraseOpSchema = z.object({
   maskAssetId: z.string(),
 });
 
-export const PhotoOpSchema = z.discriminatedUnion("op", [
+const PhotoOpUnionSchema = z.discriminatedUnion("op", [
   CropOpSchema,
   RotateOpSchema,
   FlipOpSchema,
@@ -197,6 +237,30 @@ export const PhotoOpSchema = z.discriminatedUnion("op", [
   LogoOverlayOpSchema,
   EraseOpSchema,
 ]);
+
+/**
+ * The op union, plus the ONE cross-field invariant a discriminated-union member
+ * can't express on its own: fitToSize must carry EXACTLY the payload its mode
+ * implies (fill ⇒ rect only, fit ⇒ pad only). The refine rides the whole union
+ * so the discriminator still produces clean "unknown op" errors first; the
+ * fitToSize check only runs once a well-shaped op has parsed. Wrapping the union
+ * makes `PhotoOpSchema` a ZodEffects, which stays fully usable in
+ * `z.array(PhotoOpSchema)` and `.safeParse` (no consumer reaches for its union
+ * `.options`). The exported `PhotoOp` type is unchanged by the refine.
+ */
+export const PhotoOpSchema = PhotoOpUnionSchema.superRefine((op, ctx) => {
+  if (op.op !== "fitToSize") return;
+  const hasRect = op.rect != null;
+  const hasPad = op.pad != null;
+  const ok = op.mode === "fill" ? hasRect && !hasPad : hasPad && !hasRect;
+  if (!ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "fitToSize: mode 'fill' requires exactly `rect` (no `pad`); mode 'fit' requires exactly `pad` (no `rect`)",
+    });
+  }
+});
 export type PhotoOp = z.infer<typeof PhotoOpSchema>;
 
 /** Master + proxy ids and dimensions enter the document; bytes stay in the
@@ -212,6 +276,11 @@ export const PhotoSourceSchema = z.object({
   proxyHeight: z.number().int().min(1),
   originalName: z.string(),
   colorSpace: PhotoColorSpaceSchema,
+  /** The preserved-CMYK working master's blob-store id — present only when a
+      CMYK arrival rode the lcms (tificc) seam that keeps 4 channels off sharp's
+      RGB-unpacking decoder (§1.3, v1.4). Absent for the dominant RGB path.
+      Optional/additive — no persisted document migrates (pre-release v1). */
+  cmykAssetId: z.string().optional(),
   /** Honest intake notes surfaced in UI ("metadata removed when opened", …). */
   intakeNotes: z.array(z.string()),
 });
@@ -308,6 +377,12 @@ export const PhotoDiagnosticsSchema = z.object({
         (the pub2raw diagnostics posture). */
     rlimits: z.boolean(),
   }),
+  /** The CMYK-preserving lcms (tificc) capability — true when the jailed
+      `tificc` subprocess probes OK, so a CMYK arrival can stay 4-channel through
+      export instead of round-tripping RGB (§1.3, PE5). Independent of `formats`
+      (it is a colour-path capability, not a codec) — kept top-level so a false
+      here honestly disables the no-re-separation path while codecs stay live. */
+  cmykPreserve: z.boolean(),
   formats: z.object({
     jpeg: z.boolean(),
     png: z.boolean(),
@@ -326,11 +401,13 @@ export type PhotoDiagnostics = z.infer<typeof PhotoDiagnosticsSchema>;
 /* ------------------------------------------------------------------ */
 
 /**
- * Export container formats the spine renders at PE3. TIFF and PDF·print carry
- * the print-color and box math and land with PE7 — the enum is intentionally
- * the JPG/PNG subset the Export panel v1 offers (plan §4 PE3, §3.3 "Export").
+ * Export container formats the spine renders. JPG/PNG shipped the PE3 spine;
+ * PE5 adds the print pair — TIFF and PDF·print, which carry the print-colour and
+ * MediaBox/TrimBox/BleedBox math (pdf-wrap.ts + the render host's colour pass).
+ * Widened additively — the client still only offers JPG/PNG until the Export
+ * panel completes (PE7), so no existing caller emits the new members.
  */
-export const RenderFormatSchema = z.enum(["jpeg", "png"]);
+export const RenderFormatSchema = z.enum(["jpeg", "png", "tiff", "pdf"]);
 export type RenderFormat = z.infer<typeof RenderFormatSchema>;
 
 /**
@@ -346,6 +423,21 @@ export const RenderPayloadSchema = z.object({
   format: RenderFormatSchema,
   /** JPEG encoder quality 1–100; ignored for PNG. */
   quality: z.number().int().min(1).max(100).default(90),
+  /** Colour intent for the render's terminal colour pass (PE5): `cmyk` separates
+      through the committed GRACoL profile, `srgb` embeds the sRGB profile.
+      Defaults to `srgb` so a pre-PE5 payload (no intent) renders exactly as
+      before — the document's `target.intent` supplies the real value (dev #6). */
+  intent: PhotoIntentSchema.default("srgb"),
+  /** The print target in INCHES, for the PDF box math (MediaBox/TrimBox/BleedBox
+      via pdf-wrap.ts) — `w`×`h` trim plus `bleed` per edge. Optional: present
+      only for print-destined renders (PDF·print, TIFF); screen JPG/PNG omit it. */
+  printTarget: z
+    .object({
+      w: z.number().min(0),
+      h: z.number().min(0),
+      bleed: z.number().min(0),
+    })
+    .optional(),
 });
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
 

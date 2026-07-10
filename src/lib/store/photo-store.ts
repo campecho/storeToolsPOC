@@ -119,6 +119,26 @@ export interface PhotoEditorState {
       clears the crop draft + preview op. */
   setCursor: (cursor: number) => void;
   setReturnContext: (ctx: PhotoReturnContext) => void;
+
+  /** Replace the document's print TARGET metadata — size, product binding, and
+      bleed — in one whole-target write (persisted via the `doc` in partialize).
+      This is a DOCUMENT MUTATION, NOT a history op: the print target is print
+      METADATA, not an image edit, so it does NOT move the cursor, does NOT push
+      a recipe op, and does NOT truncate the redo tail — changing the target
+      leaves the recipe (and any redo tail) exactly as it was. `intent` is owned
+      by setIntent and preserved across a target change (this setter never
+      touches it). No-op when there is no document. */
+  setTarget: (target: {
+    size: { w: number; h: number } | null;
+    product: { sku: string; label: string } | null;
+    bleed: number;
+  }) => void;
+  /** Set the export colour INTENT (cmyk/srgb, dev #6). Like setTarget this is a
+      document mutation, NOT a history op — no cursor move, no recipe change —
+      and it is INDEPENDENT of `source.colorSpace` (intent is the export choice;
+      colorSpace is the arrival fact, never mutated here). No-op when there is no
+      document, or when the intent is already set. */
+  setIntent: (intent: "cmyk" | "srgb") => void;
 }
 
 /** Clamp a cursor into the valid [0, recipe.length] window for a document
@@ -288,6 +308,27 @@ export const usePhotoStore = create<PhotoEditorState>()(
           const next = clampCursor(s.doc, cursor);
           if (next === s.doc.cursor) return s;
           return { doc: { ...s.doc, cursor: next }, ...CLEAR_DRAFT };
+        }),
+
+      // Print metadata, NOT history: mutate doc.target only — no cursor move, no
+      // recipe/tail change, and NO gesture clearing (the target changing doesn't
+      // stale a half-composed crop). `intent` is preserved (setIntent owns it).
+      setTarget: (target) =>
+        set((s) => {
+          if (!s.doc) return s;
+          return {
+            doc: {
+              ...s.doc,
+              target: { ...target, intent: s.doc.target.intent },
+            },
+          };
+        }),
+
+      setIntent: (intent) =>
+        set((s) => {
+          if (!s.doc) return s;
+          if (s.doc.target.intent === intent) return s;
+          return { doc: { ...s.doc, target: { ...s.doc.target, intent } } };
         }),
     }),
     {

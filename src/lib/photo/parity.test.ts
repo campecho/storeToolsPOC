@@ -97,7 +97,7 @@ describe("PE4 tone/colour — server render is BYTE-EXACT to the ops.ts core", (
       const source = await makeSourcePng();
 
       // PATH A — the real jailed server pipeline.
-      const rendered = await renderImage(source, { recipe, format: "png", quality: 90 });
+      const rendered = await renderImage(source, { recipe, format: "png", quality: 90, intent: "srgb" });
       expect(rendered.ok).toBe(true);
       if (!rendered.ok) return;
       const a = await toRawRgba(rendered.bytes);
@@ -125,7 +125,7 @@ describe("PE4 tone/colour — server render is BYTE-EXACT to the ops.ts core", (
       ];
       const source = await makeSourcePng();
 
-      const rendered = await renderImage(source, { recipe: toneOnly, format: "png", quality: 90 });
+      const rendered = await renderImage(source, { recipe: toneOnly, format: "png", quality: 90, intent: "srgb" });
       expect(rendered.ok).toBe(true);
       if (!rendered.ok) return;
       const a = await toRawRgba(rendered.bytes);

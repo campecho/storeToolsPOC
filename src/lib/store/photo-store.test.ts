@@ -504,3 +504,104 @@ describe("partialize — only the document + level persist", () => {
     expect(persisted.level).toBe("simple");
   });
 });
+
+/* ================================================================== */
+/* setTarget / setIntent — print metadata, NOT history ops (PE5)       */
+/* ================================================================== */
+
+describe("setTarget — whole-target replace (document mutation, not a history op)", () => {
+  it("replaces size / product / bleed, preserving intent", () => {
+    s().openDocument(makeDoc());
+    s().setTarget({ size: { w: 4, h: 6 }, product: { sku: "4x6", label: "4 × 6" }, bleed: 0.125 });
+    expect(s().doc?.target).toEqual({
+      size: { w: 4, h: 6 },
+      product: { sku: "4x6", label: "4 × 6" },
+      bleed: 0.125,
+      intent: "srgb", // preserved — setTarget never touches intent
+    });
+  });
+
+  it("preserves an already-flipped intent across a target change", () => {
+    s().openDocument(makeDoc());
+    s().setIntent("cmyk");
+    s().setTarget({ size: { w: 5, h: 7 }, product: null, bleed: 0.125 });
+    expect(s().doc?.target.intent).toBe("cmyk");
+  });
+
+  it("does NOT move the cursor or change the recipe (target is not an image edit)", () => {
+    // A recipe with the cursor parked mid-history (one op undone).
+    s().openDocument(makeDoc([op("a"), op("b"), op("c")], 2));
+    const before = s().doc!;
+    s().setTarget({ size: { w: 8, h: 10 }, product: null, bleed: 0.125 });
+    expect(recipeLabels()).toEqual(["a", "b", "c"]); // recipe intact, tail not truncated
+    expect(s().doc?.cursor).toBe(2); // cursor unmoved
+    expect(s().doc?.recipe).toBe(before.recipe); // same array reference — untouched
+  });
+
+  it("does NOT clear a half-composed crop draft (not a history move)", () => {
+    s().openDocument(makeDoc());
+    s().setCropDraft(sampleDraft());
+    s().setComparing(true);
+    s().setTarget({ size: { w: 4, h: 6 }, product: null, bleed: 0.125 });
+    expect(s().cropDraft).not.toBeNull();
+    expect(s().comparing).toBe(true);
+  });
+
+  it("clears the print size back to null (whole-target replace)", () => {
+    s().openDocument(makeDoc());
+    s().setTarget({ size: { w: 4, h: 6 }, product: null, bleed: 0.125 });
+    s().setTarget({ size: null, product: null, bleed: 0 });
+    expect(s().doc?.target.size).toBeNull();
+    expect(s().doc?.target.bleed).toBe(0);
+  });
+
+  it("no-ops with no document", () => {
+    s().setTarget({ size: { w: 4, h: 6 }, product: null, bleed: 0.125 });
+    expect(s().doc).toBeNull();
+  });
+
+  it("persists via partialize (the target rides the doc)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    s().openDocument(makeDoc());
+    s().setTarget({ size: { w: 4, h: 6 }, product: null, bleed: 0.125 });
+    const persisted = partialize(usePhotoStore.getState()) as { doc: PhotoDocument };
+    expect(persisted.doc.target.size).toEqual({ w: 4, h: 6 });
+  });
+});
+
+describe("setIntent — export colour intent (document mutation, not a history op)", () => {
+  it("flips the intent without moving the cursor or changing the recipe", () => {
+    s().openDocument(makeDoc([op("a"), op("b")], 1));
+    s().setIntent("cmyk");
+    expect(s().doc?.target.intent).toBe("cmyk");
+    expect(s().doc?.cursor).toBe(1);
+    expect(recipeLabels()).toEqual(["a", "b"]);
+  });
+
+  it("is independent of source.colorSpace (never mutates the arrival fact)", () => {
+    s().openDocument(makeDoc()); // colorSpace: "rgb"
+    s().setIntent("cmyk");
+    expect(s().doc?.target.intent).toBe("cmyk");
+    expect(s().doc?.source.colorSpace).toBe("rgb"); // untouched
+  });
+
+  it("is a no-op when the intent is already set (no needless doc churn)", () => {
+    s().openDocument(makeDoc());
+    const before = s().doc;
+    s().setIntent("srgb"); // already srgb
+    expect(s().doc).toBe(before); // same reference — nothing changed
+  });
+
+  it("no-ops with no document", () => {
+    s().setIntent("cmyk");
+    expect(s().doc).toBeNull();
+  });
+
+  it("persists via partialize (the intent rides the doc)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    s().openDocument(makeDoc());
+    s().setIntent("cmyk");
+    const persisted = partialize(usePhotoStore.getState()) as { doc: PhotoDocument };
+    expect(persisted.doc.target.intent).toBe("cmyk");
+  });
+});
