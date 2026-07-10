@@ -1266,3 +1266,399 @@ test.describe("Tone & color (PE4)", () => {
     expect(brightSum).toBeGreaterThan(baseSum + 5000);
   });
 });
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Print correctness (PE5)                                                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Print correctness (plan step PE5 done-when, docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md
+ * §4 PE5): the print strip's live DPI chip (green/amber/red with the wire's
+ * size-qualified copy, advisory NEVER blocking), the Fix-for-print panel's bleed /
+ * fit-to-size / numeric-resize ops, the trim/bleed/safe guide chrome, the one-click
+ * Convert-to-CMYK path, and the print-safe export pair (TIFF + PDF·print) carrying
+ * the GRACoL separation and the MediaBox/TrimBox/BleedBox + GRACoL OutputIntent.
+ *
+ * These are the first tests that drive the STRIP as the primary surface, so they
+ * open the demo through the `?demo=1` deep link (wire-pinned "IMG_4823.jpg", master
+ * 4032×3024, an RGB arrival → intent defaults to sRGB) to the SETTLED fit-zoom
+ * readout and then assert off store-backed signals: the strip's effective-dims
+ * readout (`photo-strip-dims`) and the docked named-step history. Every expected
+ * number is COMPUTED in-test from the same min-axis best-orientation arithmetic the
+ * code derives (effectiveDpi / bleedPx / solveFit ports below) — only the
+ * wire-pinned figures (672 DPI, the 306×450 MediaBox, the 9 pt bleed inset) are
+ * asserted as literals, because those ARE the spec (plan §5, open question #7).
+ *
+ * Print exports are full-res 12 MP replays through the sharp jail (CMYK separates
+ * through the committed GRACoL profile, ≈1.6 s per the v1.4 spike), so the block
+ * runs with extra headroom and downloads get 60 s.
+ */
+
+/** effectiveDpi port (geometry.ts): the limiting axis of each orientation, the
+    better of the two, floored — the strip's own DPI arithmetic, recomputed here so
+    the expected number is derived from the live strip dims, never hardcoded. */
+function computeDpi(px: { w: number; h: number }, inches: { w: number; h: number }): number {
+  const upright = Math.min(px.w / inches.w, px.h / inches.h);
+  const turned = Math.min(px.w / inches.h, px.h / inches.w);
+  return Math.floor(Math.max(upright, turned));
+}
+
+/** dpiVerdict port (geometry.ts): ≥300 green, ≥100 amber, <100 red. */
+function computeVerdict(dpi: number): "green" | "amber" | "red" {
+  return dpi >= 300 ? "green" : dpi >= 100 ? "amber" : "red";
+}
+
+/** dpiChipCopy port (geometry.ts): green/amber NAME the size, red is size-agnostic. */
+function computeChipCopy(dpi: number, verdict: "green" | "amber" | "red", sizeLabel: string): string {
+  if (verdict === "green") return `${dpi} DPI — great at ${sizeLabel}`;
+  if (verdict === "amber") return `${dpi} DPI — may look soft at ${sizeLabel}`;
+  return `${dpi} DPI — too low at this size`;
+}
+
+/** Read the strip's live effective dims ("4032 × 3024 px") as integers. */
+async function readStripDims(page: Page): Promise<{ w: number; h: number }> {
+  const t = (await stripDims(page).textContent()) ?? "";
+  const nums = t.match(/\d+/g) ?? [];
+  if (nums.length < 2) throw new Error(`strip dims unreadable: "${t}"`);
+  return { w: Number(nums[0]), h: Number(nums[1]) };
+}
+
+/** Open the corpus demo (`?demo=1` → IMG_4823.jpg) to the settled canvas, no tool
+    active — the shared PE5 setup (mirrors openDemoInCrop's waits, but the strip,
+    not a panel, is the surface under test). */
+async function openDemoForPrint(page: Page) {
+  await page.goto("/photo?demo=1");
+  await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+  await expect(page.getByTestId("photo-filename")).toHaveText("IMG_4823.jpg", { timeout: 30_000 });
+  await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+}
+
+/** Set the print target to a PRINT_SIZES sku through the strip's `Change ▾`
+    dropdown (a document mutation — no history op). */
+async function pickTargetViaStrip(page: Page, sku: string) {
+  await page.getByTestId("photo-target-change").click();
+  await expect(page.getByTestId("photo-target-menu")).toBeVisible();
+  await page.getByTestId(`photo-target-size-${sku}`).click();
+  await expect(page.getByTestId("photo-target-menu")).toHaveCount(0);
+}
+
+/** Drive the Fix-for-print numeric resize to exact dims and confirm the strip
+    lands on them (the deterministic way to shrink effective pixels — a handle-drag
+    crop can't hit a precise DPI band across canvas sizes; the DPI verdict logic is
+    identical whichever geometry op shrank the raster). */
+async function resizeVia(page: Page, w: number, h: number) {
+  await page.getByTestId("fixprint-resize-w").fill(String(w));
+  await page.getByTestId("fixprint-resize-h").fill(String(h));
+  await page.getByTestId("fixprint-resize-apply").click();
+  await expect(stripDims(page)).toHaveText(`${w} × ${h} px`);
+}
+
+/** Click Export file, save the download, return the on-disk path. */
+async function exportAndSave(
+  page: Page,
+  testInfo: import("@playwright/test").TestInfo,
+  filename: string,
+): Promise<string> {
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 60_000 }),
+    page.getByTestId("export-file").click(),
+  ]);
+  const out = testInfo.outputPath(filename);
+  await download.saveAs(out);
+  // The render resolved (the download fired) → the button re-enables; wait for it
+  // so a follow-up export in the same test never races the rendering guard.
+  await expect(page.getByTestId("export-file")).toBeEnabled();
+  return out;
+}
+
+test.describe("Print correctness (PE5)", () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  test("the worked example: 672 green at 4×6, then amber and red as dims shrink — advisory never blocks export", async ({
+    page,
+  }, testInfo) => {
+    await openDemoForPrint(page);
+    const chip = page.getByTestId("photo-dpi-chip");
+
+    // Before a target: the neutral prompt, no verdict.
+    await expect(chip).toHaveAttribute("data-verdict", "none");
+    await expect(chip).toHaveText("Pick a print size to check DPI");
+
+    // Pick 4 × 6 → the wire-pinned worked example: 4032×3024 @ 4×6 = 672 DPI, green,
+    // copy verbatim (672 is spec, asserted as a literal).
+    await pickTargetViaStrip(page, "4x6");
+    await expect(stripDims(page)).toHaveText("4032 × 3024 px");
+    await expect(chip).toHaveAttribute("data-verdict", "green");
+    await expect(chip).toHaveText("672 DPI — great at 4 × 6");
+    // Sanity: the strip's arithmetic reproduces 672 from the live dims.
+    expect(computeDpi(await readStripDims(page), { w: 4, h: 6 })).toBe(672);
+
+    // Enter Fix for print to reach the numeric resize (shrinks effective px
+    // deterministically — see resizeVia's note).
+    await page.getByTestId("photo-rail-fixprint").click();
+    await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+
+    // ── AMBER ── shrink until 100 ≤ DPI < 300. Compute the expected verdict + copy
+    // from the resulting strip dims (never hardcode the derived DPI).
+    await resizeVia(page, 1200, 900);
+    {
+      const dims = await readStripDims(page);
+      const dpi = computeDpi(dims, { w: 4, h: 6 });
+      const verdict = computeVerdict(dpi);
+      expect(verdict).toBe("amber"); // guards the test's own choice of dims
+      // Close the panel so the chip's click-through is tested from the no-tool
+      // state (a real navigation, not a no-op while already in Fix for print).
+      await page.getByTestId("photo-panel-close").click();
+      await expect(page.getByTestId("photo-fixprint-panel")).toHaveCount(0);
+      await expect(chip).toHaveAttribute("data-verdict", "amber");
+      await expect(chip).toContainText(computeChipCopy(dpi, verdict, "4 × 6"));
+      await expect(page.getByTestId("photo-dpi-fix")).toHaveText("Fix →");
+      // Amber "Fix →" navigates to Fix for print.
+      await page.getByTestId("photo-dpi-fix").click();
+      await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+    }
+
+    // ── RED ── shrink further to DPI < 100. Copy is size-agnostic ("too low at
+    // this size"), action becomes "Upscale →".
+    await resizeVia(page, 500, 375);
+    {
+      const dims = await readStripDims(page);
+      const dpi = computeDpi(dims, { w: 4, h: 6 });
+      const verdict = computeVerdict(dpi);
+      expect(verdict).toBe("red");
+      await page.getByTestId("photo-panel-close").click();
+      await expect(page.getByTestId("photo-fixprint-panel")).toHaveCount(0);
+      await expect(chip).toHaveAttribute("data-verdict", "red");
+      await expect(chip).toContainText(computeChipCopy(dpi, verdict, "4 × 6"));
+      await expect(page.getByTestId("photo-dpi-fix")).toHaveText("Upscale →");
+      await page.getByTestId("photo-dpi-fix").click();
+      await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+    }
+
+    // NO EXPORT BLOCKING: a red chip is advisory — a JPG export still succeeds,
+    // shipping the shrunk raster (500 × 375) to disk.
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    const out = await exportAndSave(page, testInfo, "pe5-red-export.jpg");
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(meta.width).toBe(500);
+    expect(meta.height).toBe(375);
+  });
+
+  test("bleed chain: not-set → Add → Apply pushes one 'Expand bleed 0.125 in' step, the strip flips, dims grow 2×84 px, guides render", async ({
+    page,
+  }) => {
+    await openDemoForPrint(page);
+    await pickTargetViaStrip(page, "4x6");
+
+    // Guides render whenever a target is set and Crop isn't active (here: no tool).
+    await expect(page.getByTestId("photo-guide-chrome")).toBeVisible();
+    await expect(page.getByTestId("photo-guide-legend")).toBeVisible();
+
+    // Bleed is "not set" with an Add affordance; history sits at the Open step.
+    await expect(page.getByTestId("photo-print-strip")).toContainText("Bleed: not set");
+    await expect(page.getByTestId("photo-bleed-add")).toBeVisible();
+    await expectHistory(page, 1);
+
+    // Add → opens Fix for print; Expand to bleed pushes exactly one step.
+    await page.getByTestId("photo-bleed-add").click();
+    await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+    await page.getByTestId("fixprint-bleed-apply").click();
+
+    // Effective dims grow by 2 × bleedPx(0.125 in) per axis. bleedPx =
+    // round(0.125 × effectiveDpi) = round(0.125 × 672) = 84 → 4032×3024 → 4200×3192.
+    const src = { w: 4032, h: 3024 };
+    const px = Math.max(1, Math.round(0.125 * computeDpi(src, { w: 4, h: 6 })));
+    expect(px).toBe(84);
+    await expect(stripDims(page)).toHaveText(`${src.w + 2 * px} × ${src.h + 2 * px} px`);
+    await expect(stripDims(page)).toHaveText("4200 × 3192 px");
+
+    // Exactly one new history step, wire-pinned label; strip flips to the ✓ state.
+    await expectHistory(page, 2);
+    const labels = await historyStepLabels(page);
+    expect(labels).toEqual(["Open IMG_4823.jpg", "Expand bleed 0.125 in"]);
+    await closeHistoryDock(page);
+
+    await expect(page.getByTestId("photo-bleed-state")).toBeVisible();
+    await expect(page.getByTestId("photo-bleed-state")).toContainText("0.125 in");
+    await expect(page.getByTestId("photo-bleed-add")).toHaveCount(0);
+
+    // Guides still render after the bleed applies (target set, Fix-for-print active).
+    await expect(page.getByTestId("photo-guide-chrome")).toBeVisible();
+  });
+
+  test("fit to size: fill + an off-center anchor is one 'Fit to size · fill' step matching the stored crop; undo restores", async ({
+    page,
+  }) => {
+    await openDemoForPrint(page);
+    await pickTargetViaStrip(page, "4x6");
+    await page.getByTestId("photo-rail-fixprint").click();
+    await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+
+    const eff0 = await readStripDims(page); // 4032 × 3024
+    await expectHistory(page, 1);
+
+    // Fill mode + an off-center (top-left) anchor.
+    await page.getByTestId("fixprint-fit-fill").click();
+    await expect(page.getByTestId("fixprint-fit-fill")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("fixprint-anchor-0").click();
+    await expect(page.getByTestId("fixprint-anchor-0")).toHaveAttribute("aria-pressed", "true");
+
+    // Expected fill crop = solveFit port: the panel orients 4×6 to the image
+    // (landscape → aspect 1.5), then fill = the largest 1.5-aspect rect inside the
+    // image. Anchor only shifts x/y, so the stored rect's DIMS are anchor-independent.
+    const baseA = 4 / 6;
+    const imgA = eff0.w / eff0.h;
+    const targetA = Math.abs(baseA - imgA) <= Math.abs(1 / baseA - imgA) ? baseA : 1 / baseA;
+    const rw = Math.min(eff0.w, eff0.h * targetA);
+    const fw = Math.min(eff0.w, Math.max(1, Math.round(rw)));
+    const fh = Math.min(eff0.h, Math.max(1, Math.round(rw / targetA)));
+    expect({ w: fw, h: fh }).toEqual({ w: 4032, h: 2688 }); // guards the port
+
+    await page.getByTestId("fixprint-fit-apply").click();
+    await expect(stripDims(page)).toHaveText(`${fw} × ${fh} px`);
+    await expectHistory(page, 2);
+    const labels = await historyStepLabels(page);
+    expect(labels).toEqual(["Open IMG_4823.jpg", "Fit to size · fill"]);
+    await closeHistoryDock(page);
+
+    // Undo restores the pre-fit raster and the cursor.
+    await page.getByTestId("photo-undo").click();
+    await expect(stripDims(page)).toHaveText(`${eff0.w} × ${eff0.h} px`);
+    await expectHistory(page, 1);
+  });
+
+  test("numeric resize: Apply matches the strip and labels the step 'Resize to W × H px'", async ({
+    page,
+  }) => {
+    await openDemoForPrint(page);
+    await page.getByTestId("photo-rail-fixprint").click();
+    await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+    await expectHistory(page, 1);
+
+    // Enter exact dims; the strip lands on them and the step is wire-labelled.
+    await resizeVia(page, 1600, 1200);
+    await expectHistory(page, 2);
+    const labels = await historyStepLabels(page);
+    expect(labels).toEqual(["Open IMG_4823.jpg", "Resize to 1600 × 1200 px"]);
+    await closeHistoryDock(page);
+  });
+
+  test("one-click CMYK + TIFF export: cmyk TIFF is 4-channel with an ICC profile; sRGB TIFF is 3-channel", async ({
+    page,
+  }, testInfo) => {
+    await openDemoForPrint(page);
+
+    // The RGB arrival starts on sRGB intent with the one-click convert affordance.
+    await expect(page.getByTestId("photo-print-strip")).toContainText("sRGB · converted for press at export");
+    await expect(page.getByTestId("photo-convert-cmyk")).toBeVisible();
+
+    // One click flips the intent → the strip note reads CMYK.
+    await page.getByTestId("photo-convert-cmyk").click();
+    await expect(page.getByTestId("photo-print-strip")).toContainText("CMYK · GRACoL at export");
+
+    // The Export panel's intent segment reflects the document.
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    await expect(page.getByTestId("export-intent-cmyk")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("export-intent-srgb")).toHaveAttribute("aria-pressed", "false");
+
+    // TIFF export → separated through GRACoL: 4-channel CMYK with the profile embedded.
+    await page.getByTestId("export-format-tiff").click();
+    await expect(page.getByTestId("export-format-tiff")).toHaveAttribute("aria-pressed", "true");
+    const cmykOut = await exportAndSave(page, testInfo, "pe5-cmyk.tif");
+    const cmykMeta = await sharp(cmykOut).metadata();
+    expect(cmykMeta.format).toBe("tiff");
+    expect(cmykMeta.space).toBe("cmyk");
+    expect(cmykMeta.channels).toBe(4);
+    expect(Buffer.isBuffer(cmykMeta.icc)).toBe(true);
+    expect((cmykMeta.icc as Buffer).length).toBeGreaterThan(0);
+
+    // Switch back to sRGB via the segment → a 3-channel sRGB TIFF.
+    await page.getByTestId("export-intent-srgb").click();
+    await expect(page.getByTestId("export-intent-srgb")).toHaveAttribute("aria-pressed", "true");
+    const srgbOut = await exportAndSave(page, testInfo, "pe5-srgb.tif");
+    const srgbMeta = await sharp(srgbOut).metadata();
+    expect(srgbMeta.format).toBe("tiff");
+    expect(srgbMeta.space).toBe("srgb");
+    expect(srgbMeta.channels).toBe(3);
+  });
+
+  test("PDF boxes from the UI: 4×6 + bleed + CMYK → MediaBox/TrimBox/BleedBox, GRACoL OutputIntent, DeviceCMYK", async ({
+    page,
+  }, testInfo) => {
+    await openDemoForPrint(page);
+    await pickTargetViaStrip(page, "4x6");
+    await page.getByTestId("photo-rail-fixprint").click();
+    await expect(page.getByTestId("photo-fixprint-panel")).toBeVisible();
+
+    // FULL-RESOLUTION on purpose — this is the regression test for the PE5 e2e
+    // finding: the 13.4 MP bleed-expanded CMYK JPEG encode used to exhaust the
+    // render host's RLIMIT_AS ("VipsJpeg: Insufficient memory (case 4)" —
+    // mozjpeg buffers the whole image for CMYK). Fixed by dropping mozjpeg for
+    // CMYK encodes in photo-worker.mjs + a 4 GiB AS ceiling in limits.ts; if
+    // either regresses, this download fails as a decode-failed render error.
+
+    // Apply bleed (the fixprint panel's Expand-to-bleed) — "bleed applied".
+    await page.getByTestId("fixprint-bleed-apply").click();
+    await expect(page.getByTestId("photo-bleed-state")).toContainText("0.125 in");
+
+    // Convert to CMYK so the PDF carries a DeviceCMYK image + the GRACoL intent.
+    await page.getByTestId("photo-convert-cmyk").click();
+    await expect(page.getByTestId("photo-print-strip")).toContainText("CMYK · GRACoL at export");
+
+    // Export the PDF·print.
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    await page.getByTestId("export-format-pdf").click();
+    await expect(page.getByTestId("export-format-pdf")).toHaveAttribute("aria-pressed", "true");
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 60_000 }),
+      page.getByTestId("export-file").click(),
+    ]);
+    expect(download.suggestedFilename()).toBe("IMG_4823-edited.pdf");
+    const out = testInfo.outputPath("pe5-boxes.pdf");
+    await download.saveAs(out);
+
+    // Read the PDF bytes and assert the print geometry the RIP reads. 4×6 trim +
+    // 0.125 in bleed at 72 pt/in → MediaBox/BleedBox = (4.25×6.25)·72 = 306×450;
+    // TrimBox inset by 0.125·72 = 9 → [9 9 297 441]. These are wire-pinned.
+    const text = (await readFile(out)).toString("latin1");
+    expect(text).toMatch(/\/MediaBox\s*\[0 0 306 450\]/);
+    expect(text).toMatch(/\/TrimBox\s*\[9 9 297 441\]/);
+    expect(text).toMatch(/\/BleedBox\s*\[0 0 306 450\]/); // BleedBox == MediaBox
+    expect(text).toMatch(/\/GTS_PDFX/); // the GRACoL OutputIntent subtype
+    expect(text).toMatch(/\/DeviceCMYK/); // cmyk intent → DeviceCMYK image
+  });
+
+  test("PNG downgrade honesty: cmyk intent + PNG export notes the sRGB downgrade and ships a 3-channel sRGB PNG", async ({
+    page,
+  }, testInfo) => {
+    await openDemoForPrint(page);
+
+    // Convert to CMYK, then choose PNG (which can't carry CMYK).
+    await page.getByTestId("photo-convert-cmyk").click();
+    await expect(page.getByTestId("photo-print-strip")).toContainText("CMYK · GRACoL at export");
+
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    await page.getByTestId("export-format-png").click();
+    await expect(page.getByTestId("export-format-png")).toHaveAttribute("aria-pressed", "true");
+
+    const out = await exportAndSave(page, testInfo, "pe5-downgrade.png");
+
+    // The post-export note (the intentDowngraded surface) appears, verbatim.
+    await expect(page.getByTestId("export-note")).toBeVisible();
+    await expect(page.getByTestId("export-note")).toHaveText(
+      "Exported in sRGB — this format can't carry CMYK.",
+    );
+
+    // The bytes confirm the honest downgrade: 3-channel sRGB PNG.
+    const meta = await sharp(out).metadata();
+    expect(meta.format).toBe("png");
+    expect(meta.space).toBe("srgb");
+    expect(meta.channels).toBe(3);
+  });
+});

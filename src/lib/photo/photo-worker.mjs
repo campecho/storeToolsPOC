@@ -366,7 +366,15 @@ async function render(sharp, job) {
         encoded = await pipe.tiff({ quality, compression: "lzw" }).toBuffer({ resolveWithObject: true });
         mime = "image/tiff";
       } else {
-        encoded = await pipe.jpeg({ quality, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+        // mozjpeg buffers the ENTIRE image for its optimized-scan search, and a
+        // 13+ MP CMYK frame blows the RLIMIT_AS ceiling ("VipsJpeg: Insufficient
+        // memory (case 4)") — the PE5 e2e sweep's finding. Baseline libjpeg
+        // streams, so CMYK encodes drop mozjpeg; sRGB keeps it (smaller files,
+        // half the channel volume). No golden carries a CMYK JPEG, so bytes of
+        // committed fixtures are unaffected.
+        encoded = await pipe
+          .jpeg({ quality, mozjpeg: !wantsCmyk })
+          .toBuffer({ resolveWithObject: true });
         mime = "image/jpeg";
       }
     }

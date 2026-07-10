@@ -47,13 +47,16 @@ export const RENDER_TIMEOUT_MS = envInt("STP_PHOTO_RENDER_TIMEOUT_MS", 60_000);
 export const PHOTO_CPU_SECONDS = envInt("STP_PHOTO_CPU_SECONDS", 25);
 
 /**
- * prlimit RLIMIT_AS for jail subprocesses, bytes. 2 GiB: an 80 MP RGBA frame
- * is ~320 MB raw and libvips pipelines carry a few working copies; the
- * ceiling caps runaway allocation, not honest work. (Caveat inherited from
- * pub2raw: an RLIMIT_AS overrun kills the child at malloc and classifies as
+ * prlimit RLIMIT_AS for jail subprocesses, bytes. 4 GiB: an 80 MP RGBA frame
+ * is ~320 MB raw and libvips pipelines carry a few working copies — and the
+ * PE5 e2e sweep measured a 13.4 MP CMYK encode brushing 2 GiB (whole-image
+ * JPEG buffering; the worker also drops mozjpeg for CMYK, the bigger half of
+ * the fix), so 2 GiB starved honest work at station-typical sizes. The
+ * ceiling still caps runaway allocation. (Caveat inherited from pub2raw: an
+ * RLIMIT_AS overrun kills the child at malloc and classifies as
  * `parse-failed`/decode-failed, not `resource-limit` — v1.4.)
  */
-export const PHOTO_AS_BYTES = envInt("STP_PHOTO_AS_BYTES", 2 * 1024 * 1024 * 1024);
+export const PHOTO_AS_BYTES = envInt("STP_PHOTO_AS_BYTES", 4 * 1024 * 1024 * 1024);
 
 /**
  * Screen-proxy ceiling, long-edge pixels (plan §1.3 / open question #6 —
