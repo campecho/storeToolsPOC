@@ -53,9 +53,36 @@ function post(fileBytes: Uint8Array, filename: string, payload?: unknown): Promi
   return POST(new Request("http://test/api/photo/render", { method: "POST", body: fd }));
 }
 
-/** A small, valid PNG master. */
+/** A small, valid PNG master (solid #3366aa = rgb(51,102,170) blue). */
 function png(w = 400, h = 300): Promise<Buffer> {
   return sharp({ create: { width: w, height: h, channels: 3, background: "#3366aa" } }).png().toBuffer();
+}
+
+/** A pre-rendered overlay PNG raster with an alpha channel (PE6). */
+function overlay(
+  w = 40,
+  h = 20,
+  color: { r: number; g: number; b: number } = { r: 255, g: 0, b: 0 },
+): Promise<Buffer> {
+  return sharp({ create: { width: w, height: h, channels: 4, background: { ...color, alpha: 1 } } })
+    .png()
+    .toBuffer();
+}
+
+/** POST with a `file`, a `payload`, and one `overlay:<id>` part per entry. */
+function postWithOverlays(
+  fileBytes: Uint8Array,
+  filename: string,
+  payload: unknown,
+  overlayParts: Record<string, Uint8Array>,
+): Promise<Response> {
+  const fd = new FormData();
+  fd.append("file", new File([new Uint8Array(fileBytes)], filename));
+  fd.append("payload", payloadPart(payload));
+  for (const [id, bytes] of Object.entries(overlayParts)) {
+    fd.append(`overlay:${id}`, new File([new Uint8Array(bytes)], `${id}.png`));
+  }
+  return POST(new Request("http://test/api/photo/render", { method: "POST", body: fd }));
 }
 
 /** Parse an error body and assert it satisfies the binding error contract. */
@@ -181,31 +208,6 @@ describe("POST /api/photo/render — request-shape gates (bad-recipe)", () => {
 });
 
 describe("POST /api/photo/render — op screening (unsupported-op)", () => {
-  it("rejects a textOverlay op with 422 unsupported-op, naming the op and its PE6 tranche", async () => {
-    const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
-      recipe: [
-        {
-          op: "textOverlay",
-          label: "Text",
-          id: "t1",
-          text: "hi",
-          font: { family: "Arimo", size: 24, bold: false, italic: false },
-          color: "#000000",
-          align: "left",
-          box: { x: 0, y: 0, w: 50, h: 20 },
-          rotation: 0,
-        },
-      ],
-      format: "png",
-      quality: 90,
-    });
-    expect(res.status).toBe(422);
-    const body = await parsedError(res);
-    expect(body).toMatchObject({ ok: false, code: "unsupported-op" });
-    expect(body.message).toContain("textOverlay");
-    expect(body.message).toContain("PE6");
-  });
-
   it("rejects an erase op naming its PE9 tranche (still unsupported)", async () => {
     const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
       recipe: [{ op: "erase", label: "Remove object", maskAssetId: "mask-1" }],
@@ -216,6 +218,127 @@ describe("POST /api/photo/render — op screening (unsupported-op)", () => {
     const body = await parsedError(res);
     expect(body).toMatchObject({ ok: false, code: "unsupported-op" });
     expect(body.message).toContain("PE9");
+  });
+});
+
+describe("POST /api/photo/render — overlays (PE6)", () => {
+  it(
+    "accepts a textOverlay op in the recipe (200) and ignores it in the geometry fold (dims unchanged)",
+    async () => {
+      // The overlay op is the client's HISTORY representation — the server never
+      // draws it (fonts live client-side); with no `overlays` sidecar it renders
+      // the base image, dims untouched.
+      const res = await post(new Uint8Array(await png(400, 300)), "master.png", {
+        recipe: [
+          {
+            op: "textOverlay",
+            label: "Add text",
+            id: "t1",
+            text: "hi",
+            font: { family: "Arimo", size: 24, bold: false, italic: false },
+            color: "#000000",
+            align: "left",
+            box: { x: 0, y: 0, w: 50, h: 20 },
+            rotation: 0,
+          },
+        ],
+        format: "png",
+        quality: 90,
+      });
+      expect(res.status).toBe(200);
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect([meta.width, meta.height]).toEqual([400, 300]);
+    },
+    30_000,
+  );
+
+  it(
+    "composites a declared overlay (200) — the overlay region turns red, off-region stays base blue",
+    async () => {
+      const mark = await overlay(40, 20, { r: 255, g: 0, b: 0 }); // opaque red
+      const res = await postWithOverlays(
+        new Uint8Array(await png(400, 300)),
+        "master.png",
+        { recipe: [], format: "png", quality: 90, overlays: [{ id: "mark", left: 50, top: 60, width: 40, height: 20 }] },
+        { mark: new Uint8Array(mark) },
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      const { data, info } = await sharp(Buffer.from(await res.arrayBuffer()))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const at = (x: number, y: number) => {
+        const i = (y * info.width + x) * 4;
+        return [data[i], data[i + 1], data[i + 2]];
+      };
+      // ON the overlay (70,70): red.
+      const on = at(70, 70);
+      expect(on[0]).toBeGreaterThan(200);
+      expect(on[2]).toBeLessThan(80);
+      // OFF the overlay (300,200): the base #3366aa blue (R low, B high).
+      const off = at(300, 200);
+      expect(off[0]).toBeLessThan(120);
+      expect(off[2]).toBeGreaterThan(120);
+    },
+    30_000,
+  );
+
+  it("rejects a declared overlay with no matching part (400 bad-recipe)", async () => {
+    const res = await post(new Uint8Array(await png(400, 300)), "master.png", {
+      recipe: [],
+      format: "png",
+      overlays: [{ id: "mark", left: 10, top: 10, width: 40, height: 20 }],
+    });
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an overlay part with no matching declaration (400 bad-recipe)", async () => {
+    const res = await postWithOverlays(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [], format: "png" }, // no overlays declared
+      { stray: new Uint8Array(await overlay(40, 20)) },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an overlay part over the 8 MB byte cap (400 bad-recipe) — before any decode", async () => {
+    const huge = new Uint8Array(8 * 1024 * 1024 + 1); // > MAX_OVERLAY_BYTES; never decoded
+    const res = await postWithOverlays(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [], format: "png", overlays: [{ id: "big", left: 0, top: 0, width: 40, height: 20 }] },
+      { big: huge },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an overlay whose decoded dims don't match the declared width/height (400)", async () => {
+    const mark = await overlay(50, 50); // actual 50×50
+    const res = await postWithOverlays(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [], format: "png", overlays: [{ id: "mark", left: 0, top: 0, width: 40, height: 20 }] }, // declared 40×20
+      { mark: new Uint8Array(mark) },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an overlay whose placement overflows the output dims (400)", async () => {
+    const mark = await overlay(40, 20);
+    const res = await postWithOverlays(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [], format: "png", overlays: [{ id: "mark", left: 380, top: 10, width: 40, height: 20 }] }, // 380+40=420 > 400
+      { mark: new Uint8Array(mark) },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
   });
 });
 

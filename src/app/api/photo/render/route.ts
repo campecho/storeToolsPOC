@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sniffImageMime } from "@/lib/import/image-meta";
+import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
 // One AV seam for the whole suite: reuse the import stack's logging stub
 // (plan §3.6 — "same seam as import"). Nothing scans yet; the call site exists
 // so the engine decision has a single place to fill.
@@ -8,7 +8,13 @@ import { isGeometryOp } from "@/lib/photo/geometry";
 import { cmykPreservePath, isCmykTiff, tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { scanJpeg, wrapImagePdf } from "@/lib/photo/pdf-wrap";
-import { GRACOL_IDENTIFIER, gracolProfileBytes, renderImage } from "@/lib/photo/render-host";
+import {
+  compileRenderPlan,
+  GRACOL_IDENTIFIER,
+  gracolProfileBytes,
+  masterDimensions,
+  renderImage,
+} from "@/lib/photo/render-host";
 import {
   RenderErrorSchema,
   RenderPayloadSchema,
@@ -36,6 +42,14 @@ import {
 
 export const runtime = "nodejs";
 
+/**
+ * Per-overlay raster byte cap (PE6, §3.6 — "overlay rasters size-capped and
+ * re-encoded"). 8 MB is generous for a PNG placement rendered at export
+ * resolution; anything larger is rejected before a byte reaches the jail. The
+ * jail re-encode (worker decode+resize) is the sanitizer; this is the DoS guard.
+ */
+const MAX_OVERLAY_BYTES = 8 * 1024 * 1024;
+
 /** HTTP status for each render failure code (plan §4 PE3 mapping). */
 const STATUS_FOR: Record<RenderErrorCode, number> = {
   "bad-recipe": 400,
@@ -49,20 +63,30 @@ const STATUS_FOR: Record<RenderErrorCode, number> = {
 
 /**
  * The tranche each still-unsupported op renders from, for the `unsupported-op`
- * message ("'textOverlay' ops render from PE6"). Ops that render HERE — geometry
+ * message ("'erase' ops render from PE9"). Ops that render HERE — geometry
  * (crop/rotate/flip/straighten + the PE5 print-geometry resize/bleedExpand/
- * fitToSize) and tone/colour (adjust/autoEnhance, PE4) — are absent from this map.
+ * fitToSize), tone/colour (adjust/autoEnhance, PE4), and the PE6 overlay ops
+ * (textOverlay/logoOverlay — ACCEPTED and IGNORED by the geometry fold; the
+ * pixels ride the `overlays` sidecar) — are absent from this map.
  */
 const OP_TRANCHE: Record<string, string> = {
-  textOverlay: "ops render from PE6",
-  logoOverlay: "ops render from PE6",
   erase: "ops render from PE9",
 };
 
 /** The op tags the render spine can replay today: geometry (incl. the PE5
-    print-geometry ops, via isGeometryOp) + PE4 tone/colour. */
+    print-geometry ops, via isGeometryOp) + PE4 tone/colour + the PE6 overlay
+    ops. The overlay ops carry no server-side draw — they are the client's
+    history representation and compileRenderPlan skips them (the pre-rendered
+    rasters arrive as the `overlays` sidecar, §3.3) — but the recipe must be
+    ACCEPTED so a persisted document with overlay history renders. */
 function isRenderableOp(op: PhotoOp): boolean {
-  return isGeometryOp(op) || op.op === "adjust" || op.op === "autoEnhance";
+  return (
+    isGeometryOp(op) ||
+    op.op === "adjust" ||
+    op.op === "autoEnhance" ||
+    op.op === "textOverlay" ||
+    op.op === "logoOverlay"
+  );
 }
 
 /** Build a schema-checked JSON error (dev asserts the contract; tests too). */
@@ -70,6 +94,95 @@ function fail(status: number, code: RenderErrorCode, message: string): NextRespo
   const body: RenderError = { ok: false, code, message };
   if (process.env.NODE_ENV !== "production") RenderErrorSchema.parse(body);
   return NextResponse.json(body, { status });
+}
+
+/**
+ * Collect, validate, and re-key the pre-rendered overlay rasters (PE6, §3.3,
+ * §3.6). The pixels ride SEPARATE multipart parts named `overlay:<id>`, one per
+ * `payload.overlays` entry. This gate is where the UNTRUSTED client raster meets
+ * the server's rules BEFORE a byte reaches the jail:
+ *   • a declared overlay with no `overlay:<id>` part → 400 bad-recipe;
+ *   • an `overlay:<id>` part with no matching declaration → 400 bad-recipe;
+ *   • a part over MAX_OVERLAY_BYTES → 400 bad-recipe (the DoS guard);
+ *   • decoded header dims ≠ the DECLARED width/height → 400 bad-recipe;
+ *   • a placement box that doesn't fit inside the final-output dims → 400.
+ * The dims read is a cheap HEADER sniff (no decode in this process — sharp never
+ * runs here, §3.6); the worker's decode+resize+composite is the real re-encode
+ * that sanitizes the raster. On success the map is keyed by the jail-local
+ * basename `overlay-<id>.png` the composite steps reference, ready for renderImage.
+ */
+async function collectOverlays(
+  form: FormData,
+  payload: RenderPayload,
+  master: Buffer,
+): Promise<
+  { ok: true; attachments?: Record<string, Buffer> } | { ok: false; response: NextResponse }
+> {
+  const declared = payload.overlays ?? [];
+
+  // Gather every `overlay:<id>` part up front so a part-without-declaration is
+  // caught even when nothing was declared.
+  const parts = new Map<string, File>();
+  for (const [key, value] of form.entries()) {
+    if (!key.startsWith("overlay:")) continue;
+    if (!(value instanceof File)) {
+      return { ok: false, response: fail(400, "bad-recipe", `The overlay part '${key}' must be an uploaded image.`) };
+    }
+    parts.set(key.slice("overlay:".length), value);
+  }
+
+  if (declared.length === 0 && parts.size === 0) return { ok: true };
+
+  const declaredIds = new Set(declared.map((o) => o.id));
+  for (const id of parts.keys()) {
+    if (!declaredIds.has(id)) {
+      return { ok: false, response: fail(400, "bad-recipe", `Overlay image 'overlay:${id}' has no matching overlay in the request.`) };
+    }
+  }
+
+  // Final-output pixel space (the effective dims after all geometry) — the
+  // placements must fit here. compileRenderPlan is pure math; the op-screen has
+  // already rejected any un-renderable op, so the catch is defence in depth.
+  const dims = masterDimensions(master);
+  if (!dims) {
+    return { ok: false, response: fail(422, "decode-failed", "The image to render couldn't be read.") };
+  }
+  let out: { w: number; h: number };
+  try {
+    ({ out } = compileRenderPlan(payload.recipe, { w: dims.width, h: dims.height }));
+  } catch {
+    return { ok: false, response: fail(422, "unsupported-op", "This recipe can't be compiled for rendering.") };
+  }
+
+  const attachments: Record<string, Buffer> = {};
+  for (const o of declared) {
+    const part = parts.get(o.id);
+    if (!part) {
+      return { ok: false, response: fail(400, "bad-recipe", `Overlay '${o.id}' is missing its image part 'overlay:${o.id}'.`) };
+    }
+    if (part.size > MAX_OVERLAY_BYTES) {
+      const mb = Math.round(MAX_OVERLAY_BYTES / 1024 / 1024);
+      return { ok: false, response: fail(400, "bad-recipe", `Overlay '${o.id}' is over the ${mb} MB limit for a placed image.`) };
+    }
+    const bytes = Buffer.from(await part.arrayBuffer());
+    const mime = sniffImageMime(bytes);
+    const odims = mime ? imageDimensions(bytes, mime) : undefined;
+    if (!odims || odims.width !== o.width || odims.height !== o.height) {
+      return {
+        ok: false,
+        response: fail(400, "bad-recipe", `Overlay '${o.id}' must be a ${o.width}×${o.height} image to match its placement.`),
+      };
+    }
+    if (o.left < 0 || o.top < 0 || o.left + o.width > out.w || o.top + o.height > out.h) {
+      return {
+        ok: false,
+        response: fail(400, "bad-recipe", `Overlay '${o.id}' doesn't fit inside the ${out.w}×${out.h} export.`),
+      };
+    }
+    attachments[`overlay-${o.id}.png`] = bytes;
+  }
+
+  return { ok: true, attachments };
 }
 
 export async function POST(req: Request) {
@@ -118,7 +231,7 @@ export async function POST(req: Request) {
   for (const op of payload.recipe) {
     if (!isRenderableOp(op)) {
       const tranche = OP_TRANCHE[op.op] ?? "ops aren't supported yet";
-      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, straighten, resize, bleed, fit-to-size, and tone/colour adjust for now.`);
+      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, straighten, resize, bleed, fit-to-size, tone/colour adjust, and text/image overlays for now.`);
     }
   }
 
@@ -127,7 +240,15 @@ export async function POST(req: Request) {
   // AV seam (§3.6) — same logging stub as import; nothing scans yet.
   await avScanHook(file.name, master);
 
-  // 5. CMYK-arrival decision (PE5, §1.3 v1.4). The client sends the preserved
+  // 5. Overlays (PE6): match the `overlay:<id>` parts to payload.overlays,
+  //    size-cap + dimension-check each, and re-key them to the jail basenames
+  //    the composite steps reference. Any mismatch is a friendly 400 before the
+  //    jail. `attachments` is undefined when there are no overlays.
+  const overlayResult = await collectOverlays(form, payload, master);
+  if (!overlayResult.ok) return overlayResult.response;
+  const attachments = overlayResult.attachments;
+
+  // 6. CMYK-arrival decision (PE5, §1.3 v1.4). The client sends the preserved
   //    CMYK master (a tificc TIFF) as `file` ONLY when there are no edits and the
   //    intent is cmyk; anything else arrives as the sharp RGB working master. The
   //    server decides purely from the bytes it holds:
@@ -145,6 +266,7 @@ export async function POST(req: Request) {
     payload.intent === "cmyk" &&
     payload.format === "tiff" &&
     recipeEmpty &&
+    !attachments && // overlays force the sharp composite path, never the identity preserve
     inputIsCmykTiff &&
     (await tificcAvailable())
   ) {
@@ -167,17 +289,17 @@ export async function POST(req: Request) {
   // by sharp; mark it honestly so the UI can surface the recomputed separation.
   const reseparated = payload.intent === "cmyk" && inputIsCmykTiff;
 
-  // 6. PDF: the worker renders a JPEG (quality ≥ 92, colour per intent) and
+  // 7. PDF: the worker renders a JPEG (quality ≥ 92, colour per intent) and
   //    pdf-wrap frames it with the print boxes + (for cmyk) the GRACoL
   //    OutputIntent. pdf-wrap scans the JPEG internally for the Adobe /Decode
   //    inversion, so we don't double-handle it here.
   if (payload.format === "pdf") {
-    return renderPdf(master, payload, reseparated);
+    return renderPdf(master, payload, reseparated, attachments);
   }
 
-  // 7. Normal raster render (jpeg/png/tiff). Replay in the jail; the master
+  // 8. Normal raster render (jpeg/png/tiff). Replay in the jail; the master
   //    bytes drop out of scope after (nothing persists them — §1.4).
-  const result = await renderImage(master, payload);
+  const result = await renderImage(master, payload, attachments);
   if (!result.ok) {
     return fail(STATUS_FOR[result.code] ?? 500, result.code, result.message);
   }
@@ -207,9 +329,10 @@ async function renderPdf(
   master: Buffer,
   payload: RenderPayload,
   reseparated: boolean,
+  attachments?: Record<string, Buffer>,
 ): Promise<NextResponse> {
   const jpegPayload: RenderPayload = { ...payload, format: "jpeg", quality: Math.max(payload.quality, 92) };
-  const result = await renderImage(master, jpegPayload);
+  const result = await renderImage(master, jpegPayload, attachments);
   if (!result.ok) return fail(STATUS_FOR[result.code] ?? 500, result.code, result.message);
 
   const scan = scanJpeg(result.bytes);

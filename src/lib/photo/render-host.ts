@@ -447,6 +447,27 @@ export type RenderStep =
       matrix: number[];
       /** When true the worker skips the matrix (tone-only path). */
       identityMatrix: boolean;
+    }
+  | {
+      /**
+       * Composite a pre-rendered overlay raster onto the CURRENT effective image
+       * (text/image overlays, PE6). Fonts live client-side, so overlays reach the
+       * server as PNG rasters, NOT as ops to draw (plan §3.3): compileRenderPlan
+       * appends one composite step per RenderPayload.overlays entry, in order,
+       * AFTER the terminal adjust step — so the tone pass never touches overlay
+       * pixels (overlays are PLACED ART above the adjusted photo, matching the
+       * client preview). `file` is a JAIL-LOCAL basename (`overlay-<id>.png`) the
+       * host wrote via the extraFiles mechanism — never a host path. The worker
+       * decodes it under limitInputPixels, ensures alpha, and RESIZES it to
+       * width×height (fit fill) — that decode+resize IS the sanitize/re-encode of
+       * an UNTRUSTED client raster (§3.6) — then composites at (left, top).
+       */
+      kind: "composite";
+      file: string;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
     };
 
 /**
@@ -458,17 +479,15 @@ export type RenderStep =
  */
 export class UnsupportedRenderOp extends Error {
   constructor(public readonly op: string) {
-    // Named tranches keep the reject honest ("lands with PE6/PE9"), and shrink
-    // as each tranche makes its ops renderable. PE5 folded the print-geometry
-    // ops (resize / bleedExpand / fitToSize) in — they compile now, so they no
-    // longer reach this throw.
+    // Named tranches keep the reject honest ("lands with PE9"), and shrink as
+    // each tranche makes its ops renderable. PE5 folded the print-geometry ops
+    // (resize / bleedExpand / fitToSize) in; PE6 folded the overlay ops in (they
+    // are SKIPPED by compile — the pre-rendered rasters ride the payload's
+    // `overlays` sidecar), so neither reaches this throw anymore. `erase` is the
+    // last op still waiting (PE9).
     super(
       `Render does not support '${op}' ops yet — ` +
-        (op === "textOverlay" || op === "logoOverlay"
-          ? "they land with PE6."
-          : op === "erase"
-            ? "it lands with PE9."
-            : "unsupported op."),
+        (op === "erase" ? "it lands with PE9." : "unsupported op."),
     );
     this.name = "UnsupportedRenderOp";
   }
@@ -503,10 +522,20 @@ function clampN(v: number, lo: number, hi: number): number {
  * Crop rects are expected in-bounds of the current effective image (the client
  * clamps via geometry.clampRectToImage); the extract offsets are clamped here
  * too so a rounded rect can never address a pixel outside the frame.
+ *
+ * OVERLAYS (PE6): the optional `overlays` are the RenderPayload's pre-rendered
+ * placements (§3.3). They are NOT recipe ops — the recipe's textOverlay/
+ * logoOverlay ops are the client's history representation and are SKIPPED in the
+ * loop below; the pixels ride separate PNG rasters. After the terminal adjust
+ * step, one `composite` step is appended per overlay entry, in array order, so
+ * overlays paint OVER the fully-adjusted image (placed art, not photo content).
+ * Overlays never change the effective dims — their placements are already in
+ * final-output space — so `out` is unaffected.
  */
 export function compileRenderPlan(
   recipe: PhotoOp[],
   source: { w: number; h: number },
+  overlays?: RenderPayload["overlays"],
 ): { steps: RenderStep[]; out: { w: number; h: number } } {
   let curW = intDim(source.w);
   let curH = intDim(source.h);
@@ -612,9 +641,16 @@ export function compileRenderPlan(
         // POINTWISE tone/colour — folded terminally after the loop (below), not
         // per-op. Dims are untouched; nothing to emit here.
         break;
+      case "textOverlay":
+      case "logoOverlay":
+        // The recipe's HISTORY representation of overlays. The server never
+        // draws from these (fonts live client-side, §3.3) — the pre-rendered
+        // rasters ride the payload's `overlays` sidecar and compile to composite
+        // steps AFTER the loop (below). Skipped here; dims untouched.
+        break;
       default:
-        // textOverlay / logoOverlay / erase — not geometry, not tone, not
-        // renderable here yet (they land with PE6/PE9).
+        // erase — not geometry, not tone, not an overlay: not renderable here
+        // yet (it lands with PE9).
         throw new UnsupportedRenderOp(op.op);
     }
   }
@@ -639,6 +675,23 @@ export function compileRenderPlan(
     });
   }
 
+  // Overlay composites, LAST (PE6): one per payload.overlays entry, in array
+  // order (later paints over earlier), AFTER the terminal adjust so the tone
+  // pass never touches overlay pixels. `file` is the jail-local basename the
+  // host wrote via extraFiles; the placements are already in final-output space.
+  if (overlays) {
+    for (const ov of overlays) {
+      steps.push({
+        kind: "composite",
+        file: `overlay-${ov.id}.png`,
+        left: ov.left,
+        top: ov.top,
+        width: ov.width,
+        height: ov.height,
+      });
+    }
+  }
+
   return { steps, out: { w: curW, h: curH } };
 }
 
@@ -654,36 +707,53 @@ function typedRenderFailure(
 }
 
 /**
- * Replay a geometry recipe on `master` at full resolution in the jail, returning
- * the encoded export bytes (binary — the route streams them with the right
- * Content-Type; there is no JSON success envelope). The master's pixel dims come
- * from a cheap, safe HEADER read (`imageDimensions`, or `tiffDimensions` for the
- * preserved-CMYK TIFF a CMYK arrival re-sends — no decode, same posture as the
- * intake content-sniff), since masters are always our own encodes; an unreadable
- * header means the bytes won't decode either → `decode-failed`.
- *
- * Determinism (the PE3 done-when): the compile is pure integer/trig math and the
- * worker's encoder options are fixed, so the same recipe + bytes yields
- * byte-identical output across runs (proven in render-replay.test.ts).
+ * The master's pixel dims via a cheap, safe HEADER read (`imageDimensions`, or
+ * `tiffDimensions` for the preserved-CMYK TIFF a CMYK arrival re-sends — no
+ * decode, same posture as the intake content-sniff), since masters are always
+ * our own encodes; an unreadable header means the bytes won't decode either.
+ * Returns null when even the header won't parse. Shared by `renderImage` and the
+ * render route (which sizes overlay placements against the final-output dims).
  */
-export async function renderImage(
-  master: Buffer,
-  payload: RenderPayload,
-): Promise<{ ok: true; bytes: Buffer; mime: string } | { ok: false; code: RenderErrorCode; message: string }> {
-  // Masters are our own encodes — jpeg/png normally, but a CMYK arrival re-sends
-  // the preserved TIFF (§1.3), so fall back to the TIFF header reader for that.
+export function masterDimensions(master: Buffer): { width: number; height: number } | null {
   const mime = sniffImageMime(master);
   let dims = mime ? imageDimensions(master, mime) : undefined;
   if ((!dims || dims.width < 1 || dims.height < 1) && mime === "image/tiff") {
     dims = tiffDimensions(master);
   }
-  if (!dims || dims.width < 1 || dims.height < 1) {
+  if (!dims || dims.width < 1 || dims.height < 1) return null;
+  return { width: dims.width, height: dims.height };
+}
+
+/**
+ * Replay a geometry recipe on `master` at full resolution in the jail, returning
+ * the encoded export bytes (binary — the route streams them with the right
+ * Content-Type; there is no JSON success envelope).
+ *
+ * `attachments` (PE6) are pre-rendered overlay PNG rasters keyed by their
+ * JAIL-LOCAL basename (`overlay-<id>.png`) — one per `payload.overlays` entry.
+ * They are written into the scratch jail via the extraFiles mechanism (the same
+ * one PE5 uses for the GRACoL ICC) and referenced by the composite steps
+ * compileRenderPlan emits; the worker's decode+resize+composite re-encodes each
+ * UNTRUSTED raster (§3.6). The caller (the render route) has already size-capped
+ * and dimension-checked them against the final-output dims.
+ *
+ * Determinism (the PE3 done-when): the compile is pure integer/trig math and the
+ * worker's encoder options are fixed, so the same recipe + bytes (+ attachments)
+ * yields byte-identical output across runs (proven in render-replay.test.ts).
+ */
+export async function renderImage(
+  master: Buffer,
+  payload: RenderPayload,
+  attachments?: Record<string, Buffer>,
+): Promise<{ ok: true; bytes: Buffer; mime: string } | { ok: false; code: RenderErrorCode; message: string }> {
+  const dims = masterDimensions(master);
+  if (!dims) {
     return { ok: false, code: "decode-failed", message: "The image to render couldn't be read." };
   }
 
   let plan: { steps: RenderStep[]; out: { w: number; h: number } };
   try {
-    plan = compileRenderPlan(payload.recipe, { w: dims.width, h: dims.height });
+    plan = compileRenderPlan(payload.recipe, { w: dims.width, h: dims.height }, payload.overlays);
   } catch (err) {
     if (err instanceof UnsupportedRenderOp) {
       return { ok: false, code: "unsupported-op", message: err.message };
@@ -694,9 +764,16 @@ export async function renderImage(
   // CMYK output (jpeg/tiff with cmyk intent) separates through the committed
   // GRACoL profile — the HOST copies the .icc INTO the jail so the worker never
   // reaches outside its scratch dir for it (§3.6). PNG can't carry CMYK, so it
-  // never triggers the copy (the worker downgrades PNG to sRGB regardless).
+  // never triggers the copy (the worker downgrades PNG to sRGB regardless). The
+  // overlay rasters (PE6) ride the SAME jail-file mechanism, keyed by their
+  // `overlay-<id>.png` basename the composite steps reference.
   const wantsCmyk = payload.intent === "cmyk" && payload.format !== "png";
-  const extraFiles = wantsCmyk ? { "profile.icc": await gracolProfileBytes() } : undefined;
+  let extraFiles: Record<string, Buffer> | undefined;
+  if (wantsCmyk || attachments) {
+    extraFiles = {};
+    if (wantsCmyk) extraFiles["profile.icc"] = await gracolProfileBytes();
+    if (attachments) Object.assign(extraFiles, attachments);
+  }
 
   const run = await runWorker(
     {

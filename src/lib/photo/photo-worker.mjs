@@ -16,6 +16,8 @@
  *                      | { kind: "intake", mime, limits }
  *                      | { kind: "render", steps, format, quality, limits }
  *   <jail>/input.bin   = the raw upload bytes (intake) OR master bytes (render)
+ *   <jail>/overlay-<id>.png = a pre-rendered overlay raster the host wrote for a
+ *                      render `composite` step (PE6) — decoded+resized in-jail
  *   <jail>/master.bin  = working-master image bytes   (intake success)
  *   <jail>/proxy.bin   = screen-proxy image bytes      (intake success)
  *   <jail>/output.bin  = encoded export bytes          (render success)
@@ -314,6 +316,33 @@ async function render(sharp, job) {
         buf = await sharp(data, {
           raw: { width: info.width, height: info.height, channels: 4 },
         })
+          .png()
+          .toBuffer();
+      } else if (step.kind === "composite") {
+        // Placed overlay art (PE6). The overlay PNG the HOST wrote into the jail
+        // (step.file is a jail-local basename, never a host path) is decoded
+        // under the pixel cap, alpha-ensured, and RESIZED to the host-declared
+        // width×height (fit fill). That decode+resize IS the sanitize/re-encode
+        // of an UNTRUSTED client raster (§3.6): a hostile or oversized overlay
+        // dies HERE, in this throwaway jail — and a decode failure surfaces as
+        // decode-failed via the catch below (classifyDecodeError). The overlay is
+        // composited at (left, top) OVER the current image, which already carries
+        // the terminal tone pass — overlays are placed art ABOVE the adjusted
+        // photo (the composite step is appended after adjust by compile), matching
+        // the client preview. JPEG/TIFF/CMYK flatten the overlay's alpha into the
+        // image at the final encode below; PNG keeps it.
+        const w = Math.max(1, Math.round(step.width));
+        const h = Math.max(1, Math.round(step.height));
+        const left = Math.round(step.left);
+        const top = Math.round(step.top);
+        const overlayBytes = await readFile(p(step.file));
+        const overlay = await sharp(overlayBytes, { limitInputPixels })
+          .ensureAlpha()
+          .resize(w, h, { fit: "fill" })
+          .png()
+          .toBuffer();
+        buf = await sharp(buf)
+          .composite([{ input: overlay, left, top }])
           .png()
           .toBuffer();
       } else {

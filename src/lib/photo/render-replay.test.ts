@@ -76,6 +76,27 @@ const fitPad = (pad: { l: number; t: number; r: number; b: number }): PhotoOp =>
 });
 /** A still-unsupported op (renders from PE9) — the op-screen negative case. */
 const eraseOp = (): PhotoOp => ({ op: "erase", label: "Remove object", maskAssetId: "mask-1" });
+/* -- PE6 overlay op builders (the client's HISTORY representation; compile skips
+      them — the pixels ride the payload.overlays sidecar as PNG rasters) -------- */
+const textOverlayOp = (id: string): PhotoOp => ({
+  op: "textOverlay",
+  label: "Add text",
+  id,
+  text: "hi",
+  font: { family: "Arimo", size: 24, bold: false, italic: false },
+  color: "#000000",
+  align: "left",
+  box: { x: 0, y: 0, w: 50, h: 20 },
+  rotation: 0,
+});
+const logoOverlayOp = (id: string): PhotoOp => ({
+  op: "logoOverlay",
+  label: "Add image",
+  id,
+  assetId: "asset-1",
+  box: { x: 0, y: 0, w: 40, h: 40 },
+  rotation: 0,
+});
 
 /**
  * The expected RGBA for a source pixel under a recipe's TERMINAL adjust pass —
@@ -284,6 +305,46 @@ describe("compileRenderPlan — op screening + step shape", () => {
     const circ = compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }, "circle")], SRC).steps[0];
     expect(rect).toEqual({ kind: "extract", left: 0, top: 0, width: 100, height: 100 });
     expect(circ).toMatchObject({ kind: "extract", shape: "circle" });
+  });
+
+  it("SKIPS textOverlay/logoOverlay recipe ops (no throw, no step) — pixels ride the sidecar", () => {
+    // The overlay ops are the client's history representation; the server never
+    // draws from them (fonts live client-side, §3.3), so they compile to nothing.
+    const { steps, out } = compileRenderPlan(
+      [crop({ x: 0, y: 0, w: 100, h: 100 }), textOverlayOp("t1"), logoOverlayOp("l1")],
+      SRC,
+    );
+    expect(steps.map((s) => s.kind)).toEqual(["extract"]);
+    expect(out).toEqual({ w: 100, h: 100 }); // overlay ops never move the frame
+  });
+
+  it("appends composite steps AFTER the terminal adjust, in overlay (array) order", () => {
+    const overlays = [
+      { id: "banner", left: 10, top: 20, width: 30, height: 40 },
+      { id: "logo", left: 50, top: 60, width: 12, height: 12 },
+    ];
+    const { steps } = compileRenderPlan(
+      [crop({ x: 0, y: 0, w: 200, h: 150 }), adjust("brightness", 20)],
+      SRC,
+      overlays,
+    );
+    // extract → terminal adjust → composites, in order.
+    expect(steps.map((s) => s.kind)).toEqual(["extract", "adjust", "composite", "composite"]);
+    expect(steps.filter((s) => s.kind === "composite")).toEqual([
+      { kind: "composite", file: "overlay-banner.png", left: 10, top: 20, width: 30, height: 40 },
+      { kind: "composite", file: "overlay-logo.png", left: 50, top: 60, width: 12, height: 12 },
+    ]);
+  });
+
+  it("emits composite steps directly after geometry when there is no adjust", () => {
+    const { steps, out } = compileRenderPlan([crop({ x: 0, y: 0, w: 120, h: 90 })], SRC, [
+      { id: "mark", left: 5, top: 5, width: 20, height: 20 },
+    ]);
+    expect(steps).toEqual([
+      { kind: "extract", left: 0, top: 0, width: 120, height: 90 },
+      { kind: "composite", file: "overlay-mark.png", left: 5, top: 5, width: 20, height: 20 },
+    ]);
+    expect(out).toEqual({ w: 120, h: 90 }); // overlays never change the effective dims
   });
 });
 
@@ -506,6 +567,136 @@ describe("renderImage — print-geometry ops (resize / bleedExpand / fitToSize)"
       if (!out.ok) return;
       const meta = await sharp(out.bytes).metadata();
       expect([meta.width, meta.height]).toEqual([200, 300]);
+    },
+    30_000,
+  );
+});
+
+/* ========================================================================== */
+/* renderImage — overlay composite (PE6)                                       */
+/* ========================================================================== */
+
+/** An opaque magenta overlay raster with an alpha channel (the client's
+    pre-rendered PNG art; the worker decodes+resizes+composites it as the
+    sanitize/re-encode). Magenta is distinct from every quadrant marker colour. */
+function overlayPng(w: number, h: number): Promise<Buffer> {
+  return sharp({ create: { width: w, height: h, channels: 4, background: { r: 255, g: 0, b: 255, alpha: 1 } } })
+    .png()
+    .toBuffer();
+}
+
+describe("renderImage — overlay composite (PE6)", () => {
+  it(
+    "composites the overlay raster at its placement; off-placement pixels are untouched",
+    async () => {
+      // Overlay placed inside the BL (blue) quadrant so its magenta is unmistakable.
+      const mark = await overlayPng(40, 20);
+      const withOv = await renderImage(
+        await quadPng(),
+        {
+          recipe: [],
+          format: "png",
+          quality: 90,
+          intent: "srgb",
+          overlays: [{ id: "mark", left: 50, top: 200, width: 40, height: 20 }],
+        },
+        { "overlay-mark.png": mark },
+      );
+      const without = await renderImage(await quadPng(), { recipe: [], format: "png", quality: 90, intent: "srgb" });
+      expect(withOv.ok && without.ok).toBe(true);
+      if (!withOv.ok || !without.ok) return;
+
+      // ON the overlay (70,210): magenta over what was blue — the pixel changed.
+      const on = await sample(withOv.bytes, 70, 210);
+      const onBase = await sample(without.bytes, 70, 210);
+      expect(on.rgba).not.toEqual(onBase.rgba);
+      expect(on.rgba[0]).toBeGreaterThan(200); // magenta R
+      expect(on.rgba[2]).toBeGreaterThan(200); // magenta B
+      expect(on.rgba[1]).toBeLessThan(60); // magenta G low
+
+      // OFF the overlay (300,50), the TR green quadrant: byte-for-byte unchanged.
+      const off = await sample(withOv.bytes, 300, 50);
+      const offBase = await sample(without.bytes, 300, 50);
+      expect(off.rgba).toEqual(offBase.rgba);
+    },
+    30_000,
+  );
+
+  it(
+    "composites AFTER the terminal adjust — the tone pass never touches overlay pixels",
+    async () => {
+      // A heavy tone pass would shift a photo pixel; the overlay is placed on top
+      // afterward, so its magenta arrives intact regardless of the adjust.
+      const mark = await overlayPng(40, 20);
+      const out = await renderImage(
+        await quadPng(),
+        {
+          recipe: [adjust("brightness", -80), adjust("saturation", -100)],
+          format: "png",
+          quality: 90,
+          intent: "srgb",
+          overlays: [{ id: "mark", left: 50, top: 200, width: 40, height: 20 }],
+        },
+        { "overlay-mark.png": mark },
+      );
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const on = await sample(out.bytes, 70, 210);
+      // Desaturate+darken would grey/black a photo pixel; the overlay stays magenta.
+      expect(on.rgba[0]).toBeGreaterThan(200);
+      expect(on.rgba[2]).toBeGreaterThan(200);
+      expect(on.rgba[1]).toBeLessThan(60);
+    },
+    30_000,
+  );
+
+  it(
+    "is deterministic with attachments (byte-identical JPEG across two renders)",
+    async () => {
+      const master = await quadPng();
+      const mark = await overlayPng(40, 20);
+      const payload = {
+        recipe: [crop({ x: 20, y: 15, w: 300, h: 240 })],
+        format: "jpeg" as const,
+        quality: 88,
+        intent: "srgb" as const,
+        overlays: [{ id: "mark", left: 10, top: 10, width: 40, height: 20 }],
+      };
+      const a = await renderImage(master, payload, { "overlay-mark.png": mark });
+      const b = await renderImage(master, payload, { "overlay-mark.png": mark });
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.bytes.equals(b.bytes)).toBe(true);
+    },
+    45_000,
+  );
+
+  it(
+    "flattens overlay alpha into JPEG (3 channels, no transparency)",
+    async () => {
+      // A semi-transparent overlay over the photo: JPEG can't carry alpha, so the
+      // final encode flattens it — the overlay blends into the image naturally.
+      const semi = await sharp({
+        create: { width: 40, height: 20, channels: 4, background: { r: 255, g: 0, b: 255, alpha: 0.5 } },
+      })
+        .png()
+        .toBuffer();
+      const out = await renderImage(
+        await quadPng(),
+        {
+          recipe: [],
+          format: "jpeg",
+          quality: 90,
+          intent: "srgb",
+          overlays: [{ id: "mark", left: 50, top: 200, width: 40, height: 20 }],
+        },
+        { "overlay-mark.png": semi },
+      );
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const meta = await sharp(out.bytes).metadata();
+      expect(meta.channels).toBe(3);
+      expect(Boolean(meta.hasAlpha)).toBe(false);
     },
     30_000,
   );

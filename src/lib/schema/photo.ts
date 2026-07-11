@@ -188,6 +188,16 @@ export const FitToSizeOpSchema = z.object({
   pad: FitPadSchema.optional(),
 });
 
+/**
+ * The `hidden` tombstone (PE6). The UI folds the recipe last-wins-per-`id`; a
+ * removed overlay is written back with `hidden: true` rather than spliced out,
+ * so undo/redo across a remove stays a pure cursor move (no history rewrite).
+ * The SERVER NEVER READS overlay ops — overlays reach the render host as
+ * pre-rendered PNG rasters in the RenderPayload `overlays` sidecar, not as ops
+ * to draw (fonts live client-side, plan §3.3) — but the schema must still ACCEPT
+ * a persisted document carrying the tombstone. Optional/additive (pre-release
+ * v1); no persisted document migrates.
+ */
 export const TextOverlayOpSchema = z.object({
   op: z.literal("textOverlay"),
   label: opLabel,
@@ -204,6 +214,8 @@ export const TextOverlayOpSchema = z.object({
   align: z.enum(["left", "center", "right"]),
   box: PixelRectSchema,
   rotation: z.number(),
+  /** Remove-tombstone under the UI's last-wins-per-id fold (see above). */
+  hidden: z.boolean().optional(),
 });
 
 export const LogoOverlayOpSchema = z.object({
@@ -214,6 +226,9 @@ export const LogoOverlayOpSchema = z.object({
   assetId: z.string(),
   box: PixelRectSchema,
   rotation: z.number(),
+  /** Remove-tombstone under the UI's last-wins-per-id fold — same rule as
+      TextOverlayOpSchema.hidden; the server never reads it. */
+  hidden: z.boolean().optional(),
 });
 
 export const EraseOpSchema = z.object({
@@ -444,6 +459,37 @@ export const RenderPayloadSchema = z.object({
       h: z.number().min(0),
       bleed: z.number().min(0),
     })
+    .optional(),
+  /**
+   * Pre-rendered overlay placements (PE6, plan §3.3, §3.6). Fonts live
+   * client-side, so text/logo overlays reach the server as PNG RASTERS, never as
+   * ops to draw — the recipe's textOverlay/logoOverlay ops are the client's
+   * history representation and compileRenderPlan SKIPS them (see render-host).
+   * Each entry is a placement in FINAL-OUTPUT pixel space (the effective dims
+   * AFTER all geometry — overlay boxes already live in effective-master space, so
+   * they pass through 1:1); array order = composite order (later paints over
+   * earlier). The raster bytes ride SEPARATE multipart parts named `overlay:<id>`
+   * (one per entry) — the route matches, size-caps, dimension-checks, and passes
+   * them to the jail, where the worker's sharp decode+resize+composite IS the
+   * re-encode that sanitizes the UNTRUSTED client raster (§3.6). `id` is
+   * `[a-z0-9-]` (max 64) so it maps safely to a jail basename `overlay-<id>.png`.
+   * Capped at 16 overlays. Optional — absent for every pre-PE6 render.
+   */
+  overlays: z
+    .array(
+      z.object({
+        id: z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-z0-9-]+$/i),
+        left: z.number().int(),
+        top: z.number().int(),
+        width: z.number().int().min(1),
+        height: z.number().int().min(1),
+      }),
+    )
+    .max(16)
     .optional(),
 });
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;

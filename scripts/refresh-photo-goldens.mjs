@@ -143,7 +143,23 @@ for (const file of recipes) {
   // reads a jail-local profile and the bytes match renderImage's byte-for-byte.
   const intent = payload.intent === "cmyk" ? "cmyk" : "srgb";
   const wantsCmyk = intent === "cmyk" && payload.format !== "png";
-  const extraFiles = wantsCmyk ? { "profile.icc": await readFile(GRACOL_PROFILE_PATH) } : undefined;
+
+  // Overlay attachments (PE6): each recipe.attachments entry maps an overlay id
+  // to a corpus-relative PNG. Write them into the jail under the `overlay-<id>.png`
+  // basename the committed composite steps reference — the same extraFiles
+  // mechanism render-host uses to hand renderImage's attachments to the worker.
+  const attachFiles = {};
+  if (recipe.attachments) {
+    for (const [id, rel] of Object.entries(recipe.attachments)) {
+      attachFiles[`overlay-${id}.png`] = await readFile(join(corpusDir, rel));
+    }
+  }
+
+  const merged = {
+    ...(wantsCmyk ? { "profile.icc": await readFile(GRACOL_PROFILE_PATH) } : {}),
+    ...attachFiles,
+  };
+  const extraFiles = Object.keys(merged).length ? merged : undefined;
 
   // Replicate render-host's render job EXACTLY (kind/steps/format/quality/intent/
   // iccProfile/limits) so the worker produces the same bytes renderImage would —
