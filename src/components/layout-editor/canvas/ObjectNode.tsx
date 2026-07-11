@@ -224,7 +224,8 @@ export function ObjectNode({
   /** False in pane thumbnails, so mini-renders don't duplicate canvas testids (L6). */
   withTestId?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
-  /** Text frames: open the contentEditable overlay (plan L5). */
+  /** Text frames: open the contentEditable overlay (plan L5). Picture frames:
+      round-trip into the Photo Editor (PE8, F2). */
   onDoubleClick?: () => void;
 }) {
   if (obj.type === "text" && obj.text) {
@@ -329,6 +330,9 @@ export function ObjectNode({
         transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
       }}
       onPointerDown={interactive ? onPointerDown : undefined}
+      // Picture frames double-click into the Photo Editor (PE8, F2); the handler
+      // no-ops for rect/ellipse, so wiring it here is harmless for those.
+      onDoubleClick={interactive ? onDoubleClick : undefined}
     >
       {obj.type === "picture" && (
         <PictureFill

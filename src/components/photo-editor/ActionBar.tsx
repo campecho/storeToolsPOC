@@ -46,11 +46,15 @@ export function ActionBar({
   onUndo,
   onRedo,
   onSelectTool,
+  returnActive = false,
 }: {
   doc: PhotoDocument;
   onUndo: () => void;
   onRedo: () => void;
   onSelectTool: (tool: PhotoTool) => void;
+  /** F2 round-trip (PE8): Convert format navigates to Export, which is hidden
+      here — so it renders disabled with a tooltip. */
+  returnActive?: boolean;
 }) {
   const setComparing = usePhotoStore((s) => s.setComparing);
   const splitView = usePhotoStore((s) => s.splitView);
@@ -195,6 +199,8 @@ export function ActionBar({
         title="Convert format — opens Export"
         onClick={() => onSelectTool("export")}
         icon={<RefreshCw size={13} strokeWidth={1.7} className="text-brand" />}
+        disabled={returnActive}
+        disabledTitle="Not available while editing a placed picture"
       />
 
       <div className="h-5 w-px bg-[#e2e2e2]" />
@@ -217,20 +223,29 @@ function QuickFix({
   title,
   onClick,
   icon,
+  disabled = false,
+  disabledTitle,
 }: {
   testId: string;
   label: string;
   title: string;
   onClick: () => void;
   icon: React.ReactNode;
+  disabled?: boolean;
+  disabledTitle?: string;
 }) {
   return (
     <button
       type="button"
       data-testid={testId}
-      title={title}
+      title={disabled ? (disabledTitle ?? title) : title}
       onClick={onClick}
-      className="flex h-[30px] cursor-pointer items-center gap-[7px] rounded-[5px] border border-[#d6d6d6] bg-white px-3 text-[12px] font-semibold text-[#444] hover:border-brand hover:bg-[#fff7f7]"
+      disabled={disabled}
+      className={`flex h-[30px] items-center gap-[7px] rounded-[5px] border border-[#d6d6d6] bg-white px-3 text-[12px] font-semibold ${
+        disabled
+          ? "cursor-not-allowed text-[#999] opacity-60"
+          : "cursor-pointer text-[#444] hover:border-brand hover:bg-[#fff7f7]"
+      }`}
     >
       {icon}
       {label}

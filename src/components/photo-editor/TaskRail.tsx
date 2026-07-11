@@ -10,7 +10,9 @@ import type { PhotoLevel, PhotoTool } from "@/lib/store/photo-store";
  * bottom. Clicking a tile toggles the active tool (clicking the active tile
  * returns to "none"); the active tile shows the wire's red inset ring
  * (2px #CC0000, bg rgba(204,0,0,.05)). At the Simple level only Crop and
- * Export render (Section E).
+ * Export render (Section E). During the F2 round-trip (`returnActive`, PE8) the
+ * Export tile (and its divider) are hidden — "Done" in the return banner
+ * replaces Export.
  */
 const TILES: { tool: Exclude<PhotoTool, "none" | "export">; label: string; icon: LucideIcon }[] = [
   { tool: "crop", label: "Crop", icon: Crop },
@@ -24,10 +26,13 @@ export function TaskRail({
   level,
   activeTool,
   onSelect,
+  returnActive = false,
 }: {
   level: PhotoLevel;
   activeTool: PhotoTool;
   onSelect: (tool: PhotoTool) => void;
+  /** F2 round-trip (PE8): hide the Export tile — "Done" replaces it. */
+  returnActive?: boolean;
 }) {
   const tiles = level === "simple" ? TILES.filter((t) => t.tool === "crop") : TILES;
 
@@ -37,8 +42,12 @@ export function TaskRail({
         <Tile key={t.tool} tool={t.tool} label={t.label} icon={t.icon} active={activeTool === t.tool} onSelect={onSelect} />
       ))}
       <div className="flex-1" />
-      <div className="h-px w-11 bg-[#e0e0e0]" />
-      <Tile tool="export" label="Export" icon={Download} active={activeTool === "export"} onSelect={onSelect} />
+      {!returnActive && (
+        <>
+          <div className="h-px w-11 bg-[#e0e0e0]" />
+          <Tile tool="export" label="Export" icon={Download} active={activeTool === "export"} onSelect={onSelect} />
+        </>
+      )}
     </div>
   );
 }
