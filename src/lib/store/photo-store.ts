@@ -38,7 +38,14 @@ export type PhotoLevel = "simple" | "standard";
 
 /** Where "Back to <origin>" returns after an edit (PE8 consumes it; stays null
     through PE1's standalone open, but the field + setter exist now). */
-export type PhotoReturnContext = { originName: string; objectId: string } | null;
+/** F2 round-trip context (plan §3.4, PE8): present only when the layout editor
+    opened this photo for a placed frame. `originalAssetId` is the frame's asset
+    at entry — Done binds the rendered result and records it for one-step revert. */
+export type PhotoReturnContext = {
+  originName: string;
+  objectId: string;
+  originalAssetId: string;
+} | null;
 
 /** The in-flight crop the CropOverlay + CropPanel share while the Crop tool is
     open — the rect being dragged, the aspect preset id driving the lock, and the

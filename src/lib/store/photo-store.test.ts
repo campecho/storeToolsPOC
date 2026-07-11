@@ -162,8 +162,8 @@ describe("level & tool", () => {
   });
 
   it("setReturnContext sets and clears the PE8 hand-off", () => {
-    s().setReturnContext({ originName: "Spring flyer", objectId: "obj-7" });
-    expect(s().returnContext).toEqual({ originName: "Spring flyer", objectId: "obj-7" });
+    s().setReturnContext({ originName: "Spring flyer", objectId: "obj-7", originalAssetId: "photo:test:orig" });
+    expect(s().returnContext).toEqual({ originName: "Spring flyer", objectId: "obj-7", originalAssetId: "photo:test:orig" });
     s().setReturnContext(null);
     expect(s().returnContext).toBeNull();
   });
@@ -491,7 +491,7 @@ describe("partialize — only the document + level persist", () => {
       doc: makeDoc([op("a")]),
       level: "simple",
       activeTool: "crop",
-      returnContext: { originName: "Flyer", objectId: "obj-1" },
+      returnContext: { originName: "Flyer", objectId: "obj-1", originalAssetId: "photo:test:orig" },
       cropDraft: sampleDraft(),
       previewOp: straightenOp(-1.2),
       comparing: true,
