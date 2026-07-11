@@ -6,6 +6,8 @@ import {
   type PhotoOp,
   type PixelRect,
 } from "@/lib/schema/photo";
+import { effectiveDims } from "@/lib/photo/geometry";
+import { DEFAULT_FAMILY } from "@/lib/layout/font-catalog";
 
 /**
  * Photo-editor state (plan §3.4). The recipe IS the document, and history is a
@@ -87,6 +89,13 @@ export interface PhotoEditorState {
       original): split-view is a sticky mode, the peek is momentary. Cleared on
       closeDocument. */
   splitView: boolean;
+  /** The overlay selected in the Text & image tool (PE6) — session-only, never
+      persisted. Drives the OverlayHandles chrome (which mounts only when the text
+      tool is active AND this is set) and the panel's Character controls. Cleared
+      on tool change and doc open/close (a stale selection must not survive leaving
+      the tool); it SURVIVES history moves and pushOp (editing an overlay keeps it
+      selected). Null when nothing is selected. */
+  selectedOverlayId: string | null;
 
   /** Open a schema-validated document; a malformed shape is refused. Resets
       the active tool to "none" and clears every session gesture field (a fresh
@@ -107,6 +116,23 @@ export interface PhotoEditorState {
   setRendering: (rendering: boolean) => void;
   /** Toggle the Adjust before/after split-view slider (Section D). */
   setSplitView: (splitView: boolean) => void;
+  /** Select an overlay (PE6) — or clear the selection with null. */
+  setSelectedOverlayId: (id: string | null) => void;
+  /** Add a text overlay with sensible defaults (plan §4 PE6): text "New text",
+      the first catalog family, size ≈ effective height / 12 (master px), a box
+      centered on the effective image, label "Add text". Appends one history step
+      (never coalesces — a fresh id) and SELECTS it. No-op with no document.
+
+      Overlay EDITS do NOT go through here — a panel/handle edit rides
+      `pushOp({ ...op, label }, { coalesce: true })`; a remove rides a same-id op
+      with `hidden: true` (see overlay-raster `hideOverlayOp`). This action only
+      MINTS a new overlay. */
+  addTextOverlay: () => void;
+  /** Add a logo overlay bound to an already-ingested overlay asset
+      (client.ts `ingestOverlayImage` → `photo:<id>:overlay`). Places a default
+      box centered on the effective image, scaled to the asset's aspect, label
+      "Add image"; appends one history step and SELECTS it. No-op with no doc. */
+  addLogoOverlay: (assetId: string, naturalW: number, naturalH: number) => void;
   /** Append an op at the cursor, dropping the redo tail; cursor -> recipe end.
       No-op when there is no document.
 
@@ -157,17 +183,33 @@ function clampCursor(doc: PhotoDocument, cursor: number): number {
 /**
  * Whether a coalescing `pushOp` should REPLACE the trailing op `prev` with the
  * incoming `next` (the straighten-slider anti-spam rule, plan §3.4). Matches on
- * the `op` tag — but is PARAM-AWARE for `adjust`: two `adjust` ops coalesce only
- * when they target the SAME param, so a Brightness drag never swallows a
- * preceding Contrast op (both share `op: "adjust"`). Every other tag coalesces on
- * the tag alone.
+ * the `op` tag — but is IDENTITY-AWARE for the two per-target op families:
+ *   • `adjust` coalesces only when the SAME param (a Brightness drag never
+ *     swallows a preceding Contrast op — both share `op: "adjust"`);
+ *   • `textOverlay` / `logoOverlay` coalesce only when the SAME `id` — so a whole
+ *     overlay drag/edit (many previewOps live + one pushOp on release, like
+ *     straighten) collapses to ONE history step for THAT overlay, while editing a
+ *     DIFFERENT overlay right after always appends its own step.
+ * Every other tag coalesces on the tag alone.
  */
 function coalesceMatch(prev: PhotoOp, next: PhotoOp): boolean {
   if (prev.op !== next.op) return false;
   if (prev.op === "adjust" && next.op === "adjust") {
     return prev.param === next.param;
   }
+  if (prev.op === "textOverlay" && next.op === "textOverlay") {
+    return prev.id === next.id;
+  }
+  if (prev.op === "logoOverlay" && next.op === "logoOverlay") {
+    return prev.id === next.id;
+  }
   return true;
+}
+
+/** A short, collision-resistant id for a fresh overlay (no crypto dependency —
+    the store runs under vitest's node env too). */
+function overlayId(): string {
+  return `ov-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -206,10 +248,17 @@ export function mergePhotoState(
 // clears the same session gesture fields the same way (session-only — never
 // persisted, so clearing them touches no saved state).
 //   CLEAR_DRAFT    — a history move: the draft + live preview are stale, but a
-//                    compare peek is independent and survives.
-//   CLEAR_GESTURES — leaving/opening/closing the surface: everything resets.
+//                    compare peek AND the overlay selection are independent and
+//                    survive (editing an overlay must keep it selected).
+//   CLEAR_GESTURES — leaving/opening/closing the surface: everything resets,
+//                    including the overlay selection (tool change / doc close).
 const CLEAR_DRAFT = { cropDraft: null, previewOp: null } as const;
-const CLEAR_GESTURES = { cropDraft: null, previewOp: null, comparing: false } as const;
+const CLEAR_GESTURES = {
+  cropDraft: null,
+  previewOp: null,
+  comparing: false,
+  selectedOverlayId: null,
+} as const;
 
 // SSR and the vitest node env have no localStorage — persistence becomes a
 // silent no-op there (mirrors layout-store's noopStorage).
@@ -234,6 +283,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
       comparing: false,
       rendering: false,
       splitView: false,
+      selectedOverlayId: null,
 
       openDocument: (doc) =>
         set((s) => {
@@ -266,7 +316,89 @@ export const usePhotoStore = create<PhotoEditorState>()(
       setComparing: (comparing) => set({ comparing }),
       setRendering: (rendering) => set({ rendering }),
       setSplitView: (splitView) => set({ splitView }),
+      setSelectedOverlayId: (selectedOverlayId) => set({ selectedOverlayId }),
       setReturnContext: (returnContext) => set({ returnContext }),
+
+      // Overlay minting (PE6). Both append one non-coalescing history step (a
+      // fresh id never matches the trailing op) with the cursor landing at the
+      // recipe end, drop the redo tail like every commit, select the new overlay,
+      // and clear the live draft/preview (CLEAR_DRAFT). Defaults resolve against
+      // the EFFECTIVE image (the master with ops[0..cursor) applied) so a text/
+      // logo lands centered on what the associate currently sees.
+      addTextOverlay: () =>
+        set((s) => {
+          if (!s.doc) return s;
+          const eff = effectiveDims(
+            { w: s.doc.source.width, h: s.doc.source.height },
+            s.doc.recipe.slice(0, s.doc.cursor),
+          );
+          const id = overlayId();
+          const size = Math.max(1, Math.round(eff.h / 12));
+          const boxW = Math.max(size, Math.round(eff.w * 0.6));
+          const boxH = Math.max(1, Math.round(size * 1.4));
+          const op: PhotoOp = {
+            op: "textOverlay",
+            label: "Add text",
+            id,
+            text: "New text",
+            font: { family: DEFAULT_FAMILY, size, bold: false, italic: false },
+            color: "#1a1a1a",
+            align: "left",
+            box: {
+              x: Math.round((eff.w - boxW) / 2),
+              y: Math.round((eff.h - boxH) / 2),
+              w: boxW,
+              h: boxH,
+            },
+            rotation: 0,
+          };
+          const recipe = [...s.doc.recipe.slice(0, s.doc.cursor), op];
+          return {
+            doc: { ...s.doc, recipe, cursor: recipe.length },
+            selectedOverlayId: id,
+            ...CLEAR_DRAFT,
+          };
+        }),
+
+      addLogoOverlay: (assetId, naturalW, naturalH) =>
+        set((s) => {
+          if (!s.doc) return s;
+          const eff = effectiveDims(
+            { w: s.doc.source.width, h: s.doc.source.height },
+            s.doc.recipe.slice(0, s.doc.cursor),
+          );
+          const id = overlayId();
+          const aspect = naturalH > 0 ? naturalW / naturalH : 1;
+          let boxW = Math.round(eff.w * 0.3);
+          let boxH = Math.round(boxW / aspect);
+          // Keep the default placement inside the image (cap the taller axis).
+          const maxH = eff.h * 0.6;
+          if (boxH > maxH) {
+            boxH = Math.round(maxH);
+            boxW = Math.round(boxH * aspect);
+          }
+          boxW = Math.max(1, boxW);
+          boxH = Math.max(1, boxH);
+          const op: PhotoOp = {
+            op: "logoOverlay",
+            label: "Add image",
+            id,
+            assetId,
+            box: {
+              x: Math.round((eff.w - boxW) / 2),
+              y: Math.round((eff.h - boxH) / 2),
+              w: boxW,
+              h: boxH,
+            },
+            rotation: 0,
+          };
+          const recipe = [...s.doc.recipe.slice(0, s.doc.cursor), op];
+          return {
+            doc: { ...s.doc, recipe, cursor: recipe.length },
+            selectedOverlayId: id,
+            ...CLEAR_DRAFT,
+          };
+        }),
 
       pushOp: (op, opts) =>
         set((s) => {

@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAssetUrl } from "@/lib/assets/use-asset-url";
+import { getAssetUrl } from "@/lib/assets/blob-store";
 import type { PhotoDocument, PhotoOp } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
-import { effectiveDims, straightenScale, type Dims } from "@/lib/photo/geometry";
+import { effectiveDims, isGeometryOp, straightenScale, type Dims } from "@/lib/photo/geometry";
 import {
   collectAdjustState,
   compileAdjust,
@@ -12,8 +13,11 @@ import {
   type AdjustState,
 } from "@/lib/photo/adjust-math";
 import { applyAdjust } from "@/lib/photo/ops";
+import { foldOverlays, paintOverlayContent } from "@/lib/photo/overlay-raster";
+import { ensureFamiliesLoaded } from "@/lib/layout/webfonts";
 import { CropOverlay } from "./CropOverlay";
 import { StraightenOverlay } from "./StraightenOverlay";
+import { OverlayHandles } from "./OverlayHandles";
 import { GuideChrome } from "./GuideChrome";
 
 /**
@@ -385,6 +389,25 @@ export function PhotoCanvas({
   const comparing = usePhotoStore((s) => s.comparing);
   const setComparing = usePhotoStore((s) => s.setComparing);
   const splitView = usePhotoStore((s) => s.splitView);
+  const selectedOverlayId = usePhotoStore((s) => s.selectedOverlayId);
+
+  // Decoded logo-overlay bitmaps, keyed by asset id — populated async, drawn once
+  // ready (the proxyImgRef pattern). Persists across StrictMode remounts.
+  const overlayImgRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  // Stable keys of the folded overlays' logo assets + text families, so the
+  // preload effects fire only when the set actually changes.
+  const overlayAssetKey = useMemo(() => {
+    if (!doc) return "";
+    return foldOverlays(doc.recipe.slice(0, doc.cursor))
+      .flatMap((o) => (o.op === "logoOverlay" ? [o.assetId] : []))
+      .join("|");
+  }, [doc]);
+  const overlayFamilyKey = useMemo(() => {
+    if (!doc) return "";
+    return foldOverlays(doc.recipe.slice(0, doc.cursor))
+      .flatMap((o) => (o.op === "textOverlay" ? [o.font.family] : []))
+      .join("|");
+  }, [doc]);
 
   // Split-view divider position, fraction of the displayed image width [0.05,0.95].
   const [splitPos, setSplitPos] = useState(0.5);
@@ -481,10 +504,16 @@ export function PhotoCanvas({
     const splitOn = splitViewRef.current && d != null;
 
     // The live preview folds on top of the applied slice. A geometry-shaped
-    // preview (straighten/crop/…) re-composes geometry; an ADJUST preview does
-    // NOT enter the geometry key, so it can never bust the geometry cache mid-drag.
+    // preview (straighten/crop/…) re-composes geometry; an ADJUST or OVERLAY
+    // preview does NOT enter the geometry key (isGeometryOp is the single source
+    // of truth), so a slider or overlay drag never busts the geometry cache.
     const combinedOps = preview ? [...appliedOps, preview] : appliedOps;
-    const geomPreview = preview && preview.op !== "adjust" ? preview : null;
+    const geomPreview = preview && isGeometryOp(preview) ? preview : null;
+
+    // Effective-master dims (applied ops folded) — the space overlay boxes address.
+    // Computed here so the overlay pass and the published layout share it; a
+    // straighten preview keeps dims, so the box aligns whether previewing or not.
+    const eff = d ? effectiveDims({ w: masterW, h: masterH }, appliedOps) : { w: masterW, h: masterH };
 
     // Folded adjust state — the preview adjust participates so it previews live.
     const adjustState: AdjustState | null =
@@ -562,16 +591,32 @@ export function PhotoCanvas({
       ctx.restore();
     }
 
+    // PE6 OVERLAYS — folded text/logo overlays above the composite, at display
+    // scale, rotation baked via ctx transforms (the TRUE rotated box; the AABB is
+    // export-only). Folds combinedOps so an in-flight overlay drag (previewOp)
+    // previews live; the same `foldOverlays` the panel + export use. Skipped while
+    // comparing (the raw original is shown then). Drawn on the always-redrawn main
+    // canvas — never composited into the geometry/adjust offscreen caches, so
+    // those keys stay overlay-free; the recipe/preview deps already redraw here.
+    if (!isComparing && d && eff.w > 0) {
+      const oScale = dispW / eff.w;
+      for (const ov of foldOverlays(combinedOps)) {
+        ctx.save();
+        ctx.translate(x + (ov.box.x + ov.box.w / 2) * oScale, y + (ov.box.y + ov.box.h / 2) * oScale);
+        ctx.rotate((ov.rotation * Math.PI) / 180);
+        const img = ov.op === "logoOverlay" ? overlayImgRef.current.get(ov.assetId) ?? null : null;
+        paintOverlayContent(ctx, ov, oScale, img);
+        ctx.restore();
+      }
+    }
+
     if (isComparing) drawOriginalChip(ctx, x, y);
 
     // Zoom % = fraction of the full-resolution (effective) master shown on screen.
     const fullResW = srcW / runningScale;
     onZoomRef.current(Math.round((dispW / fullResW) * 100));
 
-    // Overlay layout: coords address the effective master (ops[0..cursor) folded);
-    // straighten preview keeps dims, so the box aligns whether previewing or not.
-    const src0: Dims = { w: masterW, h: masterH };
-    const eff = d ? effectiveDims(src0, appliedOps) : { w: masterW, h: masterH };
+    // Overlay layout: coords address the effective master (`eff`, folded above).
     const scale = dispW / eff.w;
     const next: CanvasImageLayout = { x, y, w: dispW, h: dispH, scale, image: eff };
     const prev = layoutRef.current;
@@ -646,6 +691,43 @@ export function PhotoCanvas({
     schedule();
   }, [previewBitmap, doc, previewOp, comparing, splitView, splitPos, schedule]);
 
+  // PE6: ensure the folded text overlays' font faces are loaded, then repaint so
+  // text renders in the real face (idempotent; ensureFamiliesLoaded dedupes).
+  useEffect(() => {
+    if (!overlayFamilyKey) return;
+    let alive = true;
+    void ensureFamiliesLoaded(overlayFamilyKey.split("|")).then((loaded) => {
+      if (loaded && alive) schedule();
+    });
+    return () => {
+      alive = false;
+    };
+  }, [overlayFamilyKey, schedule]);
+
+  // PE6: decode the folded logo overlays' bytes into the image cache, repainting
+  // as each arrives (the proxy-load pattern). StrictMode-safe via the alive guard.
+  useEffect(() => {
+    if (!overlayAssetKey) return;
+    let alive = true;
+    const cache = overlayImgRef.current;
+    for (const id of overlayAssetKey.split("|")) {
+      if (cache.has(id)) continue;
+      void getAssetUrl(id).then((url) => {
+        if (!url || !alive) return;
+        const img = new Image();
+        img.onload = () => {
+          if (!alive) return;
+          cache.set(id, img);
+          schedule();
+        };
+        img.src = url;
+      });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [overlayAssetKey, schedule]);
+
   // Space-peek: hold Space to compare against the original (mirrors the panel's
   // Compare button hold). Ignores typing targets, cleans up StrictMode-safely.
   useEffect(() => {
@@ -690,6 +772,10 @@ export function PhotoCanvas({
   }, [setComparing]);
 
   const showCropChrome = doc != null && layout != null && activeTool === "crop";
+  // Overlay handle chrome: the Text & image tool with an overlay selected. Hidden
+  // while comparing (the raw original is shown, so the handles would misalign).
+  const showOverlayHandles =
+    doc != null && layout != null && activeTool === "text" && selectedOverlayId != null && !comparing;
   // Split-view chrome rides above the canvas; the compare peek overrides split
   // view (both halves become the original while held), so hide the divider then.
   const showSplit = doc != null && layout != null && splitView && !comparing;
@@ -705,6 +791,7 @@ export function PhotoCanvas({
       {showGuides && layout && <GuideChrome layout={layout} />}
       {showCropChrome && previewOp?.op === "straighten" && <StraightenOverlay layout={layout} />}
       {showCropChrome && <CropOverlay layout={layout} />}
+      {showOverlayHandles && layout && <OverlayHandles layout={layout} />}
       {showSplit && layout && <SplitDivider layout={layout} pos={splitPos} onChange={setSplitPos} />}
     </div>
   );

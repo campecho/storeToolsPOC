@@ -26,6 +26,17 @@ import {
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { assetIdFor, decodeBase64, sniffImageMime } from "@/lib/import/image-meta";
 import { getAssetUrl, putAssetBlob } from "@/lib/assets/blob-store";
+import { foldOverlays, overlayPlacement, rasterizeOverlay } from "@/lib/photo/overlay-raster";
+
+/**
+ * The render payload plus the PE6 overlays sidecar leg. `overlays` is FINAL-OUTPUT
+ * px (== effective-master px — overlay boxes pass through 1:1), order = composite
+ * order; each entry pairs with a multipart part named `overlay:<id>`. Declared
+ * here as an additive extension so this module type-checks against the CURRENT
+ * schema while the server sibling adds `overlays?` to RenderPayloadSchema — once
+ * it lands the intersection is redundant, not conflicting. */
+type OverlayPlacementEntry = { id: string; left: number; top: number; width: number; height: number };
+type RenderPayloadWithOverlays = RenderPayload & { overlays?: OverlayPlacementEntry[] };
 
 /** The result of an open attempt — a ready document, or a typed error for the
     CapabilityBanner (the server's friendly copy is shown verbatim). */
@@ -224,6 +235,89 @@ export async function loadDemoPhoto(onLocalPreview?: LocalPreview): Promise<Open
   return openPhotoFile(file, onLocalPreview);
 }
 
+/* ------------------------------------------------------------------ */
+/* Overlay image ingest (POST /api/photo/intake) — PE6 logo on-ramp    */
+/* ------------------------------------------------------------------ */
+
+/** The result of ingesting a logo/image overlay — the stored master asset id and
+    its dimensions, which `addLogoOverlay` needs to size the default box. */
+export interface OverlayIngestResult {
+  assetId: string;
+  width: number;
+  height: number;
+}
+
+export type OverlayIngestOutcome =
+  | { ok: true; result: OverlayIngestResult }
+  | { ok: false; error: IntakeError };
+
+/**
+ * Ingest an image to place as a logo overlay (plan §4 PE6). It rides the SAME
+ * jailed intake endpoint as a photo open — sniff → jailed decode → strip → re-
+ * encode — but is LEAN and does NOT open a document: it stores ONLY the working
+ * master leg under a `photo:<id>:overlay` blob id and returns that id + dims. The
+ * caller hands them to `addLogoOverlay`. (Unlike `openPhotoFile` there is no proxy
+ * leg, no PhotoDocument, and no doc replacement — a logo joins the recipe, it
+ * doesn't become the edited photo.)
+ *
+ * NOTE for the integrator: overlay alpha depends on the intake WORKING-MASTER
+ * codec (server-owned, render-host.ts). If that codec is JPEG for RGB masters,
+ * a transparent PNG/SVG logo loses its alpha; a PNG master for overlay ingest
+ * would preserve it. Flagged, not stubbed — the client stores whatever the
+ * server returns as the master leg per the contract.
+ */
+export async function ingestOverlayImage(file: File): Promise<OverlayIngestOutcome> {
+  if (file.size > MAX_PHOTO_BYTES) {
+    return {
+      ok: false,
+      error: {
+        ok: false,
+        code: "too-large",
+        message: `That image is ${(file.size / 1024 / 1024).toFixed(0)} MB — over the ${MAX_MB} MB limit. Try a smaller file.`,
+      },
+    };
+  }
+
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const recognized = sniffImageMime(head) !== undefined || looksHeic(head) || looksSvg(head);
+  if (!recognized) {
+    return {
+      ok: false,
+      error: {
+        ok: false,
+        code: "not-an-image",
+        message: "That doesn't look like an image. Add a PNG, SVG, or JPG to place as a logo.",
+      },
+    };
+  }
+
+  const body = new FormData();
+  body.append("file", file, file.name);
+
+  let json: unknown;
+  try {
+    const res = await fetch("/api/photo/intake", { method: "POST", body });
+    json = await res.json();
+  } catch {
+    return { ok: false, error: { ok: false, code: "engine-error", message: "The image service is unreachable — check your connection and try again." } };
+  }
+
+  const parsed = IntakeResponseSchema.safeParse(json);
+  if (!parsed.success) {
+    return { ok: false, error: { ok: false, code: "engine-error", message: "The image service returned an unexpected response." } };
+  }
+  if (!parsed.data.ok) {
+    return { ok: false, error: parsed.data };
+  }
+
+  const master = parsed.data.master;
+  // Namespaced, content-derived id — a `:overlay` leg beside the photo's own
+  // master/proxy legs, so overlay writes never touch the store's clear/replace.
+  const assetId = `photo:${assetIdFor(master.b64)}:overlay`;
+  await putAssetBlob(assetId, payloadToBlob(master));
+  return { ok: true, result: { assetId, width: master.width, height: master.height } };
+}
+
 /**
  * GET /api/photo — the capability matrix (mode + per-format support). Returns
  * null when the endpoint is unreachable or drifts from the schema; callers
@@ -384,7 +478,29 @@ export async function renderPhoto(
       ? { w: doc.target.size.w, h: doc.target.size.h, bleed: doc.target.bleed }
       : undefined);
 
-  const payload: RenderPayload = {
+  // PE6 overlays sidecar: fold the APPLIED recipe (same fold the canvas + panel
+  // use), rasterize each visible overlay at scale 1 (export space == effective-
+  // master space, so overlay boxes pass through 1:1), and pair each PNG part with
+  // an AABB placement entry — the raster's decoded dims EQUAL the declared
+  // width/height (the server contract). No overlays → the leg is OMITTED entirely,
+  // so a recipe without overlays produces a byte-identical request to before.
+  const overlays = foldOverlays(recipe);
+  const overlayParts: { name: string; blob: Blob }[] = [];
+  const overlayEntries: OverlayPlacementEntry[] = [];
+  for (const ov of overlays) {
+    const raster = await rasterizeOverlay(ov, 1);
+    const place = overlayPlacement(ov);
+    overlayParts.push({ name: `overlay:${ov.id}`, blob: raster.blob });
+    overlayEntries.push({
+      id: ov.id,
+      left: place.left,
+      top: place.top,
+      width: raster.width, // == place.width at scale 1; guarantees decoded == declared
+      height: raster.height,
+    });
+  }
+
+  const payload: RenderPayloadWithOverlays = {
     recipe,
     format: opts.format,
     quality: opts.quality ?? 90,
@@ -392,11 +508,13 @@ export async function renderPhoto(
     // panel makes it user-switchable; CMYK separates through GRACoL.
     intent,
     ...(printTarget ? { printTarget } : {}),
+    ...(overlayEntries.length ? { overlays: overlayEntries } : {}),
   };
 
   const body = new FormData();
   body.append("file", master, doc.source.originalName);
   body.append("payload", JSON.stringify(payload));
+  for (const part of overlayParts) body.append(part.name, part.blob, `${part.name}.png`);
 
   let res: Response;
   try {

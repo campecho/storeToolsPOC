@@ -7,6 +7,7 @@ import { AdjustPanel } from "./panels/AdjustPanel";
 import { CropPanel } from "./panels/CropPanel";
 import { ExportPanel } from "./panels/ExportPanel";
 import { FixForPrintPanel } from "./panels/FixForPrintPanel";
+import { TextImagePanel } from "./panels/TextImagePanel";
 
 /**
  * Contextual panel host (wire region 6). Renders only while a tool is active
@@ -88,6 +89,8 @@ export function ContextPanel({ activeTool, onClose }: { activeTool: PhotoTool; o
         <AdjustPanel />
       ) : activeTool === "fixprint" ? (
         <FixForPrintPanel />
+      ) : activeTool === "text" ? (
+        <TextImagePanel />
       ) : activeTool === "export" ? (
         <ExportPanel />
       ) : (
