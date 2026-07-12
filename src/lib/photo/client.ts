@@ -115,6 +115,12 @@ export async function openPhotoFile(file: File, onLocalPreview?: LocalPreview): 
   }
 
   const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  // Multi-page documents never open here (PE7) — mirror the server's %PDF-
+  // reject client-side so the route-away banner shows without a wasted upload.
+  // The server keeps its own check; this one is just the fast path.
+  if (head.length >= 5 && String.fromCharCode(...head.subarray(0, 5)) === "%PDF-") {
+    return fail("multi-page", "PDFs and other multi-page files don't open here — bring them into the Layout Editor instead.");
+  }
   const sniffed = sniffImageMime(head);
   const recognized = sniffed !== undefined || looksHeic(head) || looksSvg(head);
   if (!recognized) {

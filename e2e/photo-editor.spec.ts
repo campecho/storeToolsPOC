@@ -1893,3 +1893,108 @@ test.describe("Placed-picture round-trip (PE8)", () => {
     await expect(page.getByTestId("photo-open-input")).toBeAttached();
   });
 });
+
+/**
+ * Conversion & handoffs (plan step PE7): HEIC opens end-to-end through the
+ * jailed heif-convert lane; files that must not open here (multi-page PDFs,
+ * over-ceiling pixel counts) get a typed reject with a route-away to the
+ * Layout Editor; and "Open in Layout Editor" flattens the recipe into a placed
+ * picture as one undoable layout step. The HEIC case needs heif-convert on the
+ * server host — the CI e2e lane installs libheif-examples for exactly this.
+ */
+test.describe("Conversion & handoffs (PE7)", () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  test("a HEIC photo opens end-to-end through the jailed conversion", async ({ page }) => {
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("photo-open-input").setInputFiles("fixtures/photo-corpus/iphone-still.heic");
+    await expect(page.getByTestId("photo-filename")).toHaveText("iphone-still.heic", { timeout: 30_000 });
+    await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+    await expectHistory(page, 1);
+  });
+
+  test("a PDF never opens here — typed multi-page reject routes to the Layout Editor", async ({
+    page,
+  }) => {
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("photo-open-input").setInputFiles({
+      name: "brochure.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n%%EOF\n"),
+    });
+    const banner = page.getByTestId("photo-capability-banner");
+    await expect(banner).toBeVisible({ timeout: 30_000 });
+    await expect(banner).toContainText("multi-page files don't open here");
+    await page.getByTestId("photo-banner-route-layout").click();
+    await expect(page).toHaveURL(/\/layout/);
+  });
+
+  test("an over-ceiling image routes away instead of opening", async ({ page }, testInfo) => {
+    // 9100 × 9000 = 81.9 MP — past the 80 MP ceiling the engine enforces at
+    // decode. A solid fill keeps the PNG bytes tiny, so only the pixel cap trips.
+    const oversize = testInfo.outputPath("oversize.png");
+    await sharp({
+      create: { width: 9100, height: 9000, channels: 3, background: { r: 240, g: 240, b: 240 } },
+    })
+      .png()
+      .toFile(oversize);
+
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("photo-open-input").setInputFiles(oversize);
+    const banner = page.getByTestId("photo-capability-banner");
+    await expect(banner).toBeVisible({ timeout: 60_000 });
+    await expect(banner).toContainText("MP limit");
+    await expect(page.getByTestId("photo-banner-route-layout")).toBeVisible();
+    // It never opened: no document, the open input is still the empty state's.
+    await expect(page.getByTestId("photo-filename")).toHaveCount(0);
+  });
+
+  test("Open in Layout Editor lands the flattened photo as one undoable placed step", async ({
+    page,
+  }) => {
+    await openDemoPhoto(page);
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    // Fresh storage → the layout document is empty → no confirm gate.
+    await page.getByTestId("export-send-layout").click();
+    await expect(page).toHaveURL(/\/layout/, { timeout: 60_000 });
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+    // One undoable layout step: undo removes the placed picture.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("object-picture")).toHaveCount(0);
+  });
+
+  test("the confirm gate asks before landing on a layout document with content", async ({
+    page,
+  }) => {
+    // Give the layout document content first (the L8 asset-placement flow).
+    await page.goto("/layout");
+    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    await page.getByTestId("asset-tile-0").click();
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+
+    await openDemoPhoto(page);
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    await page.getByTestId("export-send-layout").click();
+    const confirm = page.getByTestId("handoff-confirm");
+    await expect(confirm).toBeVisible();
+
+    // Cancel is a no-op — still in the export panel, nothing placed.
+    await page.getByTestId("handoff-confirm-cancel").click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+
+    // Place lands it alongside the existing object.
+    await page.getByTestId("export-send-layout").click();
+    await page.getByTestId("handoff-confirm-place").click();
+    await expect(page).toHaveURL(/\/layout/, { timeout: 60_000 });
+    await expect(page.getByTestId("object-picture")).toHaveCount(2);
+  });
+});
