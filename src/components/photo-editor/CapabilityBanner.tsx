@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { AlertTriangle, X } from "lucide-react";
 import type { IntakeError } from "@/lib/schema/photo";
 
@@ -8,11 +9,21 @@ import type { IntakeError } from "@/lib/schema/photo";
  * open attempt returns a typed error — the server's friendly `message` is shown
  * verbatim. For `unsupported-here` (HEIC/SVG without the server codec, raw BMP)
  * an extra line explains the server-capability angle: the codec ships in the
- * Docker image, or the associate can convert the file first. Parent-controlled
- * and dismissible.
+ * Docker image, or the associate can convert the file first. For files that must
+ * not open here at all — `too-many-pixels` (over the pixel ceiling) and
+ * `multi-page` (PDFs and other multi-page files) — it adds a route-away line and
+ * a button to the Layout Editor, which handles big and multi-page files.
+ * Parent-controlled and dismissible.
  */
 export function CapabilityBanner({ error, onDismiss }: { error: IntakeError | null; onDismiss: () => void }) {
+  const router = useRouter();
   if (!error) return null;
+
+  // Widen to string so the compare holds against the CURRENT schema union too:
+  // `multi-page` only joins IntakeErrorCode when the server sibling's edit lands,
+  // and this file must compile before then.
+  const code = error.code as string;
+  const routeAway = code === "too-many-pixels" || code === "multi-page";
 
   return (
     <div
@@ -27,6 +38,21 @@ export function CapabilityBanner({ error, onDismiss }: { error: IntakeError | nu
             This station&rsquo;s photo service doesn&rsquo;t have that format&rsquo;s codec installed. The Docker image
             bundles it — or convert the file to JPG or PNG and open that.
           </div>
+        )}
+        {routeAway && (
+          <>
+            <div className="mt-[2px] text-[#9a7b2a]">
+              The Layout Editor handles large and multi-page files — bring this one in there instead.
+            </div>
+            <button
+              type="button"
+              data-testid="photo-banner-route-layout"
+              onClick={() => router.push("/layout")}
+              className="mt-[7px] flex h-[28px] cursor-pointer items-center justify-center rounded-[6px] border border-[#d8b24a] bg-white px-[12px] text-[11.5px] font-semibold text-[#7a5b00] hover:bg-[#f7edcf]"
+            >
+              Open the Layout Editor →
+            </button>
+          </>
         )}
       </div>
       <button
