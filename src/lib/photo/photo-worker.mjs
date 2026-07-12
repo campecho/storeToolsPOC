@@ -329,11 +329,13 @@ async function replaySteps(sharp, input, steps, limitInputPixels) {
       // erase patch is photo content composited INLINE at its recipe position
       // (before the adjust), so tone applies over it — matching the client
       // preview. JPEG/TIFF/CMYK flatten alpha into the image at the final encode;
-      // PNG keeps it.
+      // PNG keeps REAL transparency (a shaped crop's) — see the opaque-base
+      // flatten below.
       const w = Math.max(1, Math.round(step.width));
       const h = Math.max(1, Math.round(step.height));
       const left = Math.round(step.left);
       const top = Math.round(step.top);
+      const baseHadAlpha = (await sharp(buf).metadata()).hasAlpha === true;
       const overlayBytes = await readFile(p(step.file));
       const overlay = await sharp(overlayBytes, { limitInputPixels })
         .ensureAlpha()
@@ -344,6 +346,16 @@ async function replaySteps(sharp, input, steps, limitInputPixels) {
         .composite([{ input: overlay, left, top }])
         .png()
         .toBuffer();
+      if (!baseHadAlpha) {
+        // Over a FULLY OPAQUE base the over-operator yields a fully opaque
+        // result (aₒᵤₜ = aᵥ + 1·(1−aᵥ) = 1), so the alpha channel sharp promotes
+        // here is structure noise, not content — flatten it back. A composite
+        // must never change pixels (or the channel layout) outside its box: a
+        // PNG export with one erase patch stays byte-identical to the no-erase
+        // export everywhere but the rect. REAL transparency (a shaped crop's
+        // alpha base) never takes this branch.
+        buf = await sharp(buf).removeAlpha().png().toBuffer();
+      }
     } else {
       // The host compiled these, so an unknown kind is our bug, not the file's.
       throw new Error(`unknown render step: ${String(step?.kind)}`);
