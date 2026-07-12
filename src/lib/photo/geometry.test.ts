@@ -84,7 +84,12 @@ describe("isGeometryOp", () => {
       isGeometryOp({ op: "autoEnhance", label: "Auto-enhance", params: {} }),
     ).toBe(false);
     expect(
-      isGeometryOp({ op: "erase", label: "Remove object", maskAssetId: "photo:mask-1" }),
+      isGeometryOp({
+        op: "erase",
+        label: "Remove object",
+        maskAssetId: "photo:mask-1",
+        patch: { id: "p1", assetId: "photo:patch-1", rect: { x: 0, y: 0, w: 10, h: 10 } },
+      }),
     ).toBe(false);
   });
 });

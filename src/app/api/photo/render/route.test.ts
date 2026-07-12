@@ -85,6 +85,27 @@ function postWithOverlays(
   return POST(new Request("http://test/api/photo/render", { method: "POST", body: fd }));
 }
 
+/** POST with a `file`, a `payload`, and one `erase:<id>` patch part per entry (PE9). */
+function postWithErase(
+  fileBytes: Uint8Array,
+  filename: string,
+  payload: unknown,
+  eraseParts: Record<string, Uint8Array>,
+): Promise<Response> {
+  const fd = new FormData();
+  fd.append("file", new File([new Uint8Array(fileBytes)], filename));
+  fd.append("payload", payloadPart(payload));
+  for (const [id, bytes] of Object.entries(eraseParts)) {
+    fd.append(`erase:${id}`, new File([new Uint8Array(bytes)], `${id}.png`));
+  }
+  return POST(new Request("http://test/api/photo/render", { method: "POST", body: fd }));
+}
+
+/** A stored-explicit erase op for a recipe (PE9). */
+function eraseRecipeOp(id: string, rect: { x: number; y: number; w: number; h: number }) {
+  return { op: "erase", label: "Remove object", maskAssetId: `photo:mask-${id}`, patch: { id, assetId: `photo:patch-${id}`, rect } };
+}
+
 /** Parse an error body and assert it satisfies the binding error contract. */
 async function parsedError(res: Response) {
   const body = await res.json();
@@ -207,17 +228,91 @@ describe("POST /api/photo/render — request-shape gates (bad-recipe)", () => {
   });
 });
 
-describe("POST /api/photo/render — op screening (unsupported-op)", () => {
-  it("rejects an erase op naming its PE9 tranche (still unsupported)", async () => {
-    const res = await post(new Uint8Array(await png(64, 64)), "master.png", {
-      recipe: [{ op: "erase", label: "Remove object", maskAssetId: "mask-1" }],
+describe("POST /api/photo/render — erase patches (PE9)", () => {
+  it(
+    "composites an erase op's patch part (200) — the rect turns the patch colour, off-rect stays base blue",
+    async () => {
+      const patch = await overlay(40, 20, { r: 255, g: 0, b: 0 }); // opaque red patch
+      const res = await postWithErase(
+        new Uint8Array(await png(400, 300)),
+        "master.png",
+        { recipe: [eraseRecipeOp("e1", { x: 50, y: 60, w: 40, h: 20 })], format: "png", quality: 90 },
+        { e1: new Uint8Array(patch) },
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      const { data, info } = await sharp(Buffer.from(await res.arrayBuffer()))
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const at = (x: number, y: number) => {
+        const i = (y * info.width + x) * 4;
+        return [data[i], data[i + 1], data[i + 2]];
+      };
+      // An erase never moves the frame.
+      expect([info.width, info.height]).toEqual([400, 300]);
+      // ON the patch (70,70): red.
+      const on = at(70, 70);
+      expect(on[0]).toBeGreaterThan(200);
+      expect(on[2]).toBeLessThan(80);
+      // OFF the patch (300,200): the base #3366aa blue (R low, B high).
+      const off = at(300, 200);
+      expect(off[0]).toBeLessThan(120);
+      expect(off[2]).toBeGreaterThan(120);
+    },
+    30_000,
+  );
+
+  it("rejects an erase op with no matching patch part (400 bad-recipe)", async () => {
+    const res = await post(new Uint8Array(await png(400, 300)), "master.png", {
+      recipe: [eraseRecipeOp("e1", { x: 10, y: 10, w: 40, h: 20 })],
       format: "png",
-      quality: 90,
     });
-    expect(res.status).toBe(422);
-    const body = await parsedError(res);
-    expect(body).toMatchObject({ ok: false, code: "unsupported-op" });
-    expect(body.message).toContain("PE9");
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an erase patch part with no matching op (400 bad-recipe)", async () => {
+    const res = await postWithErase(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [], format: "png" }, // no erase ops declared
+      { stray: new Uint8Array(await overlay(40, 20)) },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an erase patch over the 8 MB byte cap (400 bad-recipe) — before any decode", async () => {
+    const huge = new Uint8Array(8 * 1024 * 1024 + 1); // > MAX_ERASE_PATCH_BYTES; never decoded
+    const res = await postWithErase(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [eraseRecipeOp("big", { x: 0, y: 0, w: 40, h: 20 })], format: "png" },
+      { big: huge },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects an erase patch whose decoded dims don't match the op rect (400 bad-recipe)", async () => {
+    const patch = await overlay(50, 50); // actual 50×50
+    const res = await postWithErase(
+      new Uint8Array(await png(400, 300)),
+      "master.png",
+      { recipe: [eraseRecipeOp("e1", { x: 0, y: 0, w: 40, h: 20 })], format: "png" }, // rect 40×20
+      { e1: new Uint8Array(patch) },
+    );
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
+  });
+
+  it("rejects more than 16 erase ops in a recipe (400 bad-recipe)", async () => {
+    // The cap trips before any part matching, so no patch parts are needed.
+    const recipe = Array.from({ length: 17 }, (_, k) => eraseRecipeOp(`e${k}`, { x: 0, y: 0, w: 10, h: 10 }));
+    const res = await post(new Uint8Array(await png(400, 300)), "master.png", { recipe, format: "png" });
+    expect(res.status).toBe(400);
+    expect(await parsedError(res)).toMatchObject({ ok: false, code: "bad-recipe" });
   });
 });
 

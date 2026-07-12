@@ -75,3 +75,28 @@ export const WORKER_MAX_OUTPUT_BYTES = envInt(
   "STP_PHOTO_WORKER_MAX_OUTPUT_BYTES",
   256 * 1024 * 1024,
 );
+
+/**
+ * Brushed-mask upload cap for the erase-preview route (PE9), bytes. 2 MB is
+ * generous for a grayscale-on-black PNG at proxy resolution; anything larger is
+ * rejected before a byte reaches the jail (the DoS guard — the worker's
+ * decode+resize is the sanitizer). Smaller than the overlay/patch cap because a
+ * mask is one-channel and paints only the brushed region.
+ */
+export const MAX_MASK_BYTES = envInt("STP_PHOTO_MAX_MASK_BYTES", 2 * 1024 * 1024);
+
+/**
+ * Per-erase-patch raster cap (PE9), bytes — the stored-explicit patch PNG that
+ * rides an `erase:<id>` multipart part on both the render and erase routes. 8 MB
+ * matches the overlay cap (MAX_OVERLAY_BYTES): a patch is a bbox of photo content
+ * rendered at export resolution, so it is bounded the same way. The jail
+ * decode+resize+composite is the real re-encode; this is the pre-jail DoS guard.
+ */
+export const MAX_ERASE_PATCH_BYTES = envInt("STP_PHOTO_MAX_ERASE_PATCH_BYTES", 8 * 1024 * 1024);
+
+/**
+ * Cap on erase ops carried by a single recipe (PE9). A recipe is a handful of
+ * ops; 16 stored-explicit erases is already far past station-typical cleanup and
+ * bounds how many patch parts the routes match + write into a jail.
+ */
+export const MAX_ERASE_OPS = envInt("STP_PHOTO_MAX_ERASE_OPS", 16);
