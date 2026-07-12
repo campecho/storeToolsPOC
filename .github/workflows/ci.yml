@@ -49,6 +49,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # libheif-examples: heif-convert for the PE7 HEIC-open e2e — the dev server
+      # this lane spawns must decode HEIC for that test to be a real proof.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libheif-examples
       # playwright.config.ts starts `npm run dev` as its webServer (no build
       # step needed) and sets STP_IMPORT_FIXTURE=1 for it — don't duplicate.
       - run: npm run e2e
@@ -71,9 +74,10 @@ jobs:
           node-version: 22
           cache: npm
       # Ubuntu ships pub2raw + pub2xhtml in libmspub-tools (0.1.4); liblcms2-utils
-      # provides `tificc` (the CMYK-preserving path, PE5); poppler-utils powers
-      # pdf-wrap's skip-if-absent external-viewer preflight (pdfinfo/pdftoppm).
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools liblcms2-utils poppler-utils
+      # provides `tificc` (the CMYK-preserving path, PE5); libheif-examples provides
+      # `heif-convert` (the HEIC ingest path, PE7); poppler-utils powers pdf-wrap's
+      # skip-if-absent external-viewer preflight (pdfinfo/pdftoppm).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libmspub-tools liblcms2-utils libheif-examples poppler-utils
       - run: npm ci
       - run: npm run refresh:corpus
       # Drift gate: the checked-in corpus artifacts must match what today's

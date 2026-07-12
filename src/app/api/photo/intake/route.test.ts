@@ -1,13 +1,58 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { heicAvailable } from "@/lib/photo/heic";
 import { tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { IntakeResponseSchema } from "@/lib/schema/photo";
 import { POST } from "./route";
 
+const execFileP = promisify(execFile);
+
 // tificc is ABSENT on this dev container by design — the preserved-CMYK leg is
 // then omitted (honest degradation); present only where lcms2-utils is installed.
 const HAVE_TIFICC = await tificcAvailable();
+
+// The HEIC round-trip needs BOTH the encoder (heif-enc, to synthesize a fixture)
+// and the decoder (heif-convert, which the route drives). Both ride
+// libheif-examples — present on this container and the CI live lane, absent on a
+// bare `npm test`, where these cases skip and the capability-gate case takes over.
+async function heifEncAvailable(): Promise<boolean> {
+  try {
+    await execFileP("heif-enc", ["--version"], { timeout: 5_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+const HAVE_HEIF_CONVERT = await heicAvailable();
+const HAVE_HEIC = (await heifEncAvailable()) && HAVE_HEIF_CONVERT;
+
+/**
+ * Build a synthetic HEIC from a sharp PNG via `heif-enc`. libheif-examples here
+ * ships only the uncompressed encoder (no HEVC/AVIF plugin), so force
+ * `--uncompressed` — the output still sniffs as `image/heic` and decodes in any
+ * libheif build with no codec plugin.
+ */
+async function makeHeic(width = 640, height = 480): Promise<Buffer> {
+  const png = await sharp({ create: { width, height, channels: 3, background: "#3377cc" } })
+    .png()
+    .toBuffer();
+  const dir = await mkdtemp(join(tmpdir(), "heic-fixture-"));
+  try {
+    const pngPath = join(dir, "in.png");
+    const heicPath = join(dir, "out.heic");
+    await writeFile(pngPath, png);
+    await execFileP("heif-enc", ["--uncompressed", pngPath, "-o", heicPath], { timeout: 20_000 });
+    return await readFile(heicPath);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 /**
  * Adversarial + happy-path proof for POST /api/photo/intake (plan §5, §4 PE1).
@@ -90,14 +135,26 @@ describe("POST /api/photo/intake — content sniff owns the gate", () => {
     expect(await parsed(res)).toMatchObject({ ok: false, code: "unsupported-here" });
   });
 
-  it("rejects HEIC as unsupported-here (no conversion in PE1)", async () => {
-    // Minimal ISO-BMFF ftyp with a 'heic' major brand.
+  it("rejects a valid-brand but bodyless HEIC (422, capability-dependent code)", async () => {
+    // Minimal ISO-BMFF ftyp with a 'heic' major brand — sniffs HEIC, but carries
+    // no image. Where heif-convert is installed the jailed transcode runs and
+    // fails (decode-failed); where it isn't, the capability gate answers first
+    // (unsupported-here). Either way it's a friendly 422.
     const heic = new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0, 0x6d, 0x69, 0x66, 0x31, 0x68, 0x65, 0x69, 0x63]);
     const res = await post(heic, "IMG_4823.heic");
     expect(res.status).toBe(422);
     const body = await parsed(res);
-    expect(body).toMatchObject({ ok: false, code: "unsupported-here" });
-    expect(body.message).toMatch(/HEIC/);
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe(HAVE_HEIF_CONVERT ? "decode-failed" : "unsupported-here");
+  });
+
+  it("rejects a PDF as multi-page before the sniff gate", async () => {
+    const pdf = new TextEncoder().encode("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n");
+    const res = await post(pdf, "flyer.pdf");
+    expect(res.status).toBe(422);
+    const body = await parsed(res);
+    expect(body).toMatchObject({ ok: false, code: "multi-page" });
+    expect(body.message).toContain("Layout Editor");
   });
 });
 
@@ -159,6 +216,43 @@ describe("POST /api/photo/intake — CMYK arrival (the CMYK-preserve seam)", () 
       }
     },
     20_000,
+  );
+});
+
+describe("POST /api/photo/intake — HEIC ingest (the PE7 heif-convert lane)", () => {
+  it.skipIf(!HAVE_HEIC)(
+    "opens a real HEIC: transcodes to a decodable master and notes the conversion",
+    async () => {
+      const heic = await makeHeic(640, 480);
+      const res = await post(heic, "IMG_4823.heic");
+      expect(res.status).toBe(200);
+      const body = await parsed(res);
+      expect(body.ok).toBe(true);
+      expect(body.master.width).toBe(640);
+      expect(body.master.height).toBe(480);
+      // The master really decodes — not just plausible metadata.
+      const decoded = await sharp(Buffer.from(body.master.b64, "base64")).metadata();
+      expect(decoded.width).toBe(640);
+      expect(decoded.height).toBe(480);
+      expect(body.meta.colorSpace).toBe("rgb");
+      expect(body.meta.notes).toContain("Converted from HEIC");
+      expect(body.meta.notes).toContain("Metadata removed when the file was opened");
+    },
+    30_000,
+  );
+
+  it.skipIf(!HAVE_HEIC)(
+    "classifies a truncated HEIC as decode-failed through the real jail",
+    async () => {
+      const heic = await makeHeic(640, 480);
+      // Cut the fixture in half — the ftyp box at the head still sniffs HEIC, but
+      // heif-convert dies reading past the end of the truncated pixel data.
+      const half = Buffer.from(heic.subarray(0, Math.floor(heic.length / 2)));
+      const res = await post(half, "IMG_4823.heic");
+      expect(res.status).toBe(422);
+      expect(await parsed(res)).toMatchObject({ ok: false, code: "decode-failed" });
+    },
+    30_000,
   );
 });
 

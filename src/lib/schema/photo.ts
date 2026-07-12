@@ -340,6 +340,7 @@ export type IntakeImagePayload = z.infer<typeof IntakeImagePayloadSchema>;
 export const IntakeErrorCodeSchema = z.enum([
   "not-an-image", // sniff failed or disguised bytes
   "unsupported-here", // sniffed fine, this server lacks the capability (HEIC without heif-convert, raw BMP)
+  "multi-page", // a PDF or other multi-page document — route to the Layout Editor instead
   "too-large", // MAX_PHOTO_BYTES
   "too-many-pixels", // MAX_PHOTO_PIXELS
   "decode-failed", // jail decode died (truncated/hostile)
