@@ -19,6 +19,7 @@ import { StatusBar } from "./StatusBar";
 import { CapabilityBanner } from "./CapabilityBanner";
 import { NoPhotoState } from "./NoPhotoState";
 import { PhotoCanvas } from "./canvas/PhotoCanvas";
+import { PreviewApproveBar } from "./canvas/PreviewApproveBar";
 
 /** The wire's demo order context (deviation #4 — inert, shown only on the
     `/photo?demo=1` entry so the shell reads true to the Section-A wire). */
@@ -238,6 +239,7 @@ export function PhotoEditorShell() {
                   />
                 )}
                 <PhotoCanvas doc={doc} previewBitmap={preview} onZoom={setZoomPct} />
+                {doc && <PreviewApproveBar />}
                 {doc && (
                   <HistoryDock doc={doc} open={historyOpen} onClose={() => setHistoryOpen(false)} />
                 )}

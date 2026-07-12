@@ -68,6 +68,16 @@ function straightenOp(degrees: number): PhotoOp {
   return { op: "straighten", label: `Straighten ${degrees}`, degrees };
 }
 
+/** A schema-valid erase op — the PE9 preview-approve fixture. */
+function eraseOp(id = "abc123"): PhotoOp {
+  return {
+    op: "erase",
+    label: "Remove object",
+    maskAssetId: `photo:${id}:mask`,
+    patch: { id, assetId: `photo:${id}:patch`, rect: { x: 0, y: 0, w: 10, h: 10 } },
+  };
+}
+
 function sampleDraft() {
   return {
     rect: { x: 10, y: 10, w: 200, h: 150 },
@@ -102,6 +112,11 @@ describe("photo store defaults", () => {
     expect(s().cropDraft).toBeNull();
     expect(s().previewOp).toBeNull();
     expect(s().comparing).toBe(false);
+  });
+
+  it("boots with no pending preview and the default clean-up brush size (PE9 §7)", () => {
+    expect(s().pendingPreview).toBeNull();
+    expect(s().cleanupBrushSize).toBe(40);
   });
 });
 
@@ -774,6 +789,115 @@ describe("selectedOverlayId — lifecycle", () => {
     usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", selectedOverlayId: "ov-1" });
     const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
     expect("selectedOverlayId" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+  });
+});
+
+/* ================================================================== */
+/* pendingPreview + cleanupBrushSize — the PE9 preview-approve loop §7 */
+/* ================================================================== */
+
+describe("pendingPreview — the model-op preview (PE9 §7)", () => {
+  it("setPendingPreview round-trips and clears", () => {
+    s().openDocument(makeDoc());
+    s().setPendingPreview(eraseOp());
+    expect(s().pendingPreview).toEqual(eraseOp());
+    s().setPendingPreview(null);
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("Apply = pushOp(pendingPreview) appends exactly one op and clears the pending state", () => {
+    s().openDocument(makeDoc([op("a")])); // cursor 1
+    const preview = eraseOp();
+    s().setPendingPreview(preview);
+    // Apply is a plain pushOp of the pending op.
+    s().pushOp(s().pendingPreview!);
+    expect(s().doc!.recipe).toHaveLength(2);
+    expect(s().doc!.recipe[1]).toEqual(preview);
+    expect(s().doc!.recipe[1].label).toBe("Remove object");
+    expect(s().doc!.cursor).toBe(2);
+    // pushOp clears the pending preview via CLEAR_DRAFT (atomic with the commit).
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("Discard = setPendingPreview(null) leaves the recipe and cursor untouched", () => {
+    // Park the cursor mid-history so an accidental truncation would show.
+    s().openDocument(makeDoc([op("a"), op("b"), op("c")], 2));
+    const before = s().doc!;
+    s().setPendingPreview(eraseOp());
+    s().setPendingPreview(null); // Discard
+    expect(s().pendingPreview).toBeNull();
+    expect(recipeLabels()).toEqual(["a", "b", "c"]); // tail intact
+    expect(s().doc?.cursor).toBe(2); // cursor unmoved
+    expect(s().doc?.recipe).toBe(before.recipe); // same array reference — untouched
+  });
+
+  it("is cleared by CLEAR_DRAFT — pushOp, undo, redo, setCursor (a history move stales it)", () => {
+    s().openDocument(makeDoc([op("a"), op("b")])); // cursor 2
+
+    s().setPendingPreview(eraseOp());
+    s().pushOp(op("c"));
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().undo();
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().redo();
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().setCursor(0);
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("is cleared by CLEAR_GESTURES — tool switch, doc open, doc close", () => {
+    s().openDocument(makeDoc([op("a")]));
+
+    s().setPendingPreview(eraseOp());
+    s().setActiveTool("adjust");
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().openDocument(makeDoc([op("a")]));
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().closeDocument();
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("stays out of partialize (session-only, never persisted)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", pendingPreview: eraseOp() });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("pendingPreview" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+  });
+});
+
+describe("cleanupBrushSize — the clean-up brush slider (PE9 §7)", () => {
+  it("defaults to 40 and setCleanupBrushSize round-trips", () => {
+    expect(s().cleanupBrushSize).toBe(40);
+    s().setCleanupBrushSize(88);
+    expect(s().cleanupBrushSize).toBe(88);
+  });
+
+  it("survives history moves and tool switches (session preference, not a gesture)", () => {
+    s().openDocument(makeDoc([op("a")]));
+    s().setCleanupBrushSize(16);
+    s().pushOp(op("b"));
+    s().undo();
+    s().setActiveTool("cleanup");
+    expect(s().cleanupBrushSize).toBe(16);
+  });
+
+  it("stays out of partialize (session-only, never persisted)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", cleanupBrushSize: 100 });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("cleanupBrushSize" in persisted).toBe(false);
     expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
   });
 });

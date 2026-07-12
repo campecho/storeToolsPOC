@@ -96,6 +96,19 @@ export interface PhotoEditorState {
       the tool); it SURVIVES history moves and pushOp (editing an overlay keeps it
       selected). Null when nothing is selected. */
   selectedOverlayId: string | null;
+  /** The pending model-op PREVIEW (PE9, the suggest-never-auto-apply loop every
+      model op inherits): a suggested op composited on top of ops[0..cursor)
+      WITHOUT entering the recipe, awaiting the associate's Apply / Discard on the
+      PreviewApproveBar. Session-only, never persisted, generic for every future
+      model op (plan §3.2). Cleared by CLEAR_DRAFT (a history move stales it — and
+      Apply IS a pushOp) AND CLEAR_GESTURES (tool switch, doc open/close). Apply =
+      pushOp(pendingPreview) (which clears it via CLEAR_DRAFT atomically); Discard =
+      setPendingPreview(null), recipe + cursor untouched. Null when nothing is
+      previewed. */
+  pendingPreview: PhotoOp | null;
+  /** Clean-up brush diameter in EFFECTIVE-image px (PE9) — session-only, default
+      40, range 8–120 (the CleanupPanel slider). Never persisted. */
+  cleanupBrushSize: number;
 
   /** Open a schema-validated document; a malformed shape is refused. Resets
       the active tool to "none" and clears every session gesture field (a fresh
@@ -118,6 +131,11 @@ export interface PhotoEditorState {
   setSplitView: (splitView: boolean) => void;
   /** Select an overlay (PE6) — or clear the selection with null. */
   setSelectedOverlayId: (id: string | null) => void;
+  /** Set (or clear with null) the pending model-op preview (PE9). Discard rides
+      `setPendingPreview(null)`; Apply is a plain `pushOp(pendingPreview)`. */
+  setPendingPreview: (op: PhotoOp | null) => void;
+  /** Set the clean-up brush diameter, effective-image px (the CleanupPanel slider). */
+  setCleanupBrushSize: (size: number) => void;
   /** Add a text overlay with sensible defaults (plan §4 PE6): text "New text",
       the first catalog family, size ≈ effective height / 12 (master px), a box
       centered on the effective image, label "Add text". Appends one history step
@@ -247,15 +265,18 @@ export function mergePhotoState(
 // Partial-state fragments spread into `set` returns so every history/tool move
 // clears the same session gesture fields the same way (session-only — never
 // persisted, so clearing them touches no saved state).
-//   CLEAR_DRAFT    — a history move: the draft + live preview are stale, but a
-//                    compare peek AND the overlay selection are independent and
-//                    survive (editing an overlay must keep it selected).
+//   CLEAR_DRAFT    — a history move: the draft, the live gesture preview, AND the
+//                    pending model-op preview (PE9) are stale, but a compare peek
+//                    AND the overlay selection are independent and survive (editing
+//                    an overlay must keep it selected). Apply IS a pushOp, so the
+//                    approved preview clears here as its op enters the recipe.
 //   CLEAR_GESTURES — leaving/opening/closing the surface: everything resets,
 //                    including the overlay selection (tool change / doc close).
-const CLEAR_DRAFT = { cropDraft: null, previewOp: null } as const;
+const CLEAR_DRAFT = { cropDraft: null, previewOp: null, pendingPreview: null } as const;
 const CLEAR_GESTURES = {
   cropDraft: null,
   previewOp: null,
+  pendingPreview: null,
   comparing: false,
   selectedOverlayId: null,
 } as const;
@@ -284,6 +305,8 @@ export const usePhotoStore = create<PhotoEditorState>()(
       rendering: false,
       splitView: false,
       selectedOverlayId: null,
+      pendingPreview: null,
+      cleanupBrushSize: 40,
 
       openDocument: (doc) =>
         set((s) => {
@@ -317,6 +340,8 @@ export const usePhotoStore = create<PhotoEditorState>()(
       setRendering: (rendering) => set({ rendering }),
       setSplitView: (splitView) => set({ splitView }),
       setSelectedOverlayId: (selectedOverlayId) => set({ selectedOverlayId }),
+      setPendingPreview: (pendingPreview) => set({ pendingPreview }),
+      setCleanupBrushSize: (cleanupBrushSize) => set({ cleanupBrushSize }),
       setReturnContext: (returnContext) => set({ returnContext }),
 
       // Overlay minting (PE6). Both append one non-coalescing history step (a

@@ -13,12 +13,14 @@ import {
   IntakeResponseSchema,
   PhotoDiagnosticsSchema,
   RenderErrorSchema,
+  type ErasePayload,
   type IntakeError,
   type IntakeErrorCode,
   type IntakeImagePayload,
   type PhotoDiagnostics,
   type PhotoDocument,
   type PhotoIntent,
+  type PhotoOp,
   type RenderError,
   type RenderFormat,
   type RenderPayload,
@@ -26,6 +28,7 @@ import {
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { assetIdFor, decodeBase64, sniffImageMime } from "@/lib/import/image-meta";
 import { getAssetUrl, putAssetBlob } from "@/lib/assets/blob-store";
+import { contentHashId } from "@/lib/photo/cleanup-mask";
 import { foldOverlays, overlayPlacement, rasterizeOverlay } from "@/lib/photo/overlay-raster";
 
 /**
@@ -427,6 +430,50 @@ export interface RenderResult {
 }
 
 /**
+ * Collect the STORED-EXPLICIT erase-patch parts for every erase op in `recipe`
+ * (PE9, §8). Each erase op carries a `patch` (id + blob-store assetId); its
+ * approved pixels ride a SEPARATE multipart part `erase:<patch.id>` — the leg
+ * EVERY render form (export, PDF, return-trip Done, layout handoff) must attach so
+ * the server composites the approved fill (the render route's collectErasePatches
+ * rejects a missing part as 400 bad-recipe). Generalized into one helper so no
+ * render call site can forget. A patch blob missing from the store (evicted
+ * IndexedDB, another browser) is a friendly typed RenderError, never a crash.
+ */
+async function collectEraseParts(
+  recipe: PhotoOp[],
+): Promise<
+  { ok: true; parts: { name: string; blob: Blob }[] } | { ok: false; error: RenderError }
+> {
+  const parts: { name: string; blob: Blob }[] = [];
+  for (const op of recipe) {
+    if (op.op !== "erase") continue;
+    const url = await getAssetUrl(op.patch.assetId);
+    if (!url) {
+      return {
+        ok: false,
+        error: renderFail(
+          "engine-error",
+          "A cleaned-up area is missing its image data — reopen the photo and try again.",
+        ),
+      };
+    }
+    try {
+      const res = await fetch(url);
+      parts.push({ name: `erase:${op.patch.id}`, blob: await res.blob() });
+    } catch {
+      return {
+        ok: false,
+        error: renderFail(
+          "engine-error",
+          "Couldn't read a cleaned-up area's image data — reopen the photo and try again.",
+        ),
+      };
+    }
+  }
+  return { ok: true, parts };
+}
+
+/**
  * Full-resolution export (plan §4 PE3, print colour + boxes PE5). Replays the
  * recipe server-side against the working master and returns the encoded bytes
  * ready to save.
@@ -517,10 +564,17 @@ export async function renderPhoto(
     ...(overlayEntries.length ? { overlays: overlayEntries } : {}),
   };
 
+  // PE9 erase patches: attach an `erase:<id>` part per applied erase op so the
+  // server composites the approved fill (a missing part is a 400 bad-recipe). A
+  // missing patch blob is a friendly typed failure — re-thrown like any RenderError.
+  const eraseParts = await collectEraseParts(recipe);
+  if (!eraseParts.ok) throw eraseParts.error;
+
   const body = new FormData();
   body.append("file", master, doc.source.originalName);
   body.append("payload", JSON.stringify(payload));
   for (const part of overlayParts) body.append(part.name, part.blob, `${part.name}.png`);
+  for (const part of eraseParts.parts) body.append(part.name, part.blob, "erase.png");
 
   let res: Response;
   try {
@@ -557,6 +611,124 @@ export async function renderPhoto(
     intentDowngraded: headerFlag(res, "X-Photo-Intent-Downgraded"),
     cmykPreserved: headerFlag(res, "X-Photo-Cmyk-Preserved"),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Erase preview (POST /api/photo/erase) — the classical fill, PE9     */
+/* ------------------------------------------------------------------ */
+
+/** The outcome of an erase-fill request: the bbox patch PNG (approved into the
+    erase op by the PreviewApproveBar), or one typed RenderError (the error JSON is
+    Zod-validated — the client.ts pattern). An aborted request (a newer stroke
+    superseded this one) resolves to a typed failure the caller drops via its own
+    AbortSignal check, never surfacing it. */
+export type EraseFillOutcome =
+  | { ok: true; patch: Blob }
+  | { ok: false; error: RenderError };
+
+/**
+ * Run the classical erase fill ONCE server-side at full resolution and return the
+ * bbox patch PNG (plan §4 PE9). The recipe is the geometry + PRIOR-erase slice of
+ * ops[0..cursor) with adjust / autoEnhance / text / logo overlay ops STRIPPED —
+ * pointwise tone re-applies on top at export and overlays composite ABOVE the
+ * photo, so neither may bake into the fill INPUT (the server strips them again
+ * defensively, ErasePayloadSchema). Prior erase ops ship their `erase:<id>` patch
+ * parts so the jail replay composites them into the fill input exactly as export
+ * does. AbortSignal-aware: a new stroke / undo / tool switch aborts the in-flight
+ * request. Every failure is one typed RenderError.
+ */
+export async function requestEraseFill(args: {
+  doc: PhotoDocument;
+  maskBlob: Blob;
+  maskDims: { width: number; height: number };
+  rect: { x: number; y: number; w: number; h: number };
+  signal?: AbortSignal;
+}): Promise<EraseFillOutcome> {
+  const { doc, maskBlob, maskDims, rect, signal } = args;
+
+  // Applied ops only (ops[0..cursor)) — the fill input is what the associate sees.
+  // Strip the passes that must not bake into the fill; only geometry + prior erase
+  // reach the fill input.
+  const recipe = doc.recipe
+    .slice(0, doc.cursor)
+    .filter(
+      (op) =>
+        op.op !== "adjust" &&
+        op.op !== "autoEnhance" &&
+        op.op !== "textOverlay" &&
+        op.op !== "logoOverlay",
+    );
+
+  let master: Blob;
+  try {
+    master = await loadMasterBlob(doc.source.assetId);
+  } catch (err) {
+    // loadMasterBlob only ever throws RenderErrors (the missing-master seam).
+    return { ok: false, error: isRenderError(err) ? err : renderFail("engine-error", "Couldn't read this photo's image data — reopen it and try again.") };
+  }
+
+  const eraseParts = await collectEraseParts(recipe);
+  if (!eraseParts.ok) return { ok: false, error: eraseParts.error };
+
+  const payload: ErasePayload = {
+    recipe,
+    mask: { width: maskDims.width, height: maskDims.height, rect },
+  };
+
+  const body = new FormData();
+  body.append("file", master, doc.source.originalName);
+  body.append("mask", maskBlob, "mask.png");
+  body.append("payload", JSON.stringify(payload));
+  for (const part of eraseParts.parts) body.append(part.name, part.blob, "erase.png");
+
+  let res: Response;
+  try {
+    res = await fetch("/api/photo/erase", { method: "POST", body, signal });
+  } catch {
+    // An aborted fetch throws too — the caller distinguishes it via signal.aborted
+    // and drops the outcome, so this generic copy only ever reaches a real fault.
+    return {
+      ok: false,
+      error: renderFail("engine-error", "The cleanup service is unreachable — check your connection and try again."),
+    };
+  }
+
+  if (!res.ok) {
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      return { ok: false, error: renderFail("engine-error", "The cleanup service returned an error we couldn't read.") };
+    }
+    const parsed = RenderErrorSchema.safeParse(json);
+    return {
+      ok: false,
+      error: parsed.success ? parsed.data : renderFail("engine-error", "The cleanup service returned an unexpected error."),
+    };
+  }
+
+  return { ok: true, patch: await res.blob() };
+}
+
+/** Persist the brushed mask PNG under a content-derived id and return it. The mask
+    is the operator's INTENT, kept for the model-service seam (a future inpaint
+    model re-runs from the same mask); it never rides an export. */
+export async function storeEraseMask(maskBlob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await maskBlob.arrayBuffer());
+  const id = `photo:${contentHashId(bytes)}:mask`;
+  await putAssetBlob(id, maskBlob);
+  return id;
+}
+
+/** Persist the approved patch PNG and return its blob-store id + jail-safe part id
+    (the `erase:<id>` multipart part / `erase-<id>.png` jail basename rule — the
+    part id is the content hash, matching /^[a-z0-9-]{1,64}$/i). */
+export async function storeErasePatch(patch: Blob): Promise<{ assetId: string; partId: string }> {
+  const bytes = new Uint8Array(await patch.arrayBuffer());
+  const partId = contentHashId(bytes);
+  const assetId = `photo:${partId}:patch`;
+  await putAssetBlob(assetId, patch);
+  return { assetId, partId };
 }
 
 /**

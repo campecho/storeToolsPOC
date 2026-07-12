@@ -4,6 +4,7 @@ import { Crop, Download, Eraser, Printer, SlidersHorizontal, Type } from "lucide
 import type { LucideIcon } from "lucide-react";
 import type { PhotoTool } from "@/lib/store/photo-store";
 import { AdjustPanel } from "./panels/AdjustPanel";
+import { CleanupPanel } from "./panels/CleanupPanel";
 import { CropPanel } from "./panels/CropPanel";
 import { ExportPanel } from "./panels/ExportPanel";
 import { FixForPrintPanel } from "./panels/FixForPrintPanel";
@@ -91,6 +92,8 @@ export function ContextPanel({ activeTool, onClose }: { activeTool: PhotoTool; o
         <FixForPrintPanel />
       ) : activeTool === "text" ? (
         <TextImagePanel />
+      ) : activeTool === "cleanup" ? (
+        <CleanupPanel />
       ) : activeTool === "export" ? (
         <ExportPanel />
       ) : (
