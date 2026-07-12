@@ -57,6 +57,22 @@ const recipeFiles = haveFixtures
   ? readdirSync(RECIPES_DIR).filter((f) => f.endsWith(".json")).sort()
   : [];
 
+/**
+ * Resolve an attachment `id` to the jail basename the composite steps reference.
+ * A placed raster rides `attachments` keyed by op `id`, but the jail basename is
+ * `overlay-<id>.png` for a PE6 overlay and `erase-<id>.png` for a PE9 erase
+ * patch — so the prefix depends on the op, not the id. Rather than a second
+ * prefix map, derive it from the committed `compiled` block: the matching
+ * `composite` step's `file` IS the jail basename (its `<prefix>-<id>.png` ends
+ * with `-<id>.png`). One source of truth — text-logo's overlays and erase-fill's
+ * patch both resolve here; the `overlay-` fallback keeps a stepless lookup safe.
+ */
+function attachmentBasename(id: string, steps: { kind: string; file?: string }[]): string {
+  const suffix = `-${id}.png`;
+  const step = steps.find((s) => s.kind === "composite" && typeof s.file === "string" && s.file.endsWith(suffix));
+  return step?.file ?? `overlay-${id}.png`;
+}
+
 if (!haveFixtures || recipeFiles.length === 0) {
   describe("golden-recipe harness", () => {
     it.skip("photo-corpus fixtures missing — run `npm run refresh:photo-goldens` to generate them", () => {});
@@ -80,15 +96,20 @@ if (!haveFixtures || recipeFiles.length === 0) {
     const goldenExists = srcExists && existsSync(goldenPath);
     const isCmykTiffGolden = payload.intent === "cmyk" && payload.format === "tiff";
 
-    // Overlay rasters (PE6) ride the same jail-file mechanism the route feeds
-    // renderImage — keyed by the `overlay-<id>.png` basename the composite steps
-    // reference. compileRenderPlan needs `payload.overlays` to emit those steps,
-    // and renderImage needs the bytes to composite; both come from here.
+    // Placed rasters (PE6 overlays, PE9 erase patches) ride the same jail-file
+    // mechanism the route feeds renderImage — keyed by the jail basename the
+    // committed composite steps reference (`overlay-<id>.png` / `erase-<id>.png`,
+    // resolved via attachmentBasename so the erase prefix needs no second map).
+    // compileRenderPlan emits those steps (overlays from payload.overlays, an
+    // erase from its recipe op), and renderImage needs the bytes to composite;
+    // both come from here.
     const loadAttachments = (): Record<string, Buffer> | undefined => {
       if (!raw.attachments) return undefined;
       const out: Record<string, Buffer> = {};
       for (const [id, rel] of Object.entries(raw.attachments)) {
-        out[`overlay-${id}.png`] = readFileSync(join(CORPUS_DIR, rel));
+        out[attachmentBasename(id, raw.compiled.steps as { kind: string; file?: string }[])] = readFileSync(
+          join(CORPUS_DIR, rel),
+        );
       }
       return out;
     };
