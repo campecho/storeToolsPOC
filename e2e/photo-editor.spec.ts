@@ -1662,3 +1662,234 @@ test.describe("Print correctness (PE5)", () => {
     expect(meta.channels).toBe(3);
   });
 });
+
+/**
+ * Text & image (plan step PE6): overlay ops fold last-wins-per-id with one
+ * coalesced history step per overlay session; the layer list round-trips
+ * selection/removal; the export sidecar carries client-rendered rasters that
+ * land in the full-res file. Pixel thresholds mirror the integrator's manual
+ * verification (dark glyphs ≈4% in-band on the demo sunset; <0.2% without).
+ */
+test.describe("Text & image (PE6)", () => {
+  test.describe.configure({ timeout: 90_000 });
+
+  async function addText(page: Page, content?: string) {
+    await page.getByTestId("photo-rail-text").click();
+    await expect(page.getByTestId("photo-text-panel")).toBeVisible();
+    await page.getByTestId("text-add-text").click();
+    await expect(page.getByTestId("overlay-box")).toBeVisible();
+    if (content !== undefined) {
+      await page.getByTestId("text-content").fill(content);
+    }
+  }
+
+  test("add text is one step; content edits and moves coalesce; the layer list shows it", async ({
+    page,
+  }) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+    await expectHistory(page, 2); // Open + Add text — the fill coalesced
+
+    // Drag the box: still the same coalesced step.
+    const box = await page.getByTestId("overlay-box").boundingBox();
+    if (!box) throw new Error("no overlay box");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 60, { steps: 6 });
+    await page.mouse.up();
+    await expectHistory(page, 2);
+    const moved = await page.getByTestId("overlay-box").boundingBox();
+    expect(Math.abs((moved?.x ?? 0) - box.x)).toBeGreaterThan(80);
+
+    await expect(page.getByTestId("text-layer-0")).toContainText("SUMMER SALE");
+  });
+
+  test("corner handle scales the box and the font size together", async ({ page }) => {
+    await openDemoPhoto(page);
+    await addText(page);
+    const sizeBefore = Number(await page.getByTestId("text-size").inputValue());
+    const box = await page.getByTestId("overlay-box").boundingBox();
+    if (!box) throw new Error("no overlay box");
+    const handle = await page.getByTestId("overlay-handle-se").boundingBox();
+    if (!handle) throw new Error("no se handle");
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + 90, handle.y + 90, { steps: 6 });
+    await page.mouse.up();
+    const after = await page.getByTestId("overlay-box").boundingBox();
+    expect((after?.width ?? 0)).toBeGreaterThan(box.width + 40);
+    const sizeAfter = Number(await page.getByTestId("text-size").inputValue());
+    expect(sizeAfter).toBeGreaterThan(sizeBefore);
+    await expectHistory(page, 2); // the whole scale session coalesced
+  });
+
+  test("layer remove is one step; undo restores the overlay", async ({ page }) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+    await expectHistory(page, 2);
+    await page.getByTestId("text-layer-remove-0").click();
+    await expectHistory(page, 3); // the hidden-tombstone step
+    await expect(page.getByTestId("text-layer-0")).toHaveCount(0);
+    await page.getByTestId("photo-undo").click();
+    await expectHistory(page, 2);
+    await expect(page.getByTestId("text-layer-0")).toContainText("SUMMER SALE");
+  });
+
+  test("the export carries the text raster; undoing the overlay removes it", async ({
+    page,
+  }, testInfo) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+
+    // The default text box sits centered — the manual verification band.
+    const darkShare = async (file: string) => {
+      const img = sharp(file);
+      const meta = await img.metadata();
+      const raw = await img
+        .extract({
+          left: Math.floor((meta.width ?? 0) * 0.3),
+          top: Math.floor((meta.height ?? 0) * 0.38),
+          width: Math.floor((meta.width ?? 0) * 0.45),
+          height: Math.floor((meta.height ?? 0) * 0.2),
+        })
+        .resize(120, 50)
+        .raw()
+        .toBuffer();
+      let dark = 0;
+      for (let i = 0; i < raw.length; i += 3)
+        if (raw[i] < 70 && raw[i + 1] < 70 && raw[i + 2] < 70) dark++;
+      return dark / (raw.length / 3);
+    };
+
+    const exportJpg = async (name: string) => {
+      // The rail tile toggles — don't click it closed if Export is already open.
+      const rail = page.getByTestId("photo-rail-export");
+      if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+      await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+      const [download] = await Promise.all([
+        page.waitForEvent("download", { timeout: 60_000 }),
+        page.getByTestId("export-file").click(),
+      ]);
+      const path = testInfo.outputPath(name);
+      await download.saveAs(path);
+      return path;
+    };
+
+    const withOverlay = await exportJpg("with-overlay.jpg");
+    expect(await darkShare(withOverlay)).toBeGreaterThan(0.005);
+
+    await page.getByTestId("photo-undo").click(); // drop the Add text step
+    await expectHistory(page, 1);
+    const withoutOverlay = await exportJpg("without-overlay.jpg");
+    expect(await darkShare(withoutOverlay)).toBeLessThan(0.002);
+  });
+});
+
+/**
+ * Placed-picture round-trip (plan step PE8, Section F2): a layout picture opens
+ * in the Photo Editor with the red return banner, Done lands the edit back as
+ * ONE revertable layout step, Cancel is a true no-op, and Export is suppressed
+ * for the whole trip. Image identity is asserted by mean luminance of the
+ * rendered frame (object URLs are re-minted per mount, so src strings can't be
+ * compared): a brightness edit raises it, revert restores it.
+ */
+test.describe("Placed-picture round-trip (PE8)", () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  /** Import photo.png into the layout assets and place it (the L8 pattern). */
+  async function placePicture(page: Page) {
+    await page.goto("/layout");
+    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    await page.getByTestId("asset-tile-0").click();
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+  }
+
+  /** Mean luminance of the rendered picture frame, via an element screenshot. */
+  async function pictureLuma(page: Page) {
+    const shot = await page.getByTestId("picture-image").screenshot();
+    const stats = await sharp(shot).stats();
+    const [r, g, b] = stats.channels;
+    return 0.2126 * r.mean + 0.7152 * g.mean + 0.0722 * b.mean;
+  }
+
+  /** Select the placed picture and enter the round-trip via the inspector. */
+  async function enterRoundTrip(page: Page) {
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-picture").click();
+    await page.getByTestId("layout-edit-in-photo").click();
+    await expect(page.getByTestId("photo-return-banner")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("photo-return-banner")).toContainText("Editing picture from");
+    await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+  }
+
+  /** Push brightness well up so the returned render is measurably lighter. */
+  async function brighten(page: Page) {
+    await page.getByTestId("photo-rail-adjust").click();
+    const slider = page.getByTestId("adjust-brightness");
+    const box = await slider.boundingBox();
+    if (!box) throw new Error("no brightness slider");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.95, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+  }
+
+  test("the loop: edit → Done lands one revertable layout step; Export suppressed inside", async ({
+    page,
+  }) => {
+    await placePicture(page);
+    const before = await pictureLuma(page);
+
+    await enterRoundTrip(page);
+    // F2's suppression rule: no Export tile, Convert format disabled.
+    await expect(page.getByTestId("photo-rail-export")).toHaveCount(0);
+    await expect(page.getByTestId("photo-quick-convert")).toBeDisabled();
+
+    await brighten(page);
+    await page.getByTestId("return-done").click();
+    await expect(page.getByTestId("picture-image")).toBeVisible({ timeout: 60_000 });
+    const after = await pictureLuma(page);
+    expect(after).toBeGreaterThan(before + 8); // visibly brighter render landed
+
+    // One revertable step: the inspector offers Revert photo edits; using it
+    // restores the original asset and clears the offer.
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-picture").click();
+    await expect(page.getByTestId("layout-revert-photo-edits")).toBeVisible();
+    await page.getByTestId("layout-revert-photo-edits").click();
+    await expect(page.getByTestId("layout-revert-photo-edits")).toHaveCount(0);
+    const reverted = await pictureLuma(page);
+    expect(Math.abs(reverted - before)).toBeLessThan(3);
+
+    // And the revert itself is one undoable step: undo brings the edit back.
+    await page.keyboard.press("ControlOrMeta+z");
+    const undone = await pictureLuma(page);
+    expect(undone).toBeGreaterThan(before + 8);
+  });
+
+  test("Cancel is a true no-op: frame untouched, no revert offer, no photo doc", async ({
+    page,
+  }) => {
+    await placePicture(page);
+    const before = await pictureLuma(page);
+
+    await enterRoundTrip(page);
+    await brighten(page);
+    await page.getByTestId("return-cancel").click();
+    await expect(page.getByTestId("picture-image")).toBeVisible({ timeout: 30_000 });
+    const after = await pictureLuma(page);
+    expect(Math.abs(after - before)).toBeLessThan(3);
+
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-picture").click();
+    await expect(page.getByTestId("layout-revert-photo-edits")).toHaveCount(0);
+
+    // The photo editor holds no document after a cancel.
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await expect(page.getByTestId("photo-open-input")).toBeAttached();
+  });
+});
