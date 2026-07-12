@@ -5,7 +5,7 @@ import { useAssetUrl } from "@/lib/assets/use-asset-url";
 import { getAssetUrl } from "@/lib/assets/blob-store";
 import type { PhotoDocument, PhotoOp } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
-import { effectiveDims, isGeometryOp, straightenScale, type Dims } from "@/lib/photo/geometry";
+import { effectiveDims, isComposeOp, straightenScale, type Dims } from "@/lib/photo/geometry";
 import {
   collectAdjustState,
   compileAdjust,
@@ -276,10 +276,15 @@ function applyGeometryOp(
       // `current` is a copy owned by this compose chain, so in-place draw is safe.
       const img = patches.get(op.patch.assetId);
       if (!img || !img.complete || img.naturalWidth === 0) return current;
-      const dx = Math.round(op.patch.rect.x * runningScale);
-      const dy = Math.round(op.patch.rect.y * runningScale);
-      const dw = Math.max(1, Math.round(op.patch.rect.w * runningScale));
-      const dh = Math.max(1, Math.round(op.patch.rect.h * runningScale));
+      // Clamp into the current canvas exactly as the sibling rect cases (and the
+      // server compile) do — scaled rounding can drift a pixel against the
+      // running canvas dims, and a stale rect must never paint out of frame.
+      let dw = Math.max(1, Math.round(op.patch.rect.w * runningScale));
+      let dh = Math.max(1, Math.round(op.patch.rect.h * runningScale));
+      dw = Math.min(dw, cw);
+      dh = Math.min(dh, ch);
+      const dx = Math.min(Math.max(Math.round(op.patch.rect.x * runningScale), 0), cw - dw);
+      const dy = Math.min(Math.max(Math.round(op.patch.rect.y * runningScale), 0), ch - dh);
       const octx = current.getContext("2d");
       if (octx) octx.drawImage(img, dx, dy, dw, dh);
       return current;
@@ -546,16 +551,16 @@ export function PhotoCanvas({
 
     // The live gesture preview + the pending model-op preview (PE9 erase) fold on
     // top of the applied slice, in that order (a gesture drag and an erase preview
-    // can coexist). A geometry-shaped gesture preview (straighten/crop/…) OR the
-    // erase preview re-composes geometry; an ADJUST or OVERLAY gesture preview does
-    // NOT (isGeometryOp stays the single source of truth — erase joins ONLY the
-    // compose-affecting test, plan §9), so a slider/overlay drag never busts the
+    // can coexist). isComposeOp (geometry.ts) is the ONE classifier for what
+    // re-composes the geometry canvas — the dimensioning ops plus erase; an ADJUST
+    // or OVERLAY preview stays out, so a slider/overlay drag never busts the
     // geometry cache.
     const previewOps: PhotoOp[] = [];
     if (preview) previewOps.push(preview);
     if (pending) previewOps.push(pending);
     const combinedOps = previewOps.length ? [...appliedOps, ...previewOps] : appliedOps;
-    const geomGesture = preview && isGeometryOp(preview) ? preview : null;
+    const geomGesture = preview && isComposeOp(preview) ? preview : null;
+    const pendingCompose = pending && isComposeOp(pending) ? pending : null;
 
     // Effective-master dims (applied ops folded) — the space overlay boxes address.
     // Computed here so the overlay pass and the published layout share it; a
@@ -573,7 +578,7 @@ export function PhotoCanvas({
     // base draws straight through.
     const needGeom =
       !isComparing &&
-      (appliedOps.length > 0 || geomGesture != null || pending != null || adjustActive || splitOn);
+      (appliedOps.length > 0 || geomGesture != null || pendingCompose != null || adjustActive || splitOn);
 
     // BEFORE = geometry-only; AFTER = geometry + adjust. Default both to base.
     let before: CanvasImageSource = base;
@@ -590,7 +595,7 @@ export function PhotoCanvas({
       const geomOps = [
         ...appliedOps,
         ...(geomGesture ? [geomGesture] : []),
-        ...(pending ? [pending] : []),
+        ...(pendingCompose ? [pendingCompose] : []),
       ];
       // Loaded erase-patch bitmaps among these ops — a late-arriving bitmap changes
       // this key so the compose recomposes with the patch drawn (plan §9).
@@ -604,7 +609,7 @@ export function PhotoCanvas({
         d?.recipe,
         d?.cursor,
         geomGesture,
-        pending,
+        pendingCompose,
         runningScale,
         loadedPatchKey,
       ];

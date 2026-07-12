@@ -4,7 +4,7 @@ import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
 // (plan §3.6 — "same seam as import"). Nothing scans yet; the call site exists
 // so the engine decision has a single place to fill.
 import { avScanHook } from "@/lib/import/pub2raw";
-import { MAX_MASK_BYTES, MAX_PHOTO_BYTES } from "@/lib/photo/limits";
+import { MAX_ERASE_OPS, MAX_MASK_BYTES, MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { eraseFill } from "@/lib/photo/render-host";
 import { ErasePayloadSchema } from "@/lib/schema/photo";
 // Op-screen, status mapping, the JSON error builder, and the erase-patch
@@ -83,6 +83,16 @@ export async function POST(req: Request) {
     if (!isRenderableOp(op)) {
       return fail(422, "unsupported-op", `'${op.op}' ops can't be part of a cleanup preview.`);
     }
+  }
+
+  //    The recipe here is the PRIOR slice — approving this preview adds one more
+  //    erase op. Gate against MAX_ERASE_OPS NOW (>= — the op being previewed is
+  //    the +1), or the export route's own cap would later reject a document this
+  //    route happily helped create, stranding an approved edit (the render
+  //    collector counts the full applied recipe).
+  const priorErases = payload.recipe.filter((op) => op.op === "erase").length;
+  if (priorErases >= MAX_ERASE_OPS) {
+    return fail(400, "bad-recipe", `This photo already has ${MAX_ERASE_OPS} cleaned-up areas — undo one before removing more.`);
   }
 
   // 5. Mask part: a grayscale-on-black PNG (the ErasePayloadSchema mask contract

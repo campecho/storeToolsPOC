@@ -320,6 +320,18 @@ export function CleanupBrushOverlay({ layout }: { layout: CanvasImageLayout }) {
     abortRef.current = controller;
     const startRecipe = d.recipe;
     const startCursor = d.cursor;
+    // ONE staleness rule, re-checked after every await below: history moved or
+    // the tool changed while this fill was out — the response belongs to a state
+    // the associate has already left.
+    const isStale = () => {
+      const st = usePhotoStore.getState();
+      return (
+        !st.doc ||
+        st.doc.recipe !== startRecipe ||
+        st.doc.cursor !== startCursor ||
+        st.activeTool !== "cleanup"
+      );
+    };
     setWorking(true);
     setError(null);
 
@@ -335,14 +347,7 @@ export function CleanupBrushOverlay({ layout }: { layout: CanvasImageLayout }) {
     if (controller.signal.aborted) return;
     abortRef.current = null;
 
-    // Stale guard: history moved or the tool changed while the fill ran.
-    const st = usePhotoStore.getState();
-    if (
-      !st.doc ||
-      st.doc.recipe !== startRecipe ||
-      st.doc.cursor !== startCursor ||
-      st.activeTool !== "cleanup"
-    ) {
+    if (isStale()) {
       setWorking(false);
       return;
     }
@@ -352,27 +357,35 @@ export function CleanupBrushOverlay({ layout }: { layout: CanvasImageLayout }) {
       return;
     }
 
-    // Persist the mask (intent) + the approved patch, then preview the op.
-    const maskAssetId = await storeEraseMask(mask.blob);
-    const { assetId, partId } = await storeErasePatch(outcome.patch);
-
-    // Re-check staleness after the async blob writes before committing the preview.
-    const st2 = usePhotoStore.getState();
-    if (
-      !st2.doc ||
-      st2.doc.recipe !== startRecipe ||
-      st2.doc.cursor !== startCursor ||
-      st2.activeTool !== "cleanup"
-    ) {
+    // Commit-time invariant guard: the patch's pixel dims must equal the rect the
+    // op will carry — every later render enforces exactly that on the erase:<id>
+    // part, so an op that would fail export must never be offered for approval.
+    // (The server validates the rect and reports the patch dims; this closes the
+    // loop against any drift between the two.)
+    const bmp = await createImageBitmap(outcome.patch).catch(() => null);
+    const bmpOk = bmp && bmp.width === rect.w && bmp.height === rect.h;
+    bmp?.close();
+    if (!bmpOk) {
+      if (!isStale()) setError("The cleanup result didn't match the brushed area — try again.");
       return;
     }
+
+    // Persist the mask (intent) + the approved patch — independent writes, so
+    // they fan out — then preview the op.
+    const [maskAssetId, patchStored] = await Promise.all([
+      storeEraseMask(mask.blob),
+      storeErasePatch(outcome.patch),
+    ]);
+
+    // Re-check staleness after the async decode + blob writes before committing.
+    if (isStale()) return;
     const op: PhotoOp = {
       op: "erase",
       label: "Remove object",
       maskAssetId,
-      patch: { id: partId, assetId, rect },
+      patch: { id: patchStored.partId, assetId: patchStored.assetId, rect },
     };
-    st2.setPendingPreview(op);
+    usePhotoStore.getState().setPendingPreview(op);
     // These strokes now preview as REAL filled pixels on the canvas — stop echoing
     // them so the tint never obscures the result being judged (see echoFromRef).
     echoFromRef.current = strokesRef.current.length;

@@ -60,6 +60,16 @@ export function isGeometryOp(op: PhotoOp): boolean {
   );
 }
 
+/** The ops the canvas GEOMETRY COMPOSE must replay: everything that moves or
+    rewrites raster pixels in place — the dimensioning ops (isGeometryOp) plus the
+    PE9 erase patch composite (dims unchanged, pixels rewritten). Pointwise tone
+    and the above-photo overlays stay OUT (they layer on the compose without
+    re-running it). One named predicate so the canvas's gesture-preview and
+    pending-model-op paths can't classify the same op differently. */
+export function isComposeOp(op: PhotoOp): boolean {
+  return isGeometryOp(op) || op.op === "erase";
+}
+
 function intDim(v: number): number {
   return Math.max(1, Math.round(v));
 }

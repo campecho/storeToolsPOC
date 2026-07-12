@@ -255,9 +255,18 @@ export const EraseOpSchema = z.object({
     id: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/i),
     /** Blob-store id of the patch PNG. */
     assetId: z.string(),
-    /** Patch placement in EFFECTIVE-image px at THIS op's recipe position — the
-        patch PNG's pixel dims equal rect.w × rect.h (integers). */
-    rect: PixelRectSchema,
+    /** Patch placement in EFFECTIVE-image px at THIS op's recipe position. The
+        bound is the documented invariant made enforceable: the patch PNG's pixel
+        dims EQUAL rect.w × rect.h, and the render route rejects a part whose
+        header dims mismatch — so a degenerate/fractional rect must die at parse,
+        not as a baffling "must be a 1×1 image" 400 later (tighter than the shared
+        PixelRectSchema, whose crop consumers legitimately float). */
+    rect: z.object({
+      x: z.number().int().min(0),
+      y: z.number().int().min(0),
+      w: z.number().int().min(1),
+      h: z.number().int().min(1),
+    }),
   }),
 });
 
@@ -286,6 +295,24 @@ const PhotoOpUnionSchema = z.discriminatedUnion("op", [
  * `z.array(PhotoOpSchema)` and `.safeParse` (no consumer reaches for its union
  * `.options`). The exported `PhotoOp` type is unchanged by the refine.
  */
+/**
+ * The ops that enter the erase FILL INPUT (PE9): geometry + prior erase patches —
+ * the effective image the brush was drawn on. Pointwise tone (adjust/autoEnhance)
+ * re-applies terminally on top of the patch at every render, and overlays are
+ * placed art ABOVE the photo, so neither may bake into the pixels the fill
+ * samples. ONE predicate shared by the client's pre-strip (client.ts
+ * requestEraseFill) and the server's defensive re-strip (render-host eraseFill) —
+ * two hand-copied lists here would drift silently.
+ */
+export function isFillInputOp(op: PhotoOp): boolean {
+  return (
+    op.op !== "adjust" &&
+    op.op !== "autoEnhance" &&
+    op.op !== "textOverlay" &&
+    op.op !== "logoOverlay"
+  );
+}
+
 export const PhotoOpSchema = PhotoOpUnionSchema.superRefine((op, ctx) => {
   if (op.op !== "fitToSize") return;
   const hasRect = op.rect != null;

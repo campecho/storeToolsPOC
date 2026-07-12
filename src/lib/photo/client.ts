@@ -13,6 +13,7 @@ import {
   IntakeResponseSchema,
   PhotoDiagnosticsSchema,
   RenderErrorSchema,
+  isFillInputOp,
   type ErasePayload,
   type IntakeError,
   type IntakeErrorCode,
@@ -444,11 +445,25 @@ async function collectEraseParts(
 ): Promise<
   { ok: true; parts: { name: string; blob: Blob }[] } | { ok: false; error: RenderError }
 > {
+  // Every patch loads independently — fan the blob reads out (up to
+  // MAX_ERASE_OPS of them; a multi-cleanup session would otherwise pay N
+  // serialized round-trips on every export).
+  const eraseOps = recipe.filter((op): op is Extract<PhotoOp, { op: "erase" }> => op.op === "erase");
+  const loaded = await Promise.all(
+    eraseOps.map(async (op) => {
+      const url = await getAssetUrl(op.patch.assetId);
+      if (!url) return null;
+      try {
+        const res = await fetch(url);
+        return { name: `erase:${op.patch.id}`, blob: await res.blob() };
+      } catch {
+        return null;
+      }
+    }),
+  );
   const parts: { name: string; blob: Blob }[] = [];
-  for (const op of recipe) {
-    if (op.op !== "erase") continue;
-    const url = await getAssetUrl(op.patch.assetId);
-    if (!url) {
+  for (const part of loaded) {
+    if (!part) {
       return {
         ok: false,
         error: renderFail(
@@ -457,18 +472,7 @@ async function collectEraseParts(
         ),
       };
     }
-    try {
-      const res = await fetch(url);
-      parts.push({ name: `erase:${op.patch.id}`, blob: await res.blob() });
-    } catch {
-      return {
-        ok: false,
-        error: renderFail(
-          "engine-error",
-          "Couldn't read a cleaned-up area's image data — reopen the photo and try again.",
-        ),
-      };
-    }
+    parts.push(part);
   }
   return { ok: true, parts };
 }
@@ -647,17 +651,9 @@ export async function requestEraseFill(args: {
   const { doc, maskBlob, maskDims, rect, signal } = args;
 
   // Applied ops only (ops[0..cursor)) — the fill input is what the associate sees.
-  // Strip the passes that must not bake into the fill; only geometry + prior erase
-  // reach the fill input.
-  const recipe = doc.recipe
-    .slice(0, doc.cursor)
-    .filter(
-      (op) =>
-        op.op !== "adjust" &&
-        op.op !== "autoEnhance" &&
-        op.op !== "textOverlay" &&
-        op.op !== "logoOverlay",
-    );
+  // isFillInputOp (schema/photo.ts) is the ONE predicate for what enters the fill
+  // input; the server re-strips through the same symbol, so the sides can't drift.
+  const recipe = doc.recipe.slice(0, doc.cursor).filter(isFillInputOp);
 
   let master: Blob;
   try {

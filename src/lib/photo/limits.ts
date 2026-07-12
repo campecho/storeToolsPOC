@@ -77,6 +77,16 @@ export const WORKER_MAX_OUTPUT_BYTES = envInt(
 );
 
 /**
+ * Per-overlay raster byte cap (PE6, §3.6 — "overlay rasters size-capped and
+ * re-encoded"). 8 MB is generous for a PNG placement rendered at export
+ * resolution; anything larger is rejected before a byte reaches the jail. The
+ * jail re-encode (worker decode+resize) is the sanitizer; this is the DoS guard.
+ * (Lived in the render route until PE9 moved the overlay collector beside the
+ * erase-patch collector in render-support — the caps live here with the rest.)
+ */
+export const MAX_OVERLAY_BYTES = envInt("STP_PHOTO_MAX_OVERLAY_BYTES", 8 * 1024 * 1024);
+
+/**
  * Brushed-mask upload cap for the erase-preview route (PE9), bytes. 2 MB is
  * generous for a grayscale-on-black PNG at proxy resolution; anything larger is
  * rejected before a byte reaches the jail (the DoS guard — the worker's

@@ -459,12 +459,17 @@ async function render(sharp, job) {
  *
  * Algorithm (contract, not narration):
  *  1. BASE — patch-from-surround by onion-peel diffusion. A pixel is UNKNOWN when
- *     mask ≥ HARD; the outer ring of the (client-padded) rect is known. Each pass
+ *     mask ≥ HARD; the outer ring of the (client-padded) rect is known. Each ring
  *     fills every unknown pixel adjacent to a KNOWN one with the mean of its known
  *     8-neighbours, then promotes them to known — a deterministic inward peel (a
- *     pass reads only pixels known BEFORE it, so within-pass order can't matter).
- *     The window edge is a wall (outside is never sampled), which the padding
- *     makes moot; a pass cap + mean-of-known fallback guards an all-masked window.
+ *     ring reads only pixels known BEFORE it, so within-ring order can't matter).
+ *     Rings are FRONTIER-DRIVEN — each ring's candidates are the unknown
+ *     neighbours of the previous ring's commits (ring 1 seeds from one full
+ *     scan) — so total work is O(N), not rings × full-window rescans: a large,
+ *     near-fully-masked window fills in linear time instead of burning the
+ *     jail's wall clock. The window edge is a wall (outside is never sampled),
+ *     which the padding makes moot; a mean-of-known fallback guards an
+ *     all-masked window.
  *  2. SMOOTH — a few 3×3 box-blur passes over FILLED pixels only, each reading a
  *     per-pass snapshot (order-independent), so the diffusion doesn't band.
  *  3. BLEND — over the ORIGINAL by the soft factor a = mask/255:
@@ -492,57 +497,115 @@ function classicalFill(img, mask, w, h) {
     known[i] = u ? 0 : 1;
   }
 
-  // (1) Onion-peel diffusion. Pass count is bounded: a padded region fills in a
-  // few rings; w+h+1 covers the worst geometry.
+  // (1) Onion-peel diffusion, frontier-driven. A pixel's FIRST adjacency to the
+  // known set, its queue time, and its fill time coincide (it fills the ring
+  // after it is queued), so the candidate rings here are exactly the rings a
+  // full-window rescan would produce — same pixels, same pass-start known set,
+  // same means, byte-identical output (the committed erase golden is the proof).
   let remaining = 0;
   for (let i = 0; i < N; i++) if (!known[i]) remaining++;
-  const maxPasses = w + h + 1;
-  for (let pass = 0; pass < maxPasses && remaining > 0; pass++) {
-    // Frontier = unknown pixels with ≥1 known 8-neighbour; compute all their new
-    // values from the CURRENT known set, then commit + promote together.
-    const frontier = [];
-    const newR = [];
-    const newG = [];
-    const newB = [];
+
+  // Mean of a candidate's known 8-neighbours from the CURRENT (ring-start) fill
+  // state; null when it has none (defensive — a queued candidate always has one).
+  const meanOfKnown = (i) => {
+    const x = i % w;
+    const y = (i - x) / w;
+    let sr = 0;
+    let sg = 0;
+    let sb = 0;
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= h) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const xx = x + dx;
+        if (xx < 0 || xx >= w) continue;
+        const j = yy * w + xx;
+        if (!known[j]) continue;
+        sr += fillR[j];
+        sg += fillG[j];
+        sb += fillB[j];
+        n++;
+      }
+    }
+    return n === 0 ? null : [sr / n, sg / n, sb / n];
+  };
+
+  // Ring 1 seeds: every unknown pixel with ≥1 originally-known 8-neighbour (one
+  // full scan). `queued` de-dups so a pixel is examined once per ring at most.
+  const queued = new Uint8Array(N);
+  let candidates = [];
+  if (remaining > 0) {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
-        if (known[i]) continue;
-        let sr = 0;
-        let sg = 0;
-        let sb = 0;
-        let n = 0;
-        for (let dy = -1; dy <= 1; dy++) {
+        if (known[i] || queued[i]) continue;
+        let touches = false;
+        for (let dy = -1; dy <= 1 && !touches; dy++) {
           const yy = y + dy;
           if (yy < 0 || yy >= h) continue;
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
             const xx = x + dx;
             if (xx < 0 || xx >= w) continue;
-            const j = yy * w + xx;
-            if (!known[j]) continue;
-            sr += fillR[j];
-            sg += fillG[j];
-            sb += fillB[j];
-            n++;
+            if (known[yy * w + xx]) {
+              touches = true;
+              break;
+            }
           }
         }
-        if (n === 0) continue; // no known neighbour yet — a later ring reaches it
-        frontier.push(i);
-        newR.push(sr / n);
-        newG.push(sg / n);
-        newB.push(sb / n);
+        if (touches) {
+          queued[i] = 1;
+          candidates.push(i);
+        }
       }
     }
-    if (frontier.length === 0) break; // trapped (all-masked) — the fallback fills it
-    for (let k = 0; k < frontier.length; k++) {
-      const i = frontier[k];
-      fillR[i] = newR[k];
-      fillG[i] = newG[k];
-      fillB[i] = newB[k];
+  }
+
+  while (remaining > 0 && candidates.length > 0) {
+    // Compute every candidate's value from the ring-start known set, then commit
+    // + promote together (reads never see this ring's writes).
+    const newVals = [];
+    for (const i of candidates) {
+      const v = meanOfKnown(i);
+      if (v === null) queued[i] = 0; // defensive: let a later ring re-queue it
+      newVals.push(v);
+    }
+    const committed = [];
+    for (let k = 0; k < candidates.length; k++) {
+      const v = newVals[k];
+      if (v === null) continue;
+      const i = candidates[k];
+      fillR[i] = v[0];
+      fillG[i] = v[1];
+      fillB[i] = v[2];
       known[i] = 1;
       remaining--;
+      committed.push(i);
     }
+    if (committed.length === 0) break; // trapped — the fallback fills the rest
+
+    // Next ring: the unknown, not-yet-queued neighbours of this ring's commits.
+    const next = [];
+    for (const i of committed) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const xx = x + dx;
+          if (xx < 0 || xx >= w) continue;
+          const j = yy * w + xx;
+          if (known[j] || queued[j]) continue;
+          queued[j] = 1;
+          next.push(j);
+        }
+      }
+    }
+    candidates = next;
   }
 
   // Fallback for any still-unknown pixel (pathological, e.g. every pixel masked):

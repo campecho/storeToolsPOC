@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { MAX_MASK_BYTES, MAX_PHOTO_BYTES } from "@/lib/photo/limits";
+import { MAX_ERASE_OPS, MAX_MASK_BYTES, MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { RenderErrorSchema } from "@/lib/schema/photo";
 import { POST } from "./route";
 
@@ -181,6 +181,24 @@ describe("POST /api/photo/erase — mask part gates (bad-recipe)", () => {
 });
 
 describe("POST /api/photo/erase — prior erase patches + size cap", () => {
+  it("rejects a preview whose recipe already carries MAX_ERASE_OPS erases (400 — the +1 would strand the export)", async () => {
+    // Approving this preview would append erase op #MAX+1, which the RENDER
+    // route's collector then rejects forever — so the cap gates HERE, counting
+    // the prior slice with >= (the previewed op is the +1). Fires before the
+    // mask/part gates, so none are attached.
+    const recipe = Array.from({ length: MAX_ERASE_OPS }, (_, i) =>
+      eraseRecipeOp(`prev-${i}`, { x: 0, y: 0, w: 4, h: 4 }),
+    );
+    const res = await postErase({
+      file: new Uint8Array(await png(200, 150)),
+      payload: okPayload(recipe),
+    });
+    expect(res.status).toBe(400);
+    const body = await parsedError(res);
+    expect(body).toMatchObject({ ok: false, code: "bad-recipe" });
+    expect(body.message).toContain(`${MAX_ERASE_OPS}`);
+  });
+
   it("rejects a prior erase op with no matching patch part (400 bad-recipe)", async () => {
     const res = await postErase({
       file: new Uint8Array(await png(200, 150)),

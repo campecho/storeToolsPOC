@@ -245,6 +245,20 @@ describe("compileRenderPlan — op screening + step shape", () => {
     expect(() => compileRenderPlan([bogus], SRC)).toThrow(UnsupportedRenderOp);
   });
 
+  it("renderImage converts that throw into a typed unsupported-op failure (never a jail job)", async () => {
+    // The catch-and-classify wiring the route's 422 rides on — kept covered even
+    // though no REAL op tag reaches it anymore (the erase negatives it replaced
+    // flipped to positives at PE9).
+    const bogus = { op: "teleport", label: "Teleport" } as unknown as PhotoOp;
+    const out = await renderImage(await quadPng(), {
+      recipe: [bogus],
+      format: "png",
+      quality: 90,
+      intent: "srgb",
+    });
+    expect(out).toMatchObject({ ok: false, code: "unsupported-op" });
+  });
+
   it("compiles the PE5 print-geometry ops (resize / bleedExpand / fitToSize) into steps", () => {
     // bleedExpand → an extend step on all four edges (mirror carries no colour).
     expect(compileRenderPlan([bleed(20, "mirror")], SRC).steps).toEqual([

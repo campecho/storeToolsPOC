@@ -4,13 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
-import type { ErasePayload, PhotoOp, RenderErrorCode, RenderPayload } from "@/lib/schema/photo";
+import {
+  isFillInputOp,
+  type ErasePayload,
+  type PhotoOp,
+  type RenderErrorCode,
+  type RenderPayload,
+} from "@/lib/schema/photo";
 import { collectAdjustState, compileAdjust, isAdjustIdentity } from "./adjust-math";
 import { straightenScale } from "./geometry";
 import { tiffDimensions } from "./lcms";
 import {
   INTAKE_TIMEOUT_MS,
   MASTER_JPEG_QUALITY,
+  MAX_ERASE_PATCH_BYTES,
   MAX_PHOTO_PIXELS,
   PHOTO_AS_BYTES,
   PHOTO_CPU_SECONDS,
@@ -853,22 +860,6 @@ export async function renderImage(
 /* ------------------------------------------------------------------ */
 
 /**
- * The ops eraseFill STRIPS before compiling the fill input. Pointwise tone
- * (adjust/autoEnhance) must NOT bake into the surroundings the fill samples, and
- * overlays are placed art ABOVE the photo, never fill input. Geometry and PRIOR
- * erase ops stay — they define the effective image the brush was drawn on. The
- * client strips the same set; this is the server's defensive re-strip (§3.6).
- */
-function isFillInputOp(op: PhotoOp): boolean {
-  return (
-    op.op !== "adjust" &&
-    op.op !== "autoEnhance" &&
-    op.op !== "textOverlay" &&
-    op.op !== "logoOverlay"
-  );
-}
-
-/**
  * Run the classical erase fill (PE9) ONCE, server-side, at preview time: replay
  * the geometry + prior-erase slice of the recipe at full resolution in the jail,
  * then patch-from-surround + soft-mask blend the `mask.rect` window and return
@@ -963,6 +954,18 @@ export async function eraseFill(
 
   const out = run.outputs["patch.bin"];
   if (!out) return { ok: false, code: "engine-error", message: "Cleanup reported success but wrote no patch." };
+
+  // The export gate's invariant, enforced at CREATION: every render replays this
+  // patch through an `erase:<id>` part that collectErasePatches caps at
+  // MAX_ERASE_PATCH_BYTES — so a patch over that cap must be refused HERE, before
+  // the associate can approve an edit no export would ever accept again.
+  if (out.length > MAX_ERASE_PATCH_BYTES) {
+    return {
+      ok: false,
+      code: "too-large",
+      message: "That area is too large to clean up in one pass — try a smaller brush area.",
+    };
+  }
 
   return { ok: true, bytes: out, width: Number(run.result.width), height: Number(run.result.height) };
 }
