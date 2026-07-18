@@ -1,10 +1,11 @@
 # Photo corpus
 
 Real-file corpus + committed goldens for the Photo Editor
-(`docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md` §5). The full corpus — phone
-JPEGs, HEICs incl. Live photos, low-res logo, screenshot, huge TIFF,
-AI-generated art, scanned doc, plus the hostile set — is finalized at PE10;
-until then it grows tranche by tranche, provenance noted per file.
+(`docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md` §5). The **hostile set** landed as
+committed artifacts at PE10c (`hostile/`, below); the remaining benign cases —
+screenshot, huge TIFF, AI-generated art, scanned doc, an EXIF-oriented phone
+JPEG, a multi-image Live-photo HEIC — finalize at PE10d. Provenance noted per
+file; everything is synthetic/authored (no third-party content).
 
 ## Files
 
@@ -19,6 +20,7 @@ until then it grows tranche by tranche, provenance noted per file.
 | `patches/date-stamp.png` | **Generated** (`eraseFill` on `date-stamp.jpg` + `masks/date-stamp.png`, once — deterministic) | The stored-explicit erase patch (PE9) the `erase-fill` golden composites (mirrors `overlays/`). 420 × 150 RGBA — the classical fill's result for rect `{780,740,420,150}`; committed so replay never re-runs the fill (`EraseOpSchema.patch`). |
 | `recipes/*.json` | **Authored** (hand-written payload; `compiled` block generated once via `compileRenderPlan`) | Golden-recipe inputs (PE3/PE5/PE6). Each file is `{ source, payload, compiled }` (plus, for overlay recipes, `attachments`): `source` names a corpus image (resolved **fixtures-local first, then `public/`**), `payload` is a `RenderPayload` (recipe + format + quality + optional intent/printTarget/**overlays**), and `compiled` is the `{ steps, out }` the TS compiler produced for that source's dimensions — see the contract below. `geometry-chain` (crop 4×6 → rotate right → straighten −1.2°, JPEG q90), `shape-circle` (circle crop to 1:1, PNG), `plain-crop` (simple rect crop, PNG), `adjust-tone` (crop 4×6 → brightness +12 → saturation +20 → warmth +5, JPEG q90 — the PE4 tone/colour pass ending in a terminal `adjust` step), `bleed-mirror` (crop 4×6 → **bleedExpand mirror px 84**, JPEG q90 — the PE5 `extend` step; `compiled.steps` = extract + extend), `royal-blue-cmyk` (**empty recipe, format tiff, intent cmyk** on `royal-blue.png` — the RGB→GRACoL separation; the golden is the CMYK TIFF), `text-logo` (crop 4×6 → **overlays: banner at (200,200), logo at (3600,2300)**, JPEG q90 — the PE6 `composite` steps; `compiled.steps` = extract + two composites; the raster bytes come from `attachments` mapping each overlay `id` to a corpus-relative PNG, written into the jail as `overlay-<id>.png`), `erase-fill` (**erase `date-stamp` at rect `{780,740,420,150}` → brightness +12** on `date-stamp.jpg`, JPEG q90 — the PE9 stored-explicit patch as an inline `composite` UNDER the terminal `adjust`; `compiled.steps` = composite + adjust; the patch bytes come from `attachments` mapping the erase `id` to `patches/date-stamp.png`, written into the jail as `erase-<id>.png`). |
 | `goldens/*.{jpg,png,tiff}` | **Generated** (`npm run refresh:photo-goldens`) | The committed expected bytes for each recipe, produced by the real render path (`render-host` → `photo-worker.mjs` → sharp). `golden.test.ts` asserts `renderImage(master, payload)` equals these byte-for-byte; CI drift-gates them. Most are well under 1 MB; the exception is `royal-blue-cmyk.tiff` (~3.5 MB — it carries the embedded 3.4 MB GRACoL profile, which `golden.test.ts` asserts is byte-identical to the committed `.icc`). The CMYK golden additionally checks output space `cmyk` / 4 channels / determinism; the overlay golden (`text-logo.jpg`) additionally spot-checks that the banner's centre pixel differs from a no-overlay render of the same recipe. |
+| `hostile/*` | **Synthetic** (`scripts/make-hostile-fixtures.mjs` — hand-authored deterministic buffers, no `sharp`, no randomness, no third-party content) | The PE10c hostile set (photo plan §4 PE10c, §5), each refused at the layer that owns its defense, all asserted in `hostile-corpus.test.ts` against the real caps: `polyglot-zip.jpg` (ZIP magic under a `.jpg` name → the byte-sniff refuses it, not the extension → not-an-image); `truncated.jpg` (valid JPEG SOI + JFIF start, then nothing → jail decode-failed); `truncated.heic` (a valid `ftyp`/heic box, no payload → the HEIC capability gate or transcode refuses it); `pixel-bomb.png` (**68 bytes** whose IHDR declares 50000 × 50000 = 2.5 Gpx → libvips refuses at the header read, at the **default** 80 MP cap, before any allocation → too-many-pixels); and the SVG set turning `photo-worker.mjs`'s "librsvg's defaults already refuse …" comment into asserted behavior — `svg-script.svg` (a `<script>` → inert vector art, librsvg has no JS engine), `svg-external-ref.svg` (external `file://` + `http://` `<image href>` → unresolved, the raster stays the SVG's own bounded size with nothing fetched or read — no SSRF, no local read; the remote host is an RFC 5737 TEST-NET address so the test can't hang on a live server), `svg-xxe-entity.svg` (external-entity XXE → libxml2 refuses → decode-failed), `svg-billion-laughs.svg` (nested entity amplification → libxml2's amplification cap trips → decode-failed, no hang). Regenerate with `node scripts/make-hostile-fixtures.mjs` (one-shot; byte-deterministic). |
 
 ### The precompiled-steps contract (PE3 golden harness)
 
@@ -58,8 +60,13 @@ blocks only when the compiler's output legitimately changes — recompute them
 through `compileRenderPlan` in a TS context (a throwaway vitest run) and
 re-commit the recipes.
 
-Hostile-file cases at PE1 (disguised non-image, truncated JPEG, pixel-flood
-PNG) are synthesized inline by the unit tests (`src/lib/photo/*.test.ts`,
-`src/lib/import/image-meta.test.ts`) — tiny deterministic buffers beat
-committed binaries while the set is small. Files land here once goldens
-need stable committed bytes (PE3's golden-recipe harness).
+**Hostile-file coverage.** The named hostile set lives as committed artifacts
+under `hostile/` (above), read and asserted by `src/lib/photo/hostile-corpus.test.ts`.
+Two adjacent surfaces carry additional adversarial cases that stay inline
+(tiny buffers synthesized in-process, no committed file needed): the jail's
+kill axis — wall-clock SIGKILL, SIGXCPU → resource-limit, jail cleanup on the
+killed exits — in `src/lib/photo/photo-adversarial.test.ts`, and the route's
+request-shape / size-cap / sniff gates in `src/app/api/photo/intake/route.test.ts`
+and `src/lib/photo/render-host.test.ts`. (The byte-sniff itself is unit-tested
+in `src/lib/import/image-meta.test.ts`, which owns format detection, not the
+hostile-decode cases.)

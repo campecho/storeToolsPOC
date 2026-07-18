@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="120" height="90">
+  <image xlink:href="file:///etc/passwd" x="0" y="0" width="120" height="90"/>
+  <image xlink:href="http://192.0.2.1/secret.png" x="0" y="0" width="120" height="90"/>
+  <rect x="10" y="10" width="30" height="30" fill="#cc0000"/>
+</svg>
