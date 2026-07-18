@@ -119,9 +119,9 @@ export function AdjustPanel() {
           </div>
         </div>
 
-        {/* MORE — collapsed, inert (deviation #2). Pro controls were never
-            wireframed beyond the Section-E miniature, so the row keeps the
-            ceiling visible without pretending to work. */}
+        {/* PROTOTYPE-ONLY: MORE — collapsed, inert (deviation #2). Pro controls
+            were never wireframed beyond the Section-E miniature, so the row keeps
+            the ceiling visible without pretending to work (Pro backlog, plan §6). */}
         <button
           type="button"
           data-testid="adjust-more-pro"

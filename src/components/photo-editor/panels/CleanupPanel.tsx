@@ -18,6 +18,9 @@ import { usePhotoStore } from "@/lib/store/photo-store";
  */
 
 const WF_H = "text-[11px] font-semibold uppercase tracking-[0.04em] text-[#5f5f5f]";
+// PROTOTYPE-ONLY: Spot heal / Red-eye / Remove background / "Fix an AI file" render
+// disabled with this honest title (dev #3) — they go live with the model service
+// (STUBS.md "Clean up — classical fill", plan §6). Remove object itself IS live.
 const COMING = "Coming with the model service";
 
 const BRUSH_MIN = 8;

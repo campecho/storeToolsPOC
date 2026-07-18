@@ -163,6 +163,14 @@ export function PhotoEditorShell() {
     }
   }, [apply, handlePreview]);
 
+  // "Reset demo photo" (PE10f): drop all edits back to pristine, then reopen the
+  // fresh demo — the feedback tracker's "Reset demo data" precedent for this tool.
+  const resetDemo = usePhotoStore((s) => s.resetDemo);
+  const handleResetDemo = useCallback(() => {
+    resetDemo();
+    void handleOpenDemo();
+  }, [resetDemo, handleOpenDemo]);
+
   // Rail tiles toggle; clicking the active tile returns to the no-tool state.
   const handleToggleTool = useCallback(
     (tool: PhotoTool) => {
@@ -206,7 +214,7 @@ export function PhotoEditorShell() {
         data-testid="photo-editor"
         data-hydrated={hydrated ? "true" : "false"}
       >
-        <TitleBar doc={doc} orderContext={orderContext} level={level} onSetLevel={setLevel} />
+        <TitleBar doc={doc} orderContext={orderContext} level={level} onSetLevel={setLevel} onResetDemo={handleResetDemo} />
         <CapabilityBanner error={banner} onDismiss={() => setBanner(null)} />
         {doc && (
           <ActionBar

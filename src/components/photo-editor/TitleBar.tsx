@@ -17,11 +17,13 @@ export function TitleBar({
   orderContext,
   level,
   onSetLevel,
+  onResetDemo,
 }: {
   doc: PhotoDocument | null;
   orderContext: string | null;
   level: PhotoLevel;
   onSetLevel: (level: PhotoLevel) => void;
+  onResetDemo: () => void;
 }) {
   const megapixels = doc ? ((doc.source.width * doc.source.height) / 1_000_000).toFixed(1) : null;
 
@@ -48,8 +50,9 @@ export function TitleBar({
               · {doc.source.width} × {doc.source.height} px · {megapixels} MP
             </span>
             {orderContext && (
-              // Deviation #4 — order integration renders inert (no order model
-              // in the POC); the demo photo carries context so it reads true.
+              // PROTOTYPE-ONLY: deviation #4 — order integration renders inert (no
+              // order model in the POC); the demo photo carries context so it reads
+              // true. Goes live with the backbone write-path (STUBS.md, plan §6).
               <div
                 data-testid="photo-order-chip"
                 title="Order integration is coming with the backbone write-path"
@@ -91,12 +94,25 @@ export function TitleBar({
 
       <span className="shrink-0 text-[12px] text-[#8a8a8a]">Store #1284</span>
 
+      {/* PROTOTYPE-ONLY: help glyph is inert — help content is a later beta pass. */}
       <div
         title="Help is coming later in the beta"
         className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#b6b6b6] text-[11px] text-[#9a9a9a]"
       >
         ?
       </div>
+
+      {/* PROTOTYPE-ONLY: "Reset demo photo" — a demo control, not a wire element
+          (the feedback tracker's "Reset demo data" precedent). Drops all edits and
+          reopens the fresh demo photo. */}
+      <button
+        type="button"
+        onClick={onResetDemo}
+        data-testid="photo-reset-demo"
+        className="shrink-0 cursor-pointer whitespace-nowrap text-[11px] text-[#c2c2c2] hover:text-[#888]"
+      >
+        Reset demo photo
+      </button>
     </div>
   );
 }

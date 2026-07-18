@@ -190,6 +190,13 @@ export interface PhotoEditorState {
       colorSpace is the arrival fact, never mutated here). No-op when there is no
       document, or when the intent is already set. */
   setIntent: (intent: "cmyk" | "srgb") => void;
+
+  /** Reset the whole editor to its pristine state — drops the document, its
+      recipe, and every session gesture/preview/return-context, and returns the
+      level + brush size to their defaults. The demo affordance (PE10f, the
+      feedback tracker's "Reset demo data" precedent): the shell pairs it with a
+      fresh demo-photo load so a demo can be started over. Not a wire element. */
+  resetDemo: () => void;
 }
 
 /** Clamp a cursor into the valid [0, recipe.length] window for a document
@@ -493,6 +500,22 @@ export const usePhotoStore = create<PhotoEditorState>()(
           if (!s.doc) return s;
           if (s.doc.target.intent === intent) return s;
           return { doc: { ...s.doc, target: { ...s.doc.target, intent } } };
+        }),
+
+      // PROTOTYPE-ONLY: the "Reset demo photo" affordance (PE10f) — a demo
+      // control, not a wire element (the feedback tracker's resetDemo precedent).
+      // Returns the whole editor to its pristine defaults; the shell reopens the
+      // demo photo right after so a walkthrough can start clean.
+      resetDemo: () =>
+        set({
+          doc: null,
+          level: "standard",
+          activeTool: "none",
+          returnContext: null,
+          rendering: false,
+          splitView: false,
+          cleanupBrushSize: 40,
+          ...CLEAR_GESTURES,
         }),
     }),
     {

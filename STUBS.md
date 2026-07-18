@@ -78,6 +78,12 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   suggest-never-auto-apply loop; its model-backed siblings — Spot heal, Red-eye,
   Remove background, and the "Fix an AI-generated file" card — render disabled,
   "coming with the model service" (dev #3), beside the PE5 upscale button.
+  PE10f carries `PROTOTYPE-ONLY:` tags in-code on each of these (order chip, catalog
+  pickers, upscale button, model-gated Clean-up tools, Save-back, N-up link, the PRO
+  More row, help glyph) so the sweep grep above reproduces this section; it also adds
+  a **"Reset demo photo"** control (title bar) — a demo affordance, not a wire element
+  (the feedback tracker's "Reset demo data" precedent), which drops all edits and
+  reopens the fresh demo photo.
 
 ## Known gaps (`PROD-TODO:`)
 
