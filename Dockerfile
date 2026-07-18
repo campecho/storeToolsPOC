@@ -39,6 +39,11 @@ COPY --from=builder /app/public ./public
 # Golden traces ride along: fixture mode (and the demo payload) must work in
 # the image too, e.g. when a deploy pins STP_IMPORT_FIXTURE=1.
 COPY --from=builder /app/fixtures ./fixtures
+# The photo pipeline rides INSIDE the standalone trace (PE10a): Next stages
+# src/lib/photo/photo-worker.mjs + the GRACoL profile as traced assets at their
+# cwd-relative paths, and next.config.ts's outputFileTracingIncludes forces
+# sharp + @img (which only the spawned worker imports — invisible to the trace)
+# into node_modules. No separate COPY — the docker CI lane proves the boot.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs

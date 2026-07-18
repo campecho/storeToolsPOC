@@ -449,6 +449,11 @@ export const PhotoDiagnosticsSchema = z.object({
     /** prlimit availability — false means wall-clock timeout is the only cap
         (the pub2raw diagnostics posture). */
     rlimits: z.boolean(),
+    /** Whether the spawnable worker file resolved on disk (PE10a). Always true
+        from the repo root; in the standalone/Docker image it proves the file
+        trace staged the worker — false means a misdeployed image, reported
+        here instead of as a dead first intake. */
+    worker: z.boolean(),
   }),
   /** The CMYK-preserving lcms (tificc) capability — true when the jailed
       `tificc` subprocess probes OK, so a CMYK arrival can stay 4-channel through

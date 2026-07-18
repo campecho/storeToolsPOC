@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -48,10 +48,28 @@ const execFileP = promisify(execFile);
 /**
  * Absolute path to the worker. Resolved from process.cwd() because `dev`/`start`
  * run from the repo root and the worker is a plain `.mjs` the bundler never
- * touches (importing it would drag sharp's native binary into the trace). The
- * Docker/standalone-output path story is verified at the live-lane tranche.
+ * touches (importing it would drag sharp's native binary into the server
+ * bundle). Standalone/Docker story (PE10a, proven by the docker CI lane): the
+ * cwd join is statically analyzable, so Next's file trace stages the worker
+ * and the GRACoL profile at this same relative path inside
+ * `.next/standalone/`; what the trace can NEVER see is the worker's own
+ * `sharp` import (the worker is spawned, not imported) — that rides
+ * `outputFileTracingIncludes` in next.config.ts. `workerPresent()` reports the
+ * resolution in GET /api/photo so a misdeployed image says so instead of dying
+ * at the first intake.
  */
 const WORKER_PATH = join(process.cwd(), "src", "lib", "photo", "photo-worker.mjs");
+
+/** Whether the spawnable worker file exists at its resolved path (GET
+    diagnostic — the standalone-deploy honesty probe, PE10a). */
+export async function workerPresent(): Promise<boolean> {
+  try {
+    await access(WORKER_PATH);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Limits handed to the worker so caps live in one place (limits.ts). */
 const WORKER_LIMITS = {

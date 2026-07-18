@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { heicAvailable } from "@/lib/photo/heic";
 import { tificcAvailable } from "@/lib/photo/lcms";
-import { probeEngine, rlimitsEnforced } from "@/lib/photo/render-host";
+import { probeEngine, rlimitsEnforced, workerPresent } from "@/lib/photo/render-host";
 import { PhotoDiagnosticsSchema, type PhotoDiagnostics } from "@/lib/schema/photo";
 
 /**
@@ -17,9 +17,10 @@ import { PhotoDiagnosticsSchema, type PhotoDiagnostics } from "@/lib/schema/phot
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [engine, rlimits, heic, cmykPreserve] = await Promise.all([
+  const [engine, rlimits, worker, heic, cmykPreserve] = await Promise.all([
     probeEngine(),
     rlimitsEnforced(),
+    workerPresent(),
     heicAvailable(),
     tificcAvailable(),
   ]);
@@ -31,7 +32,7 @@ export async function GET() {
   const hasEngine = engine !== null;
   const diagnostics: PhotoDiagnostics = {
     engine,
-    jailed: { rlimits },
+    jailed: { rlimits, worker },
     // The CMYK-preserving path is live iff the jailed `tificc` (lcms2-utils)
     // probes OK — a colour-path capability independent of the codecs (§1.3, PE5).
     // Absent here (dev container) → the no-re-separation path is honestly off.
