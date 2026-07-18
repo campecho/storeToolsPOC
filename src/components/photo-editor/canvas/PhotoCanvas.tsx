@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAssetUrl } from "@/lib/assets/use-asset-url";
+import { getAssetUrl } from "@/lib/assets/blob-store";
 import type { PhotoDocument, PhotoOp } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
-import { effectiveDims, straightenScale, type Dims } from "@/lib/photo/geometry";
+import { effectiveDims, isComposeOp, straightenScale, type Dims } from "@/lib/photo/geometry";
 import {
   collectAdjustState,
   compileAdjust,
@@ -12,8 +13,12 @@ import {
   type AdjustState,
 } from "@/lib/photo/adjust-math";
 import { applyAdjust } from "@/lib/photo/ops";
+import { foldOverlays, paintOverlayContent } from "@/lib/photo/overlay-raster";
+import { ensureFamiliesLoaded } from "@/lib/layout/webfonts";
 import { CropOverlay } from "./CropOverlay";
 import { StraightenOverlay } from "./StraightenOverlay";
+import { OverlayHandles } from "./OverlayHandles";
+import { CleanupBrushOverlay } from "./CleanupBrushOverlay";
 import { GuideChrome } from "./GuideChrome";
 
 /**
@@ -134,12 +139,15 @@ function drawSmearBorder(
  * dims unchanged, so it is a single constant for the whole recipe). The three
  * print-geometry ops (bleedExpand / fitToSize / resize) replay their STORED-EXPLICIT
  * pixels here in parity with the worker's sharp mapping (extend / extract+extend /
- * resize). Non-geometry ops (adjust, …) are the LUT pass and pass through untouched.
+ * resize). The PE9 `erase` op composites its STORED-EXPLICIT patch bitmap at its
+ * recipe position (the same inline composite the render host emits). Non-geometry
+ * ops (adjust, …) are the LUT pass and pass through untouched.
  */
 function applyGeometryOp(
   current: HTMLCanvasElement,
   op: PhotoOp,
   runningScale: number,
+  patches: Map<string, HTMLImageElement>,
 ): HTMLCanvasElement {
   const cw = current.width;
   const ch = current.height;
@@ -260,6 +268,27 @@ function applyGeometryOp(
       ctxOf(out).drawImage(current, 0, 0, cw, ch, 0, 0, nw, nh);
       return out;
     }
+    case "erase": {
+      // STORED-EXPLICIT patch composite (PE9). The patch's pixel dims equal
+      // rect.w × rect.h (effective-master px); scale by runningScale to proxy px
+      // and draw AT the rect. Skip silently while the bitmap loads (the progressive
+      // overlay pattern) — the loaded-patches cache key recomposes once it arrives.
+      // `current` is a copy owned by this compose chain, so in-place draw is safe.
+      const img = patches.get(op.patch.assetId);
+      if (!img || !img.complete || img.naturalWidth === 0) return current;
+      // Clamp into the current canvas exactly as the sibling rect cases (and the
+      // server compile) do — scaled rounding can drift a pixel against the
+      // running canvas dims, and a stale rect must never paint out of frame.
+      let dw = Math.max(1, Math.round(op.patch.rect.w * runningScale));
+      let dh = Math.max(1, Math.round(op.patch.rect.h * runningScale));
+      dw = Math.min(dw, cw);
+      dh = Math.min(dh, ch);
+      const dx = Math.min(Math.max(Math.round(op.patch.rect.x * runningScale), 0), cw - dw);
+      const dy = Math.min(Math.max(Math.round(op.patch.rect.y * runningScale), 0), ch - dh);
+      const octx = current.getContext("2d");
+      if (octx) octx.drawImage(img, dx, dy, dw, dh);
+      return current;
+    }
     default:
       return current;
   }
@@ -271,10 +300,11 @@ function composeGeometry(
   baseH: number,
   ops: PhotoOp[],
   runningScale: number,
+  patches: Map<string, HTMLImageElement>,
 ): HTMLCanvasElement {
   let cur = makeCanvas(baseW, baseH);
   ctxOf(cur).drawImage(base, 0, 0, baseW, baseH);
-  for (const op of ops) cur = applyGeometryOp(cur, op, runningScale);
+  for (const op of ops) cur = applyGeometryOp(cur, op, runningScale, patches);
   return cur;
 }
 
@@ -382,9 +412,45 @@ export function PhotoCanvas({
   // Session gesture state — drives the geometry replay and the overlays.
   const activeTool = usePhotoStore((s) => s.activeTool);
   const previewOp = usePhotoStore((s) => s.previewOp);
+  const pendingPreview = usePhotoStore((s) => s.pendingPreview);
   const comparing = usePhotoStore((s) => s.comparing);
   const setComparing = usePhotoStore((s) => s.setComparing);
   const splitView = usePhotoStore((s) => s.splitView);
+  const selectedOverlayId = usePhotoStore((s) => s.selectedOverlayId);
+
+  // Decoded logo-overlay bitmaps, keyed by asset id — populated async, drawn once
+  // ready (the proxyImgRef pattern). Persists across StrictMode remounts.
+  const overlayImgRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  // Stable keys of the folded overlays' logo assets + text families, so the
+  // preload effects fire only when the set actually changes.
+  const overlayAssetKey = useMemo(() => {
+    if (!doc) return "";
+    return foldOverlays(doc.recipe.slice(0, doc.cursor))
+      .flatMap((o) => (o.op === "logoOverlay" ? [o.assetId] : []))
+      .join("|");
+  }, [doc]);
+  const overlayFamilyKey = useMemo(() => {
+    if (!doc) return "";
+    return foldOverlays(doc.recipe.slice(0, doc.cursor))
+      .flatMap((o) => (o.op === "textOverlay" ? [o.font.family] : []))
+      .join("|");
+  }, [doc]);
+
+  // PE9 erase-patch bitmaps, keyed by patch.assetId — the overlayImgRef pattern:
+  // decoded async, drawn once ready, schedule() on arrival. The applied slice's
+  // committed erase ops PLUS the pending-preview erase op (its patch was just
+  // written to the blob store) all need their patch decoded.
+  const eraseImgRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const erasePatchKey = useMemo(() => {
+    const ids: string[] = [];
+    if (doc) {
+      for (const op of doc.recipe.slice(0, doc.cursor)) {
+        if (op.op === "erase") ids.push(op.patch.assetId);
+      }
+    }
+    if (pendingPreview?.op === "erase") ids.push(pendingPreview.patch.assetId);
+    return ids.join("|");
+  }, [doc, pendingPreview]);
 
   // Split-view divider position, fraction of the displayed image width [0.05,0.95].
   const [splitPos, setSplitPos] = useState(0.5);
@@ -401,6 +467,8 @@ export function PhotoCanvas({
   docRef.current = doc;
   const previewOpRef = useRef<PhotoOp | null>(previewOp);
   previewOpRef.current = previewOp;
+  const pendingPreviewRef = useRef<PhotoOp | null>(pendingPreview);
+  pendingPreviewRef.current = pendingPreview;
   const comparingRef = useRef(comparing);
   comparingRef.current = comparing;
   const splitViewRef = useRef(splitView);
@@ -477,25 +545,40 @@ export function PhotoCanvas({
     const runningScale = baseW / masterW;
     const appliedOps = d ? d.recipe.slice(0, d.cursor) : [];
     const preview = previewOpRef.current;
+    const pending = pendingPreviewRef.current;
     const isComparing = comparingRef.current;
     const splitOn = splitViewRef.current && d != null;
 
-    // The live preview folds on top of the applied slice. A geometry-shaped
-    // preview (straighten/crop/…) re-composes geometry; an ADJUST preview does
-    // NOT enter the geometry key, so it can never bust the geometry cache mid-drag.
-    const combinedOps = preview ? [...appliedOps, preview] : appliedOps;
-    const geomPreview = preview && preview.op !== "adjust" ? preview : null;
+    // The live gesture preview + the pending model-op preview (PE9 erase) fold on
+    // top of the applied slice, in that order (a gesture drag and an erase preview
+    // can coexist). isComposeOp (geometry.ts) is the ONE classifier for what
+    // re-composes the geometry canvas — the dimensioning ops plus erase; an ADJUST
+    // or OVERLAY preview stays out, so a slider/overlay drag never busts the
+    // geometry cache.
+    const previewOps: PhotoOp[] = [];
+    if (preview) previewOps.push(preview);
+    if (pending) previewOps.push(pending);
+    const combinedOps = previewOps.length ? [...appliedOps, ...previewOps] : appliedOps;
+    const geomGesture = preview && isComposeOp(preview) ? preview : null;
+    const pendingCompose = pending && isComposeOp(pending) ? pending : null;
+
+    // Effective-master dims (applied ops folded) — the space overlay boxes address.
+    // Computed here so the overlay pass and the published layout share it; a
+    // straighten preview keeps dims, so the box aligns whether previewing or not.
+    const eff = d ? effectiveDims({ w: masterW, h: masterH }, appliedOps) : { w: masterW, h: masterH };
 
     // Folded adjust state — the preview adjust participates so it previews live.
     const adjustState: AdjustState | null =
       !isComparing && d ? collectAdjustState(combinedOps) : null;
     const adjustActive = adjustState != null && !isAdjustIdentity(adjustState);
 
-    // A geometry canvas is needed whenever there are ops, an active adjust (the
-    // LUT pass reads pixels off a canvas), or split view (both halves come from
-    // the geometry compose). Otherwise the raw base draws straight through.
+    // A geometry canvas is needed whenever there are ops, a geometry gesture or
+    // erase preview, an active adjust (the LUT pass reads pixels off a canvas), or
+    // split view (both halves come from the geometry compose). Otherwise the raw
+    // base draws straight through.
     const needGeom =
-      !isComparing && (appliedOps.length > 0 || geomPreview != null || adjustActive || splitOn);
+      !isComparing &&
+      (appliedOps.length > 0 || geomGesture != null || pendingCompose != null || adjustActive || splitOn);
 
     // BEFORE = geometry-only; AFTER = geometry + adjust. Default both to base.
     let before: CanvasImageSource = base;
@@ -504,12 +587,38 @@ export function PhotoCanvas({
     let srcH = baseH;
 
     if (needGeom) {
-      // LAYER 1 — geometry compose (cache key EXCLUDES the adjust preview).
-      const geomOps = geomPreview ? [...appliedOps, geomPreview] : appliedOps;
-      const key: readonly unknown[] = [base, baseW, d?.recipe, d?.cursor, geomPreview, runningScale];
+      // LAYER 1 — geometry compose (cache key EXCLUDES the adjust preview). Ops for
+      // this frame: applied slice + a geometry gesture preview + the pending erase
+      // preview (both fold at the cursor end). applyGeometryOp ignores non-geometry
+      // tags, so passing the full slice is safe; committed + pending erase ops draw
+      // their patch here.
+      const geomOps = [
+        ...appliedOps,
+        ...(geomGesture ? [geomGesture] : []),
+        ...(pendingCompose ? [pendingCompose] : []),
+      ];
+      // Loaded erase-patch bitmaps among these ops — a late-arriving bitmap changes
+      // this key so the compose recomposes with the patch drawn (plan §9).
+      const loadedPatchKey = geomOps
+        .flatMap((op) => (op.op === "erase" ? [op.patch.assetId] : []))
+        .filter((id) => eraseImgRef.current.has(id))
+        .join("|");
+      const key: readonly unknown[] = [
+        base,
+        baseW,
+        d?.recipe,
+        d?.cursor,
+        geomGesture,
+        pendingCompose,
+        runningScale,
+        loadedPatchKey,
+      ];
       let gc = geomCacheRef.current;
       if (!gc || !sameKey(gc.key, key)) {
-        gc = { key, canvas: composeGeometry(base, baseW, baseH, geomOps, runningScale) };
+        gc = {
+          key,
+          canvas: composeGeometry(base, baseW, baseH, geomOps, runningScale, eraseImgRef.current),
+        };
         geomCacheRef.current = gc;
       }
       before = gc.canvas;
@@ -562,16 +671,32 @@ export function PhotoCanvas({
       ctx.restore();
     }
 
+    // PE6 OVERLAYS — folded text/logo overlays above the composite, at display
+    // scale, rotation baked via ctx transforms (the TRUE rotated box; the AABB is
+    // export-only). Folds combinedOps so an in-flight overlay drag (previewOp)
+    // previews live; the same `foldOverlays` the panel + export use. Skipped while
+    // comparing (the raw original is shown then). Drawn on the always-redrawn main
+    // canvas — never composited into the geometry/adjust offscreen caches, so
+    // those keys stay overlay-free; the recipe/preview deps already redraw here.
+    if (!isComparing && d && eff.w > 0) {
+      const oScale = dispW / eff.w;
+      for (const ov of foldOverlays(combinedOps)) {
+        ctx.save();
+        ctx.translate(x + (ov.box.x + ov.box.w / 2) * oScale, y + (ov.box.y + ov.box.h / 2) * oScale);
+        ctx.rotate((ov.rotation * Math.PI) / 180);
+        const img = ov.op === "logoOverlay" ? overlayImgRef.current.get(ov.assetId) ?? null : null;
+        paintOverlayContent(ctx, ov, oScale, img);
+        ctx.restore();
+      }
+    }
+
     if (isComparing) drawOriginalChip(ctx, x, y);
 
     // Zoom % = fraction of the full-resolution (effective) master shown on screen.
     const fullResW = srcW / runningScale;
     onZoomRef.current(Math.round((dispW / fullResW) * 100));
 
-    // Overlay layout: coords address the effective master (ops[0..cursor) folded);
-    // straighten preview keeps dims, so the box aligns whether previewing or not.
-    const src0: Dims = { w: masterW, h: masterH };
-    const eff = d ? effectiveDims(src0, appliedOps) : { w: masterW, h: masterH };
+    // Overlay layout: coords address the effective master (`eff`, folded above).
     const scale = dispW / eff.w;
     const next: CanvasImageLayout = { x, y, w: dispW, h: dispH, scale, image: eff };
     const prev = layoutRef.current;
@@ -644,7 +769,68 @@ export function PhotoCanvas({
   // composition — but the split divider drag and toggle still need a redraw.)
   useEffect(() => {
     schedule();
-  }, [previewBitmap, doc, previewOp, comparing, splitView, splitPos, schedule]);
+  }, [previewBitmap, doc, previewOp, pendingPreview, comparing, splitView, splitPos, schedule]);
+
+  // PE6: ensure the folded text overlays' font faces are loaded, then repaint so
+  // text renders in the real face (idempotent; ensureFamiliesLoaded dedupes).
+  useEffect(() => {
+    if (!overlayFamilyKey) return;
+    let alive = true;
+    void ensureFamiliesLoaded(overlayFamilyKey.split("|")).then((loaded) => {
+      if (loaded && alive) schedule();
+    });
+    return () => {
+      alive = false;
+    };
+  }, [overlayFamilyKey, schedule]);
+
+  // PE6: decode the folded logo overlays' bytes into the image cache, repainting
+  // as each arrives (the proxy-load pattern). StrictMode-safe via the alive guard.
+  useEffect(() => {
+    if (!overlayAssetKey) return;
+    let alive = true;
+    const cache = overlayImgRef.current;
+    for (const id of overlayAssetKey.split("|")) {
+      if (cache.has(id)) continue;
+      void getAssetUrl(id).then((url) => {
+        if (!url || !alive) return;
+        const img = new Image();
+        img.onload = () => {
+          if (!alive) return;
+          cache.set(id, img);
+          schedule();
+        };
+        img.src = url;
+      });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [overlayAssetKey, schedule]);
+
+  // PE9: decode the applied + pending erase ops' patch bytes into the image cache,
+  // repainting as each arrives (the overlay/proxy-load pattern). StrictMode-safe.
+  useEffect(() => {
+    if (!erasePatchKey) return;
+    let alive = true;
+    const cache = eraseImgRef.current;
+    for (const id of erasePatchKey.split("|")) {
+      if (!id || cache.has(id)) continue;
+      void getAssetUrl(id).then((url) => {
+        if (!url || !alive) return;
+        const img = new Image();
+        img.onload = () => {
+          if (!alive) return;
+          cache.set(id, img);
+          schedule();
+        };
+        img.src = url;
+      });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [erasePatchKey, schedule]);
 
   // Space-peek: hold Space to compare against the original (mirrors the panel's
   // Compare button hold). Ignores typing targets, cleans up StrictMode-safely.
@@ -690,6 +876,10 @@ export function PhotoCanvas({
   }, [setComparing]);
 
   const showCropChrome = doc != null && layout != null && activeTool === "crop";
+  // Overlay handle chrome: the Text & image tool with an overlay selected. Hidden
+  // while comparing (the raw original is shown, so the handles would misalign).
+  const showOverlayHandles =
+    doc != null && layout != null && activeTool === "text" && selectedOverlayId != null && !comparing;
   // Split-view chrome rides above the canvas; the compare peek overrides split
   // view (both halves become the original while held), so hide the divider then.
   const showSplit = doc != null && layout != null && splitView && !comparing;
@@ -698,6 +888,9 @@ export function PhotoCanvas({
   // comparing (the raw original is shown then, so the effective-dims box mismatches).
   const showGuides =
     doc != null && layout != null && doc.target.size != null && activeTool !== "crop" && !comparing;
+  // Clean-up brush chrome: the Clean up tool with a laid-out image. Hidden while
+  // comparing (the raw original is shown, so the brush coords would misalign).
+  const showCleanup = doc != null && layout != null && activeTool === "cleanup" && !comparing;
 
   return (
     <div ref={containerRef} className="relative flex-1 overflow-hidden bg-[#d3d3d3]">
@@ -705,6 +898,8 @@ export function PhotoCanvas({
       {showGuides && layout && <GuideChrome layout={layout} />}
       {showCropChrome && previewOp?.op === "straighten" && <StraightenOverlay layout={layout} />}
       {showCropChrome && <CropOverlay layout={layout} />}
+      {showOverlayHandles && layout && <OverlayHandles layout={layout} />}
+      {showCleanup && layout && <CleanupBrushOverlay layout={layout} />}
       {showSplit && layout && <SplitDivider layout={layout} pos={splitPos} onChange={setSplitPos} />}
     </div>
   );

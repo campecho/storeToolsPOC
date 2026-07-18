@@ -23,11 +23,12 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 # libmspub-tools: pub2raw/pub2xhtml + librevenge — the import pipeline's parser.
-# liblcms2-utils: tificc — the CMYK-preserving path (plan §1.3, PE5). Both run as
-# the unprivileged user (sandboxing posture per plan §10.1). (poppler is CI-only
-# — it backs pdf-wrap's preflight proxy, not the runtime.)
+# liblcms2-utils: tificc — the CMYK-preserving path (plan §1.3, PE5).
+# libheif-examples: heif-convert — the HEIC ingest path (plan §1.3, PE7). All run
+# as the unprivileged user (sandboxing posture per plan §10.1). (poppler is
+# CI-only — it backs pdf-wrap's preflight proxy, not the runtime.)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libmspub-tools liblcms2-utils \
+    && apt-get install -y --no-install-recommends libmspub-tools liblcms2-utils libheif-examples \
     && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

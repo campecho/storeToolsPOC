@@ -4,7 +4,7 @@ import { sniffImageMime } from "@/lib/import/image-meta";
 // (plan §3.6 — "same seam as import"). Nothing scans yet; the seam exists so
 // the engine decision (ClamAV vs commercial) has a single call site to fill.
 import { avScanHook } from "@/lib/import/pub2raw";
-import { convertHeicToJpeg, heicAvailable } from "@/lib/photo/heic";
+import { convertHeicToJpeg, heicAvailable, type HeicConvertOutcome } from "@/lib/photo/heic";
 import { cmykPreservePath, tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES, MAX_PHOTO_PIXELS } from "@/lib/photo/limits";
 import { intakeImage, type IntakeHostOutcome } from "@/lib/photo/render-host";
@@ -47,6 +47,7 @@ function fail(
   code:
     | "not-an-image"
     | "unsupported-here"
+    | "multi-page"
     | "too-large"
     | "too-many-pixels"
     | "decode-failed"
@@ -55,6 +56,27 @@ function fail(
   message: string,
 ): NextResponse {
   return reply(status, { ok: false, code, message });
+}
+
+/** Map a HEIC conversion failure onto the route's code + HTTP status (plan §4:
+    timeout → timeout; resource-limit/decode-failed → decode-failed;
+    unsupported-here → unsupported-here). */
+function mapHeicFailure(error: Extract<HeicConvertOutcome, { ok: false }>["error"]): NextResponse {
+  switch (error) {
+    case "timeout":
+      return fail(504, "timeout", "Opening that image took too long and was stopped — it may be damaged or extremely complex.");
+    // A resource-limit death and an undecodable file both surface as
+    // decode-failed — an RLIMIT_AS overrun is the inherited pub2raw caveat.
+    case "resource-limit":
+    case "decode-failed":
+      return fail(422, "decode-failed", "We couldn't open that image — it may be truncated, damaged, or not the format its bytes claim.");
+    case "unsupported-here":
+      return fail(
+        422,
+        "unsupported-here",
+        "This server can't open HEIC (iPhone) photos yet — export a JPEG, or open it where HEIC decoding is installed.",
+      );
+  }
 }
 
 /** Map a render-host outcome's failure onto the route's code + HTTP status. */
@@ -97,15 +119,34 @@ export async function POST(req: Request) {
 
   const bytes = Buffer.from(await file.arrayBuffer());
 
+  // Multi-page documents never open here — a PDF is a layout job, not a photo.
+  // Checked BEFORE the sniff's not-an-image reject so the route-away copy wins
+  // over the generic message (a PDF sniffs to no image mime otherwise).
+  if (bytes.length >= 5 && bytes.subarray(0, 5).toString("latin1") === "%PDF-") {
+    return fail(
+      422,
+      "multi-page",
+      "PDFs and other multi-page files don't open here — bring them into the Layout Editor instead.",
+    );
+  }
+
   // Content-sniff — never trust the extension or declared type (§3.6).
   const mime = sniffImageMime(bytes);
   if (!mime) {
     return fail(415, "not-an-image", "That file isn't an image we can open. It may be renamed or damaged.");
   }
 
+  // The bytes + mime the jail actually decodes. Everything decodes as sniffed
+  // except HEIC, which sharp has no codec for: it is transcoded to JPEG in a
+  // jail first (heic.ts) and the pipeline continues on that JPEG — the pixel cap
+  // then applies to the DECODED JPEG (the enforcement point), like any arrival.
+  let decodeBytes: Buffer = bytes;
+  let decodeMime = mime;
+  let convertedFromHeic = false;
+
   // HEIC: sniffed fine, but this server decodes it only where heif-convert is
-  // installed — and PE1 ships the conversion stubbed regardless (the jailed
-  // subprocess lands in PE7). Either way the honest answer is unsupported-here.
+  // installed. Absent → the honest unsupported-here; present → jailed transcode
+  // to JPEG, mapping a conversion failure onto the route's codes (plan §4 PE7).
   if (mime === "image/heic") {
     if (!(await heicAvailable())) {
       return fail(
@@ -115,10 +156,10 @@ export async function POST(req: Request) {
       );
     }
     const conv = await convertHeicToJpeg(bytes);
-    if (!conv.ok) {
-      return fail(422, "unsupported-here", "HEIC opening is coming soon — for now, export a JPEG from your phone.");
-    }
-    // PE7 wires the converted JPEG into intakeImage below; unreachable in PE1.
+    if (!conv.ok) return mapHeicFailure(conv.error);
+    decodeBytes = conv.jpeg;
+    decodeMime = "image/jpeg";
+    convertedFromHeic = true;
   }
 
   // BMP: prebuilt sharp ships no BMP codec — BMP opens client-side in the
@@ -129,17 +170,18 @@ export async function POST(req: Request) {
   }
 
   // Anything else sniffed-but-not-decodable here (wmf/emf metafiles): honest
-  // unsupported-here rather than a jail decode we know will fail.
-  if (!JAIL_DECODABLE.has(mime)) {
+  // unsupported-here rather than a jail decode we know will fail. A converted
+  // HEIC is now `image/jpeg`, so it passes this gate.
+  if (!JAIL_DECODABLE.has(decodeMime)) {
     return fail(422, "unsupported-here", "We can't open that image type here — try a JPEG, PNG, TIFF, WEBP, or SVG.");
   }
 
   // AV seam (§3.6) — same logging stub as import; nothing scans yet.
   await avScanHook(file.name, bytes);
 
-  // Jailed decode → sanitized master + proxy. The original bytes drop out of
+  // Jailed decode → sanitized master + proxy. The decode bytes drop out of
   // scope after this call (CDR — nothing persists them, §3.6).
-  const outcome = await intakeImage(bytes, mime);
+  const outcome = await intakeImage(decodeBytes, decodeMime);
   if (!outcome.ok) return mapHostFailure(outcome);
 
   // CMYK-preserve seam (§1.3, PE5, v1.4): when a TIFF/JPEG arrives CMYK AND the
@@ -150,6 +192,7 @@ export async function POST(req: Request) {
   // absent (this dev container) → the working RGB master is the only leg, honest.
   // (tificc reads TIFF only — a CMYK JPEG here fails the transform and falls back.)
   const notes = [...outcome.notes];
+  if (convertedFromHeic) notes.push("Converted from HEIC");
   let cmykMaster: IntakeImagePayload | undefined;
   const preserveEligible = (mime === "image/tiff" || mime === "image/jpeg") && outcome.colorSpace === "cmyk";
   if (preserveEligible && (await tificcAvailable())) {

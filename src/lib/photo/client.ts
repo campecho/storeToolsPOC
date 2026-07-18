@@ -13,12 +13,15 @@ import {
   IntakeResponseSchema,
   PhotoDiagnosticsSchema,
   RenderErrorSchema,
+  isFillInputOp,
+  type ErasePayload,
   type IntakeError,
   type IntakeErrorCode,
   type IntakeImagePayload,
   type PhotoDiagnostics,
   type PhotoDocument,
   type PhotoIntent,
+  type PhotoOp,
   type RenderError,
   type RenderFormat,
   type RenderPayload,
@@ -26,6 +29,18 @@ import {
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { assetIdFor, decodeBase64, sniffImageMime } from "@/lib/import/image-meta";
 import { getAssetUrl, putAssetBlob } from "@/lib/assets/blob-store";
+import { contentHashId } from "@/lib/photo/cleanup-mask";
+import { foldOverlays, overlayPlacement, rasterizeOverlay } from "@/lib/photo/overlay-raster";
+
+/**
+ * The render payload plus the PE6 overlays sidecar leg. `overlays` is FINAL-OUTPUT
+ * px (== effective-master px — overlay boxes pass through 1:1), order = composite
+ * order; each entry pairs with a multipart part named `overlay:<id>`. Declared
+ * here as an additive extension so this module type-checks against the CURRENT
+ * schema while the server sibling adds `overlays?` to RenderPayloadSchema — once
+ * it lands the intersection is redundant, not conflicting. */
+type OverlayPlacementEntry = { id: string; left: number; top: number; width: number; height: number };
+type RenderPayloadWithOverlays = RenderPayload & { overlays?: OverlayPlacementEntry[] };
 
 /** The result of an open attempt — a ready document, or a typed error for the
     CapabilityBanner (the server's friendly copy is shown verbatim). */
@@ -104,6 +119,12 @@ export async function openPhotoFile(file: File, onLocalPreview?: LocalPreview): 
   }
 
   const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  // Multi-page documents never open here (PE7) — mirror the server's %PDF-
+  // reject client-side so the route-away banner shows without a wasted upload.
+  // The server keeps its own check; this one is just the fast path.
+  if (head.length >= 5 && String.fromCharCode(...head.subarray(0, 5)) === "%PDF-") {
+    return fail("multi-page", "PDFs and other multi-page files don't open here — bring them into the Layout Editor instead.");
+  }
   const sniffed = sniffImageMime(head);
   const recognized = sniffed !== undefined || looksHeic(head) || looksSvg(head);
   if (!recognized) {
@@ -224,6 +245,89 @@ export async function loadDemoPhoto(onLocalPreview?: LocalPreview): Promise<Open
   return openPhotoFile(file, onLocalPreview);
 }
 
+/* ------------------------------------------------------------------ */
+/* Overlay image ingest (POST /api/photo/intake) — PE6 logo on-ramp    */
+/* ------------------------------------------------------------------ */
+
+/** The result of ingesting a logo/image overlay — the stored master asset id and
+    its dimensions, which `addLogoOverlay` needs to size the default box. */
+export interface OverlayIngestResult {
+  assetId: string;
+  width: number;
+  height: number;
+}
+
+export type OverlayIngestOutcome =
+  | { ok: true; result: OverlayIngestResult }
+  | { ok: false; error: IntakeError };
+
+/**
+ * Ingest an image to place as a logo overlay (plan §4 PE6). It rides the SAME
+ * jailed intake endpoint as a photo open — sniff → jailed decode → strip → re-
+ * encode — but is LEAN and does NOT open a document: it stores ONLY the working
+ * master leg under a `photo:<id>:overlay` blob id and returns that id + dims. The
+ * caller hands them to `addLogoOverlay`. (Unlike `openPhotoFile` there is no proxy
+ * leg, no PhotoDocument, and no doc replacement — a logo joins the recipe, it
+ * doesn't become the edited photo.)
+ *
+ * NOTE for the integrator: overlay alpha depends on the intake WORKING-MASTER
+ * codec (server-owned, render-host.ts). If that codec is JPEG for RGB masters,
+ * a transparent PNG/SVG logo loses its alpha; a PNG master for overlay ingest
+ * would preserve it. Flagged, not stubbed — the client stores whatever the
+ * server returns as the master leg per the contract.
+ */
+export async function ingestOverlayImage(file: File): Promise<OverlayIngestOutcome> {
+  if (file.size > MAX_PHOTO_BYTES) {
+    return {
+      ok: false,
+      error: {
+        ok: false,
+        code: "too-large",
+        message: `That image is ${(file.size / 1024 / 1024).toFixed(0)} MB — over the ${MAX_MB} MB limit. Try a smaller file.`,
+      },
+    };
+  }
+
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const recognized = sniffImageMime(head) !== undefined || looksHeic(head) || looksSvg(head);
+  if (!recognized) {
+    return {
+      ok: false,
+      error: {
+        ok: false,
+        code: "not-an-image",
+        message: "That doesn't look like an image. Add a PNG, SVG, or JPG to place as a logo.",
+      },
+    };
+  }
+
+  const body = new FormData();
+  body.append("file", file, file.name);
+
+  let json: unknown;
+  try {
+    const res = await fetch("/api/photo/intake", { method: "POST", body });
+    json = await res.json();
+  } catch {
+    return { ok: false, error: { ok: false, code: "engine-error", message: "The image service is unreachable — check your connection and try again." } };
+  }
+
+  const parsed = IntakeResponseSchema.safeParse(json);
+  if (!parsed.success) {
+    return { ok: false, error: { ok: false, code: "engine-error", message: "The image service returned an unexpected response." } };
+  }
+  if (!parsed.data.ok) {
+    return { ok: false, error: parsed.data };
+  }
+
+  const master = parsed.data.master;
+  // Namespaced, content-derived id — a `:overlay` leg beside the photo's own
+  // master/proxy legs, so overlay writes never touch the store's clear/replace.
+  const assetId = `photo:${assetIdFor(master.b64)}:overlay`;
+  await putAssetBlob(assetId, payloadToBlob(master));
+  return { ok: true, result: { assetId, width: master.width, height: master.height } };
+}
+
 /**
  * GET /api/photo — the capability matrix (mode + per-format support). Returns
  * null when the endpoint is unreachable or drifts from the schema; callers
@@ -327,6 +431,53 @@ export interface RenderResult {
 }
 
 /**
+ * Collect the STORED-EXPLICIT erase-patch parts for every erase op in `recipe`
+ * (PE9, §8). Each erase op carries a `patch` (id + blob-store assetId); its
+ * approved pixels ride a SEPARATE multipart part `erase:<patch.id>` — the leg
+ * EVERY render form (export, PDF, return-trip Done, layout handoff) must attach so
+ * the server composites the approved fill (the render route's collectErasePatches
+ * rejects a missing part as 400 bad-recipe). Generalized into one helper so no
+ * render call site can forget. A patch blob missing from the store (evicted
+ * IndexedDB, another browser) is a friendly typed RenderError, never a crash.
+ */
+async function collectEraseParts(
+  recipe: PhotoOp[],
+): Promise<
+  { ok: true; parts: { name: string; blob: Blob }[] } | { ok: false; error: RenderError }
+> {
+  // Every patch loads independently — fan the blob reads out (up to
+  // MAX_ERASE_OPS of them; a multi-cleanup session would otherwise pay N
+  // serialized round-trips on every export).
+  const eraseOps = recipe.filter((op): op is Extract<PhotoOp, { op: "erase" }> => op.op === "erase");
+  const loaded = await Promise.all(
+    eraseOps.map(async (op) => {
+      const url = await getAssetUrl(op.patch.assetId);
+      if (!url) return null;
+      try {
+        const res = await fetch(url);
+        return { name: `erase:${op.patch.id}`, blob: await res.blob() };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const parts: { name: string; blob: Blob }[] = [];
+  for (const part of loaded) {
+    if (!part) {
+      return {
+        ok: false,
+        error: renderFail(
+          "engine-error",
+          "A cleaned-up area is missing its image data — reopen the photo and try again.",
+        ),
+      };
+    }
+    parts.push(part);
+  }
+  return { ok: true, parts };
+}
+
+/**
  * Full-resolution export (plan §4 PE3, print colour + boxes PE5). Replays the
  * recipe server-side against the working master and returns the encoded bytes
  * ready to save.
@@ -384,7 +535,29 @@ export async function renderPhoto(
       ? { w: doc.target.size.w, h: doc.target.size.h, bleed: doc.target.bleed }
       : undefined);
 
-  const payload: RenderPayload = {
+  // PE6 overlays sidecar: fold the APPLIED recipe (same fold the canvas + panel
+  // use), rasterize each visible overlay at scale 1 (export space == effective-
+  // master space, so overlay boxes pass through 1:1), and pair each PNG part with
+  // an AABB placement entry — the raster's decoded dims EQUAL the declared
+  // width/height (the server contract). No overlays → the leg is OMITTED entirely,
+  // so a recipe without overlays produces a byte-identical request to before.
+  const overlays = foldOverlays(recipe);
+  const overlayParts: { name: string; blob: Blob }[] = [];
+  const overlayEntries: OverlayPlacementEntry[] = [];
+  for (const ov of overlays) {
+    const raster = await rasterizeOverlay(ov, 1);
+    const place = overlayPlacement(ov);
+    overlayParts.push({ name: `overlay:${ov.id}`, blob: raster.blob });
+    overlayEntries.push({
+      id: ov.id,
+      left: place.left,
+      top: place.top,
+      width: raster.width, // == place.width at scale 1; guarantees decoded == declared
+      height: raster.height,
+    });
+  }
+
+  const payload: RenderPayloadWithOverlays = {
     recipe,
     format: opts.format,
     quality: opts.quality ?? 90,
@@ -392,11 +565,20 @@ export async function renderPhoto(
     // panel makes it user-switchable; CMYK separates through GRACoL.
     intent,
     ...(printTarget ? { printTarget } : {}),
+    ...(overlayEntries.length ? { overlays: overlayEntries } : {}),
   };
+
+  // PE9 erase patches: attach an `erase:<id>` part per applied erase op so the
+  // server composites the approved fill (a missing part is a 400 bad-recipe). A
+  // missing patch blob is a friendly typed failure — re-thrown like any RenderError.
+  const eraseParts = await collectEraseParts(recipe);
+  if (!eraseParts.ok) throw eraseParts.error;
 
   const body = new FormData();
   body.append("file", master, doc.source.originalName);
   body.append("payload", JSON.stringify(payload));
+  for (const part of overlayParts) body.append(part.name, part.blob, `${part.name}.png`);
+  for (const part of eraseParts.parts) body.append(part.name, part.blob, "erase.png");
 
   let res: Response;
   try {
@@ -433,6 +615,116 @@ export async function renderPhoto(
     intentDowngraded: headerFlag(res, "X-Photo-Intent-Downgraded"),
     cmykPreserved: headerFlag(res, "X-Photo-Cmyk-Preserved"),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Erase preview (POST /api/photo/erase) — the classical fill, PE9     */
+/* ------------------------------------------------------------------ */
+
+/** The outcome of an erase-fill request: the bbox patch PNG (approved into the
+    erase op by the PreviewApproveBar), or one typed RenderError (the error JSON is
+    Zod-validated — the client.ts pattern). An aborted request (a newer stroke
+    superseded this one) resolves to a typed failure the caller drops via its own
+    AbortSignal check, never surfacing it. */
+export type EraseFillOutcome =
+  | { ok: true; patch: Blob }
+  | { ok: false; error: RenderError };
+
+/**
+ * Run the classical erase fill ONCE server-side at full resolution and return the
+ * bbox patch PNG (plan §4 PE9). The recipe is the geometry + PRIOR-erase slice of
+ * ops[0..cursor) with adjust / autoEnhance / text / logo overlay ops STRIPPED —
+ * pointwise tone re-applies on top at export and overlays composite ABOVE the
+ * photo, so neither may bake into the fill INPUT (the server strips them again
+ * defensively, ErasePayloadSchema). Prior erase ops ship their `erase:<id>` patch
+ * parts so the jail replay composites them into the fill input exactly as export
+ * does. AbortSignal-aware: a new stroke / undo / tool switch aborts the in-flight
+ * request. Every failure is one typed RenderError.
+ */
+export async function requestEraseFill(args: {
+  doc: PhotoDocument;
+  maskBlob: Blob;
+  maskDims: { width: number; height: number };
+  rect: { x: number; y: number; w: number; h: number };
+  signal?: AbortSignal;
+}): Promise<EraseFillOutcome> {
+  const { doc, maskBlob, maskDims, rect, signal } = args;
+
+  // Applied ops only (ops[0..cursor)) — the fill input is what the associate sees.
+  // isFillInputOp (schema/photo.ts) is the ONE predicate for what enters the fill
+  // input; the server re-strips through the same symbol, so the sides can't drift.
+  const recipe = doc.recipe.slice(0, doc.cursor).filter(isFillInputOp);
+
+  let master: Blob;
+  try {
+    master = await loadMasterBlob(doc.source.assetId);
+  } catch (err) {
+    // loadMasterBlob only ever throws RenderErrors (the missing-master seam).
+    return { ok: false, error: isRenderError(err) ? err : renderFail("engine-error", "Couldn't read this photo's image data — reopen it and try again.") };
+  }
+
+  const eraseParts = await collectEraseParts(recipe);
+  if (!eraseParts.ok) return { ok: false, error: eraseParts.error };
+
+  const payload: ErasePayload = {
+    recipe,
+    mask: { width: maskDims.width, height: maskDims.height, rect },
+  };
+
+  const body = new FormData();
+  body.append("file", master, doc.source.originalName);
+  body.append("mask", maskBlob, "mask.png");
+  body.append("payload", JSON.stringify(payload));
+  for (const part of eraseParts.parts) body.append(part.name, part.blob, "erase.png");
+
+  let res: Response;
+  try {
+    res = await fetch("/api/photo/erase", { method: "POST", body, signal });
+  } catch {
+    // An aborted fetch throws too — the caller distinguishes it via signal.aborted
+    // and drops the outcome, so this generic copy only ever reaches a real fault.
+    return {
+      ok: false,
+      error: renderFail("engine-error", "The cleanup service is unreachable — check your connection and try again."),
+    };
+  }
+
+  if (!res.ok) {
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      return { ok: false, error: renderFail("engine-error", "The cleanup service returned an error we couldn't read.") };
+    }
+    const parsed = RenderErrorSchema.safeParse(json);
+    return {
+      ok: false,
+      error: parsed.success ? parsed.data : renderFail("engine-error", "The cleanup service returned an unexpected error."),
+    };
+  }
+
+  return { ok: true, patch: await res.blob() };
+}
+
+/** Persist the brushed mask PNG under a content-derived id and return it. The mask
+    is the operator's INTENT, kept for the model-service seam (a future inpaint
+    model re-runs from the same mask); it never rides an export. */
+export async function storeEraseMask(maskBlob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await maskBlob.arrayBuffer());
+  const id = `photo:${contentHashId(bytes)}:mask`;
+  await putAssetBlob(id, maskBlob);
+  return id;
+}
+
+/** Persist the approved patch PNG and return its blob-store id + jail-safe part id
+    (the `erase:<id>` multipart part / `erase-<id>.png` jail basename rule — the
+    part id is the content hash, matching /^[a-z0-9-]{1,64}$/i). */
+export async function storeErasePatch(patch: Blob): Promise<{ assetId: string; partId: string }> {
+  const bytes = new Uint8Array(await patch.arrayBuffer());
+  const partId = contentHashId(bytes);
+  const assetId = `photo:${partId}:patch`;
+  await putAssetBlob(assetId, patch);
+  return { assetId, partId };
 }
 
 /**

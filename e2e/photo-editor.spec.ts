@@ -1662,3 +1662,722 @@ test.describe("Print correctness (PE5)", () => {
     expect(meta.channels).toBe(3);
   });
 });
+
+/**
+ * Text & image (plan step PE6): overlay ops fold last-wins-per-id with one
+ * coalesced history step per overlay session; the layer list round-trips
+ * selection/removal; the export sidecar carries client-rendered rasters that
+ * land in the full-res file. Pixel thresholds mirror the integrator's manual
+ * verification (dark glyphs ≈4% in-band on the demo sunset; <0.2% without).
+ */
+test.describe("Text & image (PE6)", () => {
+  test.describe.configure({ timeout: 90_000 });
+
+  async function addText(page: Page, content?: string) {
+    await page.getByTestId("photo-rail-text").click();
+    await expect(page.getByTestId("photo-text-panel")).toBeVisible();
+    await page.getByTestId("text-add-text").click();
+    await expect(page.getByTestId("overlay-box")).toBeVisible();
+    if (content !== undefined) {
+      await page.getByTestId("text-content").fill(content);
+    }
+  }
+
+  test("add text is one step; content edits and moves coalesce; the layer list shows it", async ({
+    page,
+  }) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+    await expectHistory(page, 2); // Open + Add text — the fill coalesced
+
+    // Drag the box: still the same coalesced step.
+    const box = await page.getByTestId("overlay-box").boundingBox();
+    if (!box) throw new Error("no overlay box");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 60, { steps: 6 });
+    await page.mouse.up();
+    await expectHistory(page, 2);
+    const moved = await page.getByTestId("overlay-box").boundingBox();
+    expect(Math.abs((moved?.x ?? 0) - box.x)).toBeGreaterThan(80);
+
+    await expect(page.getByTestId("text-layer-0")).toContainText("SUMMER SALE");
+  });
+
+  test("corner handle scales the box and the font size together", async ({ page }) => {
+    await openDemoPhoto(page);
+    await addText(page);
+    const sizeBefore = Number(await page.getByTestId("text-size").inputValue());
+    const box = await page.getByTestId("overlay-box").boundingBox();
+    if (!box) throw new Error("no overlay box");
+    const handle = await page.getByTestId("overlay-handle-se").boundingBox();
+    if (!handle) throw new Error("no se handle");
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + 90, handle.y + 90, { steps: 6 });
+    await page.mouse.up();
+    const after = await page.getByTestId("overlay-box").boundingBox();
+    expect((after?.width ?? 0)).toBeGreaterThan(box.width + 40);
+    const sizeAfter = Number(await page.getByTestId("text-size").inputValue());
+    expect(sizeAfter).toBeGreaterThan(sizeBefore);
+    await expectHistory(page, 2); // the whole scale session coalesced
+  });
+
+  test("layer remove is one step; undo restores the overlay", async ({ page }) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+    await expectHistory(page, 2);
+    await page.getByTestId("text-layer-remove-0").click();
+    await expectHistory(page, 3); // the hidden-tombstone step
+    await expect(page.getByTestId("text-layer-0")).toHaveCount(0);
+    await page.getByTestId("photo-undo").click();
+    await expectHistory(page, 2);
+    await expect(page.getByTestId("text-layer-0")).toContainText("SUMMER SALE");
+  });
+
+  test("the export carries the text raster; undoing the overlay removes it", async ({
+    page,
+  }, testInfo) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+
+    // The default text box sits centered — the manual verification band.
+    const darkShare = async (file: string) => {
+      const img = sharp(file);
+      const meta = await img.metadata();
+      const raw = await img
+        .extract({
+          left: Math.floor((meta.width ?? 0) * 0.3),
+          top: Math.floor((meta.height ?? 0) * 0.38),
+          width: Math.floor((meta.width ?? 0) * 0.45),
+          height: Math.floor((meta.height ?? 0) * 0.2),
+        })
+        .resize(120, 50)
+        .raw()
+        .toBuffer();
+      let dark = 0;
+      for (let i = 0; i < raw.length; i += 3)
+        if (raw[i] < 70 && raw[i + 1] < 70 && raw[i + 2] < 70) dark++;
+      return dark / (raw.length / 3);
+    };
+
+    const exportJpg = async (name: string) => {
+      // The rail tile toggles — don't click it closed if Export is already open.
+      const rail = page.getByTestId("photo-rail-export");
+      if ((await rail.getAttribute("aria-pressed")) !== "true") await rail.click();
+      await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+      const [download] = await Promise.all([
+        page.waitForEvent("download", { timeout: 60_000 }),
+        page.getByTestId("export-file").click(),
+      ]);
+      const path = testInfo.outputPath(name);
+      await download.saveAs(path);
+      return path;
+    };
+
+    const withOverlay = await exportJpg("with-overlay.jpg");
+    expect(await darkShare(withOverlay)).toBeGreaterThan(0.005);
+
+    await page.getByTestId("photo-undo").click(); // drop the Add text step
+    await expectHistory(page, 1);
+    const withoutOverlay = await exportJpg("without-overlay.jpg");
+    expect(await darkShare(withoutOverlay)).toBeLessThan(0.002);
+  });
+});
+
+/**
+ * Placed-picture round-trip (plan step PE8, Section F2): a layout picture opens
+ * in the Photo Editor with the red return banner, Done lands the edit back as
+ * ONE revertable layout step, Cancel is a true no-op, and Export is suppressed
+ * for the whole trip. Image identity is asserted by mean luminance of the
+ * rendered frame (object URLs are re-minted per mount, so src strings can't be
+ * compared): a brightness edit raises it, revert restores it.
+ */
+test.describe("Placed-picture round-trip (PE8)", () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  /** Import photo.png into the layout assets and place it (the L8 pattern). */
+  async function placePicture(page: Page) {
+    await page.goto("/layout");
+    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    await page.getByTestId("asset-tile-0").click();
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+  }
+
+  /** Mean luminance of the rendered picture frame, via an element screenshot. */
+  async function pictureLuma(page: Page) {
+    const shot = await page.getByTestId("picture-image").screenshot();
+    const stats = await sharp(shot).stats();
+    const [r, g, b] = stats.channels;
+    return 0.2126 * r.mean + 0.7152 * g.mean + 0.0722 * b.mean;
+  }
+
+  /** Select the placed picture and enter the round-trip via the inspector. */
+  async function enterRoundTrip(page: Page) {
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-picture").click();
+    await page.getByTestId("layout-edit-in-photo").click();
+    await expect(page.getByTestId("photo-return-banner")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("photo-return-banner")).toContainText("Editing picture from");
+    await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+  }
+
+  /** Push brightness well up so the returned render is measurably lighter. */
+  async function brighten(page: Page) {
+    await page.getByTestId("photo-rail-adjust").click();
+    const slider = page.getByTestId("adjust-brightness");
+    const box = await slider.boundingBox();
+    if (!box) throw new Error("no brightness slider");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.95, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+  }
+
+  test("the loop: edit → Done lands one revertable layout step; Export suppressed inside", async ({
+    page,
+  }) => {
+    await placePicture(page);
+    const before = await pictureLuma(page);
+
+    await enterRoundTrip(page);
+    // F2's suppression rule: no Export tile, Convert format disabled.
+    await expect(page.getByTestId("photo-rail-export")).toHaveCount(0);
+    await expect(page.getByTestId("photo-quick-convert")).toBeDisabled();
+
+    await brighten(page);
+    await page.getByTestId("return-done").click();
+    await expect(page.getByTestId("picture-image")).toBeVisible({ timeout: 60_000 });
+    const after = await pictureLuma(page);
+    expect(after).toBeGreaterThan(before + 8); // visibly brighter render landed
+
+    // One revertable step: the inspector offers Revert photo edits; using it
+    // restores the original asset and clears the offer.
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-picture").click();
+    await expect(page.getByTestId("layout-revert-photo-edits")).toBeVisible();
+    await page.getByTestId("layout-revert-photo-edits").click();
+    await expect(page.getByTestId("layout-revert-photo-edits")).toHaveCount(0);
+    const reverted = await pictureLuma(page);
+    expect(Math.abs(reverted - before)).toBeLessThan(3);
+
+    // And the revert itself is one undoable step: undo brings the edit back.
+    await page.keyboard.press("ControlOrMeta+z");
+    const undone = await pictureLuma(page);
+    expect(undone).toBeGreaterThan(before + 8);
+  });
+
+  test("Cancel is a true no-op: frame untouched, no revert offer, no photo doc", async ({
+    page,
+  }) => {
+    await placePicture(page);
+    const before = await pictureLuma(page);
+
+    await enterRoundTrip(page);
+    await brighten(page);
+    await page.getByTestId("return-cancel").click();
+    await expect(page.getByTestId("picture-image")).toBeVisible({ timeout: 30_000 });
+    const after = await pictureLuma(page);
+    expect(Math.abs(after - before)).toBeLessThan(3);
+
+    await page.getByTestId("insp-props").click();
+    await page.getByTestId("object-picture").click();
+    await expect(page.getByTestId("layout-revert-photo-edits")).toHaveCount(0);
+
+    // The photo editor holds no document after a cancel.
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await expect(page.getByTestId("photo-open-input")).toBeAttached();
+  });
+});
+
+/**
+ * Conversion & handoffs (plan step PE7): HEIC opens end-to-end through the
+ * jailed heif-convert lane; files that must not open here (multi-page PDFs,
+ * over-ceiling pixel counts) get a typed reject with a route-away to the
+ * Layout Editor; and "Open in Layout Editor" flattens the recipe into a placed
+ * picture as one undoable layout step. The HEIC case needs heif-convert on the
+ * server host — the CI e2e lane installs libheif-examples for exactly this.
+ */
+test.describe("Conversion & handoffs (PE7)", () => {
+  test.describe.configure({ timeout: 120_000 });
+
+  test("a HEIC photo opens end-to-end through the jailed conversion", async ({ page }) => {
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("photo-open-input").setInputFiles("fixtures/photo-corpus/iphone-still.heic");
+    await expect(page.getByTestId("photo-filename")).toHaveText("iphone-still.heic", { timeout: 30_000 });
+    await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+    await expectHistory(page, 1);
+  });
+
+  test("a PDF never opens here — typed multi-page reject routes to the Layout Editor", async ({
+    page,
+  }) => {
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("photo-open-input").setInputFiles({
+      name: "brochure.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n%%EOF\n"),
+    });
+    const banner = page.getByTestId("photo-capability-banner");
+    await expect(banner).toBeVisible({ timeout: 30_000 });
+    await expect(banner).toContainText("multi-page files don't open here");
+    await page.getByTestId("photo-banner-route-layout").click();
+    await expect(page).toHaveURL(/\/layout/);
+  });
+
+  test("an over-ceiling image routes away instead of opening", async ({ page }, testInfo) => {
+    // 9100 × 9000 = 81.9 MP — past the 80 MP ceiling the engine enforces at
+    // decode. A solid fill keeps the PNG bytes tiny, so only the pixel cap trips.
+    const oversize = testInfo.outputPath("oversize.png");
+    await sharp({
+      create: { width: 9100, height: 9000, channels: 3, background: { r: 240, g: 240, b: 240 } },
+    })
+      .png()
+      .toFile(oversize);
+
+    await page.goto("/photo");
+    await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("photo-open-input").setInputFiles(oversize);
+    const banner = page.getByTestId("photo-capability-banner");
+    await expect(banner).toBeVisible({ timeout: 60_000 });
+    await expect(banner).toContainText("MP limit");
+    await expect(page.getByTestId("photo-banner-route-layout")).toBeVisible();
+    // It never opened: no document, the open input is still the empty state's.
+    await expect(page.getByTestId("photo-filename")).toHaveCount(0);
+  });
+
+  test("Open in Layout Editor lands the flattened photo as one undoable placed step", async ({
+    page,
+  }) => {
+    await openDemoPhoto(page);
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    // Fresh storage → the layout document is empty → no confirm gate.
+    await page.getByTestId("export-send-layout").click();
+    await expect(page).toHaveURL(/\/layout/, { timeout: 60_000 });
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+    await expect(page.getByTestId("picture-image")).toBeVisible();
+    // One undoable layout step: undo removes the placed picture.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("object-picture")).toHaveCount(0);
+  });
+
+  test("the confirm gate asks before landing on a layout document with content", async ({
+    page,
+  }) => {
+    // Give the layout document content first (the L8 asset-placement flow).
+    await page.goto("/layout");
+    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    await page.getByTestId("asset-tile-0").click();
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+
+    await openDemoPhoto(page);
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    await page.getByTestId("export-send-layout").click();
+    const confirm = page.getByTestId("handoff-confirm");
+    await expect(confirm).toBeVisible();
+
+    // Cancel is a no-op — still in the export panel, nothing placed.
+    await page.getByTestId("handoff-confirm-cancel").click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+
+    // Place lands it alongside the existing object.
+    await page.getByTestId("export-send-layout").click();
+    await page.getByTestId("handoff-confirm-place").click();
+    await expect(page).toHaveURL(/\/layout/, { timeout: 60_000 });
+    await expect(page.getByTestId("object-picture")).toHaveCount(2);
+  });
+});
+
+/**
+ * Clean up (plan step PE9 done-when, docs/PHOTO_EDITOR_IMPLEMENTATION_PLAN.md §4
+ * PE9): the brush → server classical-fill → preview-approve loop. One live tool
+ * (Remove object) beside honestly model-gated siblings; a brushed stroke runs the
+ * fill ONCE server-side and lands a pendingPreview the associate must Apply or
+ * Discard (suggest-never-auto-apply); Apply is ONE named "Remove object" history
+ * step whose undo/redo is byte-exact on the canvas; the export ships the approved
+ * patch as its `erase:<id>` part (a missing part is a 400 — the download event IS
+ * the proof it rode along).
+ *
+ * TARGET FEATURE: the demo sunset's seagull mark at master (1831–1888, 967–984)
+ * px — a dark object on smooth sky, measured from public/photo-demo.jpg — so
+ * "object removed" is a real, pixel-assertable claim: the fill replaces the dark
+ * mark with surround-sky and the sampled block visibly lightens.
+ *
+ * ECHO RULE (CleanupBrushOverlay): once a stroke's fill lands as a pendingPreview
+ * the red stroke TINT stops echoing (the canvas now shows the actual filled
+ * pixels the associate must judge — a tint would obscure them), while the
+ * "Brushed area" badge stays. Asserted directly off the overlay's echo canvas.
+ *
+ * WAIT DISCIPLINE (the house rule, commit 3cacdd0): open to the settled fit-zoom
+ * readout, `settleCanvas` before any pixel sample, and event/testid waits only —
+ * the preview bar's appearance IS the fill-complete signal (a cold erase route
+ * compiles + spawns the jail, so it gets 40 s). Pixel samples use the PE4 image-
+ * box reconstruction (pad 24 + MASTER_ASPECT); byte-exact restore assertions ride
+ * the same determinism the PE4 undo test pins (raw-base and compose paths are
+ * deterministic redraws).
+ */
+
+/** The demo seagull mark, fractions of the effective image (master 1860, 976). */
+const BIRD = { fx: 0.4612, fy: 0.3226 };
+
+/** Open the demo through `?demo=1` (wire-pinned IMG_4823.jpg) and enter Clean up. */
+async function openDemoInCleanup(page: Page) {
+  await page.goto("/photo?demo=1");
+  await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
+  await expect(page.getByTestId("photo-filename")).toHaveText("IMG_4823.jpg", { timeout: 30_000 });
+  await expect(page.getByTestId("photo-zoom")).toHaveText(/\d+%/, { timeout: 30_000 });
+  await page.getByTestId("photo-rail-cleanup").click();
+  await expect(page.getByTestId("photo-cleanup-panel")).toBeVisible();
+}
+
+/** Screen coords of an image-fraction point — the PE3/PE4 contain-fit
+    reconstruction (pad 24, MASTER_ASPECT) over the live canvas bounding box. */
+async function imagePointOnScreen(page: Page, fx: number, fy: number) {
+  const box = await page.getByTestId("photo-canvas").boundingBox();
+  if (!box) throw new Error("photo canvas has no bounding box");
+  const PAD = 24;
+  const availW = Math.max(1, box.width - PAD * 2);
+  const availH = Math.max(1, box.height - PAD * 2);
+  const dispW = Math.min(availW, availH * MASTER_ASPECT);
+  const dispH = Math.min(availH, availW / MASTER_ASPECT);
+  const x = box.x + (box.width - dispW) / 2;
+  const y = box.y + (box.height - dispH) / 2;
+  return { x: x + dispW * fx, y: y + dispH * fy };
+}
+
+/** Sum + raw bytes of a 16×16 block at an image-fraction point (the sampleCentre
+    pattern, aimed): change detection via the sum, byte-exact undo/redo via bytes. */
+async function sampleImagePoint(
+  page: Page,
+  fx: number,
+  fy: number,
+): Promise<{ sum: number; bytes: number[] }> {
+  return page.getByTestId("photo-canvas").evaluate(
+    (el, args) => {
+      const c = el as HTMLCanvasElement;
+      const ctx = c.getContext("2d");
+      if (!ctx) throw new Error("no 2d context");
+      const container = c.parentElement as HTMLElement;
+      const PAD = 24;
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = container.clientWidth;
+      const cssH = container.clientHeight;
+      const availW = Math.max(1, cssW - PAD * 2);
+      const availH = Math.max(1, cssH - PAD * 2);
+      const dispW = Math.min(availW, availH * args.aspect);
+      const dispH = Math.min(availH, availW / args.aspect);
+      const x = (cssW - dispW) / 2;
+      const y = (cssH - dispH) / 2;
+      const px = Math.round((x + dispW * args.fx) * dpr);
+      const py = Math.round((y + dispH * args.fy) * dpr);
+      const d = ctx.getImageData(px - 8, py - 8, 16, 16).data;
+      let sum = 0;
+      for (let i = 0; i < d.length; i++) sum += d[i];
+      return { sum, bytes: Array.from(d) };
+    },
+    { fx, fy, aspect: MASTER_ASPECT },
+  );
+}
+
+/** Drag a brush stroke between two image-fraction points (real pointer gesture —
+    the mask + fill hang off pointer capture and the pointerup commit). */
+async function brushStroke(
+  page: Page,
+  from: { fx: number; fy: number },
+  to: { fx: number; fy: number },
+) {
+  const a = await imagePointOnScreen(page, from.fx, from.fy);
+  const b = await imagePointOnScreen(page, to.fx, to.fy);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 6 });
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
+}
+
+/** Max out the brush (120 px) with a real thumb drag clamped past the track end —
+    a fat brush swallows the seagull in one stroke, keeping the fill deterministic. */
+async function setBrushToMax(page: Page) {
+  const slider = page.getByTestId("photo-cleanup-brush-size");
+  const box = await slider.boundingBox();
+  if (!box) throw new Error("brush slider has no bounding box");
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width - 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 30, y, { steps: 3 });
+  await page.mouse.up();
+  await expect(slider).toHaveValue("120");
+}
+
+/** The fill-complete signal: the PreviewApproveBar with its generic-op label. */
+async function waitForPreviewBar(page: Page) {
+  const bar = page.getByTestId("photo-preview-bar");
+  await expect(bar).toBeVisible({ timeout: 40_000 });
+  await expect(bar).toContainText("Preview · object removed");
+}
+
+/** Count non-transparent pixels on the brush overlay's ECHO canvas — >0 while
+    fresh strokes echo, 0 once their fill landed as a preview (the echo rule). */
+async function echoTintPixelCount(page: Page): Promise<number> {
+  return page
+    .getByTestId("photo-cleanup-overlay")
+    .locator("canvas")
+    .evaluate((el) => {
+      const c = el as HTMLCanvasElement;
+      const ctx = c.getContext("2d");
+      if (!ctx) return -1;
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      return n;
+    });
+}
+
+/** Arm a latch that records the "Working…" chip's INSERTION (the PE3 rendering-
+    chip observer pattern) — the fill may resolve before a poll would catch it. */
+async function armWorkingChipLatch(page: Page) {
+  await page.evaluate(() => {
+    const w = window as unknown as { __cleanupChipSeen?: boolean };
+    const sel = '[data-testid="photo-cleanup-working"]';
+    w.__cleanupChipSeen = document.querySelector(sel) != null;
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of Array.from(m.addedNodes)) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches(sel) || node.querySelector(sel)) w.__cleanupChipSeen = true;
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+  });
+}
+
+test.describe("Clean up (PE9)", () => {
+  test.describe.configure({ timeout: 90_000 });
+
+  test("the rail tile opens the panel: Remove object live, siblings + AI-file card model-gated, brush slider bound", async ({
+    page,
+  }) => {
+    await openDemoInCleanup(page);
+
+    // Status wire string (the same one the PE1 state machine pins).
+    await expect(page.getByTestId("photo-status")).toHaveText(
+      "Clean up · brush over the area to remove",
+    );
+
+    // Remove object is the single LIVE tool, pre-selected.
+    const remove = page.getByTestId("photo-cleanup-tool-remove");
+    await expect(remove).toBeEnabled();
+    await expect(remove).toHaveAttribute("aria-pressed", "true");
+
+    // The three siblings + the AI-file card are drawn-but-inert, honestly labelled.
+    for (const id of [
+      "photo-cleanup-tool-spot",
+      "photo-cleanup-tool-redeye",
+      "photo-cleanup-tool-background",
+      "photo-cleanup-fix-ai",
+    ]) {
+      await expect(page.getByTestId(id)).toBeDisabled();
+      await expect(page.getByTestId(id)).toHaveAttribute("title", "Coming with the model service");
+    }
+
+    // The honest copy: preview-before-apply + the classical stand-in line.
+    const panel = page.getByTestId("photo-cleanup-panel");
+    await expect(panel).toContainText("You always see a preview before it applies.");
+    await expect(panel).toContainText("a smarter fixer is coming");
+
+    // Brush slider: contract range 8–120 step 2, default 40, live readout.
+    const slider = page.getByTestId("photo-cleanup-brush-size");
+    await expect(slider).toHaveValue("40");
+    await expect(slider).toHaveAttribute("min", "8");
+    await expect(slider).toHaveAttribute("max", "120");
+    await expect(slider).toHaveAttribute("step", "2");
+    await setBrushToMax(page);
+    await expect(panel).toContainText("120 px");
+  });
+
+  test("brush → server fill preview: badge + working chip, tint clears once previewed; Discard is a no-op", async ({
+    page,
+  }) => {
+    await openDemoInCleanup(page);
+    await settleCanvas(page);
+    await setBrushToMax(page);
+
+    // Pre-brush reference at the seagull — the byte key proves the exact restore.
+    const p0 = await sampleImagePoint(page, BIRD.fx, BIRD.fy);
+    const p0key = JSON.stringify(p0.bytes);
+    await expectHistory(page, 1);
+
+    // Stroke horizontally through the seagull. The chip latch is armed BEFORE the
+    // pointerup that starts the fill (its lifetime can be shorter than a poll).
+    await armWorkingChipLatch(page);
+    await brushStroke(page, { fx: 0.44, fy: BIRD.fy }, { fx: 0.48, fy: BIRD.fy });
+
+    // The brushed-area badge appears at once; the fresh stroke echoes as tint
+    // until its fill lands (the network round-trip bounds this from below).
+    await expect(page.getByTestId("photo-cleanup-badge")).toBeVisible();
+    expect(await echoTintPixelCount(page)).toBeGreaterThan(0);
+
+    // The server fill lands as a pending preview (never auto-applied).
+    await waitForPreviewBar(page);
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as unknown as { __cleanupChipSeen?: boolean }).__cleanupChipSeen),
+      )
+      .toBe(true);
+
+    // ECHO RULE: the previewed strokes stop tinting (the canvas now shows the
+    // actual filled pixels being judged) — but the badge remains.
+    await expect.poll(() => echoTintPixelCount(page)).toBe(0);
+    await expect(page.getByTestId("photo-cleanup-badge")).toBeVisible();
+
+    // The fill visibly changed the brushed region (the dark mark went sky).
+    await expect
+      .poll(async () => Math.abs((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).sum - p0.sum))
+      .toBeGreaterThan(1000);
+
+    // DISCARD: bar + badge go, history/cursor untouched, pixels restore EXACTLY
+    // (both sides of the discard draw the same raw-base path).
+    await page.getByTestId("photo-preview-discard").click();
+    await expect(page.getByTestId("photo-preview-bar")).toHaveCount(0);
+    await expect(page.getByTestId("photo-cleanup-badge")).toHaveCount(0);
+    await expectHistory(page, 1);
+    await expect(page.getByTestId("photo-undo")).toBeDisabled();
+    await expect(page.getByTestId("photo-redo")).toBeDisabled();
+    await expect
+      .poll(async () => JSON.stringify((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).bytes))
+      .toBe(p0key);
+  });
+
+  test("Apply is one 'Remove object' step with exact undo/redo; the export ships the approved patch", async ({
+    page,
+  }, testInfo) => {
+    // Two full-res renders + a jailed fill ride this test — PE4's export headroom.
+    test.setTimeout(120_000);
+    await openDemoInCleanup(page);
+    await settleCanvas(page);
+
+    // BASELINE export (empty recipe) — the byte reference the erased export is
+    // diffed against: outside the fill rect the two renders must agree, at the
+    // seagull they must not.
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    await page.getByTestId("export-format-png").click();
+    await expect(page.getByTestId("export-format-png")).toHaveAttribute("aria-pressed", "true");
+    const baseOut = await exportAndSave(page, testInfo, "pe9-base.png");
+
+    // Back to Clean up: brush through the seagull and wait for the fill preview.
+    await page.getByTestId("photo-rail-cleanup").click();
+    await expect(page.getByTestId("photo-cleanup-panel")).toBeVisible();
+    await setBrushToMax(page);
+    const p0 = await sampleImagePoint(page, BIRD.fx, BIRD.fy);
+    const p0key = JSON.stringify(p0.bytes);
+    await brushStroke(page, { fx: 0.44, fy: BIRD.fy }, { fx: 0.48, fy: BIRD.fy });
+    await waitForPreviewBar(page);
+
+    // APPLY → exactly one wire-labelled history step; the bar clears.
+    await page.getByTestId("photo-preview-apply").click();
+    await expect(page.getByTestId("photo-preview-bar")).toHaveCount(0);
+    await expectHistory(page, 2);
+    const labels = await historyStepLabels(page);
+    expect(labels).toEqual(["Open IMG_4823.jpg", "Remove object"]);
+    await closeHistoryDock(page);
+
+    // The committed patch stays composited (the seagull is still gone post-Apply).
+    await expect
+      .poll(async () => Math.abs((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).sum - p0.sum))
+      .toBeGreaterThan(1000);
+    const p1key = JSON.stringify((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).bytes);
+
+    // UNDO → the pre-brush bytes return EXACTLY (raw-base determinism, the PE4
+    // rule) and the cursor steps back; REDO re-composites the patch exactly.
+    await page.getByTestId("photo-undo").click();
+    await expect
+      .poll(async () => JSON.stringify((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).bytes))
+      .toBe(p0key);
+    await expectHistory(page, 1);
+    // The undone step stays listed (redo tail), the cursor sits on the Open step.
+    expect(await historyStepLabels(page)).toEqual(["Open IMG_4823.jpg", "Remove object"]);
+    await expect(page.getByTestId("history-step-0")).toHaveAttribute("aria-current", "step");
+    await closeHistoryDock(page);
+    await page.getByTestId("photo-redo").click();
+    await expect
+      .poll(async () => JSON.stringify((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).bytes))
+      .toBe(p1key);
+    await expectHistory(page, 2);
+
+    // EXPORT with the applied erase: the client must attach the `erase:<id>`
+    // patch part — the render route 400s a missing part, so the download firing
+    // IS the integration proof. PNG keeps the byte compare lossless.
+    await page.getByTestId("photo-rail-export").click();
+    await expect(page.getByTestId("photo-export-panel")).toBeVisible();
+    // Format is panel-local state — the remount reset it to JPG; re-pick PNG.
+    await page.getByTestId("export-format-png").click();
+    await expect(page.getByTestId("export-format-png")).toHaveAttribute("aria-pressed", "true");
+    const erasedOut = await exportAndSave(page, testInfo, "pe9-erased.png");
+
+    // Full resolution, dims unchanged (erase is not a geometry op).
+    for (const file of [baseOut, erasedOut]) {
+      const meta = await sharp(file).metadata();
+      expect(meta.format).toBe("png");
+      expect(meta.width).toBe(4032);
+      expect(meta.height).toBe(3024);
+    }
+
+    // Region diff, mean |Δ| per channel-byte: the seagull's bbox (master
+    // 1831–1888 × 967–984, padded a hair) differs strongly — the server
+    // composited the approved fill — while a control patch far outside the fill
+    // rect is untouched (same master, same pipeline, lossless container).
+    const regionDiff = async (left: number, top: number, width: number, height: number) => {
+      const opts = { left, top, width, height };
+      const a = await sharp(baseOut).extract(opts).raw().toBuffer();
+      const b = await sharp(erasedOut).extract(opts).raw().toBuffer();
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+      return sum / a.length;
+    };
+    expect(await regionDiff(1826, 962, 68, 28)).toBeGreaterThan(4); // seagull erased
+    expect(await regionDiff(300, 2500, 200, 200)).toBeLessThan(1); // far sand untouched
+  });
+
+  test("switching tools discards the pending preview — suggest, never auto-apply", async ({
+    page,
+  }) => {
+    await openDemoInCleanup(page);
+    await settleCanvas(page);
+    await setBrushToMax(page);
+    const p0key = JSON.stringify((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).bytes);
+
+    await brushStroke(page, { fx: 0.44, fy: BIRD.fy }, { fx: 0.48, fy: BIRD.fy });
+    await waitForPreviewBar(page);
+
+    // Leave for Crop: the tool switch clears the pending preview (CLEAR_GESTURES)
+    // — the un-approved suggestion must not survive its tool.
+    await page.getByTestId("photo-rail-crop").click();
+    await expect(page.getByTestId("photo-crop-panel")).toBeVisible();
+    await expect(page.getByTestId("photo-preview-bar")).toHaveCount(0);
+
+    // Back in Clean up: nothing pending, nothing brushed, history untouched, and
+    // the canvas is byte-identical to the pre-brush state.
+    await page.getByTestId("photo-rail-cleanup").click();
+    await expect(page.getByTestId("photo-cleanup-panel")).toBeVisible();
+    await expect(page.getByTestId("photo-preview-bar")).toHaveCount(0);
+    await expect(page.getByTestId("photo-cleanup-badge")).toHaveCount(0);
+    await expectHistory(page, 1);
+    await expect(page.getByTestId("photo-undo")).toBeDisabled();
+    await expect
+      .poll(async () => JSON.stringify((await sampleImagePoint(page, BIRD.fx, BIRD.fy)).bytes))
+      .toBe(p0key);
+  });
+});

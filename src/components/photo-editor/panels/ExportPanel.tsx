@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import type { RenderFormat } from "@/lib/schema/photo";
 import { usePhotoStore } from "@/lib/store/photo-store";
+import { useLayoutStore } from "@/store";
 import { downloadBlob, isRenderError, renderPhoto } from "@/lib/photo/client";
+import { openInLayoutEditor } from "@/lib/photo/layout-handoff";
 
 /**
  * Export panel (wire Section B "Export", ~lines 397–434). Mounts in the
@@ -16,8 +19,13 @@ import { downloadBlob, isRenderError, renderPhoto } from "@/lib/photo/client";
  * both flip `target.intent` via setIntent; for an RGB arrival still on sRGB intent
  * with a print format selected, a prominent one-click "Convert to CMYK (GRACoL) →"
  * line appears (the same affordance the strip carries). PNG can't carry CMYK, so
- * PNG + CMYK-intent shows an honest note. Save-back and the imposition send-to
- * stay drawn-but-inert (devs #4/#9).
+ * PNG + CMYK-intent shows an honest note. Save-back (dev #4) and the imposition
+ * send-to (dev #9) stay drawn-but-inert.
+ *
+ * "Open in Layout Editor" is LIVE (PE7): it flattens the applied recipe to a PNG,
+ * registers + places it as a layout asset, and navigates — with an inline confirm
+ * gate (never a browser dialog) when the layout document already has content, so a
+ * photo is never dropped onto a busy page unannounced (PubConvertCallout pattern).
  *
  * The export flow is fire-and-forget from the UI's point of view: setRendering
  * flips a session flag (status-bar chip + this button's guard), the fetch runs
@@ -26,12 +34,29 @@ import { downloadBlob, isRenderError, renderPhoto } from "@/lib/photo/client";
 
 const WF_H = "text-[11px] font-semibold uppercase tracking-[0.04em] text-[#5f5f5f]";
 
+/** Layout document carries placed content on any page or master — mirrors
+    PubConvertCallout's gate. The handoff lands the photo on the current page, so
+    a non-empty layout document earns a confirm first. */
+function layoutDocHasContent(): boolean {
+  const doc = useLayoutStore.getState().doc;
+  return doc.pages.some((p) => p.objects.length > 0) || doc.masters.some((m) => m.objects.length > 0);
+}
+
+/** Inline state for the "Open in Layout Editor" handoff (PubConvertCallout phases,
+    kept in-panel rather than a browser dialog). */
+type HandoffPhase =
+  | { kind: "idle" }
+  | { kind: "confirm"; docName: string }
+  | { kind: "busy" }
+  | { kind: "error"; message: string };
+
 /** Quality slider bounds (JPG only) — matches the contract default of 90. */
 const QUALITY_MIN = 60;
 const QUALITY_MAX = 100;
 const QUALITY_DEFAULT = 90;
 
 export function ExportPanel() {
+  const router = useRouter();
   const doc = usePhotoStore((s) => s.doc);
   const rendering = usePhotoStore((s) => s.rendering);
   const setRendering = usePhotoStore((s) => s.setRendering);
@@ -41,6 +66,7 @@ export function ExportPanel() {
   const [quality, setQuality] = useState(QUALITY_DEFAULT);
   const [error, setError] = useState<string | null>(null);
   const [postNote, setPostNote] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<HandoffPhase>({ kind: "idle" });
 
   if (!doc) return null;
 
@@ -93,6 +119,29 @@ export function ExportPanel() {
     } finally {
       setRendering(false);
     }
+  }
+
+  // Render + place + navigate. openInLayoutEditor owns the render guard and never
+  // throws — a failure comes back as a typed message to surface inline. On success
+  // it navigates, so this component unmounts before the phase is read again.
+  async function runHandoff() {
+    setHandoff({ kind: "busy" });
+    const outcome = await openInLayoutEditor(doc!, router);
+    if (!outcome.ok) setHandoff({ kind: "error", message: outcome.message });
+  }
+
+  async function onOpenLayout() {
+    // Belt-and-suspenders against a click while any full-res render is in flight.
+    if (rendering) return;
+    setHandoff({ kind: "idle" });
+    // The saved layout document only exists after rehydration (its store skips
+    // auto-hydration), so await it before the confirm reads the real content.
+    await Promise.resolve(useLayoutStore.persist.rehydrate());
+    if (layoutDocHasContent()) {
+      setHandoff({ kind: "confirm", docName: useLayoutStore.getState().doc.name });
+      return;
+    }
+    await runHandoff();
   }
 
   return (
@@ -269,11 +318,79 @@ export function ExportPanel() {
           </div>
         )}
 
-        {/* SEND TO ANOTHER TOOL — both inert (dev #7 / dev #9). */}
+        {/* SEND TO ANOTHER TOOL — layout handoff live (PE7); imposition inert (dev #9). */}
         <div>
           <div className={`${WF_H} mb-2`}>Send to another tool</div>
           <div className="flex flex-col gap-[6px]">
-            <SendToLink testId="export-send-layout" label="Open in Layout Editor" reason="Lands with PE7" />
+            {/* Open in Layout Editor — flatten → asset → place → navigate. */}
+            <button
+              type="button"
+              data-testid="export-send-layout"
+              onClick={() => void onOpenLayout()}
+              disabled={rendering || handoff.kind === "busy"}
+              className={`flex h-8 items-center justify-between rounded-[6px] border px-[10px] text-[12px] ${
+                rendering || handoff.kind === "busy"
+                  ? "cursor-not-allowed border-[#e0e0e0] bg-white text-[#999]"
+                  : "cursor-pointer border-[#d8d8d8] bg-white text-[#444] hover:border-brand hover:bg-brand-tint hover:text-brand-deep"
+              }`}
+            >
+              {handoff.kind === "busy" ? (
+                <span className="flex items-center gap-[6px]">
+                  <Loader2 size={12} strokeWidth={2.2} className="animate-spin" />
+                  Preparing…
+                </span>
+              ) : (
+                <>
+                  Open in Layout Editor
+                  <span className="text-brand">→</span>
+                </>
+              )}
+            </button>
+
+            {/* Inline confirm — the layout doc already has content (dev-honest, no
+                browser dialog); the photo lands on the current page as one step. */}
+            {handoff.kind === "confirm" && (
+              <div
+                data-testid="handoff-confirm"
+                className="flex flex-col gap-[7px] rounded-[6px] border border-brand-border bg-brand-tint px-[10px] py-2 text-[11.5px] leading-relaxed text-brand-deep"
+              >
+                <span>
+                  Add this photo to &ldquo;{handoff.docName}&rdquo;? It lands on the current page as one
+                  undoable step.
+                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    data-testid="handoff-confirm-place"
+                    onClick={() => void runHandoff()}
+                    className="cursor-pointer text-[11.5px] font-semibold text-brand hover:underline"
+                  >
+                    Place on page
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="handoff-confirm-cancel"
+                    onClick={() => setHandoff({ kind: "idle" })}
+                    className="cursor-pointer text-[11.5px] font-medium text-brand-muted hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Inline handoff failure — same affordance as the export error. */}
+            {handoff.kind === "error" && (
+              <div
+                data-testid="handoff-error"
+                role="alert"
+                className="flex items-start gap-[6px] rounded-[6px] border border-brand-border bg-brand-tint px-[10px] py-2 text-[11.5px] leading-relaxed text-brand-deep"
+              >
+                <AlertTriangle size={13} strokeWidth={2} className="mt-[1px] shrink-0" />
+                <span>{handoff.message}</span>
+              </div>
+            )}
+
             <SendToLink
               testId="export-send-imposition"
               label="Resize & imposition · N-up"

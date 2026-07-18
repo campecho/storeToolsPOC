@@ -58,6 +58,20 @@ const MAX_BUFFER = 64 * 1024 * 1024;
 const EXT = { jpeg: "jpg", png: "png", tiff: "tiff" };
 
 /**
+ * Resolve an attachment `id` to the jail basename the committed composite steps
+ * reference — `overlay-<id>.png` (PE6 overlay) or `erase-<id>.png` (PE9 erase
+ * patch). The prefix depends on the op, not the id, so derive it from the
+ * matching `composite` step's `file` (which IS the jail basename) rather than a
+ * second prefix map; the `overlay-` fallback keeps a stepless lookup safe. Kept
+ * in sync with golden.test.ts's copy (this plain ESM can't import the TS one).
+ */
+function attachmentBasename(id, steps) {
+  const suffix = `-${id}.png`;
+  const step = steps.find((s) => s.kind === "composite" && typeof s.file === "string" && s.file.endsWith(suffix));
+  return step?.file ?? `overlay-${id}.png`;
+}
+
+/**
  * Resolve a recipe's `source` image. Fixtures-local sources (e.g. the synthetic
  * royal-blue.png that ships in the corpus) win over public/ — the shared demo
  * photo. Mirrors golden.test.ts's resolver so the drift gate reads the same bytes.
@@ -143,7 +157,25 @@ for (const file of recipes) {
   // reads a jail-local profile and the bytes match renderImage's byte-for-byte.
   const intent = payload.intent === "cmyk" ? "cmyk" : "srgb";
   const wantsCmyk = intent === "cmyk" && payload.format !== "png";
-  const extraFiles = wantsCmyk ? { "profile.icc": await readFile(GRACOL_PROFILE_PATH) } : undefined;
+
+  // Placed-raster attachments (PE6 overlays, PE9 erase patches): each
+  // recipe.attachments entry maps an op id to a corpus-relative PNG. Write them
+  // into the jail under the jail basename the committed composite steps reference
+  // (`overlay-<id>.png` / `erase-<id>.png`, via attachmentBasename) — the same
+  // extraFiles mechanism render-host uses to hand renderImage's attachments to
+  // the worker.
+  const attachFiles = {};
+  if (recipe.attachments) {
+    for (const [id, rel] of Object.entries(recipe.attachments)) {
+      attachFiles[attachmentBasename(id, compiled.steps)] = await readFile(join(corpusDir, rel));
+    }
+  }
+
+  const merged = {
+    ...(wantsCmyk ? { "profile.icc": await readFile(GRACOL_PROFILE_PATH) } : {}),
+    ...attachFiles,
+  };
+  const extraFiles = Object.keys(merged).length ? merged : undefined;
 
   // Replicate render-host's render job EXACTLY (kind/steps/format/quality/intent/
   // iccProfile/limits) so the worker produces the same bytes renderImage would —

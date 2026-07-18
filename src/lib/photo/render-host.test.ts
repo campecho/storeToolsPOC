@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { intakeImage, probeEngine } from "./render-host";
+import type { ErasePayload } from "@/lib/schema/photo";
+import { eraseFill, intakeImage, probeEngine } from "./render-host";
 
 /**
  * Live proof for the render-host jail seam (plan §3.6, §4 PE1). Unlike the
@@ -184,6 +185,176 @@ describe("intakeImage — pixel-flood", () => {
       expect(out.ok).toBe(false);
       if (out.ok) return;
       expect(out.error).toBe("too-many-pixels");
+    },
+    15_000,
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* eraseFill — the classical fill at preview time (PE9)                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A 200×150 synthetic photo: a low-red horizontal gradient background with a
+ * distinct RED marker block at [80,60)–[120,100). The gradient makes the
+ * unmasked byte-match assertion meaningful (varying pixels, not a flat fill), and
+ * the red marker (absent from the gradient) makes "the fill removed the marker" a
+ * clean colour test.
+ */
+function markerImage(): Promise<Buffer> {
+  const w = 200;
+  const h = 150;
+  const raw = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 3;
+      raw[i] = 20; // R — low everywhere (the marker is the only red)
+      raw[i + 1] = 80; // G
+      raw[i + 2] = 100 + Math.floor((x / w) * 100); // B ramps across x
+    }
+  }
+  for (let y = 60; y < 100; y++) {
+    for (let x = 80; x < 120; x++) {
+      const i = (y * w + x) * 3;
+      raw[i] = 230;
+      raw[i + 1] = 20;
+      raw[i + 2] = 20;
+    }
+  }
+  return sharp(raw, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+}
+
+/** A grayscale-on-black mask PNG: white (255) over `box`, black (0) elsewhere —
+    the ErasePayloadSchema mask contract (luminance is the fill factor). */
+function maskPng(
+  w: number,
+  h: number,
+  box: { x0: number; y0: number; x1: number; y1: number },
+): Promise<Buffer> {
+  const raw = Buffer.alloc(w * h, 0);
+  for (let y = box.y0; y < box.y1; y++) {
+    for (let x = box.x0; x < box.x1; x++) raw[y * w + x] = 255;
+  }
+  return sharp(raw, { raw: { width: w, height: h, channels: 1 } }).png().toBuffer();
+}
+
+/** Decode a buffer to raw RGBA (alpha ensured) + its dims. */
+async function rawRGBA(buf: Buffer): Promise<{ data: Buffer; width: number; height: number }> {
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return { data, width: info.width, height: info.height };
+}
+
+// The marker sits at [80,60)–[120,100); a padded rect [70,50)+60×60 encloses it
+// with a ring of gradient background. In window coords that ring is everything
+// OUTSIDE [10,50)×[10,50).
+const RECT = { x: 70, y: 50, w: 60, h: 60 };
+const MASK_BOX = { x0: 80, y0: 60, x1: 120, y1: 100 };
+const basePayload = (recipe: ErasePayload["recipe"] = []): ErasePayload => ({
+  recipe,
+  mask: { width: 200, height: 150, rect: RECT },
+});
+
+describe("eraseFill — the classical fill (PE9)", () => {
+  it(
+    "removes the masked marker colour from the patch (no marker red survives the fill)",
+    async () => {
+      const out = await eraseFill(await markerImage(), basePayload(), await maskPng(200, 150, MASK_BOX));
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect([out.width, out.height]).toEqual([60, 60]);
+      const patch = await rawRGBA(out.bytes);
+      // The marker ink was (230,20,20); the surround is a low-red gradient. After
+      // the diffusion + soft-mask blend, no pixel is anywhere near the marker red.
+      let redSurvivors = 0;
+      for (let i = 0; i < patch.data.length; i += 4) {
+        if (patch.data[i] > 120 && patch.data[i + 1] < 90 && patch.data[i + 2] < 90) redSurvivors++;
+      }
+      expect(redSurvivors).toBe(0);
+    },
+    30_000,
+  );
+
+  it(
+    "leaves unmasked patch pixels byte-identical to the source region (a=0 keeps the original)",
+    async () => {
+      const master = await markerImage();
+      const out = await eraseFill(master, basePayload(), await maskPng(200, 150, MASK_BOX));
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const patch = await rawRGBA(out.bytes);
+      // The effective image is the master (recipe empty → a lossless PNG round-trip
+      // in the worker); its rect window is the source of truth for unmasked pixels.
+      const srcWin = await sharp(master)
+        .ensureAlpha()
+        .extract({ left: RECT.x, top: RECT.y, width: RECT.w, height: RECT.h })
+        .raw()
+        .toBuffer();
+      let mismatches = 0;
+      for (let wy = 0; wy < RECT.h; wy++) {
+        for (let wx = 0; wx < RECT.w; wx++) {
+          const masked = wx >= 10 && wx < 50 && wy >= 10 && wy < 50; // the MASK_BOX in window coords
+          if (masked) continue;
+          const i = (wy * RECT.w + wx) * 4;
+          if (
+            patch.data[i] !== srcWin[i] ||
+            patch.data[i + 1] !== srcWin[i + 1] ||
+            patch.data[i + 2] !== srcWin[i + 2] ||
+            patch.data[i + 3] !== srcWin[i + 3]
+          ) {
+            mismatches++;
+          }
+        }
+      }
+      expect(mismatches).toBe(0);
+    },
+    30_000,
+  );
+
+  it(
+    "is deterministic — the same master + mask + rect yields byte-identical patches",
+    async () => {
+      const master = await markerImage();
+      const mask = await maskPng(200, 150, MASK_BOX);
+      const a = await eraseFill(master, basePayload(), mask);
+      const b = await eraseFill(master, basePayload(), mask);
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.bytes.equals(b.bytes)).toBe(true);
+    },
+    45_000,
+  );
+
+  it(
+    "strips adjust ops before compiling — the patch is identical with or without an adjust in the recipe",
+    async () => {
+      const master = await markerImage();
+      const mask = await maskPng(200, 150, MASK_BOX);
+      const plain = await eraseFill(master, basePayload(), mask);
+      const toned = await eraseFill(
+        master,
+        basePayload([{ op: "adjust", label: "Brightness +50", param: "brightness", value: 50 }]),
+        mask,
+      );
+      expect(plain.ok && toned.ok).toBe(true);
+      if (!plain.ok || !toned.ok) return;
+      // The adjust is stripped from the fill input, so the sampled surroundings —
+      // and thus the patch bytes — are unchanged by its presence.
+      expect(plain.bytes.equals(toned.bytes)).toBe(true);
+    },
+    45_000,
+  );
+
+  it(
+    "rejects a rect that doesn't fit the compiled image (bad-recipe, never a jail job)",
+    async () => {
+      const payload: ErasePayload = {
+        recipe: [],
+        mask: { width: 200, height: 150, rect: { x: 180, y: 50, w: 60, h: 60 } }, // 180+60=240 > 200
+      };
+      const out = await eraseFill(await markerImage(), payload, await maskPng(200, 150, MASK_BOX));
+      expect(out.ok).toBe(false);
+      if (out.ok) return;
+      expect(out.code).toBe("bad-recipe");
     },
     15_000,
   );

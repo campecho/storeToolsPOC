@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PhotoOpSchema } from "./photo";
 
 /**
  * Layout-editor document model (plan §3.4) — engine-agnostic, canonical
@@ -126,6 +127,19 @@ export const FrameObjectSchema = z.object({
       Absent = "cover" (the L8 upload default). Imports use "stretch" —
       Publisher scales the image to the frame exactly. */
   fit: z.enum(["cover", "stretch", "contain"]).optional(),
+  /** Pictures only (F2, PE8): the Photo Editor round-trip result — the applied
+      recipe plus the ORIGINAL asset id the frame was bound to at the first edit.
+      Present after a "Done" from the Photo Editor; `assetId` then points at the
+      rendered result, and "Revert photo edits" restores `originalAssetId` and
+      drops this field (one named layout history step). PhotoOpSchema is the
+      same-repo contract from ./photo. Additive, schema-v2-compatible, migrate-free
+      (plan §3.4). */
+  photoEdit: z
+    .object({
+      recipe: z.array(PhotoOpSchema),
+      originalAssetId: z.string(),
+    })
+    .optional(),
 });
 export type FrameObject = z.infer<typeof FrameObjectSchema>;
 

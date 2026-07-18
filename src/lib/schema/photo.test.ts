@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  ErasePayloadSchema,
   PhotoOpSchema,
   RenderFormatSchema,
   RenderPayloadSchema,
@@ -90,6 +91,68 @@ describe("FitToSizeOpSchema — the rect/pad mode invariant (refine)", () => {
       shape: "rect",
     };
     expect(PhotoOpSchema.safeParse(crop).success).toBe(true);
+  });
+});
+
+/* ================================================================== */
+/* The stored-explicit erase op + its preview request (PE9)            */
+/* ================================================================== */
+
+describe("EraseOpSchema — the stored-explicit patch is required", () => {
+  const base = {
+    op: "erase",
+    label: "Remove object",
+    maskAssetId: "photo:mask-1",
+    patch: { id: "p1", assetId: "photo:patch-1", rect: { x: 0, y: 0, w: 40, h: 20 } },
+  };
+
+  it("parses a well-formed erase op carrying a patch", () => {
+    expect(PhotoOpSchema.safeParse(base).success).toBe(true);
+  });
+  it("rejects a bare erase op with no patch (pre-release v1 — patch is required)", () => {
+    expect(
+      PhotoOpSchema.safeParse({ op: "erase", label: "Remove object", maskAssetId: "photo:mask-1" }).success,
+    ).toBe(false);
+  });
+  it("rejects a patch id with jail-unsafe characters (or empty)", () => {
+    expect(PhotoOpSchema.safeParse({ ...base, patch: { ...base.patch, id: "../p" } }).success).toBe(false);
+    expect(PhotoOpSchema.safeParse({ ...base, patch: { ...base.patch, id: "a b" } }).success).toBe(false);
+    expect(PhotoOpSchema.safeParse({ ...base, patch: { ...base.patch, id: "" } }).success).toBe(false);
+  });
+  it("rejects a patch missing its rect or assetId", () => {
+    expect(PhotoOpSchema.safeParse({ ...base, patch: { id: "p1", assetId: "a" } }).success).toBe(false);
+    expect(PhotoOpSchema.safeParse({ ...base, patch: { id: "p1", rect: base.patch.rect } }).success).toBe(false);
+  });
+});
+
+describe("ErasePayloadSchema — the erase-preview request", () => {
+  const base = {
+    recipe: [],
+    mask: { width: 800, height: 600, rect: { x: 10, y: 20, w: 40, h: 30 } },
+  };
+
+  it("parses a well-formed request", () => {
+    expect(ErasePayloadSchema.safeParse(base).success).toBe(true);
+  });
+  it("rejects a non-integer or zero mask dimension", () => {
+    expect(ErasePayloadSchema.safeParse({ ...base, mask: { ...base.mask, width: 0 } }).success).toBe(false);
+    expect(ErasePayloadSchema.safeParse({ ...base, mask: { ...base.mask, height: 12.5 } }).success).toBe(false);
+  });
+  it("rejects a rect with a negative origin or a zero extent", () => {
+    expect(
+      ErasePayloadSchema.safeParse({ ...base, mask: { ...base.mask, rect: { x: -1, y: 0, w: 10, h: 10 } } }).success,
+    ).toBe(false);
+    expect(
+      ErasePayloadSchema.safeParse({ ...base, mask: { ...base.mask, rect: { x: 0, y: 0, w: 0, h: 10 } } }).success,
+    ).toBe(false);
+  });
+  it("carries a geometry recipe slice through", () => {
+    const r = ErasePayloadSchema.safeParse({
+      ...base,
+      recipe: [{ op: "crop", label: "Crop", rect: { x: 0, y: 0, w: 100, h: 100 }, ratio: null, shape: "rect" }],
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.recipe).toHaveLength(1);
   });
 });
 

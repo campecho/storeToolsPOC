@@ -1353,3 +1353,104 @@ describe("persisted-state validation (the merge guard)", () => {
     if (parsed.success) expect(parsed.data.pages[0].sizeOverride).toBeUndefined();
   });
 });
+
+describe("photo-editor round-trip (F2, PE8)", () => {
+  // a minimal valid recipe — one flip op (PhotoOpSchema, ./photo)
+  const recipe = [{ op: "flip" as const, label: "Flip horizontal", axis: "horizontal" as const }];
+
+  it("the optional photoEdit field round-trips the layout schema — additive/migrate-free", () => {
+    // a pre-PE8 picture (no photoEdit) still parses, field absent…
+    const plain = createDefaultDocument();
+    plain.pages[0].objects.push({ ...createFrame("picture", 1, 1, 2, 2), assetId: "orig" });
+    const plainParsed = LayoutDocumentSchema.safeParse(plain);
+    expect(plainParsed.success).toBe(true);
+    if (plainParsed.success) {
+      const f = plainParsed.data.pages[0].objects[0];
+      expect(f.type === "picture" && f.photoEdit).toBeUndefined();
+    }
+    // …and one carrying a photoEdit parses with the recipe + true original id
+    const edited = createDefaultDocument();
+    edited.pages[0].objects.push({
+      ...createFrame("picture", 1, 1, 2, 2),
+      assetId: "edited",
+      photoEdit: { recipe, originalAssetId: "orig" },
+    });
+    const parsed = LayoutDocumentSchema.safeParse(edited);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const f = parsed.data.pages[0].objects[0];
+      expect(f.type === "picture" && f.photoEdit).toMatchObject({ originalAssetId: "orig" });
+    }
+  });
+
+  it("applyPhotoEdit rebinds + records the recipe in ONE step; undo restores the prior binding", () => {
+    const s = useLayoutStore.getState();
+    const frame = { ...createFrame("picture", 1, 1, 2, 2), assetId: "orig" };
+    s.addObject(frame);
+    const depth = useLayoutStore.getState().past.length;
+    s.applyPhotoEdit(frame.id, { assetId: "edited-1", recipe, originalAssetId: "orig" });
+    const after = pageObjects()[0] as {
+      assetId?: string;
+      photoEdit?: { originalAssetId: string; recipe: unknown[] };
+    };
+    expect(after.assetId).toBe("edited-1");
+    expect(after.photoEdit).toMatchObject({ originalAssetId: "orig" });
+    expect(after.photoEdit?.recipe).toHaveLength(1);
+    expect(useLayoutStore.getState().selectedIds).toEqual([frame.id]);
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1); // exactly one step
+    s.undo();
+    const reverted = pageObjects()[0] as { assetId?: string; photoEdit?: unknown };
+    expect(reverted.assetId).toBe("orig");
+    expect(reverted.photoEdit).toBeUndefined();
+  });
+
+  it("a RE-edit keeps the TRUE original so one revert restores the pristine binding", () => {
+    const s = useLayoutStore.getState();
+    const frame = { ...createFrame("picture", 1, 1, 2, 2), assetId: "orig" };
+    s.addObject(frame);
+    s.applyPhotoEdit(frame.id, { assetId: "edited-1", recipe, originalAssetId: "orig" });
+    // the second edit's source is the first edited asset — but the true original sticks
+    s.applyPhotoEdit(frame.id, { assetId: "edited-2", recipe, originalAssetId: "edited-1" });
+    const after = pageObjects()[0] as { assetId?: string; photoEdit?: { originalAssetId: string } };
+    expect(after.assetId).toBe("edited-2");
+    expect(after.photoEdit?.originalAssetId).toBe("orig");
+    s.revertPhotoEdit(frame.id);
+    const reverted = pageObjects()[0] as { assetId?: string; photoEdit?: unknown };
+    expect(reverted.assetId).toBe("orig");
+    expect(reverted.photoEdit).toBeUndefined();
+  });
+
+  it("revertPhotoEdit clears the edit in ONE step; undo brings it back", () => {
+    const s = useLayoutStore.getState();
+    const frame = { ...createFrame("picture", 1, 1, 2, 2), assetId: "orig" };
+    s.addObject(frame);
+    s.applyPhotoEdit(frame.id, { assetId: "edited-1", recipe, originalAssetId: "orig" });
+    const depth = useLayoutStore.getState().past.length;
+    s.revertPhotoEdit(frame.id);
+    expect((pageObjects()[0] as { assetId?: string }).assetId).toBe("orig");
+    expect((pageObjects()[0] as { photoEdit?: unknown }).photoEdit).toBeUndefined();
+    expect(useLayoutStore.getState().past).toHaveLength(depth + 1);
+    s.undo(); // the revert is itself one revertable step
+    const back = pageObjects()[0] as { assetId?: string; photoEdit?: { originalAssetId: string } };
+    expect(back.assetId).toBe("edited-1");
+    expect(back.photoEdit?.originalAssetId).toBe("orig");
+  });
+
+  it("both are guarded no-ops on non-picture, missing, and un-edited frames", () => {
+    const s = useLayoutStore.getState();
+    const rect = createFrame("rect", 0, 0, 1, 1);
+    s.addObject(rect);
+    const before = useLayoutStore.getState().doc;
+    s.applyPhotoEdit(rect.id, { assetId: "x", recipe, originalAssetId: "y" }); // not a picture
+    s.applyPhotoEdit("missing", { assetId: "x", recipe, originalAssetId: "y" }); // no such frame
+    s.revertPhotoEdit(rect.id); // not a picture
+    s.revertPhotoEdit("missing"); // no such frame
+    expect(useLayoutStore.getState().doc).toBe(before);
+    // revert on a picture frame that has no edit is a no-op too
+    const pic = { ...createFrame("picture", 2, 2, 1, 1), assetId: "orig" };
+    s.addObject(pic);
+    const beforePic = useLayoutStore.getState().doc;
+    s.revertPhotoEdit(pic.id);
+    expect(useLayoutStore.getState().doc).toBe(beforePic);
+  });
+});

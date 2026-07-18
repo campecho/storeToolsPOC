@@ -188,6 +188,16 @@ export const FitToSizeOpSchema = z.object({
   pad: FitPadSchema.optional(),
 });
 
+/**
+ * The `hidden` tombstone (PE6). The UI folds the recipe last-wins-per-`id`; a
+ * removed overlay is written back with `hidden: true` rather than spliced out,
+ * so undo/redo across a remove stays a pure cursor move (no history rewrite).
+ * The SERVER NEVER READS overlay ops — overlays reach the render host as
+ * pre-rendered PNG rasters in the RenderPayload `overlays` sidecar, not as ops
+ * to draw (fonts live client-side, plan §3.3) — but the schema must still ACCEPT
+ * a persisted document carrying the tombstone. Optional/additive (pre-release
+ * v1); no persisted document migrates.
+ */
 export const TextOverlayOpSchema = z.object({
   op: z.literal("textOverlay"),
   label: opLabel,
@@ -204,6 +214,8 @@ export const TextOverlayOpSchema = z.object({
   align: z.enum(["left", "center", "right"]),
   box: PixelRectSchema,
   rotation: z.number(),
+  /** Remove-tombstone under the UI's last-wins-per-id fold (see above). */
+  hidden: z.boolean().optional(),
 });
 
 export const LogoOverlayOpSchema = z.object({
@@ -214,13 +226,48 @@ export const LogoOverlayOpSchema = z.object({
   assetId: z.string(),
   box: PixelRectSchema,
   rotation: z.number(),
+  /** Remove-tombstone under the UI's last-wins-per-id fold — same rule as
+      TextOverlayOpSchema.hidden; the server never reads it. */
+  hidden: z.boolean().optional(),
 });
 
+/**
+ * STORED-EXPLICIT erase (PE9, the preview-approve loop that every model op will
+ * inherit). The classical fill runs ONCE server-side at preview time (POST
+ * /api/photo/erase) on the working master at full resolution; the resolved patch
+ * PNG is committed ON the op (the ResizeOpSchema.targetPx discipline). Replay —
+ * client canvas AND server export — composites ONLY these approved pixels and
+ * NEVER re-runs the fill, so what the associate approved is exactly what renders
+ * everywhere. `maskAssetId` is the operator's INTENT (the brushed mask, kept for
+ * the model-service seam — a future inpaint model re-runs from the same mask);
+ * `patch` is the approved result both engines fold and render. Pre-release schema
+ * v1 — `patch` required from day one, no migration.
+ */
 export const EraseOpSchema = z.object({
   op: z.literal("erase"),
   label: opLabel,
-  /** Blob-store id of the brushed mask PNG (PE9's preview-approve loop). */
+  /** Blob-store id of the brushed mask PNG — the operator's INTENT, kept for the
+      model-service seam (a future inpaint model re-runs from the same mask). */
   maskAssetId: z.string(),
+  patch: z.object({
+    /** Jail-safe part id (the overlay id rule): maps to the multipart part
+        `erase:<id>` and the jail basename `erase-<id>.png`. */
+    id: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/i),
+    /** Blob-store id of the patch PNG. */
+    assetId: z.string(),
+    /** Patch placement in EFFECTIVE-image px at THIS op's recipe position. The
+        bound is the documented invariant made enforceable: the patch PNG's pixel
+        dims EQUAL rect.w × rect.h, and the render route rejects a part whose
+        header dims mismatch — so a degenerate/fractional rect must die at parse,
+        not as a baffling "must be a 1×1 image" 400 later (tighter than the shared
+        PixelRectSchema, whose crop consumers legitimately float). */
+    rect: z.object({
+      x: z.number().int().min(0),
+      y: z.number().int().min(0),
+      w: z.number().int().min(1),
+      h: z.number().int().min(1),
+    }),
+  }),
 });
 
 const PhotoOpUnionSchema = z.discriminatedUnion("op", [
@@ -248,6 +295,24 @@ const PhotoOpUnionSchema = z.discriminatedUnion("op", [
  * `z.array(PhotoOpSchema)` and `.safeParse` (no consumer reaches for its union
  * `.options`). The exported `PhotoOp` type is unchanged by the refine.
  */
+/**
+ * The ops that enter the erase FILL INPUT (PE9): geometry + prior erase patches —
+ * the effective image the brush was drawn on. Pointwise tone (adjust/autoEnhance)
+ * re-applies terminally on top of the patch at every render, and overlays are
+ * placed art ABOVE the photo, so neither may bake into the pixels the fill
+ * samples. ONE predicate shared by the client's pre-strip (client.ts
+ * requestEraseFill) and the server's defensive re-strip (render-host eraseFill) —
+ * two hand-copied lists here would drift silently.
+ */
+export function isFillInputOp(op: PhotoOp): boolean {
+  return (
+    op.op !== "adjust" &&
+    op.op !== "autoEnhance" &&
+    op.op !== "textOverlay" &&
+    op.op !== "logoOverlay"
+  );
+}
+
 export const PhotoOpSchema = PhotoOpUnionSchema.superRefine((op, ctx) => {
   if (op.op !== "fitToSize") return;
   const hasRect = op.rect != null;
@@ -325,6 +390,7 @@ export type IntakeImagePayload = z.infer<typeof IntakeImagePayloadSchema>;
 export const IntakeErrorCodeSchema = z.enum([
   "not-an-image", // sniff failed or disguised bytes
   "unsupported-here", // sniffed fine, this server lacks the capability (HEIC without heif-convert, raw BMP)
+  "multi-page", // a PDF or other multi-page document — route to the Layout Editor instead
   "too-large", // MAX_PHOTO_BYTES
   "too-many-pixels", // MAX_PHOTO_PIXELS
   "decode-failed", // jail decode died (truncated/hostile)
@@ -445,6 +511,37 @@ export const RenderPayloadSchema = z.object({
       bleed: z.number().min(0),
     })
     .optional(),
+  /**
+   * Pre-rendered overlay placements (PE6, plan §3.3, §3.6). Fonts live
+   * client-side, so text/logo overlays reach the server as PNG RASTERS, never as
+   * ops to draw — the recipe's textOverlay/logoOverlay ops are the client's
+   * history representation and compileRenderPlan SKIPS them (see render-host).
+   * Each entry is a placement in FINAL-OUTPUT pixel space (the effective dims
+   * AFTER all geometry — overlay boxes already live in effective-master space, so
+   * they pass through 1:1); array order = composite order (later paints over
+   * earlier). The raster bytes ride SEPARATE multipart parts named `overlay:<id>`
+   * (one per entry) — the route matches, size-caps, dimension-checks, and passes
+   * them to the jail, where the worker's sharp decode+resize+composite IS the
+   * re-encode that sanitizes the UNTRUSTED client raster (§3.6). `id` is
+   * `[a-z0-9-]` (max 64) so it maps safely to a jail basename `overlay-<id>.png`.
+   * Capped at 16 overlays. Optional — absent for every pre-PE6 render.
+   */
+  overlays: z
+    .array(
+      z.object({
+        id: z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[a-z0-9-]+$/i),
+        left: z.number().int(),
+        top: z.number().int(),
+        width: z.number().int().min(1),
+        height: z.number().int().min(1),
+      }),
+    )
+    .max(16)
+    .optional(),
 });
 export type RenderPayload = z.infer<typeof RenderPayloadSchema>;
 
@@ -474,3 +571,42 @@ export const RenderErrorSchema = z.object({
   message: z.string(),
 });
 export type RenderError = z.infer<typeof RenderErrorSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Erase preview API (POST /api/photo/erase) — the classical fill, PE9 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The erase-preview request (PE9): the geometry + prior-erase slice of
+ * ops[0..cursor) plus the brushed mask's raster dims and the fill rect. The
+ * client strips adjust/autoEnhance/overlay ops (pointwise/composited-above passes
+ * that must NOT bake into the fill input); the server ALSO strips them
+ * defensively before compiling. Success is BINARY — the patch PNG for `mask.rect`
+ * (image/png, no-store); every failure is RenderErrorSchema JSON with the render
+ * route's status mapping.
+ *
+ * MASK CONTRACT (binding, shared by the client brush canvas, the corpus fixture
+ * masks, and the worker): the mask part is a GRAYSCALE-ON-BLACK, fully OPAQUE
+ * PNG. The pixel LUMINANCE is the fill factor — 0 = keep, 255 = fully remove,
+ * intermediate = the soft brush-edge blend. The worker flattens any (hostile)
+ * alpha onto black and reads ONE greyscale channel; the alpha channel is never
+ * the signal.
+ */
+export const ErasePayloadSchema = z.object({
+  recipe: z.array(PhotoOpSchema),
+  mask: z.object({
+    /** Mask raster dims as uploaded (any resolution; the worker resizes it to the
+        effective image). Must equal the uploaded PNG's header dims. */
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+    /** Fill region: the brushed-stroke bbox, padded, in EFFECTIVE-image px at the
+        END of `recipe`. The returned patch has exactly these dims. */
+    rect: z.object({
+      x: z.number().int().min(0),
+      y: z.number().int().min(0),
+      w: z.number().int().min(1),
+      h: z.number().int().min(1),
+    }),
+  }),
+});
+export type ErasePayload = z.infer<typeof ErasePayloadSchema>;

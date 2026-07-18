@@ -11,6 +11,7 @@ import {
   type Stroke,
 } from "@/schema";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import type { PhotoOp } from "@/lib/schema/photo";
 import { applyToAllRuns, type TextPatch } from "@/lib/layout/text";
 import { clearAssetBlobs, deleteAssetBlob, replaceAssetBlobs } from "@/lib/assets/blob-store";
 import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
@@ -407,6 +408,20 @@ export interface LayoutEditorState {
   /** Bind an existing library asset to a specific picture frame (L9 fill/drag-in);
       one undo step, guarded — undo reverts the binding, the asset stays in the library. */
   bindAsset: (frameId: string, assetId: string) => void;
+
+  // photo-editor round-trip (F2, PE8) — one history step each, guarded to
+  // picture frames; the blob library is not an undo step (same rule as bindAsset)
+  /** Land a Photo Editor "Done" on a picture frame in ONE history step: rebind
+      to the rendered result and record the recipe. A RE-edit keeps the TRUE
+      original (the first edit's `originalAssetId`), so one "Revert photo edits"
+      always restores the pristine binding. No-op on a missing/non-picture frame. */
+  applyPhotoEdit: (
+    frameId: string,
+    result: { assetId: string; recipe: PhotoOp[]; originalAssetId: string },
+  ) => void;
+  /** Restore a frame's original asset and drop `photoEdit`, in ONE history step.
+      No-op on a missing/non-picture frame, or one with no photo edit. */
+  revertPhotoEdit: (frameId: string) => void;
 
   // history
   /** Push the pre-gesture snapshot, once, if the gesture changed the doc. */
@@ -1002,6 +1017,52 @@ export const useLayoutStore = create<LayoutEditorState>()(
             ...pushed(s, s.doc),
             doc: mapSurfaceObjects(s, (objs) =>
               objs.map((o) => (o.id === frameId ? { ...o, assetId } : o)),
+            ),
+            selectedIds: [frameId],
+          };
+        }),
+
+      applyPhotoEdit: (frameId, result) =>
+        set((s) => {
+          const frame = surfaceObjects(s).find((o) => o.id === frameId);
+          if (!frame || frame.type !== "picture") return s;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) =>
+              objs.map((o) =>
+                o.id === frameId && o.type === "picture"
+                  ? {
+                      ...o,
+                      assetId: result.assetId,
+                      photoEdit: {
+                        recipe: result.recipe,
+                        // a re-edit keeps the true original binding (the first
+                        // edit's), so one revert always restores the pristine image
+                        originalAssetId: o.photoEdit?.originalAssetId ?? result.originalAssetId,
+                      },
+                    }
+                  : o,
+              ),
+            ),
+            selectedIds: [frameId],
+          };
+        }),
+
+      revertPhotoEdit: (frameId) =>
+        set((s) => {
+          const frame = surfaceObjects(s).find((o) => o.id === frameId);
+          if (!frame || frame.type !== "picture" || !frame.photoEdit) return s;
+          const { originalAssetId } = frame.photoEdit;
+          return {
+            ...pushed(s, s.doc),
+            doc: mapSurfaceObjects(s, (objs) =>
+              objs.map((o) => {
+                if (o.id !== frameId || o.type !== "picture") return o;
+                // drop the optional key entirely and restore the original binding
+                const { photoEdit: _drop, ...rest } = o;
+                void _drop;
+                return { ...rest, assetId: originalAssetId };
+              }),
             ),
             selectedIds: [frameId],
           };

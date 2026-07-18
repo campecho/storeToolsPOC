@@ -14,10 +14,12 @@ import { TaskRail } from "./TaskRail";
 import { PrintStrip } from "./PrintStrip";
 import { HistoryDock } from "./HistoryDock";
 import { ContextPanel } from "./ContextPanel";
+import { ReturnBanner } from "./ReturnBanner";
 import { StatusBar } from "./StatusBar";
 import { CapabilityBanner } from "./CapabilityBanner";
 import { NoPhotoState } from "./NoPhotoState";
 import { PhotoCanvas } from "./canvas/PhotoCanvas";
+import { PreviewApproveBar } from "./canvas/PreviewApproveBar";
 
 /** The wire's demo order context (deviation #4 — inert, shown only on the
     `/photo?demo=1` entry so the shell reads true to the Section-A wire). */
@@ -57,11 +59,20 @@ export function PhotoEditorShell() {
   const doc = usePhotoStore((s) => s.doc);
   const level = usePhotoStore((s) => s.level);
   const activeTool = usePhotoStore((s) => s.activeTool);
+  const returnContext = usePhotoStore((s) => s.returnContext);
   const openDocument = usePhotoStore((s) => s.openDocument);
   const setActiveTool = usePhotoStore((s) => s.setActiveTool);
   const setLevel = usePhotoStore((s) => s.setLevel);
   const undo = usePhotoStore((s) => s.undo);
   const redo = usePhotoStore((s) => s.redo);
+
+  // F2 (PE8): while editing a placed picture, Export is hidden and Done replaces
+  // it. If the Export panel was open when the round-trip arrives, fall back to
+  // the no-tool state so a now-hidden tool never stays active.
+  const returnActive = returnContext != null;
+  useEffect(() => {
+    if (returnActive && activeTool === "export") setActiveTool("none");
+  }, [returnActive, activeTool, setActiveTool]);
 
   // Persisted store uses the skipHydration pattern — rehydrate on mount, then
   // expose readiness (tests wait on data-hydrated; the demo load waits on it so
@@ -197,13 +208,29 @@ export function PhotoEditorShell() {
       >
         <TitleBar doc={doc} orderContext={orderContext} level={level} onSetLevel={setLevel} />
         <CapabilityBanner error={banner} onDismiss={() => setBanner(null)} />
-        {doc && <ActionBar doc={doc} onUndo={undo} onRedo={redo} onSelectTool={setActiveTool} />}
+        {doc && (
+          <ActionBar
+            doc={doc}
+            onUndo={undo}
+            onRedo={redo}
+            onSelectTool={setActiveTool}
+            returnActive={returnActive}
+          />
+        )}
 
         <div className="flex min-h-0 flex-1">
           {showWorkArea ? (
             <>
-              {doc && <TaskRail level={level} activeTool={activeTool} onSelect={handleToggleTool} />}
+              {doc && (
+                <TaskRail
+                  level={level}
+                  activeTool={activeTool}
+                  onSelect={handleToggleTool}
+                  returnActive={returnActive}
+                />
+              )}
               <div className="relative flex min-w-0 flex-1 flex-col">
+                <ReturnBanner doc={doc} />
                 {doc && (
                   <PrintStrip
                     doc={doc}
@@ -212,6 +239,7 @@ export function PhotoEditorShell() {
                   />
                 )}
                 <PhotoCanvas doc={doc} previewBitmap={preview} onZoom={setZoomPct} />
+                {doc && <PreviewApproveBar />}
                 {doc && (
                   <HistoryDock doc={doc} open={historyOpen} onClose={() => setHistoryOpen(false)} />
                 )}

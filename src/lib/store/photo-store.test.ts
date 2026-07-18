@@ -10,6 +10,7 @@ import {
   type PhotoDocument,
   type PhotoOp,
   type PhotoSource,
+  type PixelRect,
 } from "@/lib/schema/photo";
 
 /* ------------------------------------------------------------------ */
@@ -67,6 +68,16 @@ function straightenOp(degrees: number): PhotoOp {
   return { op: "straighten", label: `Straighten ${degrees}`, degrees };
 }
 
+/** A schema-valid erase op — the PE9 preview-approve fixture. */
+function eraseOp(id = "abc123"): PhotoOp {
+  return {
+    op: "erase",
+    label: "Remove object",
+    maskAssetId: `photo:${id}:mask`,
+    patch: { id, assetId: `photo:${id}:patch`, rect: { x: 0, y: 0, w: 10, h: 10 } },
+  };
+}
+
 function sampleDraft() {
   return {
     rect: { x: 10, y: 10, w: 200, h: 150 },
@@ -101,6 +112,11 @@ describe("photo store defaults", () => {
     expect(s().cropDraft).toBeNull();
     expect(s().previewOp).toBeNull();
     expect(s().comparing).toBe(false);
+  });
+
+  it("boots with no pending preview and the default clean-up brush size (PE9 §7)", () => {
+    expect(s().pendingPreview).toBeNull();
+    expect(s().cleanupBrushSize).toBe(40);
   });
 });
 
@@ -162,8 +178,8 @@ describe("level & tool", () => {
   });
 
   it("setReturnContext sets and clears the PE8 hand-off", () => {
-    s().setReturnContext({ originName: "Spring flyer", objectId: "obj-7" });
-    expect(s().returnContext).toEqual({ originName: "Spring flyer", objectId: "obj-7" });
+    s().setReturnContext({ originName: "Spring flyer", objectId: "obj-7", originalAssetId: "photo:test:orig" });
+    expect(s().returnContext).toEqual({ originName: "Spring flyer", objectId: "obj-7", originalAssetId: "photo:test:orig" });
     s().setReturnContext(null);
     expect(s().returnContext).toBeNull();
   });
@@ -491,7 +507,7 @@ describe("partialize — only the document + level persist", () => {
       doc: makeDoc([op("a")]),
       level: "simple",
       activeTool: "crop",
-      returnContext: { originName: "Flyer", objectId: "obj-1" },
+      returnContext: { originName: "Flyer", objectId: "obj-1", originalAssetId: "photo:test:orig" },
       cropDraft: sampleDraft(),
       previewOp: straightenOp(-1.2),
       comparing: true,
@@ -603,5 +619,285 @@ describe("setIntent — export colour intent (document mutation, not a history o
     s().setIntent("cmyk");
     const persisted = partialize(usePhotoStore.getState()) as { doc: PhotoDocument };
     expect(persisted.doc.target.intent).toBe("cmyk");
+  });
+});
+
+/* ================================================================== */
+/* Text & image overlays (PE6) — add actions, coalesce, selection      */
+/* ================================================================== */
+
+/** A text/logo overlay op with a fixed id — for the coalesce + selection tests. */
+function textOverlayOp(
+  id: string,
+  label = "Add text",
+  box: PixelRect = { x: 0, y: 0, w: 100, h: 40 },
+): PhotoOp {
+  return {
+    op: "textOverlay",
+    label,
+    id,
+    text: "New text",
+    font: { family: "Motiva Sans", size: 40, bold: false, italic: false },
+    color: "#1a1a1a",
+    align: "left",
+    box,
+    rotation: 0,
+  };
+}
+function logoOverlayOp(id: string, label = "Add image"): PhotoOp {
+  return {
+    op: "logoOverlay",
+    label,
+    id,
+    assetId: `photo:${id}:overlay`,
+    box: { x: 0, y: 0, w: 80, h: 60 },
+    rotation: 0,
+  };
+}
+
+describe("overlay defaults", () => {
+  it("boots with no overlay selected", () => {
+    expect(s().selectedOverlayId).toBeNull();
+  });
+});
+
+describe("addTextOverlay / addLogoOverlay", () => {
+  it("addTextOverlay appends one text op, selects it, and lands the cursor at the end", () => {
+    s().openDocument(makeDoc());
+    s().addTextOverlay();
+    const doc = s().doc!;
+    expect(doc.recipe).toHaveLength(1);
+    const op = doc.recipe[0];
+    expect(op.op).toBe("textOverlay");
+    expect(op.label).toBe("Add text");
+    expect((op as { text: string }).text).toBe("New text");
+    expect((op as { font: { family: string } }).font.family).toBe("Motiva Sans");
+    expect(doc.cursor).toBe(1);
+    // selected the new id
+    expect(s().selectedOverlayId).toBe((op as { id: string }).id);
+  });
+
+  it("sizes the default text from the effective height (≈ h/12) and centers the box", () => {
+    // source 4000×3000, no ops → eff 3000 tall → size ≈ 250 px.
+    s().openDocument(makeDoc());
+    s().addTextOverlay();
+    const op = s().doc!.recipe[0] as { font: { size: number }; box: { x: number; w: number } };
+    expect(op.font.size).toBe(250);
+    // centered horizontally: box width 0.6·4000 = 2400, x = (4000-2400)/2 = 800
+    expect(op.box.w).toBe(2400);
+    expect(op.box.x).toBe(800);
+  });
+
+  it("addLogoOverlay appends one logo op bound to the asset, selects it", () => {
+    s().openDocument(makeDoc());
+    s().addLogoOverlay("photo:abc:overlay", 200, 100);
+    const doc = s().doc!;
+    expect(doc.recipe).toHaveLength(1);
+    const op = doc.recipe[0] as { op: string; assetId: string; box: { w: number; h: number } };
+    expect(op.op).toBe("logoOverlay");
+    expect(op.assetId).toBe("photo:abc:overlay");
+    // aspect 2:1 → boxW 0.3·4000 = 1200, boxH 600
+    expect(op.box.w).toBe(1200);
+    expect(op.box.h).toBe(600);
+    expect(s().doc!.recipe[0].label).toBe("Add image");
+    expect(s().selectedOverlayId).toBe((op as { id?: string }).id ?? s().selectedOverlayId);
+  });
+
+  it("add actions drop the redo tail (a fresh overlay truncates like any commit)", () => {
+    s().openDocument(makeDoc([op("a"), op("b"), op("c")])); // cursor 3
+    s().undo();
+    s().undo(); // cursor 1
+    s().addTextOverlay();
+    expect(s().doc!.recipe).toHaveLength(2); // [a, textOverlay] — b, c dropped
+    expect(s().doc!.recipe[1].op).toBe("textOverlay");
+    expect(s().doc!.cursor).toBe(2);
+  });
+
+  it("add actions are safe no-ops with no document", () => {
+    expect(() => {
+      s().addTextOverlay();
+      s().addLogoOverlay("photo:x:overlay", 10, 10);
+    }).not.toThrow();
+    expect(s().doc).toBeNull();
+  });
+});
+
+describe("overlay coalesce — same tag AND same id", () => {
+  it("edits to the SAME overlay id collapse to one history step", () => {
+    s().openDocument(makeDoc([textOverlayOp("t1")])); // one Add-text step
+    s().pushOp(textOverlayOp("t1", "Move text", { x: 5, y: 5, w: 100, h: 40 }), { coalesce: true });
+    s().pushOp(textOverlayOp("t1", "Move text", { x: 9, y: 9, w: 100, h: 40 }), { coalesce: true });
+    expect(s().doc!.recipe).toHaveLength(1);
+    expect(s().doc!.recipe[0].label).toBe("Move text");
+    expect((s().doc!.recipe[0] as { box: { x: number } }).box.x).toBe(9);
+  });
+
+  it("editing a DIFFERENT overlay id appends its own step (no cross-id merge)", () => {
+    s().openDocument(makeDoc([textOverlayOp("t1")]));
+    s().pushOp(logoOverlayOp("g1", "Move image"), { coalesce: true }); // different tag+id
+    expect(s().doc!.recipe).toHaveLength(2);
+    s().pushOp(textOverlayOp("t1", "Edit text"), { coalesce: true }); // trailing is g1 → appends
+    expect(s().doc!.recipe).toHaveLength(3);
+    expect(recipeLabels()).toEqual(["Add text", "Move image", "Edit text"]);
+  });
+
+  it("two text overlays with different ids never coalesce onto each other", () => {
+    s().openDocument(makeDoc());
+    s().pushOp(textOverlayOp("t1"));
+    s().pushOp(textOverlayOp("t2"), { coalesce: true }); // trailing t1, different id
+    expect(s().doc!.recipe).toHaveLength(2);
+  });
+});
+
+describe("selectedOverlayId — lifecycle", () => {
+  it("setter round-trips and clears", () => {
+    s().setSelectedOverlayId("ov-1");
+    expect(s().selectedOverlayId).toBe("ov-1");
+    s().setSelectedOverlayId(null);
+    expect(s().selectedOverlayId).toBeNull();
+  });
+
+  it("survives pushOp and history moves (editing keeps the overlay selected)", () => {
+    s().openDocument(makeDoc([op("a"), op("b")]));
+    s().setSelectedOverlayId("ov-keep");
+    s().pushOp(op("c"));
+    expect(s().selectedOverlayId).toBe("ov-keep");
+    s().undo();
+    expect(s().selectedOverlayId).toBe("ov-keep");
+    s().redo();
+    expect(s().selectedOverlayId).toBe("ov-keep");
+  });
+
+  it("clears on tool change and on doc open/close", () => {
+    s().openDocument(makeDoc());
+    s().setActiveTool("text");
+    s().setSelectedOverlayId("ov-1");
+    s().setActiveTool("adjust");
+    expect(s().selectedOverlayId).toBeNull();
+
+    s().setSelectedOverlayId("ov-2");
+    s().openDocument(makeDoc([op("a")]));
+    expect(s().selectedOverlayId).toBeNull();
+
+    s().setSelectedOverlayId("ov-3");
+    s().closeDocument();
+    expect(s().selectedOverlayId).toBeNull();
+  });
+
+  it("stays out of partialize (session-only)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", selectedOverlayId: "ov-1" });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("selectedOverlayId" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+  });
+});
+
+/* ================================================================== */
+/* pendingPreview + cleanupBrushSize — the PE9 preview-approve loop §7 */
+/* ================================================================== */
+
+describe("pendingPreview — the model-op preview (PE9 §7)", () => {
+  it("setPendingPreview round-trips and clears", () => {
+    s().openDocument(makeDoc());
+    s().setPendingPreview(eraseOp());
+    expect(s().pendingPreview).toEqual(eraseOp());
+    s().setPendingPreview(null);
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("Apply = pushOp(pendingPreview) appends exactly one op and clears the pending state", () => {
+    s().openDocument(makeDoc([op("a")])); // cursor 1
+    const preview = eraseOp();
+    s().setPendingPreview(preview);
+    // Apply is a plain pushOp of the pending op.
+    s().pushOp(s().pendingPreview!);
+    expect(s().doc!.recipe).toHaveLength(2);
+    expect(s().doc!.recipe[1]).toEqual(preview);
+    expect(s().doc!.recipe[1].label).toBe("Remove object");
+    expect(s().doc!.cursor).toBe(2);
+    // pushOp clears the pending preview via CLEAR_DRAFT (atomic with the commit).
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("Discard = setPendingPreview(null) leaves the recipe and cursor untouched", () => {
+    // Park the cursor mid-history so an accidental truncation would show.
+    s().openDocument(makeDoc([op("a"), op("b"), op("c")], 2));
+    const before = s().doc!;
+    s().setPendingPreview(eraseOp());
+    s().setPendingPreview(null); // Discard
+    expect(s().pendingPreview).toBeNull();
+    expect(recipeLabels()).toEqual(["a", "b", "c"]); // tail intact
+    expect(s().doc?.cursor).toBe(2); // cursor unmoved
+    expect(s().doc?.recipe).toBe(before.recipe); // same array reference — untouched
+  });
+
+  it("is cleared by CLEAR_DRAFT — pushOp, undo, redo, setCursor (a history move stales it)", () => {
+    s().openDocument(makeDoc([op("a"), op("b")])); // cursor 2
+
+    s().setPendingPreview(eraseOp());
+    s().pushOp(op("c"));
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().undo();
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().redo();
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().setCursor(0);
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("is cleared by CLEAR_GESTURES — tool switch, doc open, doc close", () => {
+    s().openDocument(makeDoc([op("a")]));
+
+    s().setPendingPreview(eraseOp());
+    s().setActiveTool("adjust");
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().openDocument(makeDoc([op("a")]));
+    expect(s().pendingPreview).toBeNull();
+
+    s().setPendingPreview(eraseOp());
+    s().closeDocument();
+    expect(s().pendingPreview).toBeNull();
+  });
+
+  it("stays out of partialize (session-only, never persisted)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", pendingPreview: eraseOp() });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("pendingPreview" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
+  });
+});
+
+describe("cleanupBrushSize — the clean-up brush slider (PE9 §7)", () => {
+  it("defaults to 40 and setCleanupBrushSize round-trips", () => {
+    expect(s().cleanupBrushSize).toBe(40);
+    s().setCleanupBrushSize(88);
+    expect(s().cleanupBrushSize).toBe(88);
+  });
+
+  it("survives history moves and tool switches (session preference, not a gesture)", () => {
+    s().openDocument(makeDoc([op("a")]));
+    s().setCleanupBrushSize(16);
+    s().pushOp(op("b"));
+    s().undo();
+    s().setActiveTool("cleanup");
+    expect(s().cleanupBrushSize).toBe(16);
+  });
+
+  it("stays out of partialize (session-only, never persisted)", () => {
+    const partialize = usePhotoStore.persist.getOptions().partialize!;
+    usePhotoStore.setState({ doc: makeDoc([op("a")]), level: "simple", cleanupBrushSize: 100 });
+    const persisted = partialize(usePhotoStore.getState()) as Record<string, unknown>;
+    expect("cleanupBrushSize" in persisted).toBe(false);
+    expect(Object.keys(persisted).sort()).toEqual(["doc", "level"]);
   });
 });

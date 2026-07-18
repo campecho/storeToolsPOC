@@ -4,19 +4,15 @@ import { sniffImageMime } from "@/lib/import/image-meta";
 // (plan §3.6 — "same seam as import"). Nothing scans yet; the call site exists
 // so the engine decision has a single place to fill.
 import { avScanHook } from "@/lib/import/pub2raw";
-import { isGeometryOp } from "@/lib/photo/geometry";
 import { cmykPreservePath, isCmykTiff, tificcAvailable } from "@/lib/photo/lcms";
 import { MAX_PHOTO_BYTES } from "@/lib/photo/limits";
 import { scanJpeg, wrapImagePdf } from "@/lib/photo/pdf-wrap";
 import { GRACOL_IDENTIFIER, gracolProfileBytes, renderImage } from "@/lib/photo/render-host";
-import {
-  RenderErrorSchema,
-  RenderPayloadSchema,
-  type PhotoOp,
-  type RenderError,
-  type RenderErrorCode,
-  type RenderPayload,
-} from "@/lib/schema/photo";
+import { RenderPayloadSchema, type RenderPayload } from "@/lib/schema/photo";
+// Op-screen, status mapping, the JSON error builder, and the erase-patch collector
+// are shared with the erase-preview route (render-support) so the two surfaces
+// can't drift on rules the untrusted client must not slip past.
+import { collectErasePatches, collectOverlays, fail, failFrom, isRenderableOp } from "../render-support";
 
 /**
  * POST /api/photo/render — the export spine (plan §3.3 "Export", §4 PE3). A
@@ -35,42 +31,6 @@ import {
  */
 
 export const runtime = "nodejs";
-
-/** HTTP status for each render failure code (plan §4 PE3 mapping). */
-const STATUS_FOR: Record<RenderErrorCode, number> = {
-  "bad-recipe": 400,
-  "unsupported-op": 422,
-  "too-large": 413,
-  "too-many-pixels": 413,
-  "decode-failed": 422,
-  timeout: 504,
-  "engine-error": 500,
-};
-
-/**
- * The tranche each still-unsupported op renders from, for the `unsupported-op`
- * message ("'textOverlay' ops render from PE6"). Ops that render HERE — geometry
- * (crop/rotate/flip/straighten + the PE5 print-geometry resize/bleedExpand/
- * fitToSize) and tone/colour (adjust/autoEnhance, PE4) — are absent from this map.
- */
-const OP_TRANCHE: Record<string, string> = {
-  textOverlay: "ops render from PE6",
-  logoOverlay: "ops render from PE6",
-  erase: "ops render from PE9",
-};
-
-/** The op tags the render spine can replay today: geometry (incl. the PE5
-    print-geometry ops, via isGeometryOp) + PE4 tone/colour. */
-function isRenderableOp(op: PhotoOp): boolean {
-  return isGeometryOp(op) || op.op === "adjust" || op.op === "autoEnhance";
-}
-
-/** Build a schema-checked JSON error (dev asserts the contract; tests too). */
-function fail(status: number, code: RenderErrorCode, message: string): NextResponse {
-  const body: RenderError = { ok: false, code, message };
-  if (process.env.NODE_ENV !== "production") RenderErrorSchema.parse(body);
-  return NextResponse.json(body, { status });
-}
 
 export async function POST(req: Request) {
   // 1. Multipart parse. A non-multipart / malformed body is a bad request —
@@ -112,13 +72,14 @@ export async function POST(req: Request) {
   }
   const payload = payloadResult.data;
 
-  // 4. Op-tag screen: geometry (crop/rotate/flip/straighten) and tone/colour
-  //    (adjust/autoEnhance, PE4) render here. Name the first offender and its
-  //    tranche so the panel can explain the wait.
+  // 4. Op-tag screen (defence in depth): every current PhotoOp tag is renderable
+  //    — geometry (crop/rotate/flip/straighten + the PE5 print-geometry ops),
+  //    tone/colour (adjust/autoEnhance, PE4), the PE6 overlay ops (accepted +
+  //    ignored by the fold), and the PE9 erase op — so this screen only bites a
+  //    future non-renderable tag before it reaches the jail.
   for (const op of payload.recipe) {
     if (!isRenderableOp(op)) {
-      const tranche = OP_TRANCHE[op.op] ?? "ops aren't supported yet";
-      return fail(422, "unsupported-op", `'${op.op}' ${tranche} — export supports crop, rotate, flip, straighten, resize, bleed, fit-to-size, and tone/colour adjust for now.`);
+      return fail(422, "unsupported-op", `'${op.op}' ops aren't supported by export yet.`);
     }
   }
 
@@ -127,7 +88,26 @@ export async function POST(req: Request) {
   // AV seam (§3.6) — same logging stub as import; nothing scans yet.
   await avScanHook(file.name, master);
 
-  // 5. CMYK-arrival decision (PE5, §1.3 v1.4). The client sends the preserved
+  // 5. Overlays (PE6) + erase patches (PE9): match the `overlay:<id>` /
+  //    `erase:<id>` parts to the payload, size-cap + dimension-check each, and
+  //    re-key them to the jail basenames the composite steps reference. Any
+  //    mismatch is a friendly 400 before the jail.
+  const overlayResult = await collectOverlays(form, payload, master);
+  if (!overlayResult.ok) return failFrom(overlayResult.code, overlayResult.message);
+
+  const eraseResult = await collectErasePatches(form, payload.recipe);
+  if (!eraseResult.ok) return failFrom(eraseResult.code, eraseResult.message);
+
+  // Merge overlay + erase attachments into one map — disjoint jail basenames
+  // (overlay-<id>.png vs erase-<id>.png). Keep `undefined` when there are neither,
+  // so the CMYK identity-preserve fast path (which requires no attachments) still
+  // triggers; an erase op forces a non-empty recipe, so it can't ride it anyway.
+  let attachments: Record<string, Buffer> | undefined;
+  if (overlayResult.attachments || eraseResult.attachments) {
+    attachments = { ...overlayResult.attachments, ...eraseResult.attachments };
+  }
+
+  // 6. CMYK-arrival decision (PE5, §1.3 v1.4). The client sends the preserved
   //    CMYK master (a tificc TIFF) as `file` ONLY when there are no edits and the
   //    intent is cmyk; anything else arrives as the sharp RGB working master. The
   //    server decides purely from the bytes it holds:
@@ -145,6 +125,7 @@ export async function POST(req: Request) {
     payload.intent === "cmyk" &&
     payload.format === "tiff" &&
     recipeEmpty &&
+    !attachments && // overlays force the sharp composite path, never the identity preserve
     inputIsCmykTiff &&
     (await tificcAvailable())
   ) {
@@ -167,19 +148,19 @@ export async function POST(req: Request) {
   // by sharp; mark it honestly so the UI can surface the recomputed separation.
   const reseparated = payload.intent === "cmyk" && inputIsCmykTiff;
 
-  // 6. PDF: the worker renders a JPEG (quality ≥ 92, colour per intent) and
+  // 7. PDF: the worker renders a JPEG (quality ≥ 92, colour per intent) and
   //    pdf-wrap frames it with the print boxes + (for cmyk) the GRACoL
   //    OutputIntent. pdf-wrap scans the JPEG internally for the Adobe /Decode
   //    inversion, so we don't double-handle it here.
   if (payload.format === "pdf") {
-    return renderPdf(master, payload, reseparated);
+    return renderPdf(master, payload, reseparated, attachments);
   }
 
-  // 7. Normal raster render (jpeg/png/tiff). Replay in the jail; the master
+  // 8. Normal raster render (jpeg/png/tiff). Replay in the jail; the master
   //    bytes drop out of scope after (nothing persists them — §1.4).
-  const result = await renderImage(master, payload);
+  const result = await renderImage(master, payload, attachments);
   if (!result.ok) {
-    return fail(STATUS_FOR[result.code] ?? 500, result.code, result.message);
+    return failFrom(result.code, result.message);
   }
 
   // SUCCESS: stream the encoded bytes back as binary (never cached — the render
@@ -207,10 +188,11 @@ async function renderPdf(
   master: Buffer,
   payload: RenderPayload,
   reseparated: boolean,
+  attachments?: Record<string, Buffer>,
 ): Promise<NextResponse> {
   const jpegPayload: RenderPayload = { ...payload, format: "jpeg", quality: Math.max(payload.quality, 92) };
-  const result = await renderImage(master, jpegPayload);
-  if (!result.ok) return fail(STATUS_FOR[result.code] ?? 500, result.code, result.message);
+  const result = await renderImage(master, jpegPayload, attachments);
+  if (!result.ok) return failFrom(result.code, result.message);
 
   const scan = scanJpeg(result.bytes);
   if (scan.width < 1 || scan.height < 1) {

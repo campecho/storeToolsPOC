@@ -15,10 +15,17 @@
  *   <jail>/job.json    = { kind: "probe" }
  *                      | { kind: "intake", mime, limits }
  *                      | { kind: "render", steps, format, quality, limits }
- *   <jail>/input.bin   = the raw upload bytes (intake) OR master bytes (render)
+ *                      | { kind: "erase",  steps, rect, maskFile, limits }
+ *   <jail>/input.bin   = the raw upload bytes (intake) OR master bytes (render/erase)
+ *   <jail>/overlay-<id>.png = a pre-rendered overlay raster the host wrote for a
+ *                      render `composite` step (PE6) — decoded+resized in-jail
+ *   <jail>/erase-<id>.png = a stored-explicit erase patch (PE9), a PRIOR erase
+ *                      op's fill — composited during render/erase step replay
+ *   <jail>/mask.png    = the brushed grayscale-on-black mask for an erase job (PE9)
  *   <jail>/master.bin  = working-master image bytes   (intake success)
  *   <jail>/proxy.bin   = screen-proxy image bytes      (intake success)
  *   <jail>/output.bin  = encoded export bytes          (render success)
+ *   <jail>/patch.bin   = the erase patch PNG for mask.rect            (erase success)
  *   <jail>/result.json = the typed outcome (always written on a clean exit)
  *
  * Outcomes are TYPED and written to result.json; the process then exits 0 even
@@ -174,6 +181,190 @@ function shapeMaskSvg(shape, w, h) {
   );
 }
 
+/**
+ * Replay host-compiled steps to a lossless-PNG intermediate buffer — the DUMB
+ * half of the render seam (plan §3.3), shared by the render encode and the PE9
+ * erase fill: both need the effective image at the END of a step chain. Decodes
+ * the master ONCE under the pixel cap (the flood defence, classified
+ * too-many-pixels if it trips), then materializes a PNG per step — sharp can't
+ * chain arbitrary op sequences, and a PNG round-trip is self-describing and
+ * avoids compounding JPEG loss across the chain, deterministic by construction
+ * (plan §4 PE3). Fine at 12 MP.
+ */
+async function replaySteps(sharp, input, steps, limitInputPixels) {
+  let buf = await sharp(input, { limitInputPixels }).png().toBuffer();
+
+  for (const step of steps) {
+    if (step.kind === "extract") {
+      const meta = await sharp(buf).metadata();
+      const W = meta.width ?? 0;
+      const H = meta.height ?? 0;
+      // Clamp to the current buffer so a rounded rect never addresses OOB.
+      const width = clampN(step.width, 1, W);
+      const height = clampN(step.height, 1, H);
+      const left = clampN(step.left, 0, W - width);
+      const top = clampN(step.top, 0, H - height);
+      let pipe = sharp(buf).extract({ left, top, width, height });
+      if (step.shape === "rounded" || step.shape === "circle") {
+        // Shaped crop → alpha mask; the output carries transparency.
+        const mask = shapeMaskSvg(step.shape, width, height);
+        pipe = pipe.ensureAlpha().composite([{ input: mask, blend: "dest-in" }]);
+      }
+      buf = await pipe.png().toBuffer();
+    } else if (step.kind === "rotate") {
+      const turns = ((step.turns % 4) + 4) % 4;
+      if (turns !== 0) buf = await sharp(buf).rotate(turns * 90).png().toBuffer();
+    } else if (step.kind === "flip") {
+      // horizontal = left↔right mirror (flop); vertical = top↔bottom (flip).
+      buf = await (step.axis === "horizontal" ? sharp(buf).flop() : sharp(buf).flip()).png().toBuffer();
+    } else if (step.kind === "straighten") {
+      const deg = Number(step.degrees) || 0;
+      if (Math.abs(deg) >= 1e-9) {
+        // Rotate about centre, growing to the rotated bounding box with a
+        // transparent fill, then cover-scale by the host's straightenScale and
+        // re-extract the CENTERED pre-op window. Offsets come from the ACTUAL
+        // post-rotate dims (read from info — never assumed) and are clamped so
+        // rounding can never push the extract out of bounds.
+        const rot = await sharp(buf)
+          .rotate(deg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+          .png()
+          .toBuffer({ resolveWithObject: true });
+        const RW0 = rot.info.width;
+        const RH0 = rot.info.height;
+        const scaledW = Math.max(1, Math.round(RW0 * step.scale));
+        const scaledH = Math.max(1, Math.round(RH0 * step.scale));
+        const winW = clampN(step.width, 1, scaledW);
+        const winH = clampN(step.height, 1, scaledH);
+        const left = clampN(Math.round((scaledW - winW) / 2), 0, scaledW - winW);
+        const top = clampN(Math.round((scaledH - winH) / 2), 0, scaledH - winH);
+        buf = await sharp(rot.data)
+          .resize(scaledW, scaledH, { fit: "fill" })
+          .extract({ left, top, width: winW, height: winH })
+          .png()
+          .toBuffer();
+      }
+    } else if (step.kind === "extend") {
+      // Grow the canvas (bleedExpand / fitToSize-fit). extendWith maps the
+      // host's strategy: mirror → libvips 'mirror' (reflect the border),
+      // smear → libvips 'copy' (replicate the edge pixel outward — the
+      // documented smear↔copy mapping), solid → 'background' with the
+      // host-supplied colour (default white). Edge sizes are host-validated
+      // ints; re-clamped defensively.
+      const top = Math.max(0, Math.round(step.top));
+      const bottom = Math.max(0, Math.round(step.bottom));
+      const left = Math.max(0, Math.round(step.left));
+      const right = Math.max(0, Math.round(step.right));
+      const extendWith =
+        step.strategy === "mirror" ? "mirror" : step.strategy === "smear" ? "copy" : "background";
+      const extendOpts = { top, bottom, left, right, extendWith };
+      if (extendWith === "background") extendOpts.background = step.color || "#ffffff";
+      buf = await sharp(buf).extend(extendOpts).png().toBuffer();
+    } else if (step.kind === "resize") {
+      // Stored-explicit resolved dims → a fill resize (aspect was resolved
+      // host-side by geometry.ts/fit.ts; the worker just hits the target).
+      const w = Math.max(1, Math.round(step.width));
+      const h = Math.max(1, Math.round(step.height));
+      buf = await sharp(buf).resize(w, h, { fit: "fill" }).png().toBuffer();
+    } else if (step.kind === "adjust") {
+      // The ONE pointwise tone/colour pass. This block is DUPLICATED FROM
+      // ops.ts `applyAdjust` BY CONTRACT — this plain-JS worker cannot import
+      // the TS parity core, so the loop is copied byte-for-byte and
+      // parity.test.ts is the guard that the two stay identical (a byte drift
+      // there is a red test, not a broken export). Model (adjust-math.ts):
+      // LUT-FIRST then MATRIX, alpha untouched, single Math.round + clamp
+      // 0..255 per channel.
+      //
+      // Materialize the current image to raw RGBA (ensureAlpha so alpha always
+      // exists and rides through untouched), transform in place, re-wrap as a
+      // 4-channel raw buffer for the next step / final encode.
+      const { data, info } = await sharp(buf)
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const lutR = step.lutR;
+      const lutG = step.lutG;
+      const lutB = step.lutB;
+      const len = data.length - (data.length % 4);
+      if (step.identityMatrix) {
+        // Tone/temperature only — three table lookups per pixel.
+        for (let i = 0; i < len; i += 4) {
+          data[i] = lutR[data[i]];
+          data[i + 1] = lutG[data[i + 1]];
+          data[i + 2] = lutB[data[i + 2]];
+          // data[i + 3] — alpha — untouched.
+        }
+      } else {
+        const m = step.matrix;
+        const m0 = m[0], m1 = m[1], m2 = m[2];
+        const m3 = m[3], m4 = m[4], m5 = m[5];
+        const m6 = m[6], m7 = m[7], m8 = m[8];
+        for (let i = 0; i < len; i += 4) {
+          // LUT first…
+          const r = lutR[data[i]];
+          const g = lutG[data[i + 1]];
+          const b = lutB[data[i + 2]];
+          // …then the saturation matrix, rounded + clamped once per channel.
+          data[i] = clampByte(Math.round(m0 * r + m1 * g + m2 * b));
+          data[i + 1] = clampByte(Math.round(m3 * r + m4 * g + m5 * b));
+          data[i + 2] = clampByte(Math.round(m6 * r + m7 * g + m8 * b));
+          // data[i + 3] — alpha — untouched.
+        }
+      }
+      buf = await sharp(data, {
+        raw: { width: info.width, height: info.height, channels: 4 },
+      })
+        .png()
+        .toBuffer();
+    } else if (step.kind === "composite") {
+      // Placed raster: an overlay (PE6) OR a stored-explicit erase patch (PE9).
+      // The PNG the HOST wrote into the jail (step.file is a jail-local basename
+      // — `overlay-<id>.png` or `erase-<id>.png` — never a host path) is decoded
+      // under the pixel cap, alpha-ensured, and RESIZED to the host-declared
+      // width×height (fit fill). That decode+resize IS the sanitize/re-encode of
+      // an UNTRUSTED client raster (§3.6): a hostile or oversized raster dies
+      // HERE, in this throwaway jail — and a decode failure surfaces as
+      // decode-failed via the catch below (classifyDecodeError). It is composited
+      // at (left, top) OVER the current image. An overlay is placed art ABOVE the
+      // adjusted photo (its composite is appended after the terminal adjust); an
+      // erase patch is photo content composited INLINE at its recipe position
+      // (before the adjust), so tone applies over it — matching the client
+      // preview. JPEG/TIFF/CMYK flatten alpha into the image at the final encode;
+      // PNG keeps REAL transparency (a shaped crop's) — see the opaque-base
+      // flatten below.
+      const w = Math.max(1, Math.round(step.width));
+      const h = Math.max(1, Math.round(step.height));
+      const left = Math.round(step.left);
+      const top = Math.round(step.top);
+      const baseHadAlpha = (await sharp(buf).metadata()).hasAlpha === true;
+      const overlayBytes = await readFile(p(step.file));
+      const overlay = await sharp(overlayBytes, { limitInputPixels })
+        .ensureAlpha()
+        .resize(w, h, { fit: "fill" })
+        .png()
+        .toBuffer();
+      buf = await sharp(buf)
+        .composite([{ input: overlay, left, top }])
+        .png()
+        .toBuffer();
+      if (!baseHadAlpha) {
+        // Over a FULLY OPAQUE base the over-operator yields a fully opaque
+        // result (aₒᵤₜ = aᵥ + 1·(1−aᵥ) = 1), so the alpha channel sharp promotes
+        // here is structure noise, not content — flatten it back. A composite
+        // must never change pixels (or the channel layout) outside its box: a
+        // PNG export with one erase patch stays byte-identical to the no-erase
+        // export everywhere but the rect. REAL transparency (a shaped crop's
+        // alpha base) never takes this branch.
+        buf = await sharp(buf).removeAlpha().png().toBuffer();
+      }
+    } else {
+      // The host compiled these, so an unknown kind is our bug, not the file's.
+      throw new Error(`unknown render step: ${String(step?.kind)}`);
+    }
+  }
+
+  return buf;
+}
+
 async function render(sharp, job) {
   const input = await readFile(p("input.bin"));
   const steps = Array.isArray(job.steps) ? job.steps : [];
@@ -188,139 +379,7 @@ async function render(sharp, job) {
   const notes = [];
 
   try {
-    // Decode the master ONCE (pixel cap enforced at load — the flood defence,
-    // classified too-many-pixels if it trips). Intermediates ride as lossless
-    // PNG between steps: sharp can't chain arbitrary op sequences, and a PNG
-    // round-trip is self-describing and avoids compounding JPEG loss across the
-    // chain — deterministic by construction (plan §4 PE3). Fine at 12 MP.
-    let buf = await sharp(input, { limitInputPixels }).png().toBuffer();
-
-    for (const step of steps) {
-      if (step.kind === "extract") {
-        const meta = await sharp(buf).metadata();
-        const W = meta.width ?? 0;
-        const H = meta.height ?? 0;
-        // Clamp to the current buffer so a rounded rect never addresses OOB.
-        const width = clampN(step.width, 1, W);
-        const height = clampN(step.height, 1, H);
-        const left = clampN(step.left, 0, W - width);
-        const top = clampN(step.top, 0, H - height);
-        let pipe = sharp(buf).extract({ left, top, width, height });
-        if (step.shape === "rounded" || step.shape === "circle") {
-          // Shaped crop → alpha mask; the output carries transparency.
-          const mask = shapeMaskSvg(step.shape, width, height);
-          pipe = pipe.ensureAlpha().composite([{ input: mask, blend: "dest-in" }]);
-        }
-        buf = await pipe.png().toBuffer();
-      } else if (step.kind === "rotate") {
-        const turns = ((step.turns % 4) + 4) % 4;
-        if (turns !== 0) buf = await sharp(buf).rotate(turns * 90).png().toBuffer();
-      } else if (step.kind === "flip") {
-        // horizontal = left↔right mirror (flop); vertical = top↔bottom (flip).
-        buf = await (step.axis === "horizontal" ? sharp(buf).flop() : sharp(buf).flip()).png().toBuffer();
-      } else if (step.kind === "straighten") {
-        const deg = Number(step.degrees) || 0;
-        if (Math.abs(deg) >= 1e-9) {
-          // Rotate about centre, growing to the rotated bounding box with a
-          // transparent fill, then cover-scale by the host's straightenScale and
-          // re-extract the CENTERED pre-op window. Offsets come from the ACTUAL
-          // post-rotate dims (read from info — never assumed) and are clamped so
-          // rounding can never push the extract out of bounds.
-          const rot = await sharp(buf)
-            .rotate(deg, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-            .png()
-            .toBuffer({ resolveWithObject: true });
-          const RW0 = rot.info.width;
-          const RH0 = rot.info.height;
-          const scaledW = Math.max(1, Math.round(RW0 * step.scale));
-          const scaledH = Math.max(1, Math.round(RH0 * step.scale));
-          const winW = clampN(step.width, 1, scaledW);
-          const winH = clampN(step.height, 1, scaledH);
-          const left = clampN(Math.round((scaledW - winW) / 2), 0, scaledW - winW);
-          const top = clampN(Math.round((scaledH - winH) / 2), 0, scaledH - winH);
-          buf = await sharp(rot.data)
-            .resize(scaledW, scaledH, { fit: "fill" })
-            .extract({ left, top, width: winW, height: winH })
-            .png()
-            .toBuffer();
-        }
-      } else if (step.kind === "extend") {
-        // Grow the canvas (bleedExpand / fitToSize-fit). extendWith maps the
-        // host's strategy: mirror → libvips 'mirror' (reflect the border),
-        // smear → libvips 'copy' (replicate the edge pixel outward — the
-        // documented smear↔copy mapping), solid → 'background' with the
-        // host-supplied colour (default white). Edge sizes are host-validated
-        // ints; re-clamped defensively.
-        const top = Math.max(0, Math.round(step.top));
-        const bottom = Math.max(0, Math.round(step.bottom));
-        const left = Math.max(0, Math.round(step.left));
-        const right = Math.max(0, Math.round(step.right));
-        const extendWith =
-          step.strategy === "mirror" ? "mirror" : step.strategy === "smear" ? "copy" : "background";
-        const extendOpts = { top, bottom, left, right, extendWith };
-        if (extendWith === "background") extendOpts.background = step.color || "#ffffff";
-        buf = await sharp(buf).extend(extendOpts).png().toBuffer();
-      } else if (step.kind === "resize") {
-        // Stored-explicit resolved dims → a fill resize (aspect was resolved
-        // host-side by geometry.ts/fit.ts; the worker just hits the target).
-        const w = Math.max(1, Math.round(step.width));
-        const h = Math.max(1, Math.round(step.height));
-        buf = await sharp(buf).resize(w, h, { fit: "fill" }).png().toBuffer();
-      } else if (step.kind === "adjust") {
-        // The ONE pointwise tone/colour pass. This block is DUPLICATED FROM
-        // ops.ts `applyAdjust` BY CONTRACT — this plain-JS worker cannot import
-        // the TS parity core, so the loop is copied byte-for-byte and
-        // parity.test.ts is the guard that the two stay identical (a byte drift
-        // there is a red test, not a broken export). Model (adjust-math.ts):
-        // LUT-FIRST then MATRIX, alpha untouched, single Math.round + clamp
-        // 0..255 per channel.
-        //
-        // Materialize the current image to raw RGBA (ensureAlpha so alpha always
-        // exists and rides through untouched), transform in place, re-wrap as a
-        // 4-channel raw buffer for the next step / final encode.
-        const { data, info } = await sharp(buf)
-          .ensureAlpha()
-          .raw()
-          .toBuffer({ resolveWithObject: true });
-        const lutR = step.lutR;
-        const lutG = step.lutG;
-        const lutB = step.lutB;
-        const len = data.length - (data.length % 4);
-        if (step.identityMatrix) {
-          // Tone/temperature only — three table lookups per pixel.
-          for (let i = 0; i < len; i += 4) {
-            data[i] = lutR[data[i]];
-            data[i + 1] = lutG[data[i + 1]];
-            data[i + 2] = lutB[data[i + 2]];
-            // data[i + 3] — alpha — untouched.
-          }
-        } else {
-          const m = step.matrix;
-          const m0 = m[0], m1 = m[1], m2 = m[2];
-          const m3 = m[3], m4 = m[4], m5 = m[5];
-          const m6 = m[6], m7 = m[7], m8 = m[8];
-          for (let i = 0; i < len; i += 4) {
-            // LUT first…
-            const r = lutR[data[i]];
-            const g = lutG[data[i + 1]];
-            const b = lutB[data[i + 2]];
-            // …then the saturation matrix, rounded + clamped once per channel.
-            data[i] = clampByte(Math.round(m0 * r + m1 * g + m2 * b));
-            data[i + 1] = clampByte(Math.round(m3 * r + m4 * g + m5 * b));
-            data[i + 2] = clampByte(Math.round(m6 * r + m7 * g + m8 * b));
-            // data[i + 3] — alpha — untouched.
-          }
-        }
-        buf = await sharp(data, {
-          raw: { width: info.width, height: info.height, channels: 4 },
-        })
-          .png()
-          .toBuffer();
-      } else {
-        // The host compiled these, so an unknown kind is our bug, not the file's.
-        throw new Error(`unknown render step: ${String(step?.kind)}`);
-      }
-    }
+    const buf = await replaySteps(sharp, input, steps, limitInputPixels);
 
     // Final encode + the TERMINAL colour pass (PE5). Metadata is stripped by
     // default (CDR — no withMetadata()). Keyed on (format, intent):
@@ -395,6 +454,307 @@ async function render(sharp, job) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Erase — the classical fill (patch-from-surround + soft-mask blend)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The deterministic classical fill (PE9's honest stand-in, plan §4 PE9) — the ONE
+ * piece of new pixel code. Given a raw RGBA window `img` (`w`×`h`) and a
+ * single-channel mask window `mask` (same dims, 0..255 LUMINANCE per the
+ * ErasePayloadSchema mask contract), it reconstructs the masked region from its
+ * surroundings and feathers the seam by the soft mask value. Mutates `img` in
+ * place. All math is integer/float with a FIXED visitation order — no Math.random
+ * (determinism is a repo invariant; the same inputs yield byte-identical patches,
+ * the stored-explicit contract's teeth). The model service swaps this fill behind
+ * the SAME erase-op contract (STUBS.md).
+ *
+ * Algorithm (contract, not narration):
+ *  1. BASE — patch-from-surround by onion-peel diffusion. A pixel is UNKNOWN when
+ *     mask ≥ HARD; the outer ring of the (client-padded) rect is known. Each ring
+ *     fills every unknown pixel adjacent to a KNOWN one with the mean of its known
+ *     8-neighbours, then promotes them to known — a deterministic inward peel (a
+ *     ring reads only pixels known BEFORE it, so within-ring order can't matter).
+ *     Rings are FRONTIER-DRIVEN — each ring's candidates are the unknown
+ *     neighbours of the previous ring's commits (ring 1 seeds from one full
+ *     scan) — so total work is O(N), not rings × full-window rescans: a large,
+ *     near-fully-masked window fills in linear time instead of burning the
+ *     jail's wall clock. The window edge is a wall (outside is never sampled),
+ *     which the padding makes moot; a mean-of-known fallback guards an
+ *     all-masked window.
+ *  2. SMOOTH — a few 3×3 box-blur passes over FILLED pixels only, each reading a
+ *     per-pass snapshot (order-independent), so the diffusion doesn't band.
+ *  3. BLEND — over the ORIGINAL by the soft factor a = mask/255:
+ *     out = orig·(1−a) + fill·a. Brush feathering (0<mask<255) becomes the seam;
+ *     a=0 pixels stay byte-identical to the source. Alpha rides through untouched.
+ */
+function classicalFill(img, mask, w, h) {
+  const HARD = 128; // mask ≥ HARD ⇒ reconstruct from surround (the binary base set)
+  const SMOOTH_PASSES = 2;
+  const N = w * h;
+
+  // Reconstructed RGB starts from the original; unknown pixels get overwritten.
+  const fillR = new Float64Array(N);
+  const fillG = new Float64Array(N);
+  const fillB = new Float64Array(N);
+  const known = new Uint8Array(N); // 1 = value trusted (original or already filled)
+  const wasUnknown = new Uint8Array(N); // the pixels the base actually reconstructs
+  for (let i = 0; i < N; i++) {
+    const o = i * 4;
+    fillR[i] = img[o];
+    fillG[i] = img[o + 1];
+    fillB[i] = img[o + 2];
+    const u = mask[i] >= HARD ? 1 : 0;
+    wasUnknown[i] = u;
+    known[i] = u ? 0 : 1;
+  }
+
+  // (1) Onion-peel diffusion, frontier-driven. A pixel's FIRST adjacency to the
+  // known set, its queue time, and its fill time coincide (it fills the ring
+  // after it is queued), so the candidate rings here are exactly the rings a
+  // full-window rescan would produce — same pixels, same pass-start known set,
+  // same means, byte-identical output (the committed erase golden is the proof).
+  let remaining = 0;
+  for (let i = 0; i < N; i++) if (!known[i]) remaining++;
+
+  // Mean of a candidate's known 8-neighbours from the CURRENT (ring-start) fill
+  // state; null when it has none (defensive — a queued candidate always has one).
+  const meanOfKnown = (i) => {
+    const x = i % w;
+    const y = (i - x) / w;
+    let sr = 0;
+    let sg = 0;
+    let sb = 0;
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= h) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const xx = x + dx;
+        if (xx < 0 || xx >= w) continue;
+        const j = yy * w + xx;
+        if (!known[j]) continue;
+        sr += fillR[j];
+        sg += fillG[j];
+        sb += fillB[j];
+        n++;
+      }
+    }
+    return n === 0 ? null : [sr / n, sg / n, sb / n];
+  };
+
+  // Ring 1 seeds: every unknown pixel with ≥1 originally-known 8-neighbour (one
+  // full scan). `queued` de-dups so a pixel is examined once per ring at most.
+  const queued = new Uint8Array(N);
+  let candidates = [];
+  if (remaining > 0) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (known[i] || queued[i]) continue;
+        let touches = false;
+        for (let dy = -1; dy <= 1 && !touches; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= h) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const xx = x + dx;
+            if (xx < 0 || xx >= w) continue;
+            if (known[yy * w + xx]) {
+              touches = true;
+              break;
+            }
+          }
+        }
+        if (touches) {
+          queued[i] = 1;
+          candidates.push(i);
+        }
+      }
+    }
+  }
+
+  while (remaining > 0 && candidates.length > 0) {
+    // Compute every candidate's value from the ring-start known set, then commit
+    // + promote together (reads never see this ring's writes).
+    const newVals = [];
+    for (const i of candidates) {
+      const v = meanOfKnown(i);
+      if (v === null) queued[i] = 0; // defensive: let a later ring re-queue it
+      newVals.push(v);
+    }
+    const committed = [];
+    for (let k = 0; k < candidates.length; k++) {
+      const v = newVals[k];
+      if (v === null) continue;
+      const i = candidates[k];
+      fillR[i] = v[0];
+      fillG[i] = v[1];
+      fillB[i] = v[2];
+      known[i] = 1;
+      remaining--;
+      committed.push(i);
+    }
+    if (committed.length === 0) break; // trapped — the fallback fills the rest
+
+    // Next ring: the unknown, not-yet-queued neighbours of this ring's commits.
+    const next = [];
+    for (const i of committed) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const xx = x + dx;
+          if (xx < 0 || xx >= w) continue;
+          const j = yy * w + xx;
+          if (known[j] || queued[j]) continue;
+          queued[j] = 1;
+          next.push(j);
+        }
+      }
+    }
+    candidates = next;
+  }
+
+  // Fallback for any still-unknown pixel (pathological, e.g. every pixel masked):
+  // the mean of the originally-known pixels — deterministic, never a random seed.
+  if (remaining > 0) {
+    let sr = 0;
+    let sg = 0;
+    let sb = 0;
+    let n = 0;
+    for (let i = 0; i < N; i++) {
+      if (wasUnknown[i]) continue;
+      sr += fillR[i];
+      sg += fillG[i];
+      sb += fillB[i];
+      n++;
+    }
+    const mr = n ? sr / n : 0;
+    const mg = n ? sg / n : 0;
+    const mb = n ? sb / n : 0;
+    for (let i = 0; i < N; i++) {
+      if (known[i]) continue;
+      fillR[i] = mr;
+      fillG[i] = mg;
+      fillB[i] = mb;
+      known[i] = 1;
+    }
+  }
+
+  // (2) Smooth FILLED pixels only, reading a per-pass snapshot so the box blur is
+  // order-independent (deterministic). 3×3 including self.
+  for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
+    const snapR = Float64Array.from(fillR);
+    const snapG = Float64Array.from(fillG);
+    const snapB = Float64Array.from(fillB);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!wasUnknown[i]) continue;
+        let sr = 0;
+        let sg = 0;
+        let sb = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= h) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= w) continue;
+            const j = yy * w + xx;
+            sr += snapR[j];
+            sg += snapG[j];
+            sb += snapB[j];
+            n++;
+          }
+        }
+        fillR[i] = sr / n;
+        fillG[i] = sg / n;
+        fillB[i] = sb / n;
+      }
+    }
+  }
+
+  // (3) Soft-mask blend back into img (RGB only; alpha rides through untouched).
+  for (let i = 0; i < N; i++) {
+    const a = mask[i] / 255;
+    if (a <= 0) continue; // keep — byte-identical to the source
+    const o = i * 4;
+    img[o] = clampByte(Math.round(img[o] * (1 - a) + fillR[i] * a));
+    img[o + 1] = clampByte(Math.round(img[o + 1] * (1 - a) + fillG[i] * a));
+    img[o + 2] = clampByte(Math.round(img[o + 2] * (1 - a) + fillB[i] * a));
+  }
+}
+
+/**
+ * Erase job (PE9): replay the geometry + prior-erase slice to the effective image
+ * the brush was drawn on (no encode), decode+resize the brushed mask to those
+ * dims and read ONE greyscale channel (flattening any hostile alpha onto black
+ * first — the mask contract), then run classicalFill on the rect window and
+ * encode that window as the stored-explicit patch PNG. Scoped to the window for
+ * perf (the rect is client-padded around the strokes). Outcome typed to
+ * result.json; a decode/encode death is the file's fault (classifyDecodeError).
+ */
+async function erase(sharp, job) {
+  const input = await readFile(p("input.bin"));
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const limitInputPixels = job.limits?.maxPixels ?? 80_000_000;
+  const maskFile = typeof job.maskFile === "string" ? job.maskFile : "mask.png";
+  const rect = job.rect ?? {};
+
+  try {
+    const buf = await replaySteps(sharp, input, steps, limitInputPixels);
+
+    // Effective dims (read from info — never assumed).
+    const meta = await sharp(buf).metadata();
+    const effW = meta.width ?? 0;
+    const effH = meta.height ?? 0;
+
+    // Clamp the rect into the effective image — defence in depth (the host
+    // validated it, but the worker never trusts a coordinate blindly).
+    const rx = clampN(Math.round(rect.x ?? 0), 0, Math.max(0, effW - 1));
+    const ry = clampN(Math.round(rect.y ?? 0), 0, Math.max(0, effH - 1));
+    const rw = clampN(Math.round(rect.w ?? 0), 1, effW - rx);
+    const rh = clampN(Math.round(rect.h ?? 0), 1, effH - ry);
+
+    // The rect window of the effective image, raw RGBA.
+    const win = await sharp(buf)
+      .ensureAlpha()
+      .extract({ left: rx, top: ry, width: rw, height: rh })
+      .raw()
+      .toBuffer();
+
+    // The brushed mask, resized to the effective dims (fit fill), any alpha
+    // flattened onto BLACK so a transparent-white hostile upload can't read as
+    // full-remove, then ONE greyscale channel — cropped to the same window.
+    const maskBytes = await readFile(p(maskFile));
+    const maskWin = await sharp(maskBytes, { limitInputPixels })
+      .resize(effW, effH, { fit: "fill" })
+      .flatten({ background: "#000000" })
+      .greyscale()
+      .extract({ left: rx, top: ry, width: rw, height: rh })
+      .raw()
+      .toBuffer();
+
+    // The deterministic fill, mutating the window raw buffer in place.
+    classicalFill(win, maskWin, rw, rh);
+
+    const patch = await sharp(win, { raw: { width: rw, height: rh, channels: 4 } })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+
+    await writeFile(p("patch.bin"), patch.data);
+    await writeResult({ ok: true, width: patch.info.width, height: patch.info.height });
+  } catch (err) {
+    await writeResult({ ok: false, ...classifyDecodeError(err) });
+  }
+}
+
 async function main() {
   const job = JSON.parse(await readFile(p("job.json"), "utf8"));
 
@@ -422,6 +782,10 @@ async function main() {
   }
   if (job.kind === "render") {
     await render(sharp, job);
+    return;
+  }
+  if (job.kind === "erase") {
+    await erase(sharp, job);
     return;
   }
   await writeResult({ ok: false, error: "engine-error", detail: `unknown job kind: ${String(job.kind)}` });

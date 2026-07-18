@@ -4,13 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { imageDimensions, sniffImageMime } from "@/lib/import/image-meta";
-import type { PhotoOp, RenderErrorCode, RenderPayload } from "@/lib/schema/photo";
+import {
+  isFillInputOp,
+  type ErasePayload,
+  type PhotoOp,
+  type RenderErrorCode,
+  type RenderPayload,
+} from "@/lib/schema/photo";
 import { collectAdjustState, compileAdjust, isAdjustIdentity } from "./adjust-math";
 import { straightenScale } from "./geometry";
 import { tiffDimensions } from "./lcms";
 import {
   INTAKE_TIMEOUT_MS,
   MASTER_JPEG_QUALITY,
+  MAX_ERASE_PATCH_BYTES,
   MAX_PHOTO_PIXELS,
   PHOTO_AS_BYTES,
   PHOTO_CPU_SECONDS,
@@ -447,6 +454,27 @@ export type RenderStep =
       matrix: number[];
       /** When true the worker skips the matrix (tone-only path). */
       identityMatrix: boolean;
+    }
+  | {
+      /**
+       * Composite a pre-rendered overlay raster onto the CURRENT effective image
+       * (text/image overlays, PE6). Fonts live client-side, so overlays reach the
+       * server as PNG rasters, NOT as ops to draw (plan §3.3): compileRenderPlan
+       * appends one composite step per RenderPayload.overlays entry, in order,
+       * AFTER the terminal adjust step — so the tone pass never touches overlay
+       * pixels (overlays are PLACED ART above the adjusted photo, matching the
+       * client preview). `file` is a JAIL-LOCAL basename (`overlay-<id>.png`) the
+       * host wrote via the extraFiles mechanism — never a host path. The worker
+       * decodes it under limitInputPixels, ensures alpha, and RESIZES it to
+       * width×height (fit fill) — that decode+resize IS the sanitize/re-encode of
+       * an UNTRUSTED client raster (§3.6) — then composites at (left, top).
+       */
+      kind: "composite";
+      file: string;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
     };
 
 /**
@@ -458,18 +486,13 @@ export type RenderStep =
  */
 export class UnsupportedRenderOp extends Error {
   constructor(public readonly op: string) {
-    // Named tranches keep the reject honest ("lands with PE6/PE9"), and shrink
-    // as each tranche makes its ops renderable. PE5 folded the print-geometry
-    // ops (resize / bleedExpand / fitToSize) in — they compile now, so they no
-    // longer reach this throw.
-    super(
-      `Render does not support '${op}' ops yet — ` +
-        (op === "textOverlay" || op === "logoOverlay"
-          ? "they land with PE6."
-          : op === "erase"
-            ? "it lands with PE9."
-            : "unsupported op."),
-    );
+    // Every op tag in PhotoOpSchema now compiles here — geometry (crop/rotate/
+    // flip/straighten + the PE5 print-geometry ops), tone/colour (adjust/
+    // autoEnhance), the PE6 overlay ops (SKIPPED — their rasters ride the payload
+    // sidecar), and the PE9 erase patch (an inline composite). No op is left
+    // "waiting for its tranche", so the compile `default:` that throws this is the
+    // genuinely-unknown-tag guard: defence in depth behind the route's op-screen.
+    super(`Render does not support '${op}' ops — unsupported op.`);
     this.name = "UnsupportedRenderOp";
   }
 }
@@ -503,10 +526,27 @@ function clampN(v: number, lo: number, hi: number): number {
  * Crop rects are expected in-bounds of the current effective image (the client
  * clamps via geometry.clampRectToImage); the extract offsets are clamped here
  * too so a rounded rect can never address a pixel outside the frame.
+ *
+ * ERASE (PE9): an `erase` op carries a STORED-EXPLICIT patch (id + rect); it
+ * compiles INLINE at its recipe position to a `composite` of `erase-<id>.png`
+ * (the same raster mechanism as overlays), placed clamped into the current
+ * effective dims. Because it lands inside the loop — before the terminal adjust
+ * and before overlay composites — the patch reads as photo content: tone applies
+ * over it, overlays sit above it. Dims unchanged (a paint, not a reframe).
+ *
+ * OVERLAYS (PE6): the optional `overlays` are the RenderPayload's pre-rendered
+ * placements (§3.3). They are NOT recipe ops — the recipe's textOverlay/
+ * logoOverlay ops are the client's history representation and are SKIPPED in the
+ * loop below; the pixels ride separate PNG rasters. After the terminal adjust
+ * step, one `composite` step is appended per overlay entry, in array order, so
+ * overlays paint OVER the fully-adjusted image (placed art, not photo content).
+ * Overlays never change the effective dims — their placements are already in
+ * final-output space — so `out` is unaffected.
  */
 export function compileRenderPlan(
   recipe: PhotoOp[],
   source: { w: number; h: number },
+  overlays?: RenderPayload["overlays"],
 ): { steps: RenderStep[]; out: { w: number; h: number } } {
   let curW = intDim(source.w);
   let curH = intDim(source.h);
@@ -612,10 +652,39 @@ export function compileRenderPlan(
         // POINTWISE tone/colour — folded terminally after the loop (below), not
         // per-op. Dims are untouched; nothing to emit here.
         break;
+      case "textOverlay":
+      case "logoOverlay":
+        // The recipe's HISTORY representation of overlays. The server never
+        // draws from these (fonts live client-side, §3.3) — the pre-rendered
+        // rasters ride the payload's `overlays` sidecar and compile to composite
+        // steps AFTER the loop (below). Skipped here; dims untouched.
+        break;
+      case "erase": {
+        // STORED-EXPLICIT erase patch (PE9). The approved fill pixels are PHOTO
+        // CONTENT placed back into the frame at THIS op's recipe position — so an
+        // inline composite here, INSIDE the loop, before both the terminal adjust
+        // (appended after the loop) and any overlay composites (after adjust). A
+        // patch is part of the photo: the terminal tone pass must apply over it
+        // and overlays must sit above it, exactly as on the client canvas. The
+        // patch PNG (dims = rect.w × rect.h) rides the same extraFiles mechanism
+        // as overlays, keyed `erase-<id>.png`. Clamp the rect into the CURRENT
+        // effective dims exactly like the crop extract clamps — the rect addresses
+        // the mid-recipe effective image, and a stale/oversize rect must never
+        // composite out of bounds. Dims UNCHANGED (a paint, not a reframe).
+        const width = intDim(op.patch.rect.w);
+        const height = intDim(op.patch.rect.h);
+        const eW = Math.min(width, curW);
+        const eH = Math.min(height, curH);
+        const left = clampN(Math.round(op.patch.rect.x), 0, curW - eW);
+        const top = clampN(Math.round(op.patch.rect.y), 0, curH - eH);
+        steps.push({ kind: "composite", file: `erase-${op.patch.id}.png`, left, top, width: eW, height: eH });
+        break;
+      }
       default:
-        // textOverlay / logoOverlay / erase — not geometry, not tone, not
-        // renderable here yet (they land with PE6/PE9).
-        throw new UnsupportedRenderOp(op.op);
+        // Every PhotoOp tag is handled above, so the union narrows to `never`
+        // here — this is the genuinely-unknown-tag guard (defence behind the
+        // route's op-screen), reached only if the union grows without a case.
+        throw new UnsupportedRenderOp((op as PhotoOp).op);
     }
   }
 
@@ -639,6 +708,23 @@ export function compileRenderPlan(
     });
   }
 
+  // Overlay composites, LAST (PE6): one per payload.overlays entry, in array
+  // order (later paints over earlier), AFTER the terminal adjust so the tone
+  // pass never touches overlay pixels. `file` is the jail-local basename the
+  // host wrote via extraFiles; the placements are already in final-output space.
+  if (overlays) {
+    for (const ov of overlays) {
+      steps.push({
+        kind: "composite",
+        file: `overlay-${ov.id}.png`,
+        left: ov.left,
+        top: ov.top,
+        width: ov.width,
+        height: ov.height,
+      });
+    }
+  }
+
   return { steps, out: { w: curW, h: curH } };
 }
 
@@ -654,36 +740,53 @@ function typedRenderFailure(
 }
 
 /**
- * Replay a geometry recipe on `master` at full resolution in the jail, returning
- * the encoded export bytes (binary — the route streams them with the right
- * Content-Type; there is no JSON success envelope). The master's pixel dims come
- * from a cheap, safe HEADER read (`imageDimensions`, or `tiffDimensions` for the
- * preserved-CMYK TIFF a CMYK arrival re-sends — no decode, same posture as the
- * intake content-sniff), since masters are always our own encodes; an unreadable
- * header means the bytes won't decode either → `decode-failed`.
- *
- * Determinism (the PE3 done-when): the compile is pure integer/trig math and the
- * worker's encoder options are fixed, so the same recipe + bytes yields
- * byte-identical output across runs (proven in render-replay.test.ts).
+ * The master's pixel dims via a cheap, safe HEADER read (`imageDimensions`, or
+ * `tiffDimensions` for the preserved-CMYK TIFF a CMYK arrival re-sends — no
+ * decode, same posture as the intake content-sniff), since masters are always
+ * our own encodes; an unreadable header means the bytes won't decode either.
+ * Returns null when even the header won't parse. Shared by `renderImage` and the
+ * render route (which sizes overlay placements against the final-output dims).
  */
-export async function renderImage(
-  master: Buffer,
-  payload: RenderPayload,
-): Promise<{ ok: true; bytes: Buffer; mime: string } | { ok: false; code: RenderErrorCode; message: string }> {
-  // Masters are our own encodes — jpeg/png normally, but a CMYK arrival re-sends
-  // the preserved TIFF (§1.3), so fall back to the TIFF header reader for that.
+export function masterDimensions(master: Buffer): { width: number; height: number } | null {
   const mime = sniffImageMime(master);
   let dims = mime ? imageDimensions(master, mime) : undefined;
   if ((!dims || dims.width < 1 || dims.height < 1) && mime === "image/tiff") {
     dims = tiffDimensions(master);
   }
-  if (!dims || dims.width < 1 || dims.height < 1) {
+  if (!dims || dims.width < 1 || dims.height < 1) return null;
+  return { width: dims.width, height: dims.height };
+}
+
+/**
+ * Replay a geometry recipe on `master` at full resolution in the jail, returning
+ * the encoded export bytes (binary — the route streams them with the right
+ * Content-Type; there is no JSON success envelope).
+ *
+ * `attachments` (PE6) are pre-rendered overlay PNG rasters keyed by their
+ * JAIL-LOCAL basename (`overlay-<id>.png`) — one per `payload.overlays` entry.
+ * They are written into the scratch jail via the extraFiles mechanism (the same
+ * one PE5 uses for the GRACoL ICC) and referenced by the composite steps
+ * compileRenderPlan emits; the worker's decode+resize+composite re-encodes each
+ * UNTRUSTED raster (§3.6). The caller (the render route) has already size-capped
+ * and dimension-checked them against the final-output dims.
+ *
+ * Determinism (the PE3 done-when): the compile is pure integer/trig math and the
+ * worker's encoder options are fixed, so the same recipe + bytes (+ attachments)
+ * yields byte-identical output across runs (proven in render-replay.test.ts).
+ */
+export async function renderImage(
+  master: Buffer,
+  payload: RenderPayload,
+  attachments?: Record<string, Buffer>,
+): Promise<{ ok: true; bytes: Buffer; mime: string } | { ok: false; code: RenderErrorCode; message: string }> {
+  const dims = masterDimensions(master);
+  if (!dims) {
     return { ok: false, code: "decode-failed", message: "The image to render couldn't be read." };
   }
 
   let plan: { steps: RenderStep[]; out: { w: number; h: number } };
   try {
-    plan = compileRenderPlan(payload.recipe, { w: dims.width, h: dims.height });
+    plan = compileRenderPlan(payload.recipe, { w: dims.width, h: dims.height }, payload.overlays);
   } catch (err) {
     if (err instanceof UnsupportedRenderOp) {
       return { ok: false, code: "unsupported-op", message: err.message };
@@ -694,9 +797,16 @@ export async function renderImage(
   // CMYK output (jpeg/tiff with cmyk intent) separates through the committed
   // GRACoL profile — the HOST copies the .icc INTO the jail so the worker never
   // reaches outside its scratch dir for it (§3.6). PNG can't carry CMYK, so it
-  // never triggers the copy (the worker downgrades PNG to sRGB regardless).
+  // never triggers the copy (the worker downgrades PNG to sRGB regardless). The
+  // overlay rasters (PE6) ride the SAME jail-file mechanism, keyed by their
+  // `overlay-<id>.png` basename the composite steps reference.
   const wantsCmyk = payload.intent === "cmyk" && payload.format !== "png";
-  const extraFiles = wantsCmyk ? { "profile.icc": await gracolProfileBytes() } : undefined;
+  let extraFiles: Record<string, Buffer> | undefined;
+  if (wantsCmyk || attachments) {
+    extraFiles = {};
+    if (wantsCmyk) extraFiles["profile.icc"] = await gracolProfileBytes();
+    if (attachments) Object.assign(extraFiles, attachments);
+  }
 
   const run = await runWorker(
     {
@@ -743,4 +853,119 @@ export async function renderImage(
   const rm = String(run.result.mime);
   const outMime = rm === "image/png" ? "image/png" : rm === "image/tiff" ? "image/tiff" : "image/jpeg";
   return { ok: true, bytes: out, mime: outMime };
+}
+
+/* ------------------------------------------------------------------ */
+/* Erase — the classical fill at preview time (PE9)                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Run the classical erase fill (PE9) ONCE, server-side, at preview time: replay
+ * the geometry + prior-erase slice of the recipe at full resolution in the jail,
+ * then patch-from-surround + soft-mask blend the `mask.rect` window and return
+ * that window as a PNG — the STORED-EXPLICIT patch the erase op carries so replay
+ * (canvas + export) never re-runs the fill (schema EraseOpSchema).
+ *
+ * `mask` is the brushed grayscale-on-black PNG (the ErasePayloadSchema mask
+ * contract); `attachments` are the PRIOR erase ops' patch PNGs keyed by their
+ * jail basename `erase-<id>.png` (written via extraFiles), so the replay
+ * composites them into the fill input just as export does. The recipe is stripped
+ * of adjust/autoEnhance/overlay ops so the fill samples pristine photo
+ * surroundings, not toned-or-overlaid pixels.
+ *
+ * Determinism (a repo invariant): the fill is pure integer/float math with no
+ * randomness (photo-worker.mjs), so the same master + mask + rect yields
+ * byte-identical patches — the stored-explicit contract's teeth.
+ *
+ * Same kill-classification mapping as `renderImage`.
+ */
+export async function eraseFill(
+  master: Buffer,
+  payload: ErasePayload,
+  mask: Buffer,
+  attachments?: Record<string, Buffer>,
+): Promise<
+  { ok: true; bytes: Buffer; width: number; height: number } | { ok: false; code: RenderErrorCode; message: string }
+> {
+  const dims = masterDimensions(master);
+  if (!dims) {
+    return { ok: false, code: "decode-failed", message: "The image to clean up couldn't be read." };
+  }
+
+  // Strip the passes that must not enter the fill input, then compile the
+  // geometry + prior-erase slice. compileRenderPlan is pure math; a genuinely
+  // unknown op tag (defence behind the route op-screen) surfaces as bad-recipe.
+  const fillRecipe = payload.recipe.filter(isFillInputOp);
+  let plan: { steps: RenderStep[]; out: { w: number; h: number } };
+  try {
+    plan = compileRenderPlan(fillRecipe, { w: dims.width, h: dims.height });
+  } catch (err) {
+    if (err instanceof UnsupportedRenderOp) {
+      return { ok: false, code: "bad-recipe", message: "This edit can't be cleaned up — an unsupported step is in the way." };
+    }
+    return { ok: false, code: "engine-error", message: "The recipe couldn't be compiled for cleanup." };
+  }
+
+  // The fill rect addresses the effective image at the END of the recipe; it must
+  // fit inside the compiled output dims. Out-of-bounds → typed bad-recipe (never a
+  // jail job on a rect the worker would have to clamp past recognition).
+  const { x, y, w, h } = payload.mask.rect;
+  if (w < 1 || h < 1 || x < 0 || y < 0 || x + w > plan.out.w || y + h > plan.out.h) {
+    return {
+      ok: false,
+      code: "bad-recipe",
+      message: `The area to clean up doesn't fit inside the ${plan.out.w}×${plan.out.h} image.`,
+    };
+  }
+
+  // mask.png + the prior-erase patch attachments ride the extraFiles jail-file
+  // mechanism (the worker only ever reaches files inside its own scratch dir).
+  const extraFiles: Record<string, Buffer> = { "mask.png": mask };
+  if (attachments) Object.assign(extraFiles, attachments);
+
+  const run = await runWorker(
+    {
+      kind: "erase",
+      steps: plan.steps,
+      rect: { x, y, w, h },
+      maskFile: "mask.png",
+      limits: { maxPixels: MAX_PHOTO_PIXELS },
+    },
+    master,
+    ["patch.bin"],
+    RENDER_TIMEOUT_MS,
+    extraFiles,
+  );
+
+  // Jail kills first (no typed result to trust) — mirrors renderImage.
+  if (run.kill === "timeout")
+    return { ok: false, code: "timeout", message: `Cleanup took longer than ${RENDER_TIMEOUT_MS / 1000}s and was stopped.` };
+  if (run.kill === "resource-limit")
+    return { ok: false, code: "decode-failed", message: "Cleanup hit the processing limit — try a smaller image or a smaller area." };
+  if (run.kill === "decode-failed") {
+    if (run.result && run.result.ok === false) return typedRenderFailure(run.result);
+    return { ok: false, code: "decode-failed", message: "The cleanup step crashed on that image." };
+  }
+
+  if (!run.result) return { ok: false, code: "engine-error", message: "Cleanup produced no result." };
+  if (run.result.ok === false) return typedRenderFailure(run.result);
+  if (run.oversizeOutput)
+    return { ok: false, code: "too-large", message: "The cleanup patch came out larger than we can return." };
+
+  const out = run.outputs["patch.bin"];
+  if (!out) return { ok: false, code: "engine-error", message: "Cleanup reported success but wrote no patch." };
+
+  // The export gate's invariant, enforced at CREATION: every render replays this
+  // patch through an `erase:<id>` part that collectErasePatches caps at
+  // MAX_ERASE_PATCH_BYTES — so a patch over that cap must be refused HERE, before
+  // the associate can approve an edit no export would ever accept again.
+  if (out.length > MAX_ERASE_PATCH_BYTES) {
+    return {
+      ok: false,
+      code: "too-large",
+      message: "That area is too large to clean up in one pass — try a smaller brush area.",
+    };
+  }
+
+  return { ok: true, bytes: out, width: Number(run.result.width), height: Number(run.result.height) };
 }

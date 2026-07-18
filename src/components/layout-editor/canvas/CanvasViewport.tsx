@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
@@ -36,6 +37,7 @@ import {
   type SnapLine,
   type SnapTargets,
 } from "@/lib/layout/snap";
+import { openPlacedPictureInPhotoEditor } from "@/lib/photo/return-trip";
 import { PageSurface } from "./PageSurface";
 import { ObjectNode } from "./ObjectNode";
 import { SelectionOverlay } from "./SelectionOverlay";
@@ -264,6 +266,7 @@ function DraftPreview({
 }
 
 export function CanvasViewport() {
+  const router = useRouter();
   const doc = useLayoutStore((s) => s.doc);
   const activePageId = useLayoutStore((s) => s.activePageId);
   const masterEditingId = useLayoutStore((s) => s.masterEditingId);
@@ -631,12 +634,21 @@ export function CanvasViewport() {
     };
   };
 
-  /** Double-click on a text frame opens the contentEditable overlay (L5). */
-  const startTextEdit = (obj: LayoutObject) => () => {
-    if (obj.type !== "text") return;
+  /** Double-click: a text frame opens the contentEditable overlay (L5); a bound
+      picture frame round-trips into the Photo Editor (PE8, F2). Other frames no-op. */
+  const onObjectDoubleClick = (obj: LayoutObject) => () => {
     const s = useLayoutStore.getState();
-    s.setSelection([obj.id]);
-    s.setEditingText(obj.id);
+    if (obj.type === "text") {
+      s.setSelection([obj.id]);
+      s.setEditingText(obj.id);
+      return;
+    }
+    if (obj.type === "picture" && obj.assetId) {
+      s.setSelection([obj.id]);
+      void openPlacedPictureInPhotoEditor(obj, s.doc.name, router).then((res) => {
+        if (!res.ok) setPickNote(res.message);
+      });
+    }
   };
 
   const startResize = (obj: LayoutObject) => (dir: HandleDir, e: React.PointerEvent) => {
@@ -1056,7 +1068,7 @@ export function CanvasViewport() {
                   interactive={tool === "select"}
                   editing={o.id === editingTextId}
                   onPointerDown={startMove(o)}
-                  onDoubleClick={startTextEdit(o)}
+                  onDoubleClick={onObjectDoubleClick(o)}
                 />
               ))}
               {/* ruler guides render as a full-workspace layer over the

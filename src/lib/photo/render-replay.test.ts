@@ -74,8 +74,38 @@ const fitPad = (pad: { l: number; t: number; r: number; b: number }): PhotoOp =>
   anchor: "center",
   pad,
 });
-/** A still-unsupported op (renders from PE9) — the op-screen negative case. */
-const eraseOp = (): PhotoOp => ({ op: "erase", label: "Remove object", maskAssetId: "mask-1" });
+/** A stored-explicit erase op (PE9): its patch rides an `erase-<id>.png`
+    attachment, and compile emits an inline composite at the op's recipe position. */
+const eraseOp = (
+  id: string,
+  rect: { x: number; y: number; w: number; h: number },
+): PhotoOp => ({
+  op: "erase",
+  label: "Remove object",
+  maskAssetId: `photo:mask-${id}`,
+  patch: { id, assetId: `photo:patch-${id}`, rect },
+});
+/* -- PE6 overlay op builders (the client's HISTORY representation; compile skips
+      them — the pixels ride the payload.overlays sidecar as PNG rasters) -------- */
+const textOverlayOp = (id: string): PhotoOp => ({
+  op: "textOverlay",
+  label: "Add text",
+  id,
+  text: "hi",
+  font: { family: "Arimo", size: 24, bold: false, italic: false },
+  color: "#000000",
+  align: "left",
+  box: { x: 0, y: 0, w: 50, h: 20 },
+  rotation: 0,
+});
+const logoOverlayOp = (id: string): PhotoOp => ({
+  op: "logoOverlay",
+  label: "Add image",
+  id,
+  assetId: "asset-1",
+  box: { x: 0, y: 0, w: 40, h: 40 },
+  rotation: 0,
+});
 
 /**
  * The expected RGBA for a source pixel under a recipe's TERMINAL adjust pass —
@@ -175,14 +205,58 @@ describe("compileRenderPlan — folded dims equal geometry.effectiveDims", () =>
 });
 
 describe("compileRenderPlan — op screening + step shape", () => {
-  it("throws UnsupportedRenderOp on the first un-renderable op (not geometry, not tone), naming it", () => {
-    try {
-      compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }), eraseOp()], SRC);
-      throw new Error("expected a throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(UnsupportedRenderOp);
-      expect((err as UnsupportedRenderOp).op).toBe("erase");
-    }
+  it("compiles an erase op to an inline composite at its recipe position — before the terminal adjust and any overlays", () => {
+    // The erase patch is photo content placed back at the op's position: its
+    // composite lands INSIDE the loop (before the folded terminal adjust) so tone
+    // applies over it, and before the overlay composites (which sit above).
+    const { steps } = compileRenderPlan(
+      [
+        crop({ x: 0, y: 0, w: 200, h: 150 }),
+        eraseOp("e1", { x: 20, y: 10, w: 60, h: 40 }),
+        adjust("brightness", 15),
+      ],
+      SRC,
+      [{ id: "ov", left: 0, top: 0, width: 20, height: 20 }],
+    );
+    // extract (crop) → erase composite (inline) → terminal adjust → overlay composite.
+    expect(steps.map((s) => s.kind)).toEqual(["extract", "composite", "adjust", "composite"]);
+    expect(steps[1]).toEqual({ kind: "composite", file: "erase-e1.png", left: 20, top: 10, width: 60, height: 40 });
+    expect(steps[3]).toEqual({ kind: "composite", file: "overlay-ov.png", left: 0, top: 0, width: 20, height: 20 });
+  });
+
+  it("clamps an erase rect that overflows the current effective image (the crop-extract clamp)", () => {
+    // After a crop to 200×150, an erase rect anchored past the edge is clamped so
+    // the composite never addresses a pixel outside the frame; dims unchanged.
+    const { steps, out } = compileRenderPlan(
+      [crop({ x: 0, y: 0, w: 200, h: 150 }), eraseOp("e2", { x: 180, y: 130, w: 60, h: 60 })],
+      SRC,
+    );
+    expect(steps).toEqual([
+      { kind: "extract", left: 0, top: 0, width: 200, height: 150 },
+      { kind: "composite", file: "erase-e2.png", left: 140, top: 90, width: 60, height: 60 },
+    ]);
+    expect(out).toEqual({ w: 200, h: 150 }); // an erase never moves the frame
+  });
+
+  it("still throws UnsupportedRenderOp on a genuinely unknown op tag (the guard behind the op-screen)", () => {
+    // Every real PhotoOp tag now compiles; the throw is defence in depth for a tag
+    // the union might grow without a compile case. Force one past the types.
+    const bogus = { op: "teleport", label: "Teleport" } as unknown as PhotoOp;
+    expect(() => compileRenderPlan([bogus], SRC)).toThrow(UnsupportedRenderOp);
+  });
+
+  it("renderImage converts that throw into a typed unsupported-op failure (never a jail job)", async () => {
+    // The catch-and-classify wiring the route's 422 rides on — kept covered even
+    // though no REAL op tag reaches it anymore (the erase negatives it replaced
+    // flipped to positives at PE9).
+    const bogus = { op: "teleport", label: "Teleport" } as unknown as PhotoOp;
+    const out = await renderImage(await quadPng(), {
+      recipe: [bogus],
+      format: "png",
+      quality: 90,
+      intent: "srgb",
+    });
+    expect(out).toMatchObject({ ok: false, code: "unsupported-op" });
   });
 
   it("compiles the PE5 print-geometry ops (resize / bleedExpand / fitToSize) into steps", () => {
@@ -284,6 +358,46 @@ describe("compileRenderPlan — op screening + step shape", () => {
     const circ = compileRenderPlan([crop({ x: 0, y: 0, w: 100, h: 100 }, "circle")], SRC).steps[0];
     expect(rect).toEqual({ kind: "extract", left: 0, top: 0, width: 100, height: 100 });
     expect(circ).toMatchObject({ kind: "extract", shape: "circle" });
+  });
+
+  it("SKIPS textOverlay/logoOverlay recipe ops (no throw, no step) — pixels ride the sidecar", () => {
+    // The overlay ops are the client's history representation; the server never
+    // draws from them (fonts live client-side, §3.3), so they compile to nothing.
+    const { steps, out } = compileRenderPlan(
+      [crop({ x: 0, y: 0, w: 100, h: 100 }), textOverlayOp("t1"), logoOverlayOp("l1")],
+      SRC,
+    );
+    expect(steps.map((s) => s.kind)).toEqual(["extract"]);
+    expect(out).toEqual({ w: 100, h: 100 }); // overlay ops never move the frame
+  });
+
+  it("appends composite steps AFTER the terminal adjust, in overlay (array) order", () => {
+    const overlays = [
+      { id: "banner", left: 10, top: 20, width: 30, height: 40 },
+      { id: "logo", left: 50, top: 60, width: 12, height: 12 },
+    ];
+    const { steps } = compileRenderPlan(
+      [crop({ x: 0, y: 0, w: 200, h: 150 }), adjust("brightness", 20)],
+      SRC,
+      overlays,
+    );
+    // extract → terminal adjust → composites, in order.
+    expect(steps.map((s) => s.kind)).toEqual(["extract", "adjust", "composite", "composite"]);
+    expect(steps.filter((s) => s.kind === "composite")).toEqual([
+      { kind: "composite", file: "overlay-banner.png", left: 10, top: 20, width: 30, height: 40 },
+      { kind: "composite", file: "overlay-logo.png", left: 50, top: 60, width: 12, height: 12 },
+    ]);
+  });
+
+  it("emits composite steps directly after geometry when there is no adjust", () => {
+    const { steps, out } = compileRenderPlan([crop({ x: 0, y: 0, w: 120, h: 90 })], SRC, [
+      { id: "mark", left: 5, top: 5, width: 20, height: 20 },
+    ]);
+    expect(steps).toEqual([
+      { kind: "extract", left: 0, top: 0, width: 120, height: 90 },
+      { kind: "composite", file: "overlay-mark.png", left: 5, top: 5, width: 20, height: 20 },
+    ]);
+    expect(out).toEqual({ w: 120, h: 90 }); // overlays never change the effective dims
   });
 });
 
@@ -405,23 +519,6 @@ describe("renderImage — geometry replays at full resolution", () => {
   );
 
   it(
-    "reports unsupported-op (never renders) when an un-renderable op sneaks into the recipe",
-    async () => {
-      const out = await renderImage(await quadPng(), {
-        recipe: [eraseOp()],
-        format: "png",
-        quality: 90,
-        intent: "srgb",
-      });
-      expect(out.ok).toBe(false);
-      if (out.ok) return;
-      expect(out.code).toBe("unsupported-op");
-      expect(out.message).toContain("erase");
-    },
-    30_000,
-  );
-
-  it(
     "fails decode-failed on an unreadable master rather than throwing",
     async () => {
       const garbage = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
@@ -508,6 +605,220 @@ describe("renderImage — print-geometry ops (resize / bleedExpand / fitToSize)"
       expect([meta.width, meta.height]).toEqual([200, 300]);
     },
     30_000,
+  );
+});
+
+/* ========================================================================== */
+/* renderImage — overlay composite (PE6)                                       */
+/* ========================================================================== */
+
+/** An opaque magenta overlay raster with an alpha channel (the client's
+    pre-rendered PNG art; the worker decodes+resizes+composites it as the
+    sanitize/re-encode). Magenta is distinct from every quadrant marker colour. */
+function overlayPng(w: number, h: number): Promise<Buffer> {
+  return sharp({ create: { width: w, height: h, channels: 4, background: { r: 255, g: 0, b: 255, alpha: 1 } } })
+    .png()
+    .toBuffer();
+}
+
+describe("renderImage — overlay composite (PE6)", () => {
+  it(
+    "composites the overlay raster at its placement; off-placement pixels are untouched",
+    async () => {
+      // Overlay placed inside the BL (blue) quadrant so its magenta is unmistakable.
+      const mark = await overlayPng(40, 20);
+      const withOv = await renderImage(
+        await quadPng(),
+        {
+          recipe: [],
+          format: "png",
+          quality: 90,
+          intent: "srgb",
+          overlays: [{ id: "mark", left: 50, top: 200, width: 40, height: 20 }],
+        },
+        { "overlay-mark.png": mark },
+      );
+      const without = await renderImage(await quadPng(), { recipe: [], format: "png", quality: 90, intent: "srgb" });
+      expect(withOv.ok && without.ok).toBe(true);
+      if (!withOv.ok || !without.ok) return;
+
+      // ON the overlay (70,210): magenta over what was blue — the pixel changed.
+      const on = await sample(withOv.bytes, 70, 210);
+      const onBase = await sample(without.bytes, 70, 210);
+      expect(on.rgba).not.toEqual(onBase.rgba);
+      expect(on.rgba[0]).toBeGreaterThan(200); // magenta R
+      expect(on.rgba[2]).toBeGreaterThan(200); // magenta B
+      expect(on.rgba[1]).toBeLessThan(60); // magenta G low
+
+      // OFF the overlay (300,50), the TR green quadrant: byte-for-byte unchanged.
+      const off = await sample(withOv.bytes, 300, 50);
+      const offBase = await sample(without.bytes, 300, 50);
+      expect(off.rgba).toEqual(offBase.rgba);
+    },
+    30_000,
+  );
+
+  it(
+    "composites AFTER the terminal adjust — the tone pass never touches overlay pixels",
+    async () => {
+      // A heavy tone pass would shift a photo pixel; the overlay is placed on top
+      // afterward, so its magenta arrives intact regardless of the adjust.
+      const mark = await overlayPng(40, 20);
+      const out = await renderImage(
+        await quadPng(),
+        {
+          recipe: [adjust("brightness", -80), adjust("saturation", -100)],
+          format: "png",
+          quality: 90,
+          intent: "srgb",
+          overlays: [{ id: "mark", left: 50, top: 200, width: 40, height: 20 }],
+        },
+        { "overlay-mark.png": mark },
+      );
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const on = await sample(out.bytes, 70, 210);
+      // Desaturate+darken would grey/black a photo pixel; the overlay stays magenta.
+      expect(on.rgba[0]).toBeGreaterThan(200);
+      expect(on.rgba[2]).toBeGreaterThan(200);
+      expect(on.rgba[1]).toBeLessThan(60);
+    },
+    30_000,
+  );
+
+  it(
+    "is deterministic with attachments (byte-identical JPEG across two renders)",
+    async () => {
+      const master = await quadPng();
+      const mark = await overlayPng(40, 20);
+      const payload = {
+        recipe: [crop({ x: 20, y: 15, w: 300, h: 240 })],
+        format: "jpeg" as const,
+        quality: 88,
+        intent: "srgb" as const,
+        overlays: [{ id: "mark", left: 10, top: 10, width: 40, height: 20 }],
+      };
+      const a = await renderImage(master, payload, { "overlay-mark.png": mark });
+      const b = await renderImage(master, payload, { "overlay-mark.png": mark });
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.bytes.equals(b.bytes)).toBe(true);
+    },
+    45_000,
+  );
+
+  it(
+    "flattens overlay alpha into JPEG (3 channels, no transparency)",
+    async () => {
+      // A semi-transparent overlay over the photo: JPEG can't carry alpha, so the
+      // final encode flattens it — the overlay blends into the image naturally.
+      const semi = await sharp({
+        create: { width: 40, height: 20, channels: 4, background: { r: 255, g: 0, b: 255, alpha: 0.5 } },
+      })
+        .png()
+        .toBuffer();
+      const out = await renderImage(
+        await quadPng(),
+        {
+          recipe: [],
+          format: "jpeg",
+          quality: 90,
+          intent: "srgb",
+          overlays: [{ id: "mark", left: 50, top: 200, width: 40, height: 20 }],
+        },
+        { "overlay-mark.png": semi },
+      );
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      const meta = await sharp(out.bytes).metadata();
+      expect(meta.channels).toBe(3);
+      expect(Boolean(meta.hasAlpha)).toBe(false);
+    },
+    30_000,
+  );
+});
+
+/* ========================================================================== */
+/* renderImage — the stored-explicit erase patch composites (PE9)              */
+/* ========================================================================== */
+
+describe("renderImage — erase patch composite (PE9)", () => {
+  it(
+    "composites the stored patch at the op's rect; off-rect pixels are untouched",
+    async () => {
+      // A solid magenta patch stands in for the classical fill's output; render
+      // composites it at the op's rect as photo content, leaving the rest intact.
+      const rect = { x: 50, y: 200, w: 40, h: 20 }; // inside the BL (blue) quadrant
+      const patch = await overlayPng(rect.w, rect.h); // magenta w×h
+      const withErase = await renderImage(
+        await quadPng(),
+        { recipe: [eraseOp("e1", rect)], format: "png", quality: 90, intent: "srgb" },
+        { "erase-e1.png": patch },
+      );
+      const without = await renderImage(await quadPng(), { recipe: [], format: "png", quality: 90, intent: "srgb" });
+      expect(withErase.ok && without.ok).toBe(true);
+      if (!withErase.ok || !without.ok) return;
+
+      // INSIDE the patch (70,210): magenta over what was blue — the pixel changed.
+      const on = await sample(withErase.bytes, 70, 210);
+      expect(on.rgba[0]).toBeGreaterThan(200); // magenta R
+      expect(on.rgba[2]).toBeGreaterThan(200); // magenta B
+      expect(on.rgba[1]).toBeLessThan(60); // magenta G low
+
+      // OFF the patch (300,50), the TR green quadrant: byte-for-byte unchanged.
+      const off = await sample(withErase.bytes, 300, 50);
+      const offBase = await sample(without.bytes, 300, 50);
+      expect(off.rgba).toEqual(offBase.rgba);
+    },
+    30_000,
+  );
+
+  it(
+    "composites the erase patch BEFORE the terminal adjust — tone applies OVER the patch (unlike an overlay)",
+    async () => {
+      // The erase patch folds in before the terminal tone pass, so a darken shifts
+      // its pixels too (photo content). An overlay would arrive intact after tone.
+      const rect = { x: 50, y: 200, w: 40, h: 20 };
+      const patch = await overlayPng(rect.w, rect.h); // bright magenta (R,B = 255)
+      const darkened = await renderImage(
+        await quadPng(),
+        { recipe: [eraseOp("e1", rect), adjust("brightness", -80)], format: "png", quality: 90, intent: "srgb" },
+        { "erase-e1.png": patch },
+      );
+      const plain = await renderImage(
+        await quadPng(),
+        { recipe: [eraseOp("e1", rect)], format: "png", quality: 90, intent: "srgb" },
+        { "erase-e1.png": patch },
+      );
+      expect(darkened.ok && plain.ok).toBe(true);
+      if (!darkened.ok || !plain.ok) return;
+      const dim = await sample(darkened.bytes, 70, 210);
+      const full = await sample(plain.bytes, 70, 210);
+      // brightness −80 darkens the patch's red channel — the tone pass reached it.
+      expect(dim.rgba[0]).toBeLessThan(full.rgba[0]);
+    },
+    30_000,
+  );
+
+  it(
+    "is deterministic for an erase render (byte-identical PNG across two runs)",
+    async () => {
+      const rect = { x: 30, y: 40, w: 50, h: 30 };
+      const master = await quadPng();
+      const patch = await overlayPng(rect.w, rect.h);
+      const payload = {
+        recipe: [eraseOp("e1", rect)],
+        format: "png" as const,
+        quality: 90,
+        intent: "srgb" as const,
+      };
+      const a = await renderImage(master, payload, { "erase-e1.png": patch });
+      const b = await renderImage(master, payload, { "erase-e1.png": patch });
+      expect(a.ok && b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+      expect(a.bytes.equals(b.bytes)).toBe(true);
+    },
+    45_000,
   );
 });
 

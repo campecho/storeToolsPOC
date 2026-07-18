@@ -57,6 +57,22 @@ const recipeFiles = haveFixtures
   ? readdirSync(RECIPES_DIR).filter((f) => f.endsWith(".json")).sort()
   : [];
 
+/**
+ * Resolve an attachment `id` to the jail basename the composite steps reference.
+ * A placed raster rides `attachments` keyed by op `id`, but the jail basename is
+ * `overlay-<id>.png` for a PE6 overlay and `erase-<id>.png` for a PE9 erase
+ * patch — so the prefix depends on the op, not the id. Rather than a second
+ * prefix map, derive it from the committed `compiled` block: the matching
+ * `composite` step's `file` IS the jail basename (its `<prefix>-<id>.png` ends
+ * with `-<id>.png`). One source of truth — text-logo's overlays and erase-fill's
+ * patch both resolve here; the `overlay-` fallback keeps a stepless lookup safe.
+ */
+function attachmentBasename(id: string, steps: { kind: string; file?: string }[]): string {
+  const suffix = `-${id}.png`;
+  const step = steps.find((s) => s.kind === "composite" && typeof s.file === "string" && s.file.endsWith(suffix));
+  return step?.file ?? `overlay-${id}.png`;
+}
+
 if (!haveFixtures || recipeFiles.length === 0) {
   describe("golden-recipe harness", () => {
     it.skip("photo-corpus fixtures missing — run `npm run refresh:photo-goldens` to generate them", () => {});
@@ -67,6 +83,8 @@ if (!haveFixtures || recipeFiles.length === 0) {
     const raw = JSON.parse(readFileSync(join(RECIPES_DIR, file), "utf8")) as {
       source: string;
       payload: unknown;
+      /** Overlay id → corpus-relative PNG path (PE6). Absent for non-overlay recipes. */
+      attachments?: Record<string, string>;
       compiled: { steps: unknown[]; out: { w: number; h: number } };
     };
     // The client is untrusted (§3.6): validate the payload exactly as the route
@@ -78,15 +96,34 @@ if (!haveFixtures || recipeFiles.length === 0) {
     const goldenExists = srcExists && existsSync(goldenPath);
     const isCmykTiffGolden = payload.intent === "cmyk" && payload.format === "tiff";
 
+    // Placed rasters (PE6 overlays, PE9 erase patches) ride the same jail-file
+    // mechanism the route feeds renderImage — keyed by the jail basename the
+    // committed composite steps reference (`overlay-<id>.png` / `erase-<id>.png`,
+    // resolved via attachmentBasename so the erase prefix needs no second map).
+    // compileRenderPlan emits those steps (overlays from payload.overlays, an
+    // erase from its recipe op), and renderImage needs the bytes to composite;
+    // both come from here.
+    const loadAttachments = (): Record<string, Buffer> | undefined => {
+      if (!raw.attachments) return undefined;
+      const out: Record<string, Buffer> = {};
+      for (const [id, rel] of Object.entries(raw.attachments)) {
+        out[attachmentBasename(id, raw.compiled.steps as { kind: string; file?: string }[])] = readFileSync(
+          join(CORPUS_DIR, rel),
+        );
+      }
+      return out;
+    };
+
     describe(`golden: ${name}`, () => {
       const compileIt = it.skipIf(!srcExists);
       compileIt("compiles to the recipe's committed plan (compile parity)", () => {
         // The source's dims by the SAME cheap header read renderImage does, so the
         // compile-parity assertion compiles against exactly what the host will.
+        // Overlays thread through so the committed composite steps are covered.
         const master = readFileSync(srcPath!);
         const dims = imageDimensions(master, sniffImageMime(master) ?? "");
         expect(dims).toBeDefined();
-        const plan = compileRenderPlan(payload.recipe, { w: dims!.width, h: dims!.height });
+        const plan = compileRenderPlan(payload.recipe, { w: dims!.width, h: dims!.height }, payload.overlays);
         expect(plan).toEqual(raw.compiled);
       });
 
@@ -96,8 +133,9 @@ if (!haveFixtures || recipeFiles.length === 0) {
         async () => {
           const master = readFileSync(srcPath!);
           const expected = readFileSync(goldenPath);
-          const a = await renderImage(master, payload);
-          const b = await renderImage(master, payload);
+          const attachments = loadAttachments();
+          const a = await renderImage(master, payload, attachments);
+          const b = await renderImage(master, payload, attachments);
           expect(a.ok).toBe(true);
           expect(b.ok).toBe(true);
           if (!a.ok || !b.ok) return;
@@ -117,9 +155,31 @@ if (!haveFixtures || recipeFiles.length === 0) {
             expect(meta.icc).toBeDefined();
             expect(meta.icc!.equals(readFileSync(GRACOL_PATH))).toBe(true);
           }
+
+          // Overlay goldens (PE6): a spot-check that the composite actually landed —
+          // the first overlay's centre pixel must DIFFER from a no-overlay render of
+          // the same recipe at the same coords (the banner region changed).
+          if (payload.overlays && payload.overlays.length > 0) {
+            const noOverlay = await renderImage(master, { ...payload, overlays: undefined });
+            expect(noOverlay.ok).toBe(true);
+            if (!noOverlay.ok) return;
+            const ov = payload.overlays[0];
+            const cx = ov.left + Math.floor(ov.width / 2);
+            const cy = ov.top + Math.floor(ov.height / 2);
+            const withOv = await samplePixel(a.bytes, cx, cy);
+            const withoutOv = await samplePixel(noOverlay.bytes, cx, cy);
+            expect(withOv).not.toEqual(withoutOv);
+          }
         },
         45_000,
       );
     });
   }
+}
+
+/** Decode a render output and read one RGBA pixel (overlay spot-check). */
+async function samplePixel(buf: Buffer, x: number, y: number): Promise<[number, number, number, number]> {
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const i = (y * info.width + x) * 4;
+  return [data[i], data[i + 1], data[i + 2], data[i + 3]];
 }

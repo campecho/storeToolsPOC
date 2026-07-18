@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
 import type { LayoutObject } from "@/schema";
 import {
@@ -9,6 +11,7 @@ import {
   withBBox,
   type BBox,
 } from "@/lib/layout/objects";
+import { openPlacedPictureInPhotoEditor } from "@/lib/photo/return-trip";
 import { Field, NumberField, SectionLabel } from "./Field";
 
 /**
@@ -56,6 +59,10 @@ export function PropertiesTab() {
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const transformObject = useLayoutStore((s) => s.transformObject);
   const setObjectProps = useLayoutStore((s) => s.setObjectProps);
+  const revertPhotoEdit = useLayoutStore((s) => s.revertPhotoEdit);
+  const docName = useLayoutStore((s) => s.doc.name);
+  const router = useRouter();
+  const [photoNote, setPhotoNote] = useState<string | null>(null);
 
   const obj: LayoutObject | undefined =
     selectedIds.length === 1 ? objects.find((o) => o.id === selectedIds[0]) : undefined;
@@ -128,6 +135,57 @@ export function PropertiesTab() {
           </div>
         )}
       </div>
+
+      {obj.type === "picture" && (
+        <div>
+          <SectionLabel>Photo</SectionLabel>
+          <button
+            type="button"
+            data-testid="layout-edit-in-photo"
+            disabled={!obj.assetId}
+            title={
+              obj.assetId
+                ? "Open this picture in the Photo Editor — comes right back to this page"
+                : "Add an image to this frame first"
+            }
+            onClick={() => {
+              setPhotoNote(null);
+              void openPlacedPictureInPhotoEditor(obj, docName, router).then((res) => {
+                if (!res.ok) setPhotoNote(res.message);
+              });
+            }}
+            className={`flex h-[28px] w-full items-center justify-center gap-1 rounded-[5px] border text-[11px] font-semibold ${
+              obj.assetId
+                ? "cursor-pointer border-brand text-brand hover:bg-[#fff5f5]"
+                : "cursor-not-allowed border-[#e0e0e0] text-[#bbb]"
+            }`}
+          >
+            Edit in Photo Editor →
+          </button>
+          <div className="mt-1 text-[10px] leading-snug text-[#aaa]">
+            Full tools — comes right back to this page.
+          </div>
+          {obj.photoEdit && (
+            <button
+              type="button"
+              data-testid="layout-revert-photo-edits"
+              onClick={() => {
+                setPhotoNote(null);
+                revertPhotoEdit(obj.id);
+              }}
+              title="Restore the original image and drop the photo edits (one step)"
+              className="mt-2 flex h-[26px] w-full cursor-pointer items-center justify-center rounded-[5px] border border-[#d6d6d6] bg-white text-[11px] text-[#555] hover:border-[#c0c0c0] hover:bg-[#fafafa]"
+            >
+              Revert photo edits
+            </button>
+          )}
+          {photoNote && (
+            <div className="mt-2 rounded-[5px] border border-[#f0c9c9] bg-[#FBEBEB] px-2 py-1 text-[10px] leading-snug text-[#9a1818]">
+              {photoNote}
+            </div>
+          )}
+        </div>
+      )}
 
       {!line && (
         <div>
