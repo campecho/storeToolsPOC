@@ -1931,15 +1931,13 @@ test.describe("Conversion & handoffs (PE7)", () => {
     await expect(page).toHaveURL(/\/layout/);
   });
 
-  test("an over-ceiling image routes away instead of opening", async ({ page }, testInfo) => {
-    // 9100 × 9000 = 81.9 MP — past the 80 MP ceiling the engine enforces at
-    // decode. A solid fill keeps the PNG bytes tiny, so only the pixel cap trips.
-    const oversize = testInfo.outputPath("oversize.png");
-    await sharp({
-      create: { width: 9100, height: 9000, channels: 3, background: { r: 240, g: 240, b: 240 } },
-    })
-      .png()
-      .toFile(oversize);
+  test("an over-ceiling image routes away instead of opening", async ({ page }) => {
+    // The committed corpus fixture: fixtures/photo-corpus/oversize.tiff is
+    // 9100 × 9000 = 81.9 MP, past the 80 MP ceiling the engine enforces at the
+    // header read (deflate keeps it ~256 KB on disk). The PE10d huge-TIFF case
+    // doubles as this route-away fixture — its too-many-pixels unit assertion
+    // is in benign-corpus.test.ts.
+    const oversize = "fixtures/photo-corpus/oversize.tiff";
 
     await page.goto("/photo");
     await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
