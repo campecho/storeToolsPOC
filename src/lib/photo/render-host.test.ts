@@ -14,10 +14,12 @@ import { eraseFill, intakeImage, probeEngine } from "./render-host";
  * typed outcome. Fixtures are synthesized in-process with sharp (a small,
  * valid image is cheaper and more honest than a committed binary).
  *
- * The timeout/SIGXCPU classification is inherited verbatim from the proven
- * pub2raw seam (same execFile+prlimit+SIGKILL discipline) and is exercised
- * there; here we prove the photo-specific outcomes (success shape, decode
- * death, pixel-flood, jail cleanup).
+ * The timeout/SIGXCPU classification shares the execFile+prlimit+SIGKILL
+ * discipline proven in the pub2raw seam; it is exercised HERE against the real
+ * photo worker in photo-adversarial.test.ts (PE10b — wall-clock kill, the
+ * prlimit invocation, SIGXCPU → resource-limit, and jail cleanup on the kill
+ * paths). This file proves the photo-specific typed outcomes (success shape,
+ * decode death, pixel-flood, success-path cleanup).
  */
 
 async function rgbPng(w: number, h: number): Promise<Buffer> {
