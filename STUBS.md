@@ -81,6 +81,14 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 
 ## Known gaps (`PROD-TODO:`)
 
+- **Photo perf budgets are dev/CI proxies (PE10e):** the three latency gates —
+  open + export in `src/lib/photo/perf-budget.test.ts`, client proxy-adjust in
+  `src/lib/photo/ops.test.ts` — assert against **generous** ceilings (a
+  hang/gross-regression gate, since jail process-launch dominates and CI runners
+  vary), and `scripts/bench-photo.mjs` (`npm run bench:photo`) reproduces the
+  medians on demand. The real fleet-hardware (ProDesk) numbers land at the
+  hardware-lab pass; until then the recorded budgets are honest proxies, not the
+  station's true envelope (photo plan §4 PE0/PE10e, §5).
 - **Storage migrations:** the layout store now MIGRATES v1 documents to v2 on load (P2,
   `src/lib/schema/layout-v1.ts`) — unrecognizable shapes still fall back to pristine. The
   feedback store still drop-and-reseeds on mismatch; production migrates there too
