@@ -151,6 +151,24 @@ describe("open / close", () => {
     expect(s().doc).toBeNull();
     expect(s().activeTool).toBe("none");
   });
+
+  it("resetDemo returns the whole editor to its pristine defaults (PE10f)", () => {
+    s().openDocument(makeDoc([op("a")]));
+    s().setLevel("simple");
+    s().setActiveTool("adjust");
+    s().setCleanupBrushSize(90);
+    s().setReturnContext({ originName: "flyer", objectId: "f1", originalAssetId: "photo:x" });
+
+    s().resetDemo();
+
+    expect(s().doc).toBeNull();
+    expect(s().level).toBe("standard");
+    expect(s().activeTool).toBe("none");
+    expect(s().cleanupBrushSize).toBe(40);
+    expect(s().returnContext).toBeNull();
+    expect(s().pendingPreview).toBeNull();
+    expect(s().cropDraft).toBeNull();
+  });
 });
 
 describe("level & tool", () => {

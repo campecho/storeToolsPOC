@@ -256,7 +256,8 @@ export function FixForPrintPanel() {
               Clear target size
             </button>
           )}
-          {/* Catalog picker — inert (dev #5). */}
+          {/* PROTOTYPE-ONLY: catalog picker — inert (dev #5); wires to the
+              spec-sync slice (STUBS.md, plan §6). */}
           <div
             data-testid="fixprint-catalog"
             title="Catalog products arrive with the spec-sync slice"
@@ -461,7 +462,9 @@ export function FixForPrintPanel() {
           </div>
         </div>
 
-        {/* 6 · UPSCALE PLACEHOLDER (dev #3) — the honest low-res rescue offer. */}
+        {/* PROTOTYPE-ONLY: 6 · UPSCALE PLACEHOLDER (dev #3) — the honest low-res
+            rescue offer; the Upscale action is disabled until the model service
+            lands (STUBS.md, plan §6), "Print as-is" is the live path. */}
         {!upscaleDismissed && (
           <div
             data-testid="fixprint-upscale"
@@ -496,7 +499,7 @@ export function FixForPrintPanel() {
           </div>
         )}
 
-        {/* Inert quick-guide link. */}
+        {/* PROTOTYPE-ONLY: inert quick-guide link — content lands with the help pass. */}
         <div
           data-testid="fixprint-guide"
           title="Guide content lands with the help pass"

@@ -206,7 +206,7 @@ describe("PhotoDiagnosticsSchema — cmykPreserve (tificc capability)", () => {
   const formats = {
     jpeg: true, png: true, webp: true, gif: true, tiff: true, heic: false, svg: true, bmp: false,
   };
-  const base = { engine: null, jailed: { rlimits: true }, formats };
+  const base = { engine: null, jailed: { rlimits: true, worker: true }, formats };
 
   it("requires cmykPreserve", () => {
     expect(PhotoDiagnosticsSchema.safeParse(base).success).toBe(false);

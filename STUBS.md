@@ -35,7 +35,7 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 | ~~Import report UI~~ **shipped (P4)** | `src/components/layout-editor/panel/ImportReportPane.tsx` | The report renders as a side-panel "Review" tab with deep-linked notes/fonts/overset (plan §10.4) — no longer a stub. | — |
 | Extracted-image transport (P3) | `src/lib/import/report.ts` (`ImportAssetsPayloadSchema`), `src/lib/import/client.ts` | Image bytes ride the import response as base64 JSON and seed client IndexedDB | A production conversion service stores assets and returns URLs; the client seam (decode → `replaceAssetBlobs`) is the only code that changes. Note: extracted images bypass the ingest AV hook — production scans derived content too (plan §10.1). |
 | Persistence — photo docs (PE1) | `src/lib/store/photo-store.ts` | `localStorage` (`stp-photo-v1`), schema-validated on rehydrate; history is the recipe cursor (no snapshot stacks — plan §3.4) | Backend persists `PhotoDocument` keyed by station identity, same migrate-on-read posture as layout docs. |
-| Photo decode jail (PE1) | `src/lib/photo/render-host.ts`, `src/lib/photo/photo-worker.mjs` | **Built, not stubbed** — `sharp` loads only in a spawned per-job jail (`mkdtemp` wiped in `finally`, `prlimit --cpu --as` where available, wall-clock SIGKILL, kill classification, bounded output). Worker path resolves from `process.cwd()` — correct for dev/start/vitest; the Docker/standalone story is owed at the live-lane tranche (in-code note). | Production render service; microVM-class isolation, egress jail stay deferred (photo plan §3.6). |
+| Photo decode jail (PE1) | `src/lib/photo/render-host.ts`, `src/lib/photo/photo-worker.mjs` | **Built, not stubbed** — `sharp` loads only in a spawned per-job jail (`mkdtemp` wiped in `finally`, `prlimit --cpu --as` where available, wall-clock SIGKILL, kill classification, bounded output). Worker path resolves from `process.cwd()`; the Docker/standalone story landed at PE10a — Next's file trace stages the worker + GRACoL profile, `outputFileTracingIncludes` (next.config.ts) carries the spawned worker's `sharp` import the trace can't see, `jailed.worker` in GET diagnostics reports the resolution, and the `docker` CI lane boots the image and round-trips intake+render. | Production render service; microVM-class isolation, egress jail stay deferred (photo plan §3.6). |
 | HEIC ingest (PE7) | `src/lib/photo/heic.ts` | **Built, not stubbed** — the `heif-convert` (libheif-examples) probe gates the capability matrix and a jailed subprocess transcodes HEIC → JPEG that re-enters intake (`mkdtemp` wiped in `finally`, intake `prlimit --cpu --as` where available, wall-clock SIGKILL, kill classification; a multi-image Live photo yields its primary still). Where absent (plain dev), intake returns a typed `unsupported-here` and the diagnostic says so. | Docker, the CI live lane, and the CI e2e lane install `libheif-examples`; a production sandboxed remote-decode service swaps in — the swap touches only this file (photo plan §3.5, §10.7). |
 | Photo intake transport (PE1) | `src/lib/photo/client.ts`, `src/app/api/photo/intake/route.ts` | Master + proxy bytes ride the response as base64 JSON and seed client IndexedDB (`photo:`-namespaced, non-destructive writes — the shared blob store's replace/clear helpers are never called) | A production service stores assets and returns URLs; `client.ts` is the only caller (import seam #2 pattern). Photo intake calls the shared `avScanHook` (still the logging stub). |
 | CMYK-preserving path (PE5) | `src/lib/photo/lcms.ts` | `tificc` (liblcms2-utils) probe + jailed identity-intent re-encode — the v1.4 named fallback for sharp's forced CMYK→sRGB unpack. Where absent (plain dev), `cmykPreserve: false` in diagnostics, no `cmykMaster` intake leg, and every CMYK export re-separates through GRACoL with an honest `X-Photo-Reseparated` header. Preserve is TIFF-output-only (no sharp-free CMYK→JPEG/PDF path at POC — documented decision table in the render route). | Docker/live lane install `liblcms2-utils`; a production color service (or a libvips built with CMYK passthrough) widens the preserve path beyond TIFF. |
@@ -78,9 +78,23 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
   suggest-never-auto-apply loop; its model-backed siblings — Spot heal, Red-eye,
   Remove background, and the "Fix an AI-generated file" card — render disabled,
   "coming with the model service" (dev #3), beside the PE5 upscale button.
+  PE10f carries `PROTOTYPE-ONLY:` tags in-code on each of these (order chip, catalog
+  pickers, upscale button, model-gated Clean-up tools, Save-back, N-up link, the PRO
+  More row, help glyph) so the sweep grep above reproduces this section; it also adds
+  a **"Reset demo photo"** control (title bar) — a demo affordance, not a wire element
+  (the feedback tracker's "Reset demo data" precedent), which drops all edits and
+  reopens the fresh demo photo.
 
 ## Known gaps (`PROD-TODO:`)
 
+- **Photo perf budgets are dev/CI proxies (PE10e):** the three latency gates —
+  open + export in `src/lib/photo/perf-budget.test.ts`, client proxy-adjust in
+  `src/lib/photo/ops.test.ts` — assert against **generous** ceilings (a
+  hang/gross-regression gate, since jail process-launch dominates and CI runners
+  vary), and `scripts/bench-photo.mjs` (`npm run bench:photo`) reproduces the
+  medians on demand. The real fleet-hardware (ProDesk) numbers land at the
+  hardware-lab pass; until then the recorded budgets are honest proxies, not the
+  station's true envelope (photo plan §4 PE0/PE10e, §5).
 - **Storage migrations:** the layout store now MIGRATES v1 documents to v2 on load (P2,
   `src/lib/schema/layout-v1.ts`) — unrecognizable shapes still fall back to pristine. The
   feedback store still drop-and-reseeds on mismatch; production migrates there too

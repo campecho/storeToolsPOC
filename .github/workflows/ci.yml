@@ -1,6 +1,6 @@
 # CI for the Store Tools POC (docs/LAYOUT_EDITOR_PLAN.md).
 #
-# Three independent lanes, run in parallel:
+# Four independent lanes, run in parallel:
 #   checks      — fixture lane (plan §10.1): lint + typecheck + unit/fidelity
 #                 tests from checked-in fixtures; zero native dependencies.
 #   e2e         — Playwright against `next dev`; the webServer config forces
@@ -9,6 +9,11 @@
 #                 the corpus from the live binaries, gates on fixture drift,
 #                 then runs the full suite with the live-gated adversarial
 #                 tests enabled (STP_LIVE_IMPORT=1).
+#   docker      — deploy-image smoke (photo plan §4 PE10a): builds the Dockerfile,
+#                 boots the standalone runner, and round-trips the photo pipeline
+#                 (GET diagnostics → intake → render) — the proof that the traced
+#                 worker + sharp actually resolve inside the image, which no
+#                 repo-root lane can give.
 
 name: CI
 
@@ -115,3 +120,49 @@ jobs:
             exit 1
           fi
       - run: STP_LIVE_IMPORT=1 npm test
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t stp-poc .
+      - name: Boot the runner and wait for ready
+        run: |
+          docker run -d --name stp -p 8080:8080 stp-poc
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/photo >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "::error::Runner never became ready on :8080"
+          docker logs stp
+          exit 1
+      - name: Photo pipeline smoke — diagnostics, intake, render
+        run: |
+          set -euo pipefail
+          # 1. Diagnostics: engine live, worker file resolved inside the image.
+          diag="$(curl -fsS http://localhost:8080/api/photo)"
+          echo "$diag" | head -c 400; echo
+          test "$(echo "$diag" | jq -r .engine.name)" = "sharp"
+          test "$(echo "$diag" | jq -r .jailed.worker)" = "true"
+          test "$(echo "$diag" | jq -r .formats.heic)" = "true"
+          # 2. Intake: the demo photo opens through the jailed decode.
+          intake="$(curl -fsS -F "file=@public/photo-demo.jpg;type=image/jpeg" \
+            http://localhost:8080/api/photo/intake)"
+          test "$(echo "$intake" | jq -r .ok)" = "true"
+          # 3. Render: replay an empty recipe at full resolution — the master
+          #    round-trips the worker's sharp decode+encode inside the jail.
+          echo "$intake" | jq -r .master.b64 | base64 -d > /tmp/master.jpg
+          curl -fsS -o /tmp/render.jpg \
+            -F "file=@/tmp/master.jpg;type=image/jpeg" \
+            -F 'payload={"recipe":[],"format":"jpeg"}' \
+            http://localhost:8080/api/photo/render
+          # A JPEG comes back (SOI marker) and is non-trivial.
+          head -c 2 /tmp/render.jpg | od -An -tx1 | grep -q "ff d8"
+          test "$(stat -c%s /tmp/render.jpg)" -gt 10000
+      - name: Runner logs on failure
+        if: failure()
+        run: docker logs stp || true
+      - name: Stop the runner
+        if: always()
+        run: docker rm -f stp || true

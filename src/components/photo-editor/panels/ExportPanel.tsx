@@ -263,7 +263,8 @@ export function ExportPanel() {
           </div>
         </div>
 
-        {/* PRIMARY ACTIONS — Export file (live) + Save back to order (inert, dev #4). */}
+        {/* PRIMARY ACTIONS — Export file (live) + PROTOTYPE-ONLY: Save back to order
+            (inert, dev #4; goes live with the backbone write-path, STUBS.md/plan §6). */}
         <div className="flex flex-col gap-[7px]">
           <button
             type="button"
@@ -391,6 +392,8 @@ export function ExportPanel() {
               </div>
             )}
 
+            {/* PROTOTYPE-ONLY: N-up handoff — inert (dev #9); the Print Setup
+                surface doesn't exist yet (fit.ts documents the shared contract). */}
             <SendToLink
               testId="export-send-imposition"
               label="Resize & imposition · N-up"

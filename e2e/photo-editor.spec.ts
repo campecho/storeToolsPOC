@@ -190,6 +190,31 @@ test.describe("Photo editor shell (PE1)", () => {
     }
   });
 
+  test("the Adjust panel's PRO 'More' row renders inert (deviation #2)", async ({ page }) => {
+    await openDemoPhoto(page);
+    await page.getByTestId("photo-rail-adjust").click();
+    // The collapsed levels/curves/sharpen/noise row keeps the ceiling visible
+    // but is disabled — Pro was never wireframed beyond the Section-E miniature.
+    const more = page.getByTestId("adjust-more-pro");
+    await expect(more).toBeVisible();
+    await expect(more).toBeDisabled();
+    await expect(more).toContainText("levels, curves, sharpen, noise");
+  });
+
+  test("'Reset demo photo' drops edits and reopens the fresh demo (PE10f)", async ({ page }) => {
+    // Open via the picker (names it photo-demo.jpg) and move off the defaults.
+    await openDemoPhoto(page);
+    await page.getByTestId("photo-level-simple").click();
+    await expect(page.getByTestId("photo-level-simple")).toHaveAttribute("aria-pressed", "true");
+
+    // Reset: the store returns to pristine (level → standard) and the shell
+    // reopens the demo via the demo loader, which names it IMG_4823.jpg — so the
+    // filename flip is proof the reload happened, not just an in-place clear.
+    await page.getByTestId("photo-reset-demo").click();
+    await expect(page.getByTestId("photo-filename")).toHaveText("IMG_4823.jpg", { timeout: 30_000 });
+    await expect(page.getByTestId("photo-level-standard")).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("intake rejects a disguised non-image with friendly copy", async ({ page }) => {
     await page.goto("/photo");
     await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");
@@ -1931,15 +1956,13 @@ test.describe("Conversion & handoffs (PE7)", () => {
     await expect(page).toHaveURL(/\/layout/);
   });
 
-  test("an over-ceiling image routes away instead of opening", async ({ page }, testInfo) => {
-    // 9100 × 9000 = 81.9 MP — past the 80 MP ceiling the engine enforces at
-    // decode. A solid fill keeps the PNG bytes tiny, so only the pixel cap trips.
-    const oversize = testInfo.outputPath("oversize.png");
-    await sharp({
-      create: { width: 9100, height: 9000, channels: 3, background: { r: 240, g: 240, b: 240 } },
-    })
-      .png()
-      .toFile(oversize);
+  test("an over-ceiling image routes away instead of opening", async ({ page }) => {
+    // The committed corpus fixture: fixtures/photo-corpus/oversize.tiff is
+    // 9100 × 9000 = 81.9 MP, past the 80 MP ceiling the engine enforces at the
+    // header read (deflate keeps it ~256 KB on disk). The PE10d huge-TIFF case
+    // doubles as this route-away fixture — its too-many-pixels unit assertion
+    // is in benign-corpus.test.ts.
+    const oversize = "fixtures/photo-corpus/oversize.tiff";
 
     await page.goto("/photo");
     await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");

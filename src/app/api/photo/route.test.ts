@@ -33,6 +33,9 @@ describe("GET /api/photo", () => {
       expect(d.formats.bmp).toBe(false);
       expect(typeof d.formats.heic).toBe("boolean");
       expect(typeof d.jailed.rlimits).toBe("boolean");
+      // The worker file always resolves from the repo root (vitest cwd); the
+      // false case is the standalone-misdeploy story the docker lane guards.
+      expect(d.jailed.worker).toBe(true);
     },
     15_000,
   );
