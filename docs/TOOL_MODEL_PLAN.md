@@ -5,8 +5,9 @@
 **Last updated:** 2026-08-14
 **Source of truth:** `microsoft_publisher_feature_requirements.md` (§1–§14)
 **Relationship to `storeToolsPOC`:** **this repo is the home.** The model is a bounded module
-(`src/publisher/`) sharing the repo's schema lineage, pure-math core, asset store, `.pub`
-import pipeline, and photo editor — with new chrome, a new store, and a new text engine.
+(`src/publisher/`) sharing the repo's schema lineage, pure-math core, asset store, and photo
+editor — with new chrome, a new store, and a new text engine. The repo's `.pub` import
+work is **not part of the model or its handoff** — see the import posture in §0.
 
 **Changes in v2.2 (all five §9 questions closed, plus the repo question):**
 
@@ -25,8 +26,11 @@ import pipeline, and photo editor — with new chrome, a new store, and a new te
    editor for mask/model-backed work, and the standalone `/photo` surface retained.
 5. **Shape-tool presentation ships both ways** behind a registry-driven toggle; the
    prototype decides (§9).
-6. **JSON document round-trip is in** — debug export/import, the schema-completeness
-   proof, and the bridge that turns imported `.pub` corpus files into seeded content (§9).
+6. **JSON document round-trip is in** — debug export/import as the schema-completeness
+   proof and the fixture mechanism for seeded content (§9).
+7. **Publisher import is out of the model entirely.** The prototype is the
+   publisher-clone toolset; the dev team implements the toolset in the new app first and
+   adds the `.pub` import flow afterward, in their architecture (§0).
 
 **Changes in v2.1:** stack settled — Konva (Canvas 2D) content, SVG interaction overlay,
 React, Redux Toolkit, framework-free TypeScript core.
@@ -44,20 +48,18 @@ new repo no longer delivers that:
   the shaping engine replaces `text.ts`'s measureText layout, Konva was decided here
   (`LAYOUT_EDITOR_PLAN.md` §8) but never executed — the POC canvas is DOM-rendered and
   `konva` is not in the dependency tree. So a new repo saves almost no duplication.
-- **What a new repo *costs* is the two subsystems v2.2 pulls into scope.** The standalone
+- **What a new repo *costs* is the photo editor v2.2 pulls into scope.** The standalone
   photo editor (PE1–PE10: recipe architecture, jailed server rendering, HEIC, CMYK/GRACoL,
-  PDF boxes) and the `.pub` import pipeline (P1–P5: 100% measured corpus fidelity) live
-  here with their server components, Docker story, security posture, corpora, and CI.
-  Porting them is the most expensive path; leaving them behind splits the prototype across
-  two repos and makes the layout ↔ photo pass-back — an explicit evaluation target —
-  undemonstrable in one running app.
-- **The import pipeline is the SME evaluation harness — and it stays here.** Real
-  Publisher files opened in the model and compared side-by-side against Publisher's own
-  render beat any synthetic seed documents. This also closes the seeded-content question
-  (§9). The pipeline is **not part of the ported surface**: the dev team reimplements
-  `.pub` import in the new app's architecture, against schema v3 and the import-report
-  contract, with this pipeline plus its corpus and fidelity harness serving as the
-  reference implementation and acceptance benchmark (§8).
+  PDF boxes) lives here with its server components, Docker story, security posture,
+  corpora, and CI. Porting it is the most expensive path; leaving it behind splits the
+  prototype across two repos and makes the layout ↔ photo pass-back — an explicit
+  evaluation target — undemonstrable in one running app.
+- **Publisher import is out of the model entirely — by decision, not omission.** The
+  sequencing is: this model specifies the publisher-clone toolset → the dev team
+  implements the toolset in the new app → the dev team then adds the `.pub` import flow,
+  in their architecture. The repo's existing import pipeline (P1–P5) stays where it is,
+  serving the legacy `/layout` surface; the model does not consume it, seed from it, or
+  hand it off.
 - **Handoff cleanliness is a property of the module and the bundle, not the repo.**
   Everything the dev team ports lives under one directory with zero framework imports;
   the deliverable is the generated bundle plus an offline build, per the `docs/handoff/`
@@ -115,9 +117,8 @@ printer, PDF bytes — plus the application shell around the tool.
 | **Text engine: shaping, H&J, OpenType — LIVE (§6.4)** | PDF **bytes**: font subsetting/embedding, PDF/X-4 writer |
 | **In-line image adjust + photo round-trip (§6.5)** | Model services (inpaint, upscale, bg removal) |
 | Live design-checker analysis over the model | Final file rendering — print output (§11.1) |
-| Export/print **settings surfaces** and their presets | `.pub` parsing beyond the POC pipeline (§13.1) |
+| Export/print **settings surfaces** and their presets | `.pub` import — added by the dev team after the toolset is implemented in the new app (§13.1) |
 | Spell-check *interaction* (marks, suggestions, panel) | Dictionaries and proofing services (§3.7) |
-| `.pub` import **as a local harness** — seeding + SME comparison via the POC pipeline | `.pub` import **reimplemented** in the new architecture (§13.1), against schema v3 + the import-report contract, benchmarked by this repo's corpus & fidelity harness |
 
 **Two contracts are the load-bearing deliverables:**
 
@@ -143,8 +144,8 @@ No header, no menus, no title bar, no status bar. Basic unstyled UI — default 
 with enough CSS to be usable and no more, so nothing is mistaken for design direction.
 
 The model mounts at **`/tool-model`** as a sibling surface. The existing `/layout` editor
-is untouched — it remains the shipped wire-fidelity demo and the import pipeline's UI; the
-model is where the tool suite gets designed. (The suite header stays above `/tool-model`
+is untouched — it remains the shipped wire-fidelity demo; the model is where the tool
+suite gets designed. (The suite header stays above `/tool-model`
 like every surface, but the model owns everything below it.)
 
 ---
@@ -310,7 +311,7 @@ extraction-readiness CI check (§0) enforces the boundary from day one.
 
 The shell is scaffolding nobody ports. The host framework is the repo's Next.js — the
 model is a client-side surface, and Next is what already hosts the photo editor's server
-routes and the import API the model depends on.
+routes the round-trip depends on.
 
 ### 6.2 Render layers — Konva content, SVG overlay (executes the K-tranche)
 
@@ -359,8 +360,7 @@ framework-free, so slices live in `core/store/`; `react-redux` appears only in t
 **Coexistence with legacy Zustand:** the feedback tracker, `/layout`, and `/photo` keep
 their Zustand stores — they are shipped surfaces, not handoff artifacts. The boundary
 rule: **no store imports across the line in either direction**; the model talks to the
-photo editor via the round-trip contract (§6.5) and to the importer via its Zod response
-contract, never via each other's stores. Migrating `photo-store.ts` (539 lines) to RTK is
+photo editor via the round-trip contract (§6.5), never via each other's stores. Migrating `photo-store.ts` (539 lines) to RTK is
 a backlog item for whenever the photo editor itself becomes part of the ported surface —
 its portable contract today is the recipe schema, not the store.
 
@@ -416,7 +416,7 @@ real engine forward. This is the project's dominant cost and its most valuable a
    features. The catalog adds a curated libre set chosen for OpenType richness — e.g.
    EB Garamond (smcp, onum, swashes), Fraunces (variable: weight/optical-size/soft/wonk),
    Inter (tnum, stylistic sets), Source Serif 4 (variable, full figure sets) — beside the
-   eight metric-compatible import stand-ins already self-hosted.
+   eight metric-compatible stand-in families already self-hosted.
 
 **Honest limits, named:**
 
@@ -502,8 +502,7 @@ fidelity. v3 is a versioned migration (`v2→v3` loader, same pattern as the shi
 | **Threading (activate)** | Link tool (§3.2) | `storyId/prevFrameId/nextFrameId` already in v2 — the editor finally consumes them |
 
 **JSON round-trip (decision closed: in).** A debug export/import of the full document as
-a file — the only proof the schema is complete, the fixture mechanism for tests, and the
-bridge that lets the `/layout` importer's output (schema v2) migrate into the model as
+a file — the only proof the schema is complete, and the fixture mechanism for tests and
 seeded content. `core/model/` owns it; the shell exposes it in the debug bar.
 
 ### 6.7 Stack
@@ -589,13 +588,9 @@ model exists for.
 7. **The test suite** — golden text-layout fixtures + Playwright keyed to clause ids.
 8. **Redux DevTools** — replayable gesture history as living documentation.
 9. **The extraction script** — produces the standalone handoff repo from
-   `src/publisher/core/` + this bundle, proving the §0 criterion. **The `.pub` import
-   pipeline is deliberately excluded** — it stays in this repo.
-10. **The import reimplementation spec** — not code, a pointer set: the import-report
-    Zod contract (`{doc, report}`), the conformance corpus, and the fidelity-scoring
-    harness (`npm run fidelity`, ≥90% gate — currently measuring 100%). The dev team's
-    reimplemented importer in the new architecture is done when it passes the same
-    harness against the same corpus.
+   `src/publisher/core/` + this bundle, proving the §0 criterion. Nothing
+   import-related is in the bundle: `.pub` import is a dev-team phase that follows
+   their implementation of the toolset (§0).
 
 ---
 
@@ -612,9 +607,12 @@ model exists for.
 4. **Shape presentation** — both, behind a registry toggle; the prototype decides (§4.1).
 5. **Photo** — both tiers + standalone, one recipe vocabulary (§6.5).
 6. **JSON round-trip** — in (§6.6).
-7. **Seeded content** — imported `.pub` corpus documents via the round-trip bridge, plus
-   authored fixtures for capabilities Publisher files can't exercise (layers, spot
-   colors, variable fonts).
+7. **Seeded content** — authored JSON fixtures loaded via the round-trip: a small set of
+   sample documents built to exercise the full capability surface (layers, spot colors,
+   linked text chains, tables, variable fonts, mixed page sizes), maintained as review
+   scripts alongside the contract checklists.
+8. **Publisher import** — out of the model entirely; dev-team phase after toolset
+   implementation (§0).
 
 **Open, with defaults (proceeding as stated unless redirected):**
 
