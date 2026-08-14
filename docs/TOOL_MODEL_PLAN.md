@@ -51,9 +51,13 @@ new repo no longer delivers that:
   Porting them is the most expensive path; leaving them behind splits the prototype across
   two repos and makes the layout ↔ photo pass-back — an explicit evaluation target —
   undemonstrable in one running app.
-- **The import pipeline is the SME evaluation harness.** Real Publisher files opened in
-  the model and compared side-by-side against Publisher's own render beat any synthetic
-  seed documents. This also closes the seeded-content question (§9).
+- **The import pipeline is the SME evaluation harness — and it stays here.** Real
+  Publisher files opened in the model and compared side-by-side against Publisher's own
+  render beat any synthetic seed documents. This also closes the seeded-content question
+  (§9). The pipeline is **not part of the ported surface**: the dev team reimplements
+  `.pub` import in the new app's architecture, against schema v3 and the import-report
+  contract, with this pipeline plus its corpus and fidelity harness serving as the
+  reference implementation and acceptance benchmark (§8).
 - **Handoff cleanliness is a property of the module and the bundle, not the repo.**
   Everything the dev team ports lives under one directory with zero framework imports;
   the deliverable is the generated bundle plus an offline build, per the `docs/handoff/`
@@ -113,6 +117,7 @@ printer, PDF bytes — plus the application shell around the tool.
 | Live design-checker analysis over the model | Final file rendering — print output (§11.1) |
 | Export/print **settings surfaces** and their presets | `.pub` parsing beyond the POC pipeline (§13.1) |
 | Spell-check *interaction* (marks, suggestions, panel) | Dictionaries and proofing services (§3.7) |
+| `.pub` import **as a local harness** — seeding + SME comparison via the POC pipeline | `.pub` import **reimplemented** in the new architecture (§13.1), against schema v3 + the import-report contract, benchmarked by this repo's corpus & fidelity harness |
 
 **Two contracts are the load-bearing deliverables:**
 
@@ -584,7 +589,13 @@ model exists for.
 7. **The test suite** — golden text-layout fixtures + Playwright keyed to clause ids.
 8. **Redux DevTools** — replayable gesture history as living documentation.
 9. **The extraction script** — produces the standalone handoff repo from
-   `src/publisher/core/` + this bundle, proving the §0 criterion.
+   `src/publisher/core/` + this bundle, proving the §0 criterion. **The `.pub` import
+   pipeline is deliberately excluded** — it stays in this repo.
+10. **The import reimplementation spec** — not code, a pointer set: the import-report
+    Zod contract (`{doc, report}`), the conformance corpus, and the fidelity-scoring
+    harness (`npm run fidelity`, ≥90% gate — currently measuring 100%). The dev team's
+    reimplemented importer in the new architecture is done when it passes the same
+    harness against the same corpus.
 
 ---
 
