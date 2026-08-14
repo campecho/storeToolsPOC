@@ -3,7 +3,8 @@
 **Document type:** Implementation plan (standalone application)
 **Status:** Draft v2.3 — plan of record
 **Last updated:** 2026-08-14
-**Source of truth:** `microsoft_publisher_feature_requirements.md` (§1–§14)
+**Source of truth:** [`docs/microsoft_publisher_feature_requirements.md`](docs/microsoft_publisher_feature_requirements.md)
+(§1–§14) — **committed in this directory** so every § citation resolves inside the handoff
 **Relationship to `storeToolsPOC`:** **reference implementation only.** The model is a
 fully self-contained application with **zero runtime dependence** on the POC — no shared
 code, no shared stores, no cross-app flows. The POC is consulted (and selectively copied
@@ -30,6 +31,8 @@ and mechanical (§0).
    engine with the `PositionedGlyphRun` PDF-carrying contract · shape presentation both
    ways behind a toggle · JSON round-trip · authored seeded fixtures · **publisher import
    entirely out** (dev team adds it after implementing the toolset — §0).
+5. **Handoff hygiene checklist added (§0.1)** and the requirements doc committed into
+   `docs/` — the registry's citations now resolve without any external document.
 
 **Changes in v2.2:** decisions closed — RTK affirmed; text upgraded from measureText
 hybrid to a real shaping engine; photo editing in scope (both tiers + standalone); shape
@@ -67,6 +70,61 @@ team cleanly, tied to nothing.**
 - **Open logistics item (the only one):** the target repo — name, org, and when to
   create it. Until then, work proceeds on this branch inside the directory; nothing about
   the code changes when it moves.
+
+### 0.1 Handoff hygiene checklist
+
+The standalone posture handles architectural cleanliness; these are the practical ways a
+directory-in-a-host-repo handoff goes messy, with when each must be resolved.
+
+**Resolved before the first code commit:**
+
+- [x] **Requirements doc travels with the app.** Committed at
+  `docs/microsoft_publisher_feature_requirements.md`; the plan, the registry, and every
+  generated document cite § numbers that resolve inside this directory. No handoff
+  artifact may cite a document that isn't in the directory.
+- [ ] **Extraction mode decided: copy vs `git subtree split`.** *Default: copy* — a
+  pristine new repo, with rationale carried by the generated docs and the review record
+  rather than commit history. If history should travel instead, say so before code
+  starts: subtree split drags along every commit that ever touched the directory, so the
+  discipline below stops being good practice and becomes binding.
+- [ ] **POC access question answered, recorded in `SEAMS.md`.** Does the dev team get
+  read access to `storeToolsPOC`? Either answer is workable; an unrecorded answer is not,
+  because the seam entries cite the POC's shipped implementations as references.
+
+**Binding commit discipline (regardless of extraction mode):**
+
+- **No mixed commits.** A commit touches `publisher-prototype/` or the host repo, never
+  both.
+- **Messages read standalone.** Commit messages for this directory assume no POC
+  context — they describe the prototype change on its own terms.
+
+**Phase A scaffold tasks (part of the scaffold's definition of done):**
+
+- **Fence the host tooling.** Explicit excludes for this directory in the host's Vitest,
+  Playwright, ESLint, and `tsc` configs so root runs neither lint, test, type-check, nor
+  build anything in here; `.gitignore` coverage for this directory's `dist/`; a README
+  note stating installs happen *inside* the directory (two lockfiles, one rule).
+- **CI logic lives inside the directory.** Boundary check, tests, and build are scripts
+  in this directory's own `package.json`; the host workflow is a thin cd-and-run shim.
+  The new repo gets working CI by adding one small workflow file.
+- **Toolchain pinned inside.** `engines` + `.nvmrc` declared here, not inherited from
+  the host.
+
+**Standing rules for the whole build:**
+
+- **Assumption tags travel.** Any module seeded from the POC carries its `ASSUMPTION:`
+  annotations (snap radius, zoom ranges, DPI mapping, undo depth) into this model's
+  registry, flagged for SME validation — placeholder numbers must never read as
+  decisions. Several of those numbers are precisely what this prototype exists to judge.
+- **Fixture licensing.** Seeded documents use CC0/owned assets only; nothing from the
+  POC's photo or `.pub` corpora. The rule is stated in `fixtures/README`.
+- **Naming stays cheap to change.** "publisher-prototype" is a working name; if the
+  handoff may reach external vendors, pick the neutral name before the handoff bundle is
+  generated, not after.
+- **The stopgap stays short.** Create the target repo early — even empty, right after
+  the Phase A scaffold — and move the directory then. Every week in the host repo
+  accrues mixed-PR risk, host-config drift, and heavyweight clones for anyone working
+  only on the prototype.
 
 ---
 
@@ -618,7 +676,9 @@ toolset implementation).
 **Open, with defaults (proceeding as stated unless redirected):**
 
 1. **Target repo** — name, org, and when to create it. Work proceeds in the directory on
-   the current branch meanwhile; the move is mechanical (§0).
+   the current branch meanwhile; the move is mechanical (§0). Coupled decisions from
+   §0.1: extraction mode (default: copy, no history) and whether the dev team gets POC
+   read access (recorded in `SEAMS.md` either way).
 2. **Design checker cadence** — default: live-incremental for cheap rules from day one,
    on-demand batch for expensive ones (§10.1 says live; this honors it without gating
    the canvas on color math).
