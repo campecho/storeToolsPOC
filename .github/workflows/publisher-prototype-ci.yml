@@ -1,0 +1,48 @@
+# Thin cd-and-run shim (publisher-prototype/PLAN.md §0.1): all CI logic —
+# boundary check, lint, typecheck, unit tests, build — lives in the
+# directory's own package.json (`npm run ci`). The future repo gets working
+# CI by copying this one small file to its root and dropping the cd.
+
+name: publisher-prototype CI
+
+on:
+  push:
+    paths:
+      - "publisher-prototype/**"
+      - ".github/workflows/publisher-prototype-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publisher-prototype-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: publisher-prototype
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: publisher-prototype/.nvmrc
+          cache: npm
+          cache-dependency-path: publisher-prototype/package-lock.json
+      - run: npm ci
+      - run: npm run ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: prototype-playwright-artifacts
+          path: |
+            publisher-prototype/playwright-report/
+            publisher-prototype/test-results/
+          if-no-files-found: ignore

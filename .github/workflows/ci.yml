@@ -19,6 +19,14 @@ name: CI
 
 on:
   push:
+    # publisher-prototype/ is a self-contained app with its own CI shim
+    # (publisher-prototype-ci.yml); prototype-only pushes skip all four POC
+    # lanes. The docker lane stays intact — it is the smoke proof for the
+    # jailed render service the prototype's plan cites as the dev team's
+    # working reference.
+    paths-ignore:
+      - "publisher-prototype/**"
+      - "CLAUDE.md"
   workflow_dispatch:
 
 concurrency:

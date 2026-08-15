@@ -1,5 +1,6 @@
 {
   "extends": ["next/core-web-vitals", "next/typescript"],
+  "ignorePatterns": ["publisher-prototype/"],
   "rules": {
     "react/no-unescaped-entities": "off"
   }
