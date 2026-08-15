@@ -26,6 +26,8 @@ const CORE = path.join(ROOT, "src", "core");
 
 /** Framework-free core (§6.1): everything else must live in the shell. */
 const CORE_ALLOWED_PACKAGES = new Set(["@reduxjs/toolkit", "zod", "immer"]);
+/** Colocated core tests may additionally import the test runner. */
+const CORE_TEST_ALLOWED_PACKAGES = new Set([...CORE_ALLOWED_PACKAGES, "vitest"]);
 
 const manifest = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const declared = new Set([
@@ -93,7 +95,8 @@ for (const file of candidates) {
     if (!declared.has(pkg)) {
       violations.push(`${rel}: package not declared in publisher-prototype/package.json: "${pkg}"`);
     }
-    if (inCore && !CORE_ALLOWED_PACKAGES.has(pkg)) {
+    const coreAllowed = file.endsWith(".test.ts") ? CORE_TEST_ALLOWED_PACKAGES : CORE_ALLOWED_PACKAGES;
+    if (inCore && !coreAllowed.has(pkg)) {
       violations.push(`${rel}: core file imports non-core package: "${pkg}"`);
     }
   }
