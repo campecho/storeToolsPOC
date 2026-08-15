@@ -190,9 +190,9 @@ printer, PDF bytes, model inference — plus the application shell around the to
 ┌──────────────────────────────────────────────────────────┐
 │  tool options bar   (contextual — changes with the tool)  │
 ├──────┬─────────────────────────────────────┬─────────────┤
-│ tool │                                     │   control   │
-│ dock │              canvas                 │    panel    │
-│      │                                     │             │
+│ tool │     |                               │   control   │
+│ dock │pages|          canvas               │    panel    │
+│      │     |                               │             │
 └──────┴─────────────────────────────────────┴─────────────┘
 ```
 
