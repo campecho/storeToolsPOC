@@ -21,7 +21,7 @@ function headingNumbers(): Set<string> {
   const text = readFileSync(docPath, "utf8");
   const numbers = new Set<string>();
   for (const line of text.split("\n")) {
-    const match = /^#{1,2}\s+(\d+(?:\.\d+)?)[.\s]/.exec(line);
+    const match = /^#{1,3}\s+(\d+(?:\.\d+){0,2})[.\s]/.exec(line);
     if (match?.[1]) numbers.add(match[1]);
   }
   return numbers;

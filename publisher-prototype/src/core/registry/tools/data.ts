@@ -76,7 +76,7 @@ export const mergeFieldTool: ToolContract = {
   undo: "per-gesture",
   notes: [
     "'Invalid or missing fields should be flagged.' (§7.1) — flagging renders wherever the field renders; the flag state derives from the bound data source, not from this tool.",
-    "merge-field.toggle-preview.shows-record is view state, not a document mutation — its action carries no Committed suffix and it never enters document history.",
+    "merge-field.toggle-preview.shows-record commits view state, not a document mutation — the Committed suffix marks the gesture's single action (PLAN.md §6.3); history membership is the slice's decision, and this toggle never enters document history.",
     "Interiors hit (unfilledInterior 'selects') so a click inside an unfilled text frame can place an inline field — the edit-capable reading of PLAN.md §5's unfilled-interior rule.",
     "The field option's values are sample-source columns: real values come from the bound data source (§7.1; PLAN.md §7 'data merge with record preview + sample sources'), which a closed enum cannot enumerate — the listed columns are the seeded sample fixture.",
     "ASSUMPTION: drag-from-panel insertion and Esc cancel are Publisher-parity fillers — §7.1 states the capabilities, not the bindings.",

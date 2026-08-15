@@ -11,7 +11,7 @@ export const selectTool: ToolContract = {
   mode: "layout",
   group: "selection",
   shortcut: "V",
-  req: ["§2.1", "§5.1", "§5.2", "§5.3"],
+  req: ["§2.1", "§2.2", "§4.4", "§5.1", "§5.2", "§5.3"],
   tier: "LIVE",
   cursor: "default",
   creates: null,

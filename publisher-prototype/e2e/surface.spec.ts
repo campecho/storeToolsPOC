@@ -17,10 +17,17 @@ test("layout dock renders all 24 tools from the registry", async ({ page }) => {
 });
 
 test("photo mode swaps to the photo dock and panel set", async ({ page }) => {
+  // A layout-only tool cannot stay active across the switch: activate
+  // Rectangle, switch modes, and the active tool falls back to Pan.
+  await page.getByRole("button", { name: "Rectangle", exact: true }).click();
   await page.getByRole("button", { name: "Photo", exact: true }).click();
   await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(9);
   await expect(page.getByTestId("control-panel").locator(".panel")).toHaveCount(6);
-  // A layout-only tool cannot stay active across the switch.
+  await expect(page.getByRole("button", { name: "Pan", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByTestId("options-bar")).toContainText("Pan");
   await page.getByRole("button", { name: "Layout", exact: true }).click();
   await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(24);
 });

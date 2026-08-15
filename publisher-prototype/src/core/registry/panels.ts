@@ -275,7 +275,7 @@ export const panelRegistry: readonly PanelSpec[] = [
 
   {
     id: "color-swatches",
-    label: "Colour & swatches",
+    label: "Color & swatches",
     mode: "layout",
     req: ["§9.4"],
     tier: "LIVE",

@@ -61,7 +61,7 @@ export const fillGradientTool: ToolContract = {
       default: "solid",
       values: ["none", "solid", "gradient", "pattern"],
     },
-    { kind: "color", id: "color", label: "Colour", default: "#000000" },
+    { kind: "color", id: "color", label: "Color", default: "#000000" },
     {
       kind: "enum",
       id: "gradientType",
@@ -84,7 +84,7 @@ export const fillGradientTool: ToolContract = {
   undo: "per-gesture",
   notes: [
     "'Gradients. Pattern fills.' (§4.4) and 'Custom color palettes.' (§9.4) anchor the fill vocabulary.",
-    "The color option carries a literal RGB value; swatch references and CMYK/spot handling (§9.4) ride the Colour & swatches panel.",
+    "The color option carries a literal RGB value; swatch references and CMYK/spot handling (§9.4) ride the Color & swatches panel.",
     "ASSUMPTION: fills apply to the topmost hit object honoring the locked skip — §5.3's 'based on user settings' makes the skip a default, not absolute, as with the select tool.",
     "ASSUMPTION: click-to-apply, the gradient-axis drag, and stop editing are parity fillers — §4.4 states fills, gradients, and patterns, not the bindings.",
     "ASSUMPTION: 'solid' fillType, 'linear' gradientType, 0° angle, and the black literal default colour are working guesses for SME review — the doc states no defaults.",

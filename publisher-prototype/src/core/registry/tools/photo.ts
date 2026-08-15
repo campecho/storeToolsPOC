@@ -261,7 +261,7 @@ export const maskBrushTool: ToolContract = {
     "Zero doc coverage — the requirements doc never mentions masks; this tool exists entirely on PLAN.md §6.5's mask interactions, hence the empty req array. Thin; flagged for SME review.",
     "The whole image is the paint surface (tolerancePx 0) — no object hit-testing; the mask renders on the SVG/overlay layer.",
     "Strokes are per-gesture undoable even though the mask is pending — it attaches to the recipe only when the mask-scoped op commits.",
-    "mask-brush.bracket.resizes-brush changes a tool option, not the document — its action carries no Committed suffix and it never enters document history.",
+    "mask-brush.bracket.resizes-brush commits a tool-option change, not a document mutation — the Committed suffix marks the gesture's single action (PLAN.md §6.3); it never enters document history.",
     "ASSUMPTION: Alt-to-erase, bracket size keys, brush size 1–500px default 40, and hardness 0–100 default 100 are photo-app-parity working guesses — no source states any of them.",
   ],
 };
@@ -398,7 +398,7 @@ export const textOverlayTool: ToolContract = {
   notes: [
     "Thin coverage — the entire overlay capability rests on one word in PLAN.md §6.5's recipe vocabulary ('…recolor/tint, overlays, and mask-scoped ops'); §3.3 is cited for the character formatting basics only, and which subset applies in photo mode is unstated. Every gesture here is Publisher-parity (WordArt-like text-on-photo) pending SME review.",
     "Photo mode has no object stack (tolerancePx 0) — overlay bounds are overlay-layer targets, sitting above the image and ordered within the recipe.",
-    "text-overlay.double-click.edits-text enters an editing mode without mutating the recipe — its action carries no Committed suffix.",
+    "text-overlay.double-click.edits-text commits the mode entry without mutating the recipe, matching textFrame/editEnteredCommitted in the layout set; it never enters document history.",
     "Font family binds to the document font list, which a closed enum OptionSpec cannot enumerate — the family picker is carried by the options bar against doc.fonts, not by an OptionSpec; flagged as a registry-representation gap.",
     "ASSUMPTION: every option range and default (size, white default color, opacity) — no source states any of them.",
   ],

@@ -52,9 +52,16 @@ export function Dock({
   shapePresentation: ShapePresentation;
 }) {
   const [flyoutOpen, setFlyoutOpen] = useState(false);
-  // The flyout slot shows the last shape tool used, Publisher-style.
+  // The flyout slot shows the last shape tool used, Publisher-style —
+  // tracked from activation (clicks and keyboard shortcuts alike).
   const [lastShapeId, setLastShapeId] = useState<string | null>(null);
   const flyoutRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (toolRegistry.some((t) => t.group === "shapes" && t.id === activeTool)) {
+      setLastShapeId(activeTool);
+    }
+  }, [activeTool]);
 
   useEffect(() => {
     if (!flyoutOpen) return;
@@ -100,7 +107,6 @@ export function Dock({
                       tool={tool}
                       active={activeTool === tool.id}
                       onToolChange={(id) => {
-                        setLastShapeId(id);
                         setFlyoutOpen(false);
                         onToolChange(id);
                       }}
@@ -119,10 +125,7 @@ export function Dock({
                 key={tool.id}
                 tool={tool}
                 active={activeTool === tool.id}
-                onToolChange={(id) => {
-                  if (group === "shapes") setLastShapeId(id);
-                  onToolChange(id);
-                }}
+                onToolChange={onToolChange}
               />
             ))}
           </div>

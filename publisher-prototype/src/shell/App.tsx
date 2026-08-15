@@ -30,8 +30,9 @@ export function App() {
 
   const switchMode = (next: AppMode) => {
     setMode(next);
-    const current = toolRegistry.find((t) => t.id === activeTool);
-    if (current && current.mode !== "both" && current.mode !== next) setActiveTool("pan");
+    if (activeContract && activeContract.mode !== "both" && activeContract.mode !== next) {
+      setActiveTool("pan");
+    }
   };
 
   // Registry shortcuts activate tools within the current mode.
