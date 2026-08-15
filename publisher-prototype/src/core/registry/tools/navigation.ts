@@ -39,7 +39,7 @@ export const zoomTool: ToolContract = {
       id: "zoom.wheel.ctrl-zooms-at-cursor",
       trigger: "Ctrl/Cmd + wheel",
       behavior:
-        "Multiplies zoom by 1.075 per notch toward the pointer (reverse divides), clamped to 10%–400%, keeping the document point under the cursor fixed.",
+        "Scales zoom with wheel travel — ×1.1 per 100px notch toward the pointer, reverse divides, proportionally for smaller deltas — clamped to 10%–400%, keeping the document point under the cursor fixed.",
       action: "viewport/zoomWheelCommitted",
     },
   ],

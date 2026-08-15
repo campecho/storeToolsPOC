@@ -42,7 +42,7 @@ test("zoom.wheel.ctrl-zooms-at-cursor", async ({ page }) => {
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -100);
   await page.keyboard.up("Control");
-  await expect.poll(async () => (await viewportState(page)).zoom).toBeCloseTo(1.075, 5);
+  await expect.poll(async () => (await viewportState(page)).zoom).toBeCloseTo(1.1, 5);
 });
 
 test("zoom.click.steps-in", async ({ page }) => {

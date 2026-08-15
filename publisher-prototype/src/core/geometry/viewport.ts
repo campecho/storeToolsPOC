@@ -26,11 +26,29 @@ export const FIT_FRACTION = 0.85;
 export const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 /**
- * Ctrl/Cmd + wheel multiplies zoom by this per notch (§ zoom contract).
- * Tuned 2026-08-15 by review: the initial 1.1 felt ~25% too responsive, so
- * the per-notch increment dropped from +10% to +7.5%.
+ * Ctrl/Cmd + wheel multiplies zoom by this per notch of wheel travel
+ * (§ zoom contract). Tuning history (2026-08-15 review): a flat
+ * factor-per-event made smooth-scroll devices compound a full step per
+ * micro-event — the zoom ran away once rolling. The fix is rate, not step:
+ * zoom now scales with actual wheel travel via `wheelZoom`, and the
+ * per-notch step returned to 1.1 (a briefly-tried 1.075 was aimed at the
+ * wrong variable).
  */
-export const WHEEL_ZOOM_FACTOR = 1.075;
+export const WHEEL_ZOOM_FACTOR = 1.1;
+
+/** Wheel travel that equals one notch: 100px of deltaY at pixel granularity. */
+export const WHEEL_NOTCH_PX = 100;
+
+/**
+ * Delta-proportional wheel zoom: one notch (±100px) steps by the full
+ * factor; a stream of small trackpad/momentum deltas accumulates the same
+ * total zoom for the same travel instead of a full step per event.
+ * Negative deltaY (scroll up / pinch out) zooms in. Unclamped — callers go
+ * through zoomAtPoint, which clamps.
+ */
+export function wheelZoom(zoom: number, deltaYPx: number): number {
+  return zoom * WHEEL_ZOOM_FACTOR ** (-deltaYPx / WHEEL_NOTCH_PX);
+}
 
 /** A point or extent in canonical document inches. */
 export type DocPoint = { x: number; y: number };

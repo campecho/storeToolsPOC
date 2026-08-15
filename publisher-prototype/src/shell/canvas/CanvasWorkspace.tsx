@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  WHEEL_ZOOM_FACTOR,
   pageOriginPx,
+  wheelZoom,
   zoomAtPoint,
   zoomInStep,
   zoomOutStep,
@@ -83,18 +83,19 @@ export function CanvasWorkspace({
       // by the drag delta, so any wheel dispatch would anchor to the wrong
       // frame; the gesture in progress wins and wheel input is dropped.
       if (dragging) return;
-      if (e.ctrlKey || e.metaKey) {
-        const rect = el.getBoundingClientRect();
-        const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-        const factor = e.deltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
-        dispatch(zoomWheelCommitted(zoomAtPoint(vp, size, pg, anchor, vp.zoom * factor)));
-        return;
-      }
       // Normalize non-pixel wheel deltas (Firefox reports lines): ~16px per
       // line, a viewport height per page.
       const unit = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? size.h : 1;
       const dx = e.deltaX * unit;
       const dy = e.deltaY * unit;
+      if (e.ctrlKey || e.metaKey) {
+        const rect = el.getBoundingClientRect();
+        const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        // Delta-proportional: rate follows wheel travel, so smooth-scroll
+        // devices no longer compound a full step per micro-event.
+        dispatch(zoomWheelCommitted(zoomAtPoint(vp, size, pg, anchor, wheelZoom(vp.zoom, dy))));
+        return;
+      }
       // pan.wheel.scrolls: vertical by default, horizontal with Shift.
       acc.x += e.shiftKey && dx === 0 ? dy : dx;
       acc.y += e.shiftKey ? 0 : dy;
