@@ -66,4 +66,36 @@ describe("toolRegistry", () => {
       expect(tool.undo).toBe("none");
     }
   });
+
+  it("commits or cancels — every clause action ends Committed or is gesture/cancelled", () => {
+    for (const clause of toolRegistry.flatMap((t) => t.gestures)) {
+      const ok = clause.action === "gesture/cancelled" || clause.action.endsWith("Committed");
+      expect(ok, `${clause.id} → ${clause.action}`).toBe(true);
+    }
+  });
+
+  it("fills both docks: 24 layout tools, 9 photo tools (7 photo-scoped + zoom/pan)", () => {
+    const layout = toolRegistry.filter((t) => t.mode === "layout" || t.mode === "both");
+    const photo = toolRegistry.filter((t) => t.mode === "photo" || t.mode === "both");
+    expect(layout.length).toBe(24);
+    expect(photo.length).toBe(9);
+  });
+
+  it("keeps shortcuts unique within each mode's visible tool set", () => {
+    for (const mode of ["layout", "photo"] as const) {
+      const visible = toolRegistry.filter((t) => t.mode === mode || t.mode === "both");
+      const shortcuts = visible.map((t) => t.shortcut.toUpperCase());
+      expect(new Set(shortcuts).size, `${mode} dock shortcuts collide`).toBe(shortcuts.length);
+    }
+  });
+
+  it("declares SURFACE self-containedly: seams describe payload and returns", () => {
+    for (const tool of toolRegistry) {
+      if (tool.seam) {
+        expect(tool.seam.interface.length).toBeGreaterThan(0);
+        expect(tool.seam.payload.length).toBeGreaterThan(0);
+        expect(tool.seam.returns.length).toBeGreaterThan(0);
+      }
+    }
+  });
 });

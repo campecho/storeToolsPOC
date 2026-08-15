@@ -87,7 +87,11 @@ for (const file of candidates) {
     }
 
     if (spec.startsWith("node:")) {
-      if (inSrc) violations.push(`${rel}: node builtin in client-side src/: "${spec}"`);
+      // The app is fully client-side; only colocated tests (which never ship)
+      // may touch node builtins, e.g. to read docs/ for citation checks.
+      if (inSrc && !file.endsWith(".test.ts")) {
+        violations.push(`${rel}: node builtin in client-side src/: "${spec}"`);
+      }
       continue;
     }
 

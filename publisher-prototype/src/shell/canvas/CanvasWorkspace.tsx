@@ -15,8 +15,6 @@ import { CanvasStage } from "./CanvasStage";
 import { HorizontalRuler, VerticalRuler } from "./Rulers";
 import { SvgOverlay } from "./SvgOverlay";
 
-export type ActiveTool = "zoom" | "pan";
-
 type PanDrag = { startX: number; startY: number; dx: number; dy: number };
 
 /**
@@ -31,7 +29,8 @@ export function CanvasWorkspace({
   showProbe,
   onVpSizeChange,
 }: {
-  activeTool: ActiveTool;
+  /** Registry tool id; only wired tools (zoom, pan) affect the canvas yet. */
+  activeTool: string;
   showProbe: boolean;
   onVpSizeChange: (size: Size) => void;
 }) {
@@ -137,7 +136,13 @@ export function CanvasWorkspace({
   }, []);
 
   const panning = activeTool === "pan" || spaceHeld;
-  const cursor = panDrag ? "grabbing" : panning ? "grab" : "zoom-in";
+  const cursor = panDrag
+    ? "grabbing"
+    : panning
+      ? "grab"
+      : activeTool === "zoom"
+        ? "zoom-in"
+        : "default";
   const origin = pageOriginPx(effective, vpSize, pageSize);
 
   // Ends the drag from pointerup and from the interrupt paths (pointercancel,

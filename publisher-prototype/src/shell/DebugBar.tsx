@@ -7,8 +7,8 @@ import {
   zoomSetCommitted,
   zoomStepCommitted,
 } from "../core/store";
-import { toolRegistry } from "../core/registry";
-import type { ActiveTool } from "./canvas/CanvasWorkspace";
+import type { AppMode } from "./App";
+import type { ShapePresentation } from "./dock/Dock";
 import { buildStressFixture } from "./debug/stressFixture";
 import { useFps } from "./debug/useFps";
 import { useAppDispatch, useAppSelector } from "./hooks";
@@ -19,17 +19,19 @@ import { useAppDispatch, useAppSelector } from "./hooks";
  * JSON round-trip, and here the viewport controls, alignment probe, and the
  * §6.2 spike-gate stress fixture with its FPS readout. Deliberately plain.
  */
-const isActiveTool = (id: string): id is ActiveTool => id === "zoom" || id === "pan";
-
 export function DebugBar({
-  activeTool,
-  onToolChange,
+  mode,
+  onModeChange,
+  shapePresentation,
+  onShapePresentationChange,
   showProbe,
   onProbeChange,
   vpSize,
 }: {
-  activeTool: ActiveTool;
-  onToolChange: (tool: ActiveTool) => void;
+  mode: AppMode;
+  onModeChange: (mode: AppMode) => void;
+  shapePresentation: ShapePresentation;
+  onShapePresentationChange: (presentation: ShapePresentation) => void;
   showProbe: boolean;
   onProbeChange: (show: boolean) => void;
   vpSize: Size;
@@ -59,22 +61,22 @@ export function DebugBar({
 
   return (
     <div className="debug-bar">
-      <span className="debug-group" role="group" aria-label="Tools">
-        {toolRegistry.map((tool) => {
-          const id = tool.id;
-          if (!isActiveTool(id)) return null;
-          return (
-            <button
-              key={id}
-              aria-pressed={activeTool === id}
-              title={`${tool.label} (${tool.shortcut})`}
-              onClick={() => onToolChange(id)}
-            >
-              {tool.label}
-            </button>
-          );
-        })}
+      <span className="debug-group" role="group" aria-label="Mode">
+        <button aria-pressed={mode === "layout"} onClick={() => onModeChange("layout")}>
+          Layout
+        </button>
+        <button aria-pressed={mode === "photo"} onClick={() => onModeChange("photo")}>
+          Photo
+        </button>
       </span>
+      <label className="debug-group">
+        <input
+          type="checkbox"
+          checked={shapePresentation === "flyout"}
+          onChange={(e) => onShapePresentationChange(e.target.checked ? "flyout" : "slots")}
+        />
+        shape flyout
+      </label>
       <span className="debug-group" role="group" aria-label="Zoom">
         <button
           aria-label="Zoom out"

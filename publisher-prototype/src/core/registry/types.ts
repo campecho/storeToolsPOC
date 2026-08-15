@@ -92,7 +92,8 @@ export type OptionSpec =
       label: string;
       default: string;
       values: readonly string[];
-    };
+    }
+  | { kind: "color"; id: string; label: string; default: string };
 
 /** Panels of §4.3 — layout set plus the photo-mode set. */
 export type PanelId =
@@ -150,6 +151,26 @@ export type SeamSpec = {
   returns: string;
   /** Optional POC path proving the far side, e.g. "storeToolsPOC src/…". */
   reference?: string;
+};
+
+/**
+ * A control panel's registry entry (PLAN.md §4.3). Panels carry no gesture
+ * clauses — their option-level contracts arrive with their Phase B groups —
+ * but they classify from day one: id, mode, citations, tier, and what the
+ * requirements oblige them to expose.
+ */
+export type PanelSpec = {
+  id: PanelId;
+  label: string;
+  mode: ToolMode;
+  /** Requirement citations, e.g. ["§2.2"] — resolve in docs/. */
+  req: string[];
+  tier: Tier;
+  /** What the panel must expose, per the requirements — dense, reviewable. */
+  carries: string[];
+  /** SURFACE only. */
+  seam?: SeamSpec;
+  notes: string[];
 };
 
 export type ToolContract = {

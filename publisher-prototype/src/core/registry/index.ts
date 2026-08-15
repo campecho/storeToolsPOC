@@ -1,2 +1,3 @@
 export * from "./types";
-export { toolRegistry, zoomTool, panTool } from "./tools";
+export { toolRegistry, TOOL_GROUP_ORDER, zoomTool, panTool } from "./tools";
+export { panelRegistry } from "./panels";
