@@ -49,7 +49,16 @@ all CI logic lives here (PLAN.md §0.1).
 src/
   core/    # framework-free TypeScript — the artifact the dev team ports.
            # No react/konva imports (CI-enforced); RTK and zod only.
+    model/     # schema v3 — the document format (PLAN.md §6.6)
+    registry/  # tool contracts and panel specs (§4, §5)
+    geometry/  # viewport and ruler math (§6.2)
+    store/     # RTK slices (§6.3)
   shell/   # React 19 + Vite scaffolding around the core — not carried forward.
 ```
+
+`core/model/` is the storage and rendering contract: `DocumentSchema` is the
+document format, and the debug bar's Export/Import round-trips it as a file.
+`fixtures/store-flyer.v3.json` is the first authored document and doubles as
+the schema's coverage test.
 
 See PLAN.md §6.1 for the full intended tree and §6.7 for the stack.
