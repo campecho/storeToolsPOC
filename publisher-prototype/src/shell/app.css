@@ -1,0 +1,116 @@
+/* Basic unstyled UI (PLAN.md §2): default controls with enough CSS to be
+   usable and no more, so nothing is mistaken for design direction. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.debug-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #bbb;
+  background: #f2f2f2;
+}
+
+.debug-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.debug-bar button[aria-pressed="true"] {
+  outline: 2px solid #333;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  grid-template-rows: 24px 1fr;
+  min-height: 0;
+}
+
+.ruler-corner {
+  background: #e8e8e8;
+  border-right: 1px solid #bbb;
+  border-bottom: 1px solid #bbb;
+}
+
+.ruler {
+  position: relative;
+  overflow: hidden;
+  background: #e8e8e8;
+}
+
+.ruler-h {
+  border-bottom: 1px solid #bbb;
+}
+
+.ruler-v {
+  border-right: 1px solid #bbb;
+}
+
+.tick {
+  position: absolute;
+}
+
+.ruler-h .tick {
+  bottom: 0;
+  border-left: 1px solid #666;
+}
+
+.ruler-v .tick {
+  right: 0;
+  border-top: 1px solid #666;
+}
+
+.tick-label {
+  position: absolute;
+  font-size: 9px;
+  color: #444;
+}
+
+.ruler-h .tick-label {
+  left: 2px;
+  bottom: 10px;
+}
+
+.ruler-v .tick-label {
+  top: 2px;
+  right: 10px;
+}
+
+.canvas-area {
+  position: relative;
+  overflow: hidden;
+  background: #d4d4d4; /* pasteboard */
+  touch-action: none;
+}
+
+.canvas-area > * {
+  position: absolute;
+  inset: 0;
+}
+
+.svg-overlay {
+  pointer-events: none;
+}
