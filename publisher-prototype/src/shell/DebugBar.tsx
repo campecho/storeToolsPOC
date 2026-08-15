@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clampZoom, fitZoom, zoomInStep, zoomOutStep, type Size } from "../core/geometry/viewport";
+import { readDocument, serializeDocument } from "../core/model";
 import {
+  documentReplaced,
+  effectivePageSetup,
+  pageGeometry,
   stressFixtureCleared,
   stressFixtureLoaded,
   zoomFitCommitted,
@@ -38,10 +42,15 @@ export function DebugBar({
 }) {
   const dispatch = useAppDispatch();
   const viewport = useAppSelector((s) => s.viewport);
-  const page = useAppSelector((s) => s.document.page);
-  const objectCount = useAppSelector((s) => s.document.objects.length);
+  // Named `doc`, not `document` — the DOM global is used below for the export
+  // anchor, and shadowing it here would break the download silently.
+  const doc = useAppSelector((s) => s.document);
+  const page = pageGeometry(effectivePageSetup(doc));
+  const objectCount = doc.pages[0]?.objects.length ?? 0;
   const fps = useFps(objectCount > 0);
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [zoomText, setZoomText] = useState("");
   const zoomPercent = `${Math.round(viewport.zoom * 100)}%`;
   useEffect(() => setZoomText(zoomPercent), [zoomPercent]);
@@ -56,6 +65,29 @@ export function DebugBar({
       setZoomText(`${Math.round(zoom * 100)}%`);
     } else {
       setZoomText(zoomPercent);
+    }
+  };
+
+  /** §6.6 round trip, export half: the document as a file, unabridged. */
+  const exportDocument = () => {
+    const url = URL.createObjectURL(
+      new Blob([serializeDocument(doc)], { type: "application/json" }),
+    );
+    const anchor = window.document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${doc.name.replace(/[^\w.-]+/g, "-").toLowerCase()}.v3.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /** Import half: migrate-on-read, validate, then replace — or say why not. */
+  const importDocument = async (file: File) => {
+    const result = readDocument(await file.text());
+    if (result.ok) {
+      setImportError(null);
+      dispatch(documentReplaced(result.document));
+    } else {
+      setImportError(result.error);
     }
   };
 
@@ -132,6 +164,28 @@ export function DebugBar({
           </button>
         )}
         {fps !== null && <span data-testid="fps">{fps} fps</span>}
+      </span>
+      <span className="debug-group" role="group" aria-label="Document">
+        <span data-testid="doc-name">{doc.name}</span>
+        <button onClick={exportDocument}>Export JSON</button>
+        <button onClick={() => fileRef.current?.click()}>Import JSON</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            // Clear the input so re-picking the same file fires change again.
+            e.target.value = "";
+            if (file) void importDocument(file);
+          }}
+        />
+        {importError !== null && (
+          <span data-testid="import-error" role="alert">
+            {importError}
+          </span>
+        )}
       </span>
     </div>
   );

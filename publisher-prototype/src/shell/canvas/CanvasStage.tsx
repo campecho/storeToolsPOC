@@ -1,23 +1,32 @@
-import { Layer, Rect, Stage } from "react-konva";
+import { Layer, Line, Rect, Stage } from "react-konva";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
-import type { PageSetup, PlaceholderObject } from "../../core/store";
+import { resolveFill } from "../../core/model/color";
+import type { LayoutObject } from "../../core/model/objects";
+import type { Swatch } from "../../core/model/primitives";
+import type { PageGeometry } from "../../core/store";
 
 /**
  * The Konva render surface (PLAN.md §6.2): furniture and content layers in
  * canonical inches, with `zoom` applied as the stage scale and pan as the
  * stage position. Neither layer listens — interaction belongs to the SVG
  * overlay and the workspace's pointer handlers, never to Konva hit graphs.
+ *
+ * Content rendering is deliberately shallow: every object draws as its filled
+ * box. Text, pictures, tables, and paths render as themselves with their own
+ * Phase B groups; this is the canvas foundation, not the renderer.
  */
 export function CanvasStage({
   viewport,
   vpSize,
   page,
   objects,
+  swatches,
 }: {
   viewport: Viewport;
   vpSize: Size;
-  page: PageSetup;
-  objects: PlaceholderObject[];
+  page: PageGeometry;
+  objects: LayoutObject[];
+  swatches: Swatch[];
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;
   const origin = pageOriginPx(viewport, vpSize, { w: page.widthIn, h: page.heightIn });
@@ -66,18 +75,30 @@ export function CanvasStage({
       </Layer>
       {/* Content: document mutation cadence. */}
       <Layer listening={false}>
-        {objects.map((o) => (
-          <Rect
-            key={o.id}
-            x={o.xIn}
-            y={o.yIn}
-            width={o.wIn}
-            height={o.hIn}
-            rotation={o.rotationDeg}
-            fill={o.fill}
-            perfectDrawEnabled={false}
-          />
-        ))}
+        {objects.map((o) =>
+          o.type === "line" ? (
+            <Line
+              key={o.id}
+              points={[o.x1In, o.y1In, o.x2In, o.y2In]}
+              stroke={resolveFill({ kind: "solid", color: o.stroke.color }, swatches) ?? undefined}
+              strokeWidth={o.stroke.widthIn}
+              opacity={o.opacity}
+              perfectDrawEnabled={false}
+            />
+          ) : (
+            <Rect
+              key={o.id}
+              x={o.xIn}
+              y={o.yIn}
+              width={o.wIn}
+              height={o.hIn}
+              rotation={o.rotationDeg}
+              fill={resolveFill(o.fill, swatches) ?? undefined}
+              opacity={o.opacity}
+              perfectDrawEnabled={false}
+            />
+          ),
+        )}
       </Layer>
     </Stage>
   );

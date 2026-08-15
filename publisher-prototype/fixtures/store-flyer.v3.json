@@ -1,0 +1,1306 @@
+{
+  "version": 3,
+  "name": "Spring Sale Flyer",
+  "product": {
+    "sku": "FLY-85X11",
+    "label": "Flyer 8.5\" × 11\""
+  },
+  "setup": {
+    "trim": {
+      "wIn": 8.5,
+      "hIn": 11
+    },
+    "bleedIn": 0.125,
+    "slugIn": 0.5,
+    "marginIn": 0.5,
+    "columns": 2
+  },
+  "baselineGrid": {
+    "on": true,
+    "incrementIn": 0.16,
+    "startIn": 0.5
+  },
+  "facingPages": false,
+  "pages": [
+    {
+      "id": "page-1",
+      "masterId": "master-1",
+      "objects": [
+        {
+          "id": "obj-hero",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {
+            "shadow": {
+              "offsetIn": {
+                "xIn": 0.02,
+                "yIn": 0.03
+              },
+              "blurIn": 0.06,
+              "color": {
+                "kind": "literal",
+                "value": {
+                  "space": "rgb",
+                  "values": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              },
+              "opacity": 0.35
+            },
+            "softEdge": {
+              "radiusIn": 0.05
+            }
+          },
+          "xIn": -0.125,
+          "yIn": -0.125,
+          "wIn": 8.75,
+          "hIn": 3.5,
+          "rotationDeg": 0,
+          "fill": {
+            "kind": "none"
+          },
+          "stroke": null,
+          "wrap": {
+            "mode": "square",
+            "distance": {
+              "lIn": 0.08,
+              "rIn": 0.08,
+              "tIn": 0.08,
+              "bIn": 0.08
+            }
+          },
+          "type": "picture",
+          "assetId": "asset-hero",
+          "crop": {
+            "fit": "cover",
+            "offsetIn": {
+              "xIn": 0,
+              "yIn": -0.2
+            },
+            "scale": 1.05
+          },
+          "adjust": [
+            {
+              "op": "autoEnhance",
+              "label": "Auto enhance",
+              "params": {
+                "brightness": 6,
+                "contrast": 12
+              }
+            },
+            {
+              "op": "adjust",
+              "label": "Warm +8",
+              "param": "temperature",
+              "value": 8
+            },
+            {
+              "op": "crop",
+              "label": "Crop to 16×9",
+              "rect": {
+                "x": 0,
+                "y": 0.08,
+                "w": 1,
+                "h": 0.84
+              },
+              "ratio": "16×9",
+              "shape": "rect"
+            }
+          ]
+        },
+        {
+          "id": "obj-headline",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {},
+          "xIn": 0.5,
+          "yIn": 3.7,
+          "wIn": 7.5,
+          "hIn": 1.2,
+          "rotationDeg": 0,
+          "fill": {
+            "kind": "none"
+          },
+          "stroke": null,
+          "wrap": {
+            "mode": "none",
+            "distance": {
+              "lIn": 0,
+              "rIn": 0,
+              "tIn": 0,
+              "bIn": 0
+            }
+          },
+          "type": "text",
+          "storyId": "story-headline",
+          "prevFrameId": null,
+          "nextFrameId": null,
+          "body": {
+            "paragraphs": [
+              {
+                "paragraphStyleId": "ps-headline",
+                "overrides": {},
+                "runs": [
+                  {
+                    "text": "Spring Sale",
+                    "characterStyleId": null,
+                    "overrides": {
+                      "hScale": 1.02,
+                      "variations": {
+                        "wght": 800
+                      }
+                    },
+                    "field": null
+                  }
+                ]
+              }
+            ],
+            "vAlign": "middle",
+            "inset": {
+              "lIn": 0.04,
+              "rIn": 0.04,
+              "tIn": 0.04,
+              "bIn": 0.04
+            },
+            "autofit": "shrinkOnOverflow",
+            "fontScale": 1,
+            "columns": 1,
+            "columnGapIn": 0.16,
+            "opacity": 1
+          }
+        },
+        {
+          "id": "obj-body-a",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {},
+          "xIn": 0.5,
+          "yIn": 5.1,
+          "wIn": 3.6,
+          "hIn": 4.9,
+          "rotationDeg": 0,
+          "fill": {
+            "kind": "none"
+          },
+          "stroke": null,
+          "wrap": {
+            "mode": "none",
+            "distance": {
+              "lIn": 0,
+              "rIn": 0,
+              "tIn": 0,
+              "bIn": 0
+            }
+          },
+          "type": "text",
+          "storyId": "story-main",
+          "prevFrameId": null,
+          "nextFrameId": "obj-body-b",
+          "body": {
+            "paragraphs": [
+              {
+                "paragraphStyleId": "ps-body",
+                "overrides": {
+                  "align": "justify",
+                  "dropCap": {
+                    "lines": 3,
+                    "characters": 1,
+                    "characterStyleId": null,
+                    "gapIn": 0.03
+                  },
+                  "hyphenation": {
+                    "on": true,
+                    "minWordLength": 6,
+                    "minCharsBefore": 3,
+                    "minCharsAfter": 3,
+                    "maxConsecutive": 2,
+                    "zoneIn": 0.2,
+                    "hyphenateCapitalized": false
+                  },
+                  "justification": {
+                    "word": {
+                      "min": 0.85,
+                      "desired": 1,
+                      "max": 1.25
+                    },
+                    "letter": {
+                      "min": -10,
+                      "desired": 0,
+                      "max": 20
+                    },
+                    "lastLine": "left"
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Every department is marked down through the end of the month. Stop in early for the best selection, and ask any associate about bulk pricing on seasonal goods.",
+                    "characterStyleId": null,
+                    "overrides": {
+                      "tracking": 4,
+                      "kerning": "optical",
+                      "language": "en-US"
+                    },
+                    "field": null
+                  }
+                ]
+              },
+              {
+                "paragraphStyleId": "ps-body",
+                "overrides": {
+                  "indentLeftIn": 0.25,
+                  "tabs": [
+                    {
+                      "positionIn": 3.2,
+                      "align": "decimal",
+                      "leader": "."
+                    }
+                  ],
+                  "bullet": {
+                    "kind": "glyph",
+                    "value": "•",
+                    "scale": 1,
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-brand",
+                      "tint": 1
+                    },
+                    "indentIn": 0.25
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Garden centre\t",
+                    "characterStyleId": null,
+                    "overrides": {},
+                    "field": null
+                  },
+                  {
+                    "text": "19.99",
+                    "characterStyleId": "cs-price",
+                    "overrides": {},
+                    "field": null
+                  }
+                ]
+              },
+              {
+                "paragraphStyleId": "ps-body",
+                "overrides": {
+                  "spaceBeforeIn": 0.12,
+                  "ruleAbove": {
+                    "on": true,
+                    "weightPt": 0.75,
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-brand",
+                      "tint": 0.4
+                    },
+                    "width": "column",
+                    "offsetIn": 0.06
+                  },
+                  "shading": {
+                    "kind": "swatch",
+                    "swatchId": "swatch-brand",
+                    "tint": 0.08
+                  }
+                },
+                "runs": [
+                  {
+                    "text": "Terms apply. See store for details.",
+                    "characterStyleId": null,
+                    "overrides": {
+                      "sizePt": 8,
+                      "smallCaps": true,
+                      "baselineShiftPt": 0
+                    },
+                    "field": null
+                  }
+                ]
+              }
+            ],
+            "vAlign": "top",
+            "inset": {
+              "lIn": 0.04,
+              "rIn": 0.04,
+              "tIn": 0.04,
+              "bIn": 0.04
+            },
+            "autofit": "off",
+            "fontScale": 1,
+            "columns": 1,
+            "columnGapIn": 0.16,
+            "opacity": 1
+          }
+        },
+        {
+          "id": "obj-body-b",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {},
+          "xIn": 4.4,
+          "yIn": 5.1,
+          "wIn": 3.6,
+          "hIn": 4.9,
+          "rotationDeg": 0,
+          "fill": {
+            "kind": "none"
+          },
+          "stroke": null,
+          "wrap": {
+            "mode": "none",
+            "distance": {
+              "lIn": 0,
+              "rIn": 0,
+              "tIn": 0,
+              "bIn": 0
+            }
+          },
+          "type": "text",
+          "storyId": "story-main",
+          "prevFrameId": "obj-body-a",
+          "nextFrameId": null,
+          "body": null
+        },
+        {
+          "id": "obj-badge",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 0.92,
+          "blend": "multiply",
+          "effects": {
+            "glow": {
+              "radiusIn": 0.08,
+              "color": {
+                "kind": "swatch",
+                "swatchId": "swatch-spot",
+                "tint": 1
+              },
+              "opacity": 0.4
+            }
+          },
+          "xIn": 6.4,
+          "yIn": 3.55,
+          "wIn": 1.6,
+          "hIn": 1.6,
+          "rotationDeg": -12,
+          "fill": {
+            "kind": "gradient",
+            "type": "radial",
+            "angleDeg": 0,
+            "stops": [
+              {
+                "at": 0,
+                "color": {
+                  "kind": "swatch",
+                  "swatchId": "swatch-brand",
+                  "tint": 1
+                }
+              },
+              {
+                "at": 1,
+                "color": {
+                  "kind": "swatch",
+                  "swatchId": "swatch-brand",
+                  "tint": 0.55
+                }
+              }
+            ]
+          },
+          "stroke": {
+            "color": {
+              "kind": "swatch",
+              "swatchId": "swatch-spot",
+              "tint": 1
+            },
+            "widthIn": 0.02,
+            "dash": "solid"
+          },
+          "wrap": {
+            "mode": "tight",
+            "distance": {
+              "lIn": 0.1,
+              "rIn": 0.1,
+              "tIn": 0.1,
+              "bIn": 0.1
+            }
+          },
+          "type": "rect"
+        },
+        {
+          "id": "obj-rule",
+          "locked": false,
+          "layerId": "layer-notes",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {},
+          "type": "line",
+          "x1In": 0.5,
+          "y1In": 10.1,
+          "x2In": 8,
+          "y2In": 10.1,
+          "stroke": {
+            "color": {
+              "kind": "literal",
+              "value": {
+                "space": "rgb",
+                "values": [
+                  0.9,
+                  0.2,
+                  0.2
+                ]
+              }
+            },
+            "widthIn": 0.01,
+            "dash": "dash"
+          }
+        }
+      ],
+      "setup": null,
+      "quarterTurns": 0,
+      "guides": {
+        "v": [],
+        "h": [
+          3.5
+        ]
+      },
+      "hiddenLayerIds": []
+    },
+    {
+      "id": "page-2",
+      "masterId": "master-1",
+      "objects": [
+        {
+          "id": "obj-hours",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {},
+          "xIn": 0.75,
+          "yIn": 1,
+          "wIn": 9.5,
+          "hIn": 2.1,
+          "rotationDeg": 0,
+          "fill": {
+            "kind": "none"
+          },
+          "stroke": null,
+          "wrap": {
+            "mode": "none",
+            "distance": {
+              "lIn": 0,
+              "rIn": 0,
+              "tIn": 0,
+              "bIn": 0
+            }
+          },
+          "type": "table",
+          "table": {
+            "rowHeightsIn": [
+              0.4,
+              0.35,
+              0.35
+            ],
+            "colWidthsIn": [
+              3.5,
+              3,
+              3
+            ],
+            "cells": [
+              [
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "Department",
+                          "characterStyleId": null,
+                          "overrides": {
+                            "bold": true
+                          },
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": {
+                    "kind": "swatch",
+                    "swatchId": "swatch-brand",
+                    "tint": 0.15
+                  },
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "Weekdays",
+                          "characterStyleId": null,
+                          "overrides": {
+                            "bold": true
+                          },
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": {
+                    "kind": "swatch",
+                    "swatchId": "swatch-brand",
+                    "tint": 0.15
+                  },
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "Weekends",
+                          "characterStyleId": null,
+                          "overrides": {
+                            "bold": true
+                          },
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": {
+                    "kind": "swatch",
+                    "swatchId": "swatch-brand",
+                    "tint": 0.15
+                  },
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                }
+              ],
+              [
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "Garden centre",
+                          "characterStyleId": null,
+                          "overrides": {},
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": null,
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "7–8",
+                          "characterStyleId": null,
+                          "overrides": {},
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": null,
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "8–6",
+                          "characterStyleId": null,
+                          "overrides": {},
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": null,
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                }
+              ],
+              [
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "Full store",
+                          "characterStyleId": null,
+                          "overrides": {},
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 2,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": null,
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "",
+                          "characterStyleId": null,
+                          "overrides": {},
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": true,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": null,
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "paragraphStyleId": "ps-body",
+                      "overrides": {},
+                      "runs": [
+                        {
+                          "text": "8–6",
+                          "characterStyleId": null,
+                          "overrides": {},
+                          "field": null
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 1,
+                  "colSpan": 1,
+                  "covered": false,
+                  "borderTop": null,
+                  "borderRight": null,
+                  "borderBottom": {
+                    "color": {
+                      "kind": "swatch",
+                      "swatchId": "swatch-ink",
+                      "tint": 0.3
+                    },
+                    "widthIn": 0.005,
+                    "dash": "solid"
+                  },
+                  "borderLeft": null,
+                  "shading": null,
+                  "inset": {
+                    "lIn": 0.05,
+                    "rIn": 0.05,
+                    "tIn": 0.04,
+                    "bIn": 0.04
+                  },
+                  "vAlign": "middle"
+                }
+              ]
+            ]
+          }
+        }
+      ],
+      "setup": {
+        "trim": {
+          "wIn": 11,
+          "hIn": 8.5
+        },
+        "bleedIn": 0.125,
+        "slugIn": 0.5,
+        "marginIn": 0.5,
+        "columns": 1
+      },
+      "quarterTurns": 1,
+      "guides": {
+        "v": [],
+        "h": []
+      },
+      "hiddenLayerIds": [
+        "layer-notes"
+      ]
+    }
+  ],
+  "masters": [
+    {
+      "id": "master-1",
+      "label": "A — Footer",
+      "objects": [
+        {
+          "id": "m1-folio",
+          "locked": false,
+          "layerId": "layer-default",
+          "opacity": 1,
+          "blend": "normal",
+          "effects": {},
+          "xIn": 3.75,
+          "yIn": 10.4,
+          "wIn": 1,
+          "hIn": 0.3,
+          "rotationDeg": 0,
+          "fill": {
+            "kind": "none"
+          },
+          "stroke": null,
+          "wrap": {
+            "mode": "none",
+            "distance": {
+              "lIn": 0,
+              "rIn": 0,
+              "tIn": 0,
+              "bIn": 0
+            }
+          },
+          "type": "text",
+          "storyId": "story-folio",
+          "prevFrameId": null,
+          "nextFrameId": null,
+          "body": {
+            "paragraphs": [
+              {
+                "paragraphStyleId": "ps-body",
+                "overrides": {
+                  "align": "center"
+                },
+                "runs": [
+                  {
+                    "text": "1",
+                    "characterStyleId": null,
+                    "overrides": {},
+                    "field": "pageNumber"
+                  }
+                ]
+              }
+            ],
+            "vAlign": "middle",
+            "inset": {
+              "lIn": 0.04,
+              "rIn": 0.04,
+              "tIn": 0.04,
+              "bIn": 0.04
+            },
+            "autofit": "off",
+            "fontScale": 1,
+            "columns": 1,
+            "columnGapIn": 0.16,
+            "opacity": 1
+          }
+        }
+      ],
+      "guides": {
+        "v": [],
+        "h": [
+          10.25
+        ]
+      }
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer-default",
+      "name": "Default",
+      "color": {
+        "kind": "literal",
+        "value": {
+          "space": "rgb",
+          "values": [
+            0.03,
+            0.43,
+            0.82
+          ]
+        }
+      },
+      "visible": true,
+      "locked": false,
+      "printing": true,
+      "opacity": 1,
+      "blend": "normal"
+    },
+    {
+      "id": "layer-notes",
+      "name": "Approval marks",
+      "color": {
+        "kind": "literal",
+        "value": {
+          "space": "rgb",
+          "values": [
+            0.9,
+            0.2,
+            0.2
+          ]
+        }
+      },
+      "visible": true,
+      "locked": false,
+      "printing": false,
+      "opacity": 1,
+      "blend": "normal"
+    }
+  ],
+  "sections": [
+    {
+      "startPage": 0,
+      "label": "Front",
+      "format": "arabic",
+      "startValue": 1,
+      "prefix": "",
+      "masterId": null
+    },
+    {
+      "startPage": 1,
+      "label": "Appendix",
+      "format": "upperRoman",
+      "startValue": 1,
+      "prefix": "App-",
+      "masterId": "master-1"
+    }
+  ],
+  "swatches": [
+    {
+      "id": "swatch-brand",
+      "name": "Brand Red",
+      "value": {
+        "space": "cmyk",
+        "values": [
+          0,
+          0.9,
+          0.86,
+          0
+        ]
+      },
+      "theme": true
+    },
+    {
+      "id": "swatch-ink",
+      "name": "Body Ink",
+      "value": {
+        "space": "rgb",
+        "values": [
+          0.07,
+          0.07,
+          0.07
+        ]
+      },
+      "theme": false
+    },
+    {
+      "id": "swatch-spot",
+      "name": "Spot Varnish",
+      "value": {
+        "space": "spot",
+        "values": [
+          0,
+          0,
+          0,
+          0.1
+        ],
+        "spotName": "PANTONE 877 C"
+      },
+      "theme": false
+    }
+  ],
+  "paragraphStyles": [
+    {
+      "id": "ps-body",
+      "name": "Body",
+      "basedOn": null,
+      "nextStyle": "ps-body",
+      "group": null,
+      "shortcut": null,
+      "paragraph": {
+        "spaceAfterIn": 0.08,
+        "alignToBaselineGrid": true
+      },
+      "character": {
+        "sizePt": 10.5,
+        "color": {
+          "kind": "swatch",
+          "swatchId": "swatch-ink",
+          "tint": 1
+        }
+      }
+    },
+    {
+      "id": "ps-headline",
+      "name": "Headline",
+      "basedOn": "ps-body",
+      "nextStyle": "ps-body",
+      "group": "Display",
+      "shortcut": "Ctrl+Alt+1",
+      "paragraph": {
+        "align": "center",
+        "spaceAfterIn": 0.2,
+        "keep": {
+          "withNext": true,
+          "linesTogether": true,
+          "widowLines": 2,
+          "orphanLines": 2,
+          "breakBefore": "none"
+        }
+      },
+      "character": {
+        "sizePt": 34,
+        "bold": true,
+        "color": {
+          "kind": "swatch",
+          "swatchId": "swatch-brand",
+          "tint": 1
+        },
+        "tracking": -15
+      }
+    }
+  ],
+  "characterStyles": [
+    {
+      "id": "cs-price",
+      "name": "Price",
+      "basedOn": null,
+      "group": null,
+      "shortcut": null,
+      "character": {
+        "bold": true,
+        "color": {
+          "kind": "swatch",
+          "swatchId": "swatch-brand",
+          "tint": 1
+        },
+        "features": {
+          "tnum": 1,
+          "onum": 0
+        },
+        "variations": {
+          "wght": 700
+        }
+      }
+    }
+  ],
+  "defaults": {
+    "paragraph": {
+      "align": "left",
+      "lineSpacing": {
+        "mode": "multiple",
+        "value": 1.19
+      },
+      "indentLeftIn": 0,
+      "indentRightIn": 0,
+      "firstLineIndentIn": 0,
+      "spaceBeforeIn": 0,
+      "spaceAfterIn": 0,
+      "tabs": [],
+      "bullet": null,
+      "numbering": null,
+      "dropCap": null,
+      "hyphenation": {
+        "on": false,
+        "minWordLength": 5,
+        "minCharsBefore": 2,
+        "minCharsAfter": 2,
+        "maxConsecutive": 3,
+        "zoneIn": 0.25,
+        "hyphenateCapitalized": true
+      },
+      "justification": {
+        "word": {
+          "min": 0.8,
+          "desired": 1,
+          "max": 1.33
+        },
+        "letter": {
+          "min": 0,
+          "desired": 0,
+          "max": 0
+        },
+        "lastLine": "left"
+      },
+      "ruleAbove": null,
+      "ruleBelow": null,
+      "keep": {
+        "withNext": false,
+        "linesTogether": false,
+        "widowLines": 2,
+        "orphanLines": 2,
+        "breakBefore": "none"
+      },
+      "shading": null,
+      "alignToBaselineGrid": false,
+      "direction": "ltr"
+    },
+    "run": {
+      "family": "Calibri",
+      "sizePt": 11,
+      "bold": false,
+      "italic": false,
+      "underline": {
+        "on": false
+      },
+      "strikethrough": false,
+      "color": {
+        "kind": "literal",
+        "value": {
+          "space": "rgb",
+          "values": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "highlight": null,
+      "baselinePosition": "normal",
+      "allCaps": false,
+      "smallCaps": false,
+      "hScale": 1,
+      "vScale": 1,
+      "tracking": 0,
+      "baselineShiftPt": 0,
+      "kerning": "metric",
+      "manualKerns": [],
+      "features": {},
+      "variations": {},
+      "language": "en-US"
+    }
+  },
+  "fonts": [
+    {
+      "family": "Calibri",
+      "source": "bundled",
+      "embeddingPermitted": true
+    },
+    {
+      "family": "Source Serif 4",
+      "source": "library",
+      "axes": {
+        "wght": {
+          "min": 200,
+          "max": 900,
+          "default": 400
+        }
+      },
+      "embeddingPermitted": true
+    }
+  ],
+  "anchors": [
+    {
+      "id": "anchor-offer",
+      "storyId": "story-main",
+      "position": 0
+    },
+    {
+      "id": "anchor-terms",
+      "storyId": "story-main",
+      "position": 128
+    }
+  ],
+  "assets": {
+    "asset-hero": {
+      "id": "asset-hero",
+      "name": "storefront.jpg",
+      "kind": "image",
+      "mime": "image/jpeg",
+      "width": 2400,
+      "height": 1600,
+      "bytes": 812004
+    }
+  },
+  "guides": {
+    "v": [
+      4.25
+    ],
+    "h": []
+  }
+}

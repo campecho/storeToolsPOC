@@ -1,5 +1,5 @@
 import { visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
-import type { PageSetup } from "../../core/store";
+import type { PageGeometry } from "../../core/store";
 
 /**
  * The SVG interaction overlay (PLAN.md §6.2). It shares the stage transform
@@ -20,7 +20,7 @@ export function SvgOverlay({
 }: {
   viewport: Viewport;
   vpSize: Size;
-  page: PageSetup;
+  page: PageGeometry;
   showProbe: boolean;
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;

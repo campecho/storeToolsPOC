@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   pageOriginPx,
   wheelZoom,
@@ -8,7 +8,14 @@ import {
   type Size,
   type Viewport,
 } from "../../core/geometry/viewport";
-import { panCommitted, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
+import type { LayoutObject } from "../../core/model/objects";
+import {
+  effectivePageSetup,
+  pageGeometry,
+  panCommitted,
+  zoomStepCommitted,
+  zoomWheelCommitted,
+} from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { CanvasStage } from "./CanvasStage";
@@ -16,6 +23,9 @@ import { HorizontalRuler, VerticalRuler } from "./Rulers";
 import { SvgOverlay } from "./SvgOverlay";
 
 type PanDrag = { startX: number; startY: number; dx: number; dy: number };
+
+/** Stable empty list, so a page-less document does not remount the content layer. */
+const EMPTY_OBJECTS: LayoutObject[] = [];
 
 /**
  * The canvas region: rulers + Konva stage + SVG overlay off one shared
@@ -36,8 +46,12 @@ export function CanvasWorkspace({
 }) {
   const dispatch = useAppDispatch();
   const committed = useAppSelector((s) => s.viewport);
-  const page = useAppSelector((s) => s.document.page);
-  const objects = useAppSelector((s) => s.document.objects);
+  // Selectors return state references only; the derived geometry is memoized
+  // so it stays a stable object across renders.
+  const setup = useAppSelector((s) => effectivePageSetup(s.document));
+  const page = useMemo(() => pageGeometry(setup), [setup]);
+  const objects = useAppSelector((s) => s.document.pages[0]?.objects ?? EMPTY_OBJECTS);
+  const swatches = useAppSelector((s) => s.document.swatches);
 
   const areaRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
@@ -212,7 +226,13 @@ export function CanvasWorkspace({
           dispatch(zoomStepCommitted(zoomAtPoint(committed, vpSize, pageSize, anchor, next)));
         }}
       >
-        <CanvasStage viewport={effective} vpSize={vpSize} page={page} objects={objects} />
+        <CanvasStage
+          viewport={effective}
+          vpSize={vpSize}
+          page={page}
+          objects={objects}
+          swatches={swatches}
+        />
         <SvgOverlay viewport={effective} vpSize={vpSize} page={page} showProbe={showProbe} />
       </div>
     </div>
