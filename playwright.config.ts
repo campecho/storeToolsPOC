@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  // publisher-prototype/ runs its own Playwright suite from inside the directory.
+  testIgnore: "publisher-prototype/**",
   timeout: 60_000,
   use: {
     baseURL: "http://localhost:3000",

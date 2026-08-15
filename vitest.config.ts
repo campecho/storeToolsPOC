@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // publisher-prototype/ is a self-contained app with its own toolchain;
+    // the host never lints/tests/builds anything inside it.
+    exclude: ["publisher-prototype/**", "**/node_modules/**"],
   },
   resolve: {
     alias: {

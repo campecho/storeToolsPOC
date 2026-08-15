@@ -2,6 +2,11 @@
 
 POC for the In-Store Print & Design Tool Suite, starting with the suite homepage placeholder and the **Feedback, Bug & Feature-Request Tracker** (counter-associate surfaces), built to the fidelity of the design-handoff wireframes.
 
+> **`publisher-prototype/` is a separate, self-contained app** (the future repo for the
+> headless layout tool — see `publisher-prototype/PLAN.md`). It has its own lockfile and
+> toolchain: installs and all npm scripts for it run *inside* that directory, never from
+> this root. Host lint/test/typecheck/build are configured to ignore it.
+
 ## Run it
 
 ```bash
