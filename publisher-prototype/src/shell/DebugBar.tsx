@@ -153,14 +153,17 @@ export function DebugBar({
         <input type="checkbox" checked={showProbe} onChange={(e) => onProbeChange(e.target.checked)} />
         overlay probe
       </label>
-      <span className="debug-group" role="group" aria-label="Stress fixture">
+      <span className="debug-group" role="group" aria-label="Page objects">
+        {/* The clear button empties page 1 whatever put objects there — the
+            stress fixture or an imported document — so it is labelled for what
+            it does rather than for one of the two ways in. */}
         {objectCount === 0 ? (
           <button onClick={() => dispatch(stressFixtureLoaded({ objects: buildStressFixture() }))}>
             Load stress fixture
           </button>
         ) : (
           <button onClick={() => dispatch(stressFixtureCleared())}>
-            Clear stress fixture ({objectCount})
+            Clear page ({objectCount})
           </button>
         )}
         {fps !== null && <span data-testid="fps">{fps} fps</span>}

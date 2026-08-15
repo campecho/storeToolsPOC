@@ -1,9 +1,46 @@
 import { Layer, Line, Rect, Stage } from "react-konva";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
-import { resolveFill } from "../../core/model/color";
+import { resolveColorRef } from "../../core/model/color";
 import type { LayoutObject } from "../../core/model/objects";
+import { objectPaint, type BoxedObject } from "../../core/model/paint";
 import type { Swatch } from "../../core/model/primitives";
 import type { PageGeometry } from "../../core/store";
+
+/** Canvas furniture, not document ink: the greys the foundation draws with. */
+const PLACEHOLDER_FILL = "#e4e4ea";
+const BOUNDARY_STROKE = "#9aa0b4";
+
+type KonvaPaint = {
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  strokeScaleEnabled?: boolean;
+  dash?: number[];
+};
+
+/** Core decides what an object amounts to; this maps that onto Konva props. */
+function konvaPaint(o: BoxedObject, swatches: Swatch[]): KonvaPaint {
+  const paint = objectPaint(o, swatches);
+
+  // A hairline boundary stays 1px at every zoom; a document stroke is in
+  // inches and must scale with the stage.
+  const hairline = { strokeWidth: 1, strokeScaleEnabled: false } as const;
+
+  if (paint.kind === "boundary") {
+    return { stroke: BOUNDARY_STROKE, dash: [4, 3], ...hairline };
+  }
+  if (paint.kind === "placeholder") {
+    return paint.stroke !== null && paint.strokeWidthIn !== null
+      ? { fill: PLACEHOLDER_FILL, stroke: paint.stroke, strokeWidth: paint.strokeWidthIn }
+      : { fill: PLACEHOLDER_FILL, stroke: BOUNDARY_STROKE, ...hairline };
+  }
+  return {
+    ...(paint.fill !== null ? { fill: paint.fill } : {}),
+    ...(paint.stroke !== null && paint.strokeWidthIn !== null
+      ? { stroke: paint.stroke, strokeWidth: paint.strokeWidthIn }
+      : {}),
+  };
+}
 
 /**
  * The Konva render surface (PLAN.md §6.2): furniture and content layers in
@@ -80,7 +117,7 @@ export function CanvasStage({
             <Line
               key={o.id}
               points={[o.x1In, o.y1In, o.x2In, o.y2In]}
-              stroke={resolveFill({ kind: "solid", color: o.stroke.color }, swatches) ?? undefined}
+              stroke={resolveColorRef(o.stroke.color, swatches) ?? undefined}
               strokeWidth={o.stroke.widthIn}
               opacity={o.opacity}
               perfectDrawEnabled={false}
@@ -93,9 +130,9 @@ export function CanvasStage({
               width={o.wIn}
               height={o.hIn}
               rotation={o.rotationDeg}
-              fill={resolveFill(o.fill, swatches) ?? undefined}
               opacity={o.opacity}
               perfectDrawEnabled={false}
+              {...konvaPaint(o, swatches)}
             />
           ),
         )}

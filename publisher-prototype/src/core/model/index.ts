@@ -8,6 +8,7 @@
 
 export * from "./primitives";
 export * from "./color";
+export * from "./paint";
 export * from "./photoOps";
 export * from "./text";
 export * from "./objects";

@@ -111,7 +111,7 @@ test("stress fixture loads deterministically and clears", async ({ page }) => {
     }),
   ).toBe(300);
   await expect(page.getByTestId("fps")).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: /Clear stress fixture/ }).click();
+  await page.getByRole("button", { name: /Clear page/ }).click();
   await expect.poll(() =>
     page.evaluate(() => {
       const store = window.__PROTOTYPE_STORE__;
