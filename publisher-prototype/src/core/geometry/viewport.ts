@@ -25,8 +25,12 @@ export const FIT_FRACTION = 0.85;
 /** The − / + controls and the Zoom tool step through these stops. */
 export const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
-/** Ctrl/Cmd + wheel multiplies zoom by this per notch (§ zoom contract). */
-export const WHEEL_ZOOM_FACTOR = 1.1;
+/**
+ * Ctrl/Cmd + wheel multiplies zoom by this per notch (§ zoom contract).
+ * Tuned 2026-08-15 by review: the initial 1.1 felt ~25% too responsive, so
+ * the per-notch increment dropped from +10% to +7.5%.
+ */
+export const WHEEL_ZOOM_FACTOR = 1.075;
 
 /** A point or extent in canonical document inches. */
 export type DocPoint = { x: number; y: number };
