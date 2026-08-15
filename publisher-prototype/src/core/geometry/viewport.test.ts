@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  WHEEL_NOTCH_PX,
   WHEEL_ZOOM_FACTOR,
   ZOOM_MAX,
   ZOOM_MIN,
@@ -31,18 +32,18 @@ const vpSize: Size = { w: 1000, h: 800 };
 const pageSize: Size = { w: 8.5, h: 11 };
 
 describe("wheelZoom", () => {
-  it("steps by the full factor for one 100px notch, in and out", () => {
-    expect(Math.abs(wheelZoom(1, -100) - WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
-    expect(Math.abs(wheelZoom(1, 100) - 1 / WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
+  it("steps by the full factor for one notch of travel, in and out", () => {
+    expect(Math.abs(wheelZoom(1, -WHEEL_NOTCH_PX) - WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
+    expect(Math.abs(wheelZoom(1, WHEEL_NOTCH_PX) - 1 / WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
   });
 
   it("scales proportionally with wheel travel", () => {
     // Two half-notches accumulate exactly one notch.
-    const half = wheelZoom(1, -50);
-    expect(Math.abs(wheelZoom(half, -50) - WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
-    // Twenty micro-events of 5px equal one notch — the smooth-scroll case.
+    const half = wheelZoom(1, -WHEEL_NOTCH_PX / 2);
+    expect(Math.abs(wheelZoom(half, -WHEEL_NOTCH_PX / 2) - WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
+    // Twenty micro-events equal one notch — the smooth-scroll case.
     let zoom = 1;
-    for (let i = 0; i < 20; i++) zoom = wheelZoom(zoom, -5);
+    for (let i = 0; i < 20; i++) zoom = wheelZoom(zoom, -WHEEL_NOTCH_PX / 20);
     expect(Math.abs(zoom - WHEEL_ZOOM_FACTOR)).toBeLessThan(1e-12);
   });
 

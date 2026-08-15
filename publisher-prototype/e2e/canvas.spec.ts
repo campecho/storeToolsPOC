@@ -42,7 +42,8 @@ test("zoom.wheel.ctrl-zooms-at-cursor", async ({ page }) => {
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -100);
   await page.keyboard.up("Control");
-  await expect.poll(async () => (await viewportState(page)).zoom).toBeCloseTo(1.1, 5);
+  // One 100px wheel notch at ×1.1 per 77px of travel.
+  await expect.poll(async () => (await viewportState(page)).zoom).toBeCloseTo(1.1 ** (100 / 77), 5);
 });
 
 test("zoom.click.steps-in", async ({ page }) => {

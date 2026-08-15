@@ -36,13 +36,18 @@ export const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
  */
 export const WHEEL_ZOOM_FACTOR = 1.1;
 
-/** Wheel travel that equals one notch: 100px of deltaY at pixel granularity. */
-export const WHEEL_NOTCH_PX = 100;
+/**
+ * Wheel travel that steps zoom by one full factor. A physical mouse notch
+ * reports ~100px of deltaY, so values below 100 make the rate proportionally
+ * faster. Tuned 2026-08-15 by review: 100 felt a bit slow once the rate went
+ * delta-proportional; 77 puts the rate ~30% back toward the pre-fix feel.
+ */
+export const WHEEL_NOTCH_PX = 77;
 
 /**
- * Delta-proportional wheel zoom: one notch (±100px) steps by the full
- * factor; a stream of small trackpad/momentum deltas accumulates the same
- * total zoom for the same travel instead of a full step per event.
+ * Delta-proportional wheel zoom: ±WHEEL_NOTCH_PX of travel steps by the
+ * full factor; a stream of small trackpad/momentum deltas accumulates the
+ * same total zoom for the same travel instead of a full step per event.
  * Negative deltaY (scroll up / pinch out) zooms in. Unclamped — callers go
  * through zoomAtPoint, which clamps.
  */
