@@ -3,6 +3,7 @@ import type { Size } from "../core/geometry/viewport";
 import { toolRegistry } from "../core/registry";
 import { CanvasWorkspace, type ActiveTool } from "./canvas/CanvasWorkspace";
 import { DebugBar } from "./DebugBar";
+import { isTextEntryTarget } from "./isTextEntryTarget";
 
 /**
  * The shell frame. The specified three-region layout (dock · canvas ·
@@ -17,16 +18,7 @@ export function App() {
   // Registry shortcuts (Z, H) activate tools from anywhere but a text field.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        e.target instanceof HTMLSelectElement ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.altKey
-      ) {
-        return;
-      }
+      if (isTextEntryTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const tool = toolRegistry.find((t) => t.shortcut.toLowerCase() === e.key.toLowerCase());
       if (tool && (tool.id === "zoom" || tool.id === "pan")) setActiveTool(tool.id);
     };

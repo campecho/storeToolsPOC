@@ -50,11 +50,11 @@ export function rulerTicks(originPx: number, lengthPx: number, zoom: number): Ru
   const last = Math.floor((lengthPx - originPx) / stepPx + 1e-9);
   for (let k = first; k <= last; k++) {
     const px = originPx + k * stepPx;
-    if (((k % ratio) + ratio) % ratio === 0) {
+    if (k % ratio === 0) {
       // numbers mirror on both sides of the origin, Publisher-style
       const value = Math.abs(k * minor);
       ticks.push({ px, level: "major", label: Number(value.toFixed(4)).toString() });
-    } else if (ratio % 2 === 0 && ((k % (ratio / 2)) + ratio) % (ratio / 2) === 0) {
+    } else if (ratio % 2 === 0 && k % (ratio / 2) === 0) {
       ticks.push({ px, level: "mid" });
     } else {
       ticks.push({ px, level: "minor" });

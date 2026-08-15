@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  ZOOM_MAX,
-  ZOOM_MIN,
-  fitZoom,
-  zoomInStep,
-  zoomOutStep,
-  type Size,
-} from "../core/geometry/viewport";
+import { clampZoom, fitZoom, zoomInStep, zoomOutStep, type Size } from "../core/geometry/viewport";
 import {
   stressFixtureCleared,
   stressFixtureLoaded,
@@ -54,8 +47,11 @@ export function DebugBar({
   const commitZoomText = () => {
     const parsed = Number.parseFloat(zoomText.replace("%", ""));
     if (Number.isFinite(parsed) && parsed > 0) {
-      const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parsed / 100));
+      const zoom = clampZoom(parsed / 100);
       dispatch(zoomSetCommitted({ zoom, pan: viewport.pan }));
+      // Re-sync explicitly: the effect below only fires when the rounded
+      // percent changes, which typed input ("100.4", "63") need not do.
+      setZoomText(`${Math.round(zoom * 100)}%`);
     } else {
       setZoomText(zoomPercent);
     }

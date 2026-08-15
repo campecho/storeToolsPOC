@@ -10,6 +10,7 @@ import {
 } from "../../core/geometry/viewport";
 import { panCommitted, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
+import { isTextEntryTarget } from "../isTextEntryTarget";
 import { CanvasStage } from "./CanvasStage";
 import { HorizontalRuler, VerticalRuler } from "./Rulers";
 import { SvgOverlay } from "./SvgOverlay";
@@ -42,6 +43,7 @@ export function CanvasWorkspace({
   const areaRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
   const [panDrag, setPanDrag] = useState<PanDrag | null>(null);
+  const panDragRef = useRef<PanDrag | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
 
   const pageSize: Size = { w: page.widthIn, h: page.heightIn };
@@ -50,8 +52,8 @@ export function CanvasWorkspace({
     : committed;
 
   // Latest values for the natively-attached wheel listener.
-  const frameRef = useRef({ committed, vpSize, pageSize });
-  frameRef.current = { committed, vpSize, pageSize };
+  const frameRef = useRef({ committed, vpSize, pageSize, dragging: false });
+  frameRef.current = { committed, vpSize, pageSize, dragging: panDrag !== null };
   const dragJustEndedRef = useRef(false);
 
   useEffect(() => {
@@ -76,8 +78,12 @@ export function CanvasWorkspace({
     let flush = 0;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const { committed: vp, vpSize: size, pageSize: pg } = frameRef.current;
+      const { committed: vp, vpSize: size, pageSize: pg, dragging } = frameRef.current;
       if (size.w <= 0 || size.h <= 0) return;
+      // While a pan drag is in flight the store lags the rendered viewport
+      // by the drag delta, so any wheel dispatch would anchor to the wrong
+      // frame; the gesture in progress wins and wheel input is dropped.
+      if (dragging) return;
       if (e.ctrlKey || e.metaKey) {
         const rect = el.getBoundingClientRect();
         const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -85,9 +91,14 @@ export function CanvasWorkspace({
         dispatch(zoomWheelCommitted(zoomAtPoint(vp, size, pg, anchor, vp.zoom * factor)));
         return;
       }
+      // Normalize non-pixel wheel deltas (Firefox reports lines): ~16px per
+      // line, a viewport height per page.
+      const unit = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? size.h : 1;
+      const dx = e.deltaX * unit;
+      const dy = e.deltaY * unit;
       // pan.wheel.scrolls: vertical by default, horizontal with Shift.
-      acc.x += e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
-      acc.y += e.shiftKey ? 0 : e.deltaY;
+      acc.x += e.shiftKey && dx === 0 ? dy : dx;
+      acc.y += e.shiftKey ? 0 : dy;
       if (flush === 0) {
         flush = requestAnimationFrame(() => {
           flush = 0;
@@ -105,29 +116,45 @@ export function CanvasWorkspace({
     };
   }, [dispatch]);
 
-  // pan.space-drag.temporary-pan: Space pans from within any tool.
+  // pan.space-drag.temporary-pan: Space pans from within any tool. Losing
+  // window focus while Space is down would eat the keyup, so blur resets.
   useEffect(() => {
-    const isTyping = (e: KeyboardEvent) =>
-      e.target instanceof HTMLInputElement ||
-      e.target instanceof HTMLTextAreaElement ||
-      e.target instanceof HTMLSelectElement;
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat && !isTyping(e)) setSpaceHeld(true);
+      if (e.code === "Space" && !e.repeat && !isTextEntryTarget(e.target)) setSpaceHeld(true);
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(false);
     };
+    const blur = () => setSpaceHeld(false);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
   }, []);
 
   const panning = activeTool === "pan" || spaceHeld;
   const cursor = panDrag ? "grabbing" : panning ? "grab" : "zoom-in";
   const origin = pageOriginPx(effective, vpSize, pageSize);
+
+  // Ends the drag from pointerup and from the interrupt paths (pointercancel,
+  // lost capture, buttons released off-window) alike: the viewport stays
+  // where the preview left it, committed by the gesture's single action.
+  // Idempotent through the ref — the browser fires lostpointercapture right
+  // after pointerup, and the gesture must not commit twice.
+  const endPanDrag = () => {
+    const drag = panDragRef.current;
+    if (!drag) return;
+    panDragRef.current = null;
+    dispatch(
+      panCommitted({ pan: { x: committed.pan.x + drag.dx, y: committed.pan.y + drag.dy } }),
+    );
+    dragJustEndedRef.current = drag.dx !== 0 || drag.dy !== 0;
+    setPanDrag(null);
+  };
 
   return (
     <div className="workspace">
@@ -142,24 +169,30 @@ export function CanvasWorkspace({
         onPointerDown={(e) => {
           if (!panning || e.button !== 0) return;
           e.currentTarget.setPointerCapture(e.pointerId);
-          setPanDrag({ startX: e.clientX, startY: e.clientY, dx: 0, dy: 0 });
+          const drag: PanDrag = { startX: e.clientX, startY: e.clientY, dx: 0, dy: 0 };
+          panDragRef.current = drag;
+          setPanDrag(drag);
         }}
         onPointerMove={(e) => {
-          if (!panDrag) return;
-          setPanDrag({ ...panDrag, dx: e.clientX - panDrag.startX, dy: e.clientY - panDrag.startY });
+          const drag = panDragRef.current;
+          if (!drag) return;
+          if (e.buttons === 0) {
+            // The release happened where we couldn't see it — end the
+            // gesture instead of chasing a button that's no longer down.
+            endPanDrag();
+            return;
+          }
+          const next: PanDrag = { ...drag, dx: e.clientX - drag.startX, dy: e.clientY - drag.startY };
+          panDragRef.current = next;
+          setPanDrag(next);
         }}
-        onPointerUp={(e) => {
-          if (!panDrag) return;
-          e.currentTarget.releasePointerCapture(e.pointerId);
+        onPointerUp={() => {
           // pan.drag.moves-viewport: the one committed action for the gesture.
-          dispatch(
-            panCommitted({
-              pan: { x: committed.pan.x + panDrag.dx, y: committed.pan.y + panDrag.dy },
-            }),
-          );
-          dragJustEndedRef.current = panDrag.dx !== 0 || panDrag.dy !== 0;
-          setPanDrag(null);
+          // Implicit capture release follows; endPanDrag is idempotent.
+          endPanDrag();
         }}
+        onPointerCancel={endPanDrag}
+        onLostPointerCapture={endPanDrag}
         onClick={(e) => {
           if (dragJustEndedRef.current) {
             dragJustEndedRef.current = false;
