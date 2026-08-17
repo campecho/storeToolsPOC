@@ -28,14 +28,13 @@ export const PATH_FLATTEN_STEPS = 16;
 export const ELLIPSE_FLATTEN_STEPS = 32;
 
 /**
- * ASSUMPTION: frame rotation pivots at the frame's TOP-LEFT corner, matching
- * the content renderer's established Konva default (shell CanvasStage
- * ASSUMPTION tag). If SME review moves the pivot to the frame center, this
- * helper is the one edit — every rotation-aware computation in hit-testing
- * and AABB math routes through it.
+ * Frame rotation pivots at the frame's CENTER — decision of record
+ * (user-ratified 2026-08-17, superseding the earlier top-left ASSUMPTION;
+ * recorded in SEAMS.md). Every rotation-aware computation in hit-testing,
+ * AABB math, and the renderer routes through this helper.
  */
 export function framePivot(frame: Rect): Point {
-  return { x: frame.x, y: frame.y };
+  return { x: frame.x + frame.w / 2, y: frame.y + frame.h / 2 };
 }
 
 export function rotatePoint(p: Point, center: Point, deg: number): Point {

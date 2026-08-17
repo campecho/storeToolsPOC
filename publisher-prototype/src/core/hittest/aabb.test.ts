@@ -38,20 +38,21 @@ describe("objectAabb", () => {
     expect(objectAabb(shapeRect("r"))).toEqual({ x: 1, y: 1, w: 2, h: 1 });
   });
 
-  it("bounds the rotated corners about the top-left pivot", () => {
-    // (1,1,2,1) rotated 90° about (1,1) → corners (1,1),(1,3),(0,3),(0,1).
+  it("bounds the rotated corners about the center pivot", () => {
+    // (1,1,2,1) rotated 90° about its center (2,1.5) → box (1.5,0.5,1,2).
     const box = objectAabb(shapeRect("r", { rotation: 90 }));
-    expect(box.x).toBeCloseTo(0, 6);
-    expect(box.y).toBeCloseTo(1, 6);
+    expect(box.x).toBeCloseTo(1.5, 6);
+    expect(box.y).toBeCloseTo(0.5, 6);
     expect(box.w).toBeCloseTo(1, 6);
     expect(box.h).toBeCloseTo(2, 6);
   });
 
   it("bounds a 45° square by its rotated diagonal extent", () => {
+    // The square spins in place about its center (0.5,0.5).
     const box = objectAabb(shapeRect("r", { x: 0, y: 0, w: 1, h: 1, rotation: 45 }));
     const half = Math.SQRT1_2;
-    expect(box.x).toBeCloseTo(-half, 6);
-    expect(box.y).toBeCloseTo(0, 6);
+    expect(box.x).toBeCloseTo(0.5 - half, 6);
+    expect(box.y).toBeCloseTo(0.5 - half, 6);
     expect(box.w).toBeCloseTo(2 * half, 6);
     expect(box.h).toBeCloseTo(2 * half, 6);
   });

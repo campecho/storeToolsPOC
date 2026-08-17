@@ -31,6 +31,10 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   on its own is a regular schema-v3 document with `kind: "image"` — one format, not
   two, so any future storage/sync layer handles a single document shape. Convention
   (one page, one picture frame) is maintained by photo mode, not schema-enforced.
+- **Rotation pivot (recorded 2026-08-17, user decision):** an object's `rotation`
+  is about its frame **center**, not a corner. One semantic across storage,
+  rendering, and hit-testing; `core/hittest`'s `framePivot` is the single
+  authority the renderer mirrors. Supersedes the initial top-left ASSUMPTION.
 - **Schema v3 object vocabulary (recorded 2026-08-17):** object `type` names follow
   the registry's `ObjectType` vocabulary (`textFrame`/`pictureFrame`/`shape`/…),
   superseding the POC v2 names — the registry is the prototype's contract, and v3

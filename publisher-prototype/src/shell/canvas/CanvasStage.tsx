@@ -14,9 +14,10 @@ import { pathToSvg } from "../../core/render/path";
  *
  * Content renders schema-v3 objects: shapes and lines for real; textFrame,
  * pictureFrame, table, and mergeField as labeled placeholder frames until
- * their tools are wired. ASSUMPTION: frame rotation is about the frame's
- * top-left corner (the Konva Rect default the placeholder renderer
- * established); SME review may move it to the frame center.
+ * their tools are wired. Frame rotation pivots at the frame CENTER —
+ * decision of record (user-ratified 2026-08-17, recorded in SEAMS.md),
+ * matching core/hittest's framePivot: each node positions at its center
+ * with matching offsets so Konva rotation happens about that point.
  */
 
 /** Stroke widths are points (the print-rule convention); the stage draws in
@@ -46,8 +47,10 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
         return (
           <Rect
             key={o.id}
-            x={o.x}
-            y={o.y}
+            x={o.x + o.w / 2}
+            y={o.y + o.h / 2}
+            offsetX={o.w / 2}
+            offsetY={o.h / 2}
             width={o.w}
             height={o.h}
             rotation={o.rotation}
@@ -57,15 +60,13 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
         );
       }
       if (o.shape === "ellipse") {
-        // Negative offsets keep the node's origin — and so its rotation
-        // pivot — at the frame's top-left, matching rect semantics.
+        // An Ellipse's own origin is its center — positioning at the frame
+        // center makes rotation pivot there with no offset needed.
         return (
           <Ellipse
             key={o.id}
-            x={o.x}
-            y={o.y}
-            offsetX={-o.w / 2}
-            offsetY={-o.h / 2}
+            x={o.x + o.w / 2}
+            y={o.y + o.h / 2}
             radiusX={o.w / 2}
             radiusY={o.h / 2}
             rotation={o.rotation}
@@ -74,13 +75,15 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
           />
         );
       }
-      // Path data is local to the frame box; the node's position carries the
-      // frame origin so rotation pivots at the top-left like the others.
+      // Path data is local to the frame box; center position + matching
+      // offsets put the rotation pivot at the frame center like the others.
       return (
         <Path
           key={o.id}
-          x={o.x}
-          y={o.y}
+          x={o.x + o.w / 2}
+          y={o.y + o.h / 2}
+          offsetX={o.w / 2}
+          offsetY={o.h / 2}
           rotation={o.rotation}
           data={pathToSvg(o.d ?? [], { x: 0, y: 0, w: o.w, h: o.h })}
           {...paint}
@@ -102,9 +105,17 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
     case "table":
     case "mergeField":
       // Light placeholder frame until these objects' tools are wired: a
-      // stroked box plus a small type label, rotating as one node.
+      // stroked box plus a small type label, rotating as one node about the
+      // frame center.
       return (
-        <Group key={o.id} x={o.x} y={o.y} rotation={o.rotation}>
+        <Group
+          key={o.id}
+          x={o.x + o.w / 2}
+          y={o.y + o.h / 2}
+          offsetX={o.w / 2}
+          offsetY={o.h / 2}
+          rotation={o.rotation}
+        >
           <Rect
             width={o.w}
             height={o.h}

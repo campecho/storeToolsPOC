@@ -124,14 +124,14 @@ describe("hitTest.lockedObjects (skips vs hits)", () => {
   });
 });
 
-describe("hitTest.rotation (top-left pivot, matching the renderer ASSUMPTION)", () => {
-  // (1,1,2,1) rotated 90° about its top-left occupies x∈[0,1], y∈[1,3].
+describe("hitTest.rotation (center pivot — the framePivot decision of record)", () => {
+  // (1,1,2,1) rotated 90° about its center (2,1.5) occupies x∈[1.5,2.5], y∈[0.5,2.5].
   const rotated = shapeRect("rot", { rotation: 90 });
   it("hits a point inside the rotated frame that misses the unrotated box", () => {
-    expect(hitTestPoint([rotated], { x: 0.5, y: 2.5 }, OPTS)).toHaveLength(1);
+    expect(hitTestPoint([rotated], { x: 2, y: 0.75 }, OPTS)).toHaveLength(1);
   });
   it("misses a point inside the unrotated box that the rotated frame left", () => {
-    expect(hitTestPoint([rotated], { x: 2.5, y: 1.5 }, OPTS)).toHaveLength(0);
+    expect(hitTestPoint([rotated], { x: 1.2, y: 1.5 }, OPTS)).toHaveLength(0);
   });
 });
 
@@ -229,8 +229,8 @@ describe("select.drag-empty.marquee-selects (intersect, not contain)", () => {
   });
 
   it("intersects a rotated frame the unrotated box would miss", () => {
-    // (1,1,2,1) rotated 90° occupies x∈[0,1], y∈[1,3].
-    const marquee = { x: 0, y: 2.4, w: 0.4, h: 0.4 };
+    // (1,1,2,1) rotated 90° about its center occupies x∈[1.5,2.5], y∈[0.5,2.5].
+    const marquee = { x: 1.7, y: 0.2, w: 0.4, h: 0.4 };
     expect(
       hitTestMarquee([shapeRect("rot", { rotation: 90 })], marquee, { lockedObjects: "skips" }),
     ).toHaveLength(1);

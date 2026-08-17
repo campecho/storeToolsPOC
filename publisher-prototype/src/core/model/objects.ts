@@ -143,7 +143,8 @@ const objectShared = {
 };
 
 /** Fields every rectangular-frame object adds: the frame box (inches),
-    rotation (degrees), and fill/stroke (null = none, the lineage rule). */
+    rotation (degrees, about the frame CENTER — decision of record in
+    SEAMS.md), and fill/stroke (null = none, the lineage rule). */
 const frameShared = {
   ...objectShared,
   x: z.number(),
