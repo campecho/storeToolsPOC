@@ -8,52 +8,84 @@ import {
   type Size,
   type Viewport,
 } from "../../core/geometry/viewport";
-import { panCommitted, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
+import { toolRegistry } from "../../core/registry";
+import { effectivePageSetup } from "../../core/render/pageSetup";
+import { panCommitted, selectDocument, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
+import type { ToolOptionValues } from "../toolOptions";
 import { CanvasStage } from "./CanvasStage";
 import { HorizontalRuler, VerticalRuler } from "./Rulers";
 import { SvgOverlay } from "./SvgOverlay";
+import { useToolGestures } from "./useToolGestures";
 
 type PanDrag = { startX: number; startY: number; dx: number; dy: number };
 
 /**
  * The canvas region: rulers + Konva stage + SVG overlay off one shared
  * viewport (PLAN.md §6.2), with the §6.3 gesture rule enforced by shape —
- * in-flight pan lives in local state, every surface renders from the
- * effective (committed ⊕ in-flight) viewport, and exactly one action
- * commits on pointer-up.
+ * in-flight pan lives in local state, tool-gesture state lives in the
+ * useToolGestures machinery, every surface renders from the effective
+ * (committed ⊕ in-flight) viewport, and exactly one action commits on
+ * pointer-up.
  */
 export function CanvasWorkspace({
   activeTool,
+  pageIndex,
   showProbe,
+  toolOptions,
   onVpSizeChange,
 }: {
-  /** Registry tool id; only wired tools (zoom, pan) affect the canvas yet. */
+  /** Registry tool id; wired tools (wiredTools.ts) drive the canvas. */
   activeTool: string;
+  /** Which document page renders — App-local state until the Pages panel. */
+  pageIndex: number;
   showProbe: boolean;
+  /** Live option values (App state) the wired tools' gesture ctx consumes. */
+  toolOptions: ToolOptionValues;
   onVpSizeChange: (size: Size) => void;
 }) {
   const dispatch = useAppDispatch();
   const committed = useAppSelector((s) => s.viewport);
-  const page = useAppSelector((s) => s.document.page);
-  const objects = useAppSelector((s) => s.document.objects);
+  const doc = useAppSelector(selectDocument);
+  const selectedIds = useAppSelector((s) => s.selection.ids);
+  const setup = effectivePageSetup(doc, pageIndex);
+  const objects = doc.pages[pageIndex]?.objects ?? [];
+  const selectedObjects = objects.filter((o) => selectedIds.includes(o.id));
 
   const areaRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
   const [panDrag, setPanDrag] = useState<PanDrag | null>(null);
   const panDragRef = useRef<PanDrag | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
+  const dragJustEndedRef = useRef(false);
 
-  const pageSize: Size = { w: page.widthIn, h: page.heightIn };
+  const pageSize: Size = setup.size;
   const effective: Viewport = panDrag
     ? { zoom: committed.zoom, pan: { x: committed.pan.x + panDrag.dx, y: committed.pan.y + panDrag.dy } }
     : committed;
 
-  // Latest values for the natively-attached wheel listener.
+  const panning = activeTool === "pan" || spaceHeld;
+
+  const gestures = useToolGestures({
+    activeTool,
+    panning,
+    pageIndex,
+    viewport: effective,
+    vpSize,
+    pageSize,
+    objects,
+    selectedIds,
+    toolOptions,
+    areaRef,
+    suppressClickRef: dragJustEndedRef,
+  });
+
+  // Latest values for the natively-attached wheel listener. A running tool
+  // gesture drops wheel input exactly like an in-flight pan drag: the
+  // gesture in progress wins.
   const frameRef = useRef({ committed, vpSize, pageSize, dragging: false });
-  frameRef.current = { committed, vpSize, pageSize, dragging: panDrag !== null };
-  const dragJustEndedRef = useRef(false);
+  frameRef.current = { committed, vpSize, pageSize, dragging: panDrag !== null || gestures.active };
 
   useEffect(() => {
     const el = areaRef.current;
@@ -136,14 +168,16 @@ export function CanvasWorkspace({
     };
   }, []);
 
-  const panning = activeTool === "pan" || spaceHeld;
+  // Cursor comes from the active tool's contract, under the dynamic pan /
+  // Space / zoom overrides that always win while they apply.
+  const contractCursor = toolRegistry.find((t) => t.id === activeTool)?.cursor ?? "default";
   const cursor = panDrag
     ? "grabbing"
     : panning
       ? "grab"
       : activeTool === "zoom"
         ? "zoom-in"
-        : "default";
+        : contractCursor;
   const origin = pageOriginPx(effective, vpSize, pageSize);
 
   // Ends the drag from pointerup and from the interrupt paths (pointercancel,
@@ -173,32 +207,45 @@ export function CanvasWorkspace({
         data-testid="canvas-area"
         style={{ cursor }}
         onPointerDown={(e) => {
-          if (!panning || e.button !== 0) return;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          const drag: PanDrag = { startX: e.clientX, startY: e.clientY, dx: 0, dy: 0 };
-          panDragRef.current = drag;
-          setPanDrag(drag);
+          if (panning && e.button === 0) {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const drag: PanDrag = { startX: e.clientX, startY: e.clientY, dx: 0, dy: 0 };
+            panDragRef.current = drag;
+            setPanDrag(drag);
+            return;
+          }
+          gestures.onPointerDown(e);
         }}
         onPointerMove={(e) => {
           const drag = panDragRef.current;
-          if (!drag) return;
-          if (e.buttons === 0) {
-            // The release happened where we couldn't see it — end the
-            // gesture instead of chasing a button that's no longer down.
-            endPanDrag();
+          if (drag) {
+            if (e.buttons === 0) {
+              // The release happened where we couldn't see it — end the
+              // gesture instead of chasing a button that's no longer down.
+              endPanDrag();
+              return;
+            }
+            const next: PanDrag = { ...drag, dx: e.clientX - drag.startX, dy: e.clientY - drag.startY };
+            panDragRef.current = next;
+            setPanDrag(next);
             return;
           }
-          const next: PanDrag = { ...drag, dx: e.clientX - drag.startX, dy: e.clientY - drag.startY };
-          panDragRef.current = next;
-          setPanDrag(next);
+          gestures.onPointerMove(e);
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
           // pan.drag.moves-viewport: the one committed action for the gesture.
-          // Implicit capture release follows; endPanDrag is idempotent.
+          // Implicit capture release follows; both enders are idempotent.
           endPanDrag();
+          gestures.onPointerEnd(e);
         }}
-        onPointerCancel={endPanDrag}
-        onLostPointerCapture={endPanDrag}
+        onPointerCancel={(e) => {
+          endPanDrag();
+          gestures.onPointerEnd(e);
+        }}
+        onLostPointerCapture={(e) => {
+          endPanDrag();
+          gestures.onPointerEnd(e);
+        }}
         onClick={(e) => {
           if (dragJustEndedRef.current) {
             dragJustEndedRef.current = false;
@@ -212,8 +259,24 @@ export function CanvasWorkspace({
           dispatch(zoomStepCommitted(zoomAtPoint(committed, vpSize, pageSize, anchor, next)));
         }}
       >
-        <CanvasStage viewport={effective} vpSize={vpSize} page={page} objects={objects} />
-        <SvgOverlay viewport={effective} vpSize={vpSize} page={page} showProbe={showProbe} />
+        <CanvasStage
+          viewport={effective}
+          vpSize={vpSize}
+          setup={setup}
+          objects={objects}
+          swatches={doc.swatches}
+        />
+        <SvgOverlay
+          viewport={effective}
+          vpSize={vpSize}
+          setup={setup}
+          showProbe={showProbe}
+          preview={gestures.preview}
+          selectedObjects={selectedObjects}
+          showChrome={activeTool === "select" && gestures.preview === null}
+          onResizeStart={gestures.beginResize}
+          onRotateStart={gestures.beginRotate}
+        />
       </div>
     </div>
   );

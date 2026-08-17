@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clampZoom, fitZoom, zoomInStep, zoomOutStep, type Size } from "../core/geometry/viewport";
+import { deserializeDocument, serializeDocument } from "../core/model";
+import { effectivePageSetup } from "../core/render/pageSetup";
 import {
+  documentLoadedCommitted,
+  redoCommitted,
+  selectDocument,
   stressFixtureCleared,
   stressFixtureLoaded,
+  undoCommitted,
   zoomFitCommitted,
   zoomSetCommitted,
   zoomStepCommitted,
@@ -12,12 +18,20 @@ import type { ShapePresentation } from "./dock/Dock";
 import { buildStressFixture } from "./debug/stressFixture";
 import { useFps } from "./debug/useFps";
 import { useAppDispatch, useAppSelector } from "./hooks";
+import kitchenSinkRaw from "../../fixtures/kitchen-sink.json?raw";
+import minimalRaw from "../../fixtures/minimal.json?raw";
+import photoSingleImageRaw from "../../fixtures/photo-single-image.json?raw";
 
 /**
  * The debug bar (PLAN.md §6.6, §4.1): model-development controls that are
  * not part of the specified surface — registry-driven presentation toggles,
- * JSON round-trip, and here the viewport controls, alignment probe, and the
- * §6.2 spike-gate stress fixture with its FPS readout. Deliberately plain.
+ * the §6.6 JSON round-trip (export/import/fixtures), undo/redo, page
+ * stepping, and the viewport controls, alignment probe, and §6.2 spike-gate
+ * stress fixture with its FPS readout. Deliberately plain.
+ *
+ * Every load path — import and fixtures alike — goes through
+ * deserializeDocument, the model's one migrate-on-read door; parse errors
+ * surface inline in the bar.
  */
 export function DebugBar({
   mode,
@@ -27,6 +41,8 @@ export function DebugBar({
   showProbe,
   onProbeChange,
   vpSize,
+  pageIndex,
+  onPageIndexChange,
 }: {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
@@ -35,13 +51,23 @@ export function DebugBar({
   showProbe: boolean;
   onProbeChange: (show: boolean) => void;
   vpSize: Size;
+  pageIndex: number;
+  onPageIndexChange: (pageIndex: number) => void;
 }) {
   const dispatch = useAppDispatch();
   const viewport = useAppSelector((s) => s.viewport);
-  const page = useAppSelector((s) => s.document.page);
-  const objectCount = useAppSelector((s) => s.document.objects.length);
-  const fps = useFps(objectCount > 0);
+  const doc = useAppSelector(selectDocument);
+  const canUndo = useAppSelector((s) => s.document.past.length > 0);
+  const canRedo = useAppSelector((s) => s.document.future.length > 0);
+  // The stress fixture is a page-0 debug tool; its button and FPS probe key
+  // off the first page's objects regardless of the rendered page.
+  const stressCount = doc.pages[0]?.objects.length ?? 0;
+  const fps = useFps(stressCount > 0);
+  const pageCount = doc.pages.length;
+  const setup = effectivePageSetup(doc, pageIndex);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [zoomText, setZoomText] = useState("");
   const zoomPercent = `${Math.round(viewport.zoom * 100)}%`;
   useEffect(() => setZoomText(zoomPercent), [zoomPercent]);
@@ -57,6 +83,25 @@ export function DebugBar({
     } else {
       setZoomText(zoomPercent);
     }
+  };
+
+  const loadDocumentText = (text: string) => {
+    try {
+      dispatch(documentLoadedCommitted(deserializeDocument(text)));
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const exportDocument = () => {
+    const blob = new Blob([serializeDocument(doc)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${doc.name || "document"}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -108,7 +153,7 @@ export function DebugBar({
           onClick={() =>
             dispatch(
               zoomFitCommitted({
-                zoom: fitZoom(page.widthIn, page.heightIn, page.bleedIn, vpSize.w, vpSize.h),
+                zoom: fitZoom(setup.size.w, setup.size.h, setup.bleed, vpSize.w, vpSize.h),
                 pan: { x: 0, y: 0 },
               }),
             )
@@ -117,18 +162,75 @@ export function DebugBar({
           Fit
         </button>
       </span>
+      <span className="debug-group" role="group" aria-label="Page">
+        <button
+          aria-label="Previous page"
+          disabled={pageIndex <= 0}
+          onClick={() => onPageIndexChange(pageIndex - 1)}
+        >
+          ‹
+        </button>
+        <span data-testid="page-indicator">
+          page {pageIndex + 1}/{pageCount}
+        </span>
+        <button
+          aria-label="Next page"
+          disabled={pageIndex >= pageCount - 1}
+          onClick={() => onPageIndexChange(pageIndex + 1)}
+        >
+          ›
+        </button>
+      </span>
+      <span className="debug-group" role="group" aria-label="History">
+        <button disabled={!canUndo} onClick={() => dispatch(undoCommitted())}>
+          Undo
+        </button>
+        <button disabled={!canRedo} onClick={() => dispatch(redoCommitted())}>
+          Redo
+        </button>
+      </span>
+      <span className="debug-group" role="group" aria-label="Document round-trip">
+        <button onClick={exportDocument}>Export</button>
+        <button onClick={() => fileInputRef.current?.click()}>Import</button>
+        <input
+          ref={fileInputRef}
+          aria-label="Import document file"
+          type="file"
+          accept=".json,application/json"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            void file.text().then(loadDocumentText, (error: unknown) => {
+              setLoadError(error instanceof Error ? error.message : String(error));
+            });
+          }}
+        />
+        <button onClick={() => loadDocumentText(minimalRaw)}>Minimal</button>
+        <button onClick={() => loadDocumentText(kitchenSinkRaw)}>Kitchen sink</button>
+        <button onClick={() => loadDocumentText(photoSingleImageRaw)}>Photo image</button>
+        {loadError !== null && (
+          <span className="debug-error" role="alert">
+            {loadError}
+            <button aria-label="Dismiss load error" onClick={() => setLoadError(null)}>
+              ×
+            </button>
+          </span>
+        )}
+      </span>
       <label className="debug-group">
         <input type="checkbox" checked={showProbe} onChange={(e) => onProbeChange(e.target.checked)} />
         overlay probe
       </label>
       <span className="debug-group" role="group" aria-label="Stress fixture">
-        {objectCount === 0 ? (
-          <button onClick={() => dispatch(stressFixtureLoaded({ objects: buildStressFixture() }))}>
+        {stressCount === 0 ? (
+          <button onClick={() => dispatch(stressFixtureLoaded(buildStressFixture()))}>
             Load stress fixture
           </button>
         ) : (
           <button onClick={() => dispatch(stressFixtureCleared())}>
-            Clear stress fixture ({objectCount})
+            Clear stress fixture ({stressCount})
           </button>
         )}
         {fps !== null && <span data-testid="fps">{fps} fps</span>}

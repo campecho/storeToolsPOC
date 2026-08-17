@@ -4,4 +4,25 @@
  * tier stays pure specification; the shell derives "not wired yet" from this
  * set, which grows as Phase B groups land.
  */
-export const WIRED_TOOLS: ReadonlySet<string> = new Set(["zoom", "pan"]);
+export const WIRED_TOOLS: ReadonlySet<string> = new Set([
+  "zoom",
+  "pan",
+  "select",
+  "rect",
+  "ellipse",
+  "line",
+]);
+
+/**
+ * Option ids the wired implementation actually consumes, per tool. Options
+ * a wired tool declares but nothing reads yet (select's showCoordinates and
+ * positionRelativeTo; line's dash — LineObject carries no dash field) stay
+ * rendered but disabled: the options bar is an honest surface, editable
+ * exactly where editing has an effect.
+ */
+export const CONSUMED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["select", new Set(["nudgeIncrement"])],
+  ["rect", new Set(["fill", "stroke", "strokeWidth"])],
+  ["ellipse", new Set(["fill", "stroke", "strokeWidth"])],
+  ["line", new Set(["stroke", "strokeWidth"])],
+]);

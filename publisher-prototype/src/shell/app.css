@@ -189,11 +189,21 @@ body {
 
 .debug-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 6px 8px;
   border-bottom: 1px solid #bbb;
   background: #f2f2f2;
+}
+
+.debug-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 420px;
+  color: #a4262c;
+  font-size: 11px;
 }
 
 .debug-group {
@@ -277,4 +287,11 @@ body {
 
 .svg-overlay {
   pointer-events: none;
+}
+
+/* Selection handles are the overlay's only interactive targets: the canvas
+   area handles every other pointer stream. */
+.svg-overlay .chrome-handle {
+  pointer-events: all;
+  cursor: pointer;
 }

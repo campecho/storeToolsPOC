@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "kind": "image",
+  "name": "Pier at dusk — 6×4 print",
+  "size": { "w": 6, "h": 4 },
+  "orientation": "landscape",
+  "bleed": 0.125,
+  "margin": 0,
+  "slug": 0,
+  "columns": 1,
+  "layers": [
+    {
+      "id": "layer-1",
+      "name": "Layer 1",
+      "color": "#4A90D9",
+      "visible": true,
+      "locked": false,
+      "printing": true,
+      "opacity": 1,
+      "blend": "normal"
+    }
+  ],
+  "assets": {
+    "asset-pier": {
+      "id": "asset-pier",
+      "name": "pier-dusk.jpg",
+      "kind": "image",
+      "mime": "image/jpeg",
+      "width": 3600,
+      "height": 2400,
+      "bytes": 1248870
+    }
+  },
+  "masters": [],
+  "pages": [
+    {
+      "id": "page-1",
+      "masterId": null,
+      "objects": [
+        {
+          "id": "pic-pier",
+          "type": "pictureFrame",
+          "x": -0.125,
+          "y": -0.125,
+          "w": 6.25,
+          "h": 4.25,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-1",
+          "fill": null,
+          "stroke": null,
+          "assetId": "asset-pier",
+          "fit": "cover",
+          "crop": { "x": 0, "y": 0.06, "scale": 1.1, "rotation": 0 },
+          "adjust": [
+            { "op": "rotate", "label": "Rotate right", "quarterTurns": 1 },
+            { "op": "adjust", "label": "Warmth +18", "param": "temperature", "value": 18 },
+            { "op": "adjust", "label": "Shadows +10", "param": "shadows", "value": 10 },
+            {
+              "op": "autoEnhance",
+              "label": "Auto enhance",
+              "params": { "brightness": 6, "contrast": 9 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

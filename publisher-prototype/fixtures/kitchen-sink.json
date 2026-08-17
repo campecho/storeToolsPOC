@@ -1,0 +1,593 @@
+{
+  "version": 3,
+  "kind": "layout",
+  "name": "Harborline Newsletter — schema v3 kitchen sink",
+  "size": { "w": 8.5, "h": 11 },
+  "orientation": "portrait",
+  "bleed": 0.125,
+  "margin": 0.5,
+  "slug": 0.25,
+  "columns": 2,
+  "baselineGrid": { "start": 0.5, "increment": 0.1667 },
+  "layers": [
+    {
+      "id": "layer-base",
+      "name": "Base",
+      "color": "#4A90D9",
+      "visible": true,
+      "locked": false,
+      "printing": true,
+      "opacity": 1,
+      "blend": "normal"
+    },
+    {
+      "id": "layer-notes",
+      "name": "Production notes",
+      "color": "#D9774A",
+      "visible": true,
+      "locked": false,
+      "printing": false,
+      "opacity": 0.8,
+      "blend": "multiply"
+    }
+  ],
+  "sections": [
+    {
+      "startPage": 0,
+      "label": "Front matter",
+      "format": "lowerRoman",
+      "startValue": 1
+    },
+    {
+      "startPage": 1,
+      "label": "Body",
+      "format": "arabic",
+      "startValue": 1,
+      "prefix": "A-"
+    }
+  ],
+  "anchors": [
+    { "id": "anchor-figure-1", "storyId": "story-main", "position": 34 },
+    { "id": "anchor-callout-1", "storyId": "story-main", "position": 118 }
+  ],
+  "paragraphStyles": [
+    {
+      "id": "ps-body",
+      "name": "Body",
+      "nextStyle": "ps-body",
+      "paragraph": {
+        "align": "left",
+        "lineSpacing": 1.2,
+        "spaceAfter": 0.08,
+        "hyphenation": {
+          "enabled": true,
+          "minWordLength": 6,
+          "minBefore": 3,
+          "minAfter": 3,
+          "consecutiveLimit": 2,
+          "hyphenateCapitalized": false
+        }
+      },
+      "character": {
+        "family": "Source Serif Variable",
+        "size": 11,
+        "color": { "kind": "swatch", "swatchId": "sw-ink" }
+      }
+    },
+    {
+      "id": "ps-body-tight",
+      "name": "Body Tight",
+      "basedOn": "ps-body",
+      "nextStyle": "ps-body",
+      "paragraph": { "lineSpacing": 1.05 },
+      "character": {}
+    }
+  ],
+  "characterStyles": [
+    {
+      "id": "cs-emphasis",
+      "name": "Emphasis",
+      "props": {
+        "italic": true,
+        "color": { "kind": "swatch", "swatchId": "sw-harbor" }
+      }
+    }
+  ],
+  "swatches": [
+    { "id": "sw-harbor", "name": "Harbor Blue", "space": "rgb", "values": [0.16, 0.42, 0.72] },
+    { "id": "sw-ink", "name": "Press Black", "space": "cmyk", "values": [0, 0, 0, 1] },
+    {
+      "id": "sw-foil",
+      "name": "Foil Gold",
+      "space": "spot",
+      "values": [0.05, 0.24, 0.7, 0.12],
+      "spotName": "Harborline Gold 07"
+    }
+  ],
+  "groups": [{ "id": "grp-badge" }, { "id": "grp-badge-inner", "parentGroupId": "grp-badge" }],
+  "fonts": [
+    {
+      "family": "Source Serif Variable",
+      "source": "bundled",
+      "axes": { "wght": { "min": 200, "max": 900, "default": 400 } },
+      "embeddingPermitted": true
+    },
+    { "family": "Inter", "source": "bundled", "embeddingPermitted": true }
+  ],
+  "assets": {
+    "asset-lighthouse": {
+      "id": "asset-lighthouse",
+      "name": "harbor-lighthouse.jpg",
+      "kind": "image",
+      "mime": "image/jpeg",
+      "width": 2400,
+      "height": 1600,
+      "bytes": 734211
+    }
+  },
+  "guides": { "v": [4.25], "h": [5.5] },
+  "masters": [
+    {
+      "id": "master-a",
+      "label": "Master A",
+      "objects": [
+        {
+          "id": "ma-footer-band",
+          "type": "shape",
+          "shape": "rect",
+          "x": 0,
+          "y": 10.4,
+          "w": 8.5,
+          "h": 0.6,
+          "rotation": 0,
+          "locked": true,
+          "layerId": "layer-base",
+          "fill": { "kind": "swatch", "swatchId": "sw-harbor", "tint": 0.15 },
+          "stroke": null
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-1",
+      "masterId": "master-a",
+      "objects": [
+        {
+          "id": "tf-main-1",
+          "type": "textFrame",
+          "x": 0.5,
+          "y": 0.75,
+          "w": 3.6,
+          "h": 6,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "fill": null,
+          "stroke": null,
+          "storyId": "story-main",
+          "nextFrameId": "tf-main-2",
+          "text": {
+            "paragraphs": [
+              {
+                "align": "justify",
+                "lineSpacing": 1.2,
+                "indent": 0,
+                "firstLineIndent": 0.2,
+                "styleId": "ps-body",
+                "dropCap": { "lines": 3, "chars": 1 },
+                "hyphenation": {
+                  "enabled": true,
+                  "minWordLength": 6,
+                  "minBefore": 3,
+                  "minAfter": 3,
+                  "consecutiveLimit": 2,
+                  "hyphenateCapitalized": false
+                },
+                "justification": {
+                  "wordSpacing": { "min": 0.8, "desired": 1, "max": 1.33 },
+                  "letterSpacing": { "min": -0.02, "desired": 0, "max": 0.04 }
+                },
+                "tabs": [
+                  { "position": 1.5, "align": "decimal", "leader": "." },
+                  { "position": 3.2, "align": "end" }
+                ],
+                "runs": [
+                  {
+                    "text": "Sound met sky at the breakwater this morning, and the ferry crews logged their calmest crossing of the season.",
+                    "font": {
+                      "family": "Source Serif Variable",
+                      "size": 11,
+                      "bold": false,
+                      "italic": false,
+                      "underline": false
+                    },
+                    "color": { "kind": "swatch", "swatchId": "sw-ink" },
+                    "styleId": "cs-emphasis"
+                  },
+                  {
+                    "text": " The harbormaster called it a banner tide.",
+                    "font": {
+                      "family": "Source Serif Variable",
+                      "size": 11,
+                      "bold": true,
+                      "italic": true,
+                      "underline": false
+                    },
+                    "color": { "kind": "swatch", "swatchId": "sw-harbor" },
+                    "styleId": "cs-emphasis",
+                    "tracking": 20,
+                    "baselineShift": 0.5,
+                    "kerning": "optical",
+                    "features": { "liga": true, "onum": true },
+                    "variations": { "wght": 620 },
+                    "language": "en-US",
+                    "horizontalScale": 1.02,
+                    "verticalScale": 1
+                  }
+                ]
+              },
+              {
+                "align": "left",
+                "lineSpacing": 1.1,
+                "styleId": "ps-body-tight",
+                "list": { "kind": "bullet", "level": 0, "bulletChar": "–" },
+                "keep": {
+                  "withNext": true,
+                  "linesTogether": true,
+                  "minFirstLines": 2,
+                  "minLastLines": 2
+                },
+                "ruleBelow": {
+                  "paint": { "kind": "swatch", "swatchId": "sw-harbor" },
+                  "thickness": 0.75,
+                  "offset": 0.04
+                },
+                "shading": {
+                  "kind": "color",
+                  "color": { "space": "rgb", "values": [0.95, 0.97, 1] }
+                },
+                "baselineGridLock": true,
+                "runs": [
+                  {
+                    "text": "Slack water at 09:41 — dredge barge holds position.",
+                    "font": {
+                      "family": "Inter",
+                      "size": 9.5,
+                      "bold": false,
+                      "italic": false,
+                      "underline": false
+                    },
+                    "color": { "kind": "swatch", "swatchId": "sw-ink" }
+                  }
+                ]
+              }
+            ],
+            "vAlign": "top",
+            "inset": { "l": 0.04, "r": 0.04, "t": 0.04, "b": 0.04 }
+          }
+        },
+        {
+          "id": "pic-lighthouse",
+          "type": "pictureFrame",
+          "x": 4.4,
+          "y": 0.75,
+          "w": 3.6,
+          "h": 2.4,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "opacity": 0.95,
+          "fill": null,
+          "stroke": {
+            "paint": { "kind": "swatch", "swatchId": "sw-ink" },
+            "width": 0.5
+          },
+          "assetId": "asset-lighthouse",
+          "fit": "cover",
+          "crop": { "x": 0.08, "y": -0.04, "scale": 1.25, "rotation": 0 },
+          "adjust": [
+            { "op": "adjust", "label": "Brightness +12", "param": "brightness", "value": 12 },
+            {
+              "op": "autoEnhance",
+              "label": "Auto enhance",
+              "params": { "contrast": 10, "saturation": 8 }
+            }
+          ],
+          "wrap": { "mode": "square", "distance": 0.125 },
+          "effects": {
+            "shadow": {
+              "color": { "kind": "color", "color": { "space": "rgb", "values": [0, 0, 0] } },
+              "offsetX": 0.03,
+              "offsetY": 0.03,
+              "blur": 0.06,
+              "opacity": 0.4
+            }
+          }
+        },
+        {
+          "id": "shp-badge-bg",
+          "type": "shape",
+          "shape": "rect",
+          "x": 6.6,
+          "y": 3.4,
+          "w": 1.4,
+          "h": 1.4,
+          "rotation": 15,
+          "locked": true,
+          "layerId": "layer-base",
+          "groupId": "grp-badge",
+          "blend": "multiply",
+          "fill": {
+            "kind": "color",
+            "color": { "space": "cmyk", "values": [0.05, 0.24, 0.7, 0.12] }
+          },
+          "stroke": {
+            "paint": { "kind": "swatch", "swatchId": "sw-foil" },
+            "width": 1
+          }
+        },
+        {
+          "id": "shp-badge-dot",
+          "type": "shape",
+          "shape": "ellipse",
+          "x": 7.05,
+          "y": 3.85,
+          "w": 0.5,
+          "h": 0.5,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "groupId": "grp-badge-inner",
+          "fill": { "kind": "swatch", "swatchId": "sw-foil", "tint": 0.6 },
+          "stroke": null
+        },
+        {
+          "id": "shp-wave",
+          "type": "shape",
+          "shape": "path",
+          "x": 0.5,
+          "y": 9.4,
+          "w": 7.5,
+          "h": 0.5,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "fill": null,
+          "stroke": {
+            "paint": { "kind": "color", "color": { "space": "rgb", "values": [0.16, 0.42, 0.72] } },
+            "width": 1.5
+          },
+          "d": [
+            { "c": "M", "x": 0, "y": 0.5 },
+            { "c": "C", "x1": 0.25, "y1": 0, "x2": 0.75, "y2": 1, "x": 1, "y": 0.5 },
+            { "c": "L", "x": 1, "y": 1 },
+            { "c": "Z" }
+          ]
+        },
+        {
+          "id": "ln-rule",
+          "type": "line",
+          "locked": false,
+          "layerId": "layer-notes",
+          "x1": 0.5,
+          "y1": 7,
+          "x2": 8,
+          "y2": 7,
+          "stroke": {
+            "paint": { "kind": "swatch", "swatchId": "sw-harbor" },
+            "width": 0.75
+          }
+        },
+        {
+          "id": "mf-first-name",
+          "type": "mergeField",
+          "x": 0.5,
+          "y": 10.45,
+          "w": 2,
+          "h": 0.3,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "fill": null,
+          "stroke": null,
+          "field": "firstName",
+          "text": {
+            "paragraphs": [
+              {
+                "align": "left",
+                "lineSpacing": 1,
+                "runs": [
+                  {
+                    "text": "«First name»",
+                    "font": {
+                      "family": "Inter",
+                      "size": 9,
+                      "bold": false,
+                      "italic": false,
+                      "underline": false
+                    },
+                    "color": { "kind": "swatch", "swatchId": "sw-ink" }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "page-2",
+      "masterId": "master-a",
+      "sizeOverride": { "w": 8.5, "h": 8.5 },
+      "bleedOverride": 0.25,
+      "columnsOverride": 1,
+      "guides": { "v": [1, 7.5], "h": [2.25] },
+      "layerOverrides": { "layer-notes": { "visible": false } },
+      "objects": [
+        {
+          "id": "tf-main-2",
+          "type": "textFrame",
+          "x": 0.5,
+          "y": 0.75,
+          "w": 7.5,
+          "h": 3,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "fill": null,
+          "stroke": null,
+          "storyId": "story-main",
+          "prevFrameId": "tf-main-1",
+          "text": {
+            "paragraphs": [
+              {
+                "align": "justify",
+                "lineSpacing": 1.2,
+                "styleId": "ps-body",
+                "runs": [
+                  {
+                    "text": "Continued from the front page: the dredge schedule holds through the neap tide, and slip assignments post Friday.",
+                    "font": {
+                      "family": "Source Serif Variable",
+                      "size": 11,
+                      "bold": false,
+                      "italic": false,
+                      "underline": false
+                    },
+                    "color": { "kind": "swatch", "swatchId": "sw-ink" }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "tbl-tides",
+          "type": "table",
+          "x": 0.5,
+          "y": 4.1,
+          "w": 7.5,
+          "h": 1.6,
+          "rotation": 0,
+          "locked": false,
+          "layerId": "layer-base",
+          "fill": null,
+          "stroke": {
+            "paint": { "kind": "swatch", "swatchId": "sw-ink" },
+            "width": 0.5
+          },
+          "columns": [{ "width": 2.5 }, { "width": 2.5 }, { "width": 2.5 }],
+          "rows": [
+            {
+              "height": 0.4,
+              "cells": [
+                {
+                  "colSpan": 3,
+                  "shading": { "kind": "swatch", "swatchId": "sw-harbor", "tint": 0.2 },
+                  "borders": {
+                    "bottom": {
+                      "paint": { "kind": "swatch", "swatchId": "sw-harbor" },
+                      "width": 1
+                    }
+                  },
+                  "vAlign": "middle",
+                  "paragraphs": [
+                    {
+                      "align": "center",
+                      "lineSpacing": 1,
+                      "runs": [
+                        {
+                          "text": "Tide table — week of 17 August",
+                          "font": {
+                            "family": "Inter",
+                            "size": 10,
+                            "bold": true,
+                            "italic": false,
+                            "underline": false
+                          },
+                          "color": { "kind": "swatch", "swatchId": "sw-ink" }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "cells": [
+                {
+                  "paragraphs": [
+                    {
+                      "align": "left",
+                      "lineSpacing": 1,
+                      "runs": [
+                        {
+                          "text": "High 09:41",
+                          "font": {
+                            "family": "Inter",
+                            "size": 9,
+                            "bold": false,
+                            "italic": false,
+                            "underline": false
+                          },
+                          "color": { "kind": "swatch", "swatchId": "sw-ink" }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "inset": { "l": 0.05, "r": 0.05, "t": 0.02, "b": 0.02 },
+                  "paragraphs": [
+                    {
+                      "align": "left",
+                      "lineSpacing": 1,
+                      "runs": [
+                        {
+                          "text": "Low 15:58",
+                          "font": {
+                            "family": "Inter",
+                            "size": 9,
+                            "bold": false,
+                            "italic": false,
+                            "underline": false
+                          },
+                          "color": { "kind": "swatch", "swatchId": "sw-ink" }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "paragraphs": [
+                    {
+                      "align": "left",
+                      "lineSpacing": 1,
+                      "runs": [
+                        {
+                          "text": "Slack 12:50",
+                          "font": {
+                            "family": "Inter",
+                            "size": 9,
+                            "bold": false,
+                            "italic": false,
+                            "underline": false
+                          },
+                          "color": {
+                            "kind": "color",
+                            "color": { "space": "rgb", "values": [0.35, 0.35, 0.35] }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

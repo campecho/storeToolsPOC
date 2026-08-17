@@ -22,3 +22,22 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   for the dev team's later `.pub` import work. This supersedes §0.1's "the stopgap
   stays short" preference; the binding commit discipline (no mixed commits,
   standalone messages) remains in force for as long as the prototype lives here.
+- **Schema v3 grouping model (recorded 2026-08-17, user-ratified):** PLAN.md §6.6's
+  delta table is silent on grouping; Phase B's group/ungroup (§5.1) needs storage.
+  Decision: minimal nested model — `doc.groups: [{ id, parentGroupId? }]`, objects
+  carry an optional `groupId`. Geometry stays on member objects; groups have none of
+  their own.
+- **Standalone photo documents (recorded 2026-08-17, user-ratified):** a photo edited
+  on its own is a regular schema-v3 document with `kind: "image"` — one format, not
+  two, so any future storage/sync layer handles a single document shape. Convention
+  (one page, one picture frame) is maintained by photo mode, not schema-enforced.
+- **Rotation pivot (recorded 2026-08-17, user decision):** an object's `rotation`
+  is about its frame **center**, not a corner. One semantic across storage,
+  rendering, and hit-testing; `core/hittest`'s `framePivot` is the single
+  authority the renderer mirrors. Supersedes the initial top-left ASSUMPTION.
+- **Schema v3 object vocabulary (recorded 2026-08-17):** object `type` names follow
+  the registry's `ObjectType` vocabulary (`textFrame`/`pictureFrame`/`shape`/…),
+  superseding the POC v2 names — the registry is the prototype's contract, and v3
+  owns the lineage it copied. Deferred as additive (no version bump when added):
+  gradient/pattern `Paint` kinds (arrive with the fill/gradient tool) and parametric
+  rounded-corner storage (rounded-rect currently normalizes to a vector path).
