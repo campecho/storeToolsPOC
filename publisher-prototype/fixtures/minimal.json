@@ -1,0 +1,34 @@
+{
+  "version": 3,
+  "kind": "layout",
+  "name": "Untitled",
+  "size": { "w": 8.5, "h": 11 },
+  "orientation": "portrait",
+  "bleed": 0.125,
+  "margin": 0.5,
+  "slug": 0,
+  "columns": 1,
+  "pages": [{ "id": "page-1", "masterId": null, "objects": [] }],
+  "masters": [],
+  "layers": [
+    {
+      "id": "layer-1",
+      "name": "Layer 1",
+      "color": "#4A90D9",
+      "visible": true,
+      "locked": false,
+      "printing": true,
+      "opacity": 1,
+      "blend": "normal"
+    }
+  ],
+  "sections": [],
+  "anchors": [],
+  "paragraphStyles": [],
+  "characterStyles": [],
+  "swatches": [],
+  "groups": [],
+  "fonts": [],
+  "assets": {},
+  "guides": { "v": [], "h": [] }
+}
