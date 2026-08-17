@@ -1,5 +1,5 @@
 import { visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
-import type { PageSetup } from "../../core/store";
+import type { EffectivePageSetup } from "../../core/render/pageSetup";
 
 /**
  * The SVG interaction overlay (PLAN.md §6.2). It shares the stage transform
@@ -15,16 +15,17 @@ import type { PageSetup } from "../../core/store";
 export function SvgOverlay({
   viewport,
   vpSize,
-  page,
+  setup,
   showProbe,
 }: {
   viewport: Viewport;
   vpSize: Size;
-  page: PageSetup;
+  setup: EffectivePageSetup;
   showProbe: boolean;
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;
-  const box = visibleDocRect(viewport, vpSize, { w: page.widthIn, h: page.heightIn });
+  const { size, bleed } = setup;
+  const box = visibleDocRect(viewport, vpSize, size);
   return (
     <svg
       className="svg-overlay"
@@ -38,35 +39,35 @@ export function SvgOverlay({
           <rect
             x={0}
             y={0}
-            width={page.widthIn}
-            height={page.heightIn}
+            width={size.w}
+            height={size.h}
             fill="none"
             stroke="#d0396b"
             vectorEffect="non-scaling-stroke"
           />
           <rect
-            x={-page.bleedIn}
-            y={-page.bleedIn}
-            width={page.widthIn + 2 * page.bleedIn}
-            height={page.heightIn + 2 * page.bleedIn}
+            x={-bleed}
+            y={-bleed}
+            width={size.w + 2 * bleed}
+            height={size.h + 2 * bleed}
             fill="none"
             stroke="#d0396b"
             strokeDasharray="4 4"
             vectorEffect="non-scaling-stroke"
           />
           <line
-            x1={page.widthIn / 2 - 0.25}
-            y1={page.heightIn / 2}
-            x2={page.widthIn / 2 + 0.25}
-            y2={page.heightIn / 2}
+            x1={size.w / 2 - 0.25}
+            y1={size.h / 2}
+            x2={size.w / 2 + 0.25}
+            y2={size.h / 2}
             stroke="#d0396b"
             vectorEffect="non-scaling-stroke"
           />
           <line
-            x1={page.widthIn / 2}
-            y1={page.heightIn / 2 - 0.25}
-            x2={page.widthIn / 2}
-            y2={page.heightIn / 2 + 0.25}
+            x1={size.w / 2}
+            y1={size.h / 2 - 0.25}
+            x2={size.w / 2}
+            y2={size.h / 2 + 0.25}
             stroke="#d0396b"
             vectorEffect="non-scaling-stroke"
           />

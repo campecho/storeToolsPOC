@@ -8,7 +8,8 @@ import {
   type Size,
   type Viewport,
 } from "../../core/geometry/viewport";
-import { panCommitted, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
+import { effectivePageSetup } from "../../core/render/pageSetup";
+import { panCommitted, selectDocument, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { CanvasStage } from "./CanvasStage";
@@ -26,18 +27,22 @@ type PanDrag = { startX: number; startY: number; dx: number; dy: number };
  */
 export function CanvasWorkspace({
   activeTool,
+  pageIndex,
   showProbe,
   onVpSizeChange,
 }: {
   /** Registry tool id; only wired tools (zoom, pan) affect the canvas yet. */
   activeTool: string;
+  /** Which document page renders — App-local state until the Pages panel. */
+  pageIndex: number;
   showProbe: boolean;
   onVpSizeChange: (size: Size) => void;
 }) {
   const dispatch = useAppDispatch();
   const committed = useAppSelector((s) => s.viewport);
-  const page = useAppSelector((s) => s.document.page);
-  const objects = useAppSelector((s) => s.document.objects);
+  const doc = useAppSelector(selectDocument);
+  const setup = effectivePageSetup(doc, pageIndex);
+  const objects = doc.pages[pageIndex]?.objects ?? [];
 
   const areaRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
@@ -45,7 +50,7 @@ export function CanvasWorkspace({
   const panDragRef = useRef<PanDrag | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
 
-  const pageSize: Size = { w: page.widthIn, h: page.heightIn };
+  const pageSize: Size = setup.size;
   const effective: Viewport = panDrag
     ? { zoom: committed.zoom, pan: { x: committed.pan.x + panDrag.dx, y: committed.pan.y + panDrag.dy } }
     : committed;
@@ -212,8 +217,14 @@ export function CanvasWorkspace({
           dispatch(zoomStepCommitted(zoomAtPoint(committed, vpSize, pageSize, anchor, next)));
         }}
       >
-        <CanvasStage viewport={effective} vpSize={vpSize} page={page} objects={objects} />
-        <SvgOverlay viewport={effective} vpSize={vpSize} page={page} showProbe={showProbe} />
+        <CanvasStage
+          viewport={effective}
+          vpSize={vpSize}
+          setup={setup}
+          objects={objects}
+          swatches={doc.swatches}
+        />
+        <SvgOverlay viewport={effective} vpSize={vpSize} setup={setup} showProbe={showProbe} />
       </div>
     </div>
   );

@@ -107,7 +107,7 @@ test("stress fixture loads deterministically and clears", async ({ page }) => {
     page.evaluate(() => {
       const store = window.__PROTOTYPE_STORE__;
       if (!store) throw new Error("dev store handle missing");
-      return store.getState().document.objects.length;
+      return store.getState().document.present.pages[0]?.objects.length ?? 0;
     }),
   ).toBe(300);
   await expect(page.getByTestId("fps")).toBeVisible({ timeout: 5_000 });
@@ -116,7 +116,7 @@ test("stress fixture loads deterministically and clears", async ({ page }) => {
     page.evaluate(() => {
       const store = window.__PROTOTYPE_STORE__;
       if (!store) throw new Error("dev store handle missing");
-      return store.getState().document.objects.length;
+      return store.getState().document.present.pages[0]?.objects.length ?? 0;
     }),
   ).toBe(0);
 });

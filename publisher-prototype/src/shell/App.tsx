@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import type { Size } from "../core/geometry/viewport";
 import { toolRegistry } from "../core/registry";
 import type { ToolMode } from "../core/registry";
+import { selectDocument } from "../core/store";
 import { CanvasWorkspace } from "./canvas/CanvasWorkspace";
 import { DebugBar } from "./DebugBar";
 import { Dock, type ShapePresentation } from "./dock/Dock";
 import { OptionsBar } from "./dock/OptionsBar";
+import { useAppSelector } from "./hooks";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { ControlPanel } from "./panels/ControlPanel";
 
@@ -25,6 +27,12 @@ export function App() {
   const [showProbe, setShowProbe] = useState(false);
   const [shapePresentation, setShapePresentation] = useState<ShapePresentation>("slots");
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
+  // Which page renders is app-local React state, deliberately not store
+  // state — the Pages panel (Phase B) owns real page navigation. Loading a
+  // shorter document clamps the index rather than resetting it.
+  const [pageIndex, setPageIndex] = useState(0);
+  const pageCount = useAppSelector((s) => selectDocument(s).pages.length);
+  const boundedPageIndex = Math.max(0, Math.min(pageIndex, pageCount - 1));
 
   const activeContract = toolRegistry.find((t) => t.id === activeTool);
 
@@ -59,6 +67,8 @@ export function App() {
         showProbe={showProbe}
         onProbeChange={setShowProbe}
         vpSize={vpSize}
+        pageIndex={boundedPageIndex}
+        onPageIndexChange={setPageIndex}
       />
       <OptionsBar tool={activeContract} />
       <div className="regions">
@@ -68,7 +78,12 @@ export function App() {
           onToolChange={setActiveTool}
           shapePresentation={shapePresentation}
         />
-        <CanvasWorkspace activeTool={activeTool} showProbe={showProbe} onVpSizeChange={setVpSize} />
+        <CanvasWorkspace
+          activeTool={activeTool}
+          pageIndex={boundedPageIndex}
+          showProbe={showProbe}
+          onVpSizeChange={setVpSize}
+        />
         <ControlPanel mode={mode} activeTool={activeContract} />
       </div>
     </div>

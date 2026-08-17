@@ -1,54 +1,131 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { createEmptyDocument, type LayoutDocument, type LayoutObject } from "../model";
+import {
+  ellipseDrawCommitted,
+  lineDrawCommitted,
+  objectMoveCommitted,
+  objectNudgeCommitted,
+  objectResizeCommitted,
+  objectRotateCommitted,
+  rectDrawCommitted,
+  type DrawCommit,
+  type ResizeCommit,
+  type RotateCommit,
+  type TranslateCommit,
+} from "./documentActions";
 
 /**
- * Pre-schema document state. Schema v3 (PLAN.md §6.6) replaces this slice's
- * types wholesale in its own Phase A slice; this exists only so the canvas
- * foundation has a page to draw and enough objects to exercise the §6.2
- * spike gates. Nothing here is a document-model decision.
+ * Document slice (PLAN.md §6.3): state IS the schema-v3 LayoutDocument —
+ * no store-shaped wrapper, so the JSON round-trip (core/model/parse.ts) and
+ * the reducers speak the same shape.
+ *
+ * Own reducers are the non-undoable doors: JSON import / fixture load and
+ * the §6.2 debug stress fixture. Both reset history (core/store/history.ts)
+ * rather than entering it. Tool commits arrive via extraReducers from the
+ * cross-tool creators in documentActions.ts.
+ *
+ * Locked objects are skipped by move/resize/rotate/nudge defensively; the
+ * registry's hitTest contracts (lockedObjects: "skips") mean upstream
+ * hit-testing should already exclude them, and unknown ids are ignored the
+ * same way — a stale commit degrades to a partial or empty application, not
+ * an error.
  */
 
-/** Page geometry in canonical inches. Defaults: US Letter, 1/8" bleed, 1/2" margin. */
-export type PageSetup = {
-  widthIn: number;
-  heightIn: number;
-  bleedIn: number;
-  marginIn: number;
-};
+function applyDraw(state: LayoutDocument, action: PayloadAction<DrawCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  page.objects.push(action.payload.object);
+}
 
-/** A flat rectangle for the stress fixture — not a schema-v3 object. */
-export type PlaceholderObject = {
-  id: string;
-  xIn: number;
-  yIn: number;
-  wIn: number;
-  hIn: number;
-  rotationDeg: number;
-  fill: string;
-};
+function applyTranslate(state: LayoutDocument, action: PayloadAction<TranslateCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  const { dx, dy } = action.payload;
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked) continue;
+    if (obj.type === "line") {
+      obj.x1 += dx;
+      obj.y1 += dy;
+      obj.x2 += dx;
+      obj.y2 += dy;
+    } else {
+      obj.x += dx;
+      obj.y += dy;
+    }
+  }
+}
 
-export type DocumentState = {
-  page: PageSetup;
-  objects: PlaceholderObject[];
-};
+function applyResize(state: LayoutDocument, action: PayloadAction<ResizeCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  for (const obj of page.objects) {
+    if (obj.locked) continue;
+    const box = action.payload.boxes[obj.id];
+    if (!box) continue;
+    if (obj.type === "line") {
+      if ("x1" in box) {
+        obj.x1 = box.x1;
+        obj.y1 = box.y1;
+        obj.x2 = box.x2;
+        obj.y2 = box.y2;
+      }
+    } else if ("w" in box) {
+      obj.x = box.x;
+      obj.y = box.y;
+      obj.w = box.w;
+      obj.h = box.h;
+    }
+  }
+}
 
-const initialState: DocumentState = {
-  page: { widthIn: 8.5, heightIn: 11, bleedIn: 0.125, marginIn: 0.5 },
-  objects: [],
-};
+function applyRotate(state: LayoutDocument, action: PayloadAction<RotateCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  for (const obj of page.objects) {
+    if (obj.locked || obj.type === "line") continue;
+    const rotation = action.payload.rotations[obj.id];
+    if (rotation === undefined) continue;
+    obj.rotation = rotation;
+  }
+}
 
 export const documentSlice = createSlice({
   name: "document",
-  initialState,
+  initialState: createEmptyDocument(),
   reducers: {
-    /** Debug bar: load the deterministic spike-gate fixture. */
-    stressFixtureLoaded(state, action: PayloadAction<{ objects: PlaceholderObject[] }>) {
-      state.objects = action.payload.objects;
+    /** JSON import / fixture load door: the payload has already passed
+        through parseDocument (migrate-on-read), so it replaces wholesale. */
+    loadedCommitted(_state, action: PayloadAction<LayoutDocument>) {
+      return action.payload;
     },
-    /** Debug bar: back to the empty page. */
+    /** Debug bar: load the deterministic §6.2 spike-gate fixture. The
+        fixture is a page-0 debug tool — it swaps the first page's objects
+        and leaves document setup untouched. */
+    stressFixtureLoaded(state, action: PayloadAction<LayoutObject[]>) {
+      const page = state.pages[0];
+      if (page) page.objects = action.payload;
+    },
+    /** Debug bar: back to an empty first page. */
     stressFixtureCleared(state) {
-      state.objects = [];
+      const page = state.pages[0];
+      if (page) page.objects = [];
     },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(rectDrawCommitted, applyDraw)
+      .addCase(ellipseDrawCommitted, applyDraw)
+      .addCase(lineDrawCommitted, applyDraw)
+      .addCase(objectMoveCommitted, applyTranslate)
+      .addCase(objectNudgeCommitted, applyTranslate)
+      .addCase(objectResizeCommitted, applyResize)
+      .addCase(objectRotateCommitted, applyRotate);
   },
 });
 
-export const { stressFixtureLoaded, stressFixtureCleared } = documentSlice.actions;
+export const {
+  loadedCommitted: documentLoadedCommitted,
+  stressFixtureLoaded,
+  stressFixtureCleared,
+} = documentSlice.actions;
