@@ -36,6 +36,21 @@ function toCss(rgb: Rgb): string {
   return `rgb(${to255(rgb[0])}, ${to255(rgb[1])}, ${to255(rgb[2])})`;
 }
 
+/** Parse a `#rrggbb` hex string (the `<input type="color">` form, the
+    registry's color-option default format) into a literal rgb ColorValue
+    with normalized 0–1 channels. A malformed string resolves to fallback
+    black — this module's soft-failure rule, never an error. */
+export function hexToColorValue(hex: string): ColorValue {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  const digits = match?.[1];
+  if (digits === undefined) return { space: "rgb", values: [...FALLBACK_BLACK] };
+  const n = Number.parseInt(digits, 16);
+  return {
+    space: "rgb",
+    values: [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255],
+  };
+}
+
 /** Resolve a Paint to a CSS color. Swatch references resolve through the
     given swatch list (spot swatches render their CMYK process fallback); a
     dangling swatchId renders the literal fallback black — the soft-reference

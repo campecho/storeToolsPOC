@@ -1,0 +1,58 @@
+import type { DrawStyle } from "../core/gestures";
+import type { Paint, Stroke } from "../core/model";
+import { toolRegistry } from "../core/registry";
+import { hexToColorValue } from "../core/render/paint";
+
+/**
+ * Live tool-option values (PLAN.md §2 options bar, wired phase): App-level
+ * React state keyed toolId → optionId, initialized from each contract's
+ * option defaults so the registry stays the single source of the reviewable
+ * option set. Deliberately not store state — option values are tool-ctx
+ * inputs to the next gesture, not document or viewport state.
+ */
+
+export type ToolOptionValue = string | number | boolean;
+export type ToolOptionValues = Record<string, Record<string, ToolOptionValue>>;
+
+/** Every registry tool's options at their contract defaults. */
+export function defaultToolOptions(): ToolOptionValues {
+  const values: ToolOptionValues = {};
+  for (const tool of toolRegistry) {
+    const perTool: Record<string, ToolOptionValue> = {};
+    for (const option of tool.options) perTool[option.id] = option.default;
+    values[tool.id] = perTool;
+  }
+  return values;
+}
+
+/** Typed read with a fallback — values initialize from the contracts, so the
+    fallback only guards a mistyped id or a wrong-kinded entry. */
+export function optionNumber(
+  values: ToolOptionValues,
+  toolId: string,
+  optionId: string,
+  fallback: number,
+): number {
+  const value = values[toolId]?.[optionId];
+  return typeof value === "number" ? value : fallback;
+}
+
+/**
+ * The DrawStyle a draw machine's ctx consumes, from the tool's live options:
+ * `fill`/`stroke` hex colors become literal rgb Paints (hexToColorValue),
+ * `strokeWidth` is points per the contracts. A tool without a fill option
+ * (line) draws with fill null; ditto stroke.
+ */
+export function drawStyleFromOptions(values: ToolOptionValues, toolId: string): DrawStyle {
+  const options = values[toolId] ?? {};
+  const fillHex = typeof options.fill === "string" ? options.fill : null;
+  const strokeHex = typeof options.stroke === "string" ? options.stroke : null;
+  const strokeWidth = typeof options.strokeWidth === "number" ? options.strokeWidth : 1;
+  const fill: Paint | null =
+    fillHex === null ? null : { kind: "color", color: hexToColorValue(fillHex) };
+  const stroke: Stroke | null =
+    strokeHex === null
+      ? null
+      : { paint: { kind: "color", color: hexToColorValue(strokeHex) }, width: strokeWidth };
+  return { fill, stroke };
+}

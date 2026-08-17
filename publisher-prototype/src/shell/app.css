@@ -288,3 +288,10 @@ body {
 .svg-overlay {
   pointer-events: none;
 }
+
+/* Selection handles are the overlay's only interactive targets: the canvas
+   area handles every other pointer stream. */
+.svg-overlay .chrome-handle {
+  pointer-events: all;
+  cursor: pointer;
+}

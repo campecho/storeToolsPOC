@@ -42,11 +42,27 @@ test("shape presentation toggles between individual slots and one flyout slot", 
 });
 
 test("selecting a contracted tool shows its options and not-wired status", async ({ page }) => {
+  await page.getByRole("button", { name: "Rounded rectangle", exact: true }).click();
+  const bar = page.getByTestId("options-bar");
+  await expect(bar).toContainText("Rounded rectangle");
+  await expect(bar.getByText("not wired yet")).toBeVisible();
+  await expect(bar.locator(".option").first()).toBeVisible();
+});
+
+test("wired tools drop the chip and enable exactly their consumed options", async ({ page }) => {
   await page.getByRole("button", { name: "Rectangle", exact: true }).click();
   const bar = page.getByTestId("options-bar");
   await expect(bar).toContainText("Rectangle");
-  await expect(bar.getByText("not wired yet")).toBeVisible();
-  await expect(bar.locator(".option").first()).toBeVisible();
+  await expect(bar.getByText("not wired yet")).toHaveCount(0);
+  await expect(bar.getByLabel("Fill", { exact: true })).toBeEnabled();
+  await expect(bar.getByLabel("Stroke", { exact: true })).toBeEnabled();
+  await expect(bar.getByLabel("Stroke width", { exact: true })).toBeEnabled();
+  // Wired tools' options nothing consumes yet stay disabled (honest surface):
+  // select consumes only nudgeIncrement.
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await expect(bar.getByLabel("Nudge", { exact: true })).toBeEnabled();
+  await expect(bar.getByLabel("Show coordinates", { exact: true })).toBeDisabled();
+  await expect(bar.getByLabel("Position relative to", { exact: true })).toBeDisabled();
 });
 
 test("registry shortcuts activate tools in the current mode", async ({ page }) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Swatch } from "../model";
-import { paintToCss } from "./paint";
+import { hexToColorValue, paintToCss } from "./paint";
 
 /**
  * Paint → CSS resolution: literal colors render directly (cmyk via the
@@ -61,5 +61,32 @@ describe("paintToCss", () => {
   it("renders fallback black for a dangling swatch id", () => {
     expect(paintToCss({ kind: "swatch", swatchId: "gone" }, swatches)).toBe("rgb(0, 0, 0)");
     expect(paintToCss({ kind: "swatch", swatchId: "gone" }, [])).toBe("rgb(0, 0, 0)");
+  });
+});
+
+describe("hexToColorValue", () => {
+  it("parses #rrggbb into normalized rgb channels", () => {
+    expect(hexToColorValue("#ff8000")).toEqual({
+      space: "rgb",
+      values: [1, 128 / 255, 0],
+    });
+    expect(hexToColorValue("#000000")).toEqual({ space: "rgb", values: [0, 0, 0] });
+    expect(hexToColorValue("#ffffff")).toEqual({ space: "rgb", values: [1, 1, 1] });
+  });
+
+  it("accepts uppercase digits", () => {
+    expect(hexToColorValue("#4472C4")).toEqual(hexToColorValue("#4472c4"));
+  });
+
+  it("round-trips through paintToCss", () => {
+    expect(paintToCss({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe(
+      "rgb(68, 114, 196)",
+    );
+  });
+
+  it("resolves malformed strings to fallback black, never an error", () => {
+    for (const bad of ["", "4472c4", "#fff", "#12345", "#gggggg", "#1234567"]) {
+      expect(hexToColorValue(bad)).toEqual({ space: "rgb", values: [0, 0, 0] });
+    }
   });
 });

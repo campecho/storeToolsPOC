@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Size } from "../core/geometry/viewport";
 import { toolRegistry } from "../core/registry";
 import type { ToolMode } from "../core/registry";
@@ -10,6 +10,7 @@ import { OptionsBar } from "./dock/OptionsBar";
 import { useAppSelector } from "./hooks";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { ControlPanel } from "./panels/ControlPanel";
+import { defaultToolOptions, type ToolOptionValue, type ToolOptionValues } from "./toolOptions";
 
 export type AppMode = Exclude<ToolMode, "both">;
 
@@ -33,6 +34,12 @@ export function App() {
   const [pageIndex, setPageIndex] = useState(0);
   const pageCount = useAppSelector((s) => selectDocument(s).pages.length);
   const boundedPageIndex = Math.max(0, Math.min(pageIndex, pageCount - 1));
+  // Live option values for every tool, seeded from the registry defaults;
+  // the options bar edits them and wired tools' gesture ctx consumes them.
+  const [toolOptions, setToolOptions] = useState<ToolOptionValues>(defaultToolOptions);
+  const setToolOption = useCallback((toolId: string, optionId: string, value: ToolOptionValue) => {
+    setToolOptions((prev) => ({ ...prev, [toolId]: { ...prev[toolId], [optionId]: value } }));
+  }, []);
 
   const activeContract = toolRegistry.find((t) => t.id === activeTool);
 
@@ -70,7 +77,13 @@ export function App() {
         pageIndex={boundedPageIndex}
         onPageIndexChange={setPageIndex}
       />
-      <OptionsBar tool={activeContract} />
+      <OptionsBar
+        tool={activeContract}
+        values={activeContract && toolOptions[activeContract.id]}
+        onOptionChange={(optionId, value) => {
+          if (activeContract) setToolOption(activeContract.id, optionId, value);
+        }}
+      />
       <div className="regions">
         <Dock
           mode={mode}
@@ -82,6 +95,7 @@ export function App() {
           activeTool={activeTool}
           pageIndex={boundedPageIndex}
           showProbe={showProbe}
+          toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
         />
         <ControlPanel mode={mode} activeTool={activeContract} />
