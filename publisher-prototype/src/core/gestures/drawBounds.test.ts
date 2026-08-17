@@ -1,0 +1,199 @@
+import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
+import { describe, expect, it } from "vitest";
+import { LayoutObjectSchema, type Paint, type Stroke } from "../model";
+import { ellipseTool, rectTool } from "../registry/tools/shapes";
+import {
+  ellipseDrawCommitted,
+  gestureCancelled,
+  rectDrawCommitted,
+  type DrawCommit,
+} from "../store/documentActions";
+import { drawBoundsMachine, type DrawBoundsContext, type DrawBoundsState } from "./drawBounds";
+import type { GestureModifiers, GesturePoint, GestureResult } from "./types";
+
+const FILL: Paint = { kind: "color", color: { space: "rgb", values: [0.2, 0.4, 0.8] } };
+const STROKE: Stroke = {
+  paint: { kind: "color", color: { space: "rgb", values: [0, 0, 0] } },
+  width: 0.75,
+};
+const NONE: GestureModifiers = { shift: false, alt: false };
+const SHIFT: GestureModifiers = { shift: true, alt: false };
+const ALT: GestureModifiers = { shift: false, alt: true };
+const SHIFT_ALT: GestureModifiers = { shift: true, alt: true };
+
+function ctx(over: Partial<DrawBoundsContext> = {}): DrawBoundsContext {
+  return { pageIndex: 0, zoom: 1, style: { fill: FILL, stroke: STROKE }, idFactory: () => "id-1", ...over };
+}
+
+function payloadOf<P>(result: GestureResult, creator: ActionCreatorWithPayload<P>): P {
+  const action = result.action;
+  if (action === null || !creator.match(action)) {
+    throw new Error(`expected a ${creator.type} commit`);
+  }
+  return action.payload;
+}
+
+function clauseAction(tool: typeof rectTool, id: string): string {
+  const clause = tool.gestures.find((g) => g.id === id);
+  if (!clause) throw new Error(`missing registry clause ${id}`);
+  return clause.action;
+}
+
+function drag(
+  from: GesturePoint,
+  to: GesturePoint,
+  modifiers: GestureModifiers = NONE,
+  context = ctx(),
+): { state: DrawBoundsState; result: GestureResult } {
+  const machine = drawBoundsMachine("rect");
+  let state = machine.begin(from, context);
+  state = machine.update(state, to, modifiers);
+  return { state, result: machine.end(state, modifiers) };
+}
+
+describe("rect.drag.creates", () => {
+  it("commits one complete rect ShapeObject of the dragged bounds", () => {
+    const { result } = drag({ x: 1, y: 1 }, { x: 3, y: 2.5 });
+    expect(result.action?.type).toBe(clauseAction(rectTool, "rect.drag.creates"));
+    const payload = payloadOf<DrawCommit>(result, rectDrawCommitted);
+    expect(payload.pageIndex).toBe(0);
+    expect(payload.object).toMatchObject({
+      id: "id-1",
+      type: "shape",
+      shape: "rect",
+      x: 1,
+      y: 1,
+      w: 2,
+      h: 1.5,
+      rotation: 0,
+      locked: false,
+      fill: FILL,
+      stroke: STROKE,
+    });
+    expect(() => LayoutObjectSchema.parse(payload.object)).not.toThrow();
+  });
+
+  it("normalizes a leftward/upward drag and returns exactly one action", () => {
+    const { result } = drag({ x: 3, y: 2.5 }, { x: 1, y: 1 });
+    expect(Object.keys(result)).toEqual(["action"]);
+    const payload = payloadOf<DrawCommit>(result, rectDrawCommitted);
+    expect(payload.object).toMatchObject({ x: 1, y: 1, w: 2, h: 1.5 });
+  });
+
+  it("commits nothing for a degenerate zero-area drag", () => {
+    const { result } = drag({ x: 1, y: 1 }, { x: 2, y: 1 });
+    expect(result.action).toBeNull();
+  });
+
+  it("is deterministic: identical streams commit identical actions", () => {
+    const a = drag({ x: 1, y: 1 }, { x: 2, y: 2 }).result;
+    const b = drag({ x: 1, y: 1 }, { x: 2, y: 2 }).result;
+    expect(a).toEqual(b);
+  });
+});
+
+describe("rect.shift-drag.constrains-square", () => {
+  it("constrains to the larger dimension, toward the drag direction", () => {
+    const { result } = drag({ x: 1, y: 1 }, { x: 3, y: 2 }, SHIFT);
+    expect(payloadOf<DrawCommit>(result, rectDrawCommitted).object).toMatchObject({
+      x: 1,
+      y: 1,
+      w: 2,
+      h: 2,
+    });
+  });
+
+  it("grows the square into a negative-direction drag", () => {
+    const { result } = drag({ x: 1, y: 1 }, { x: -1, y: 0.5 }, SHIFT);
+    expect(payloadOf<DrawCommit>(result, rectDrawCommitted).object).toMatchObject({
+      x: -1,
+      y: -1,
+      w: 2,
+      h: 2,
+    });
+  });
+
+  it("un-constrains when Shift is released mid-drag (modifiers are live)", () => {
+    const machine = drawBoundsMachine("rect");
+    let state = machine.begin({ x: 1, y: 1 }, ctx());
+    state = machine.update(state, { x: 3, y: 2 }, SHIFT);
+    expect(machine.preview(state)).toMatchObject({ kind: "draw", w: 2, h: 2 });
+    state = machine.update(state, { x: 3, y: 2 }, NONE);
+    expect(machine.preview(state)).toMatchObject({ kind: "draw", w: 2, h: 1 });
+    const payload = payloadOf<DrawCommit>(machine.end(state, NONE), rectDrawCommitted);
+    expect(payload.object).toMatchObject({ x: 1, y: 1, w: 2, h: 1 });
+  });
+});
+
+describe("rect.alt-drag.draws-from-center", () => {
+  it("draws outward from the press point as center", () => {
+    const { result } = drag({ x: 2, y: 2 }, { x: 3, y: 2.5 }, ALT);
+    expect(payloadOf<DrawCommit>(result, rectDrawCommitted).object).toMatchObject({
+      x: 1,
+      y: 1.5,
+      w: 2,
+      h: 1,
+    });
+  });
+
+  it("combines with Shift into a centered square", () => {
+    const { result } = drag({ x: 2, y: 2 }, { x: 3, y: 2.5 }, SHIFT_ALT);
+    expect(payloadOf<DrawCommit>(result, rectDrawCommitted).object).toMatchObject({
+      x: 1,
+      y: 1,
+      w: 2,
+      h: 2,
+    });
+  });
+});
+
+describe("rect.click.creates-default-size", () => {
+  it("commits a default 1×1 in rect centered at an under-slop click", () => {
+    // 0.02in travel < the 3px slop at zoom 1 (0.03125in).
+    const { result } = drag({ x: 2, y: 3 }, { x: 2.02, y: 3 });
+    expect(payloadOf<DrawCommit>(result, rectDrawCommitted).object).toMatchObject({
+      x: 1.5,
+      y: 2.5,
+      w: 1,
+      h: 1,
+    });
+  });
+
+  it("converts the slop threshold through zoom", () => {
+    // 0.02in travel exceeds the 3px slop at zoom 4 (0.0078in) → a real drag.
+    const { result } = drag({ x: 2, y: 3 }, { x: 2.02, y: 3.02 }, NONE, ctx({ zoom: 4 }));
+    const payload = payloadOf<DrawCommit>(result, rectDrawCommitted);
+    expect(payload.object).toMatchObject({ x: 2, y: 3 });
+    expect(payload.object).not.toMatchObject({ w: 1, h: 1 });
+  });
+
+  it("stays a drag once slop is exceeded, even after returning to the start", () => {
+    const machine = drawBoundsMachine("rect");
+    let state = machine.begin({ x: 1, y: 1 }, ctx());
+    state = machine.update(state, { x: 2, y: 2 }, NONE);
+    state = machine.update(state, { x: 1, y: 1 }, NONE);
+    // Dragged back to zero area → degenerate, not the click default.
+    expect(machine.end(state, NONE).action).toBeNull();
+  });
+});
+
+describe("ellipse.drag.creates / ellipse.shift-drag.constrains-circle", () => {
+  it("commits an ellipse ShapeObject through the ellipse clause action", () => {
+    const machine = drawBoundsMachine("ellipse");
+    let state = machine.begin({ x: 0, y: 0 }, ctx());
+    state = machine.update(state, { x: 2, y: 1 }, SHIFT);
+    const result = machine.end(state, SHIFT);
+    expect(result.action?.type).toBe(clauseAction(ellipseTool, "ellipse.drag.creates"));
+    const payload = payloadOf<DrawCommit>(result, ellipseDrawCommitted);
+    expect(payload.object).toMatchObject({ shape: "ellipse", w: 2, h: 2 });
+  });
+});
+
+describe("rect.esc.cancels-draw", () => {
+  it("cancel returns the gesture/cancelled record and nothing else", () => {
+    const machine = drawBoundsMachine("rect");
+    const cancelled = machine.cancel();
+    expect(cancelled.action.type).toBe(clauseAction(rectTool, "rect.esc.cancels-draw"));
+    expect(cancelled.action.type).toBe(gestureCancelled.type);
+  });
+});
