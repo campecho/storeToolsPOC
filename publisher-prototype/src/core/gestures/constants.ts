@@ -38,3 +38,15 @@ export const LINE_SNAP_DEG = 45;
 export function slopInInches(zoom: number): number {
   return GESTURE_SLOP_PX / (DPI * zoom);
 }
+
+/**
+ * ASSUMPTION: a pen press within 8 screen px of the draft's first anchor is
+ * the close-the-path click (pen.click-start.closes-path) — the contract
+ * names the gesture, not the radius; working guess for SME review.
+ */
+export const PEN_START_HIT_PX = 8;
+
+/** Pen close-target radius in document inches at the given zoom. */
+export function penStartToleranceIn(zoom: number): number {
+  return PEN_START_HIT_PX / (DPI * zoom);
+}

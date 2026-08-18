@@ -4,6 +4,7 @@ import { deserializeDocument, serializeDocument } from "../core/model";
 import { effectivePageSetup } from "../core/render/pageSetup";
 import {
   documentLoadedCommitted,
+  penAnchorRetracted,
   redoCommitted,
   selectDocument,
   stressFixtureCleared,
@@ -57,8 +58,12 @@ export function DebugBar({
   const dispatch = useAppDispatch();
   const viewport = useAppSelector((s) => s.viewport);
   const doc = useAppSelector(selectDocument);
-  const canUndo = useAppSelector((s) => s.document.past.length > 0);
-  const canRedo = useAppSelector((s) => s.document.future.length > 0);
+  // While a pen draft is active, undo retracts one anchor per press (the
+  // pen contract's per-gesture rule) and leaves document history alone;
+  // redo is unavailable — retracted anchors are gone.
+  const penDrafting = useAppSelector((s) => s.pen.anchors.length > 0);
+  const canUndo = useAppSelector((s) => s.document.past.length > 0) || penDrafting;
+  const canRedo = useAppSelector((s) => s.document.future.length > 0) && !penDrafting;
   // The stress fixture is a page-0 debug tool; its button and FPS probe key
   // off the first page's objects regardless of the rendered page.
   const stressCount = doc.pages[0]?.objects.length ?? 0;
@@ -182,7 +187,10 @@ export function DebugBar({
         </button>
       </span>
       <span className="debug-group" role="group" aria-label="History">
-        <button disabled={!canUndo} onClick={() => dispatch(undoCommitted())}>
+        <button
+          disabled={!canUndo}
+          onClick={() => dispatch(penDrafting ? penAnchorRetracted() : undoCommitted())}
+        >
           Undo
         </button>
         <button disabled={!canRedo} onClick={() => dispatch(redoCommitted())}>

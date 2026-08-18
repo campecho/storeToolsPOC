@@ -2,6 +2,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import { viewportSlice } from "./viewportSlice";
 import { documentSlice } from "./documentSlice";
+import { penSlice } from "./penSlice";
 import { selectionSlice } from "./selectionSlice";
 import { withDocumentHistory } from "./history";
 
@@ -17,6 +18,7 @@ export function createAppStore() {
       viewport: viewportSlice.reducer,
       document: withDocumentHistory(documentSlice.reducer),
       selection: selectionSlice.reducer,
+      pen: penSlice.reducer,
     },
   });
 }
@@ -35,4 +37,5 @@ export * from "./viewportSlice";
 export * from "./documentSlice";
 export * from "./documentActions";
 export * from "./selectionSlice";
+export * from "./penSlice";
 export * from "./history";

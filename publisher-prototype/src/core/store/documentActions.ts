@@ -94,6 +94,7 @@ export const starPolygonDrawCommitted = createAction<DrawCommit>("starPolygon/dr
 export const calloutDrawCommitted = createAction<DrawCommit>("callout/drawCommitted");
 export const bannerDrawCommitted = createAction<DrawCommit>("banner/drawCommitted");
 export const flowchartDrawCommitted = createAction<DrawCommit>("flowchart/drawCommitted");
+export const penDrawCommitted = createAction<DrawCommit>("pen/drawCommitted");
 export const objectMoveCommitted = createAction<TranslateCommit>("object/moveCommitted");
 export const objectNudgeCommitted = createAction<TranslateCommit>("object/nudgeCommitted");
 export const objectResizeCommitted = createAction<ResizeCommit>("object/resizeCommitted");
@@ -108,6 +109,8 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
 
 /** The gesture pipeline's DevTools record for an aborted gesture (Esc during
-    drag, discarded pen path). No reducer anywhere handles it — it is never a
-    state change, only a visible timeline entry. */
+    drag, discarded pen path). No DOCUMENT reducer handles it — an aborted
+    gesture never changes the document — but the pen draft (app state,
+    penSlice) clears on it: pen.esc.discards-path binds to this action, and a
+    non-empty draft IS state to discard. */
 export const gestureCancelled = createAction("gesture/cancelled");

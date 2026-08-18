@@ -50,6 +50,18 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   tools omit defaults so lineage documents stay valid and lean. Decoration
   geometry (dash patterns, head shapes) is pure math in `core/render/lineDecor.ts`
   so the dev team's output path shares it with the canvas.
+- **Pen draft state (recorded 2026-08-18):** the pen contract makes each anchor
+  placement its own committed gesture with one-anchor-at-a-time undo, so the
+  in-progress path cannot live in transient gesture state. It lives in a `pen`
+  store slice as APP state (the selection precedent): anchor clauses dispatch into
+  it, `pen/drawCommitted` commits the finished shape into the document (one
+  history entry) and clears it, and the shell's undo path retracts anchors
+  (`pen/anchorRetracted`) while a draft is active instead of popping document
+  history — redo is unavailable mid-draft. `gesture/cancelled` (the
+  pen.esc.discards-path binding) now clears this draft; its no-reducer rule
+  narrows to "no DOCUMENT reducer". The committed shape normalizes into the
+  control hull's bounding box; independent handle editing and curved closing
+  segments are the node-select tranche's scope.
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no

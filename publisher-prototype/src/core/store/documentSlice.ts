@@ -15,6 +15,7 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  penDrawCommitted,
   rectDrawCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
@@ -187,6 +188,7 @@ export const documentSlice = createSlice({
       .addCase(calloutDrawCommitted, applyDraw)
       .addCase(bannerDrawCommitted, applyDraw)
       .addCase(flowchartDrawCommitted, applyDraw)
+      .addCase(penDrawCommitted, applyDraw)
       .addCase(objectMoveCommitted, applyTranslate)
       .addCase(objectNudgeCommitted, applyTranslate)
       .addCase(objectResizeCommitted, applyResize)

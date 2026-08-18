@@ -17,6 +17,7 @@ export const WIRED_TOOLS: ReadonlySet<string> = new Set([
   "callout",
   "banner",
   "flowchart",
+  "pen",
 ]);
 
 /**
@@ -43,4 +44,5 @@ export const CONSUMED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Ma
   ["callout", new Set(["fill", "stroke", "strokeWidth", "tailAnchor"])],
   ["banner", new Set(["fill", "stroke", "strokeWidth"])],
   ["flowchart", new Set(["symbol", "fill", "stroke", "strokeWidth"])],
+  ["pen", new Set(["fill", "stroke", "strokeWidth", "autoClose"])],
 ]);

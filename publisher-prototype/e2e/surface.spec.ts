@@ -42,9 +42,9 @@ test("shape presentation toggles between individual slots and one flyout slot", 
 });
 
 test("selecting a contracted tool shows its options and not-wired status", async ({ page }) => {
-  await page.getByRole("button", { name: "Pen / freeform", exact: true }).click();
+  await page.getByRole("button", { name: "Text frame", exact: true }).click();
   const bar = page.getByTestId("options-bar");
-  await expect(bar).toContainText("Pen / freeform");
+  await expect(bar).toContainText("Text frame");
   await expect(bar.getByText("not wired yet")).toBeVisible();
   await expect(bar.locator(".option").first()).toBeVisible();
 });

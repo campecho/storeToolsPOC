@@ -17,6 +17,7 @@ import {
   starPolygonDrawCommitted,
 } from "./documentActions";
 import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES } from "./history";
+import { penSlice } from "./penSlice";
 import { selectionSlice } from "./selectionSlice";
 
 /**
@@ -54,6 +55,7 @@ const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line|arrow)\//;
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([
     ...Object.values(selectionSlice.actions).map((creator) => creator.type),
+    ...Object.values(penSlice.actions).map((creator) => creator.type),
     ...documentActionCreators.map((creator) => creator.type),
   ]);
   const clauses = toolRegistry.flatMap((tool) =>
