@@ -86,3 +86,14 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   rotated-chrome and rotated-resize SME items together. Still open: a
   multi-selection has no single rotation, so it scales on the document axes while
   each rotated member keeps its angle, which does shear.
+- **Handle cursors (recorded 2026-08-18, user decision):** each handle shows the
+  direction it stretches, turning with the frame — `core/gestures`'
+  `resizeHandleAxis` snaps the handle's heading plus the frame's rotation to the
+  nearest eighth turn, and the shell (`shell/canvas/cursors.ts`) names the CSS
+  keyword. Rotation has no cursor keyword, so the knob carries a drawn glyph
+  inlined as an SVG data URI — a NEW PATTERN here, taken because the built-in
+  candidates are already spoken for (`grab` is this app's pan cursor) or mean
+  something else (`alias` = make a shortcut). The glyph turns and snaps the same
+  way. A running resize/rotate joins the workspace's cursor override chain,
+  because the preview replaces the chrome mid-gesture (§6.3) and takes the
+  hovered handle's cursor with it.

@@ -352,8 +352,8 @@ body {
 }
 
 /* Selection handles are the overlay's only interactive targets: the canvas
-   area handles every other pointer stream. */
+   area handles every other pointer stream. Each handle sets its own cursor
+   inline (canvas/cursors.ts) — it depends on the frame's rotation. */
 .svg-overlay .chrome-handle {
   pointer-events: all;
-  cursor: pointer;
 }

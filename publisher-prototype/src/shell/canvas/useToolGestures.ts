@@ -29,6 +29,7 @@ import {
 import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
+import { resizeCursor, rotateCursor } from "./cursors";
 import {
   arrowDrawCommitted,
   gestureCancelled,
@@ -159,6 +160,11 @@ export type ToolGestures = {
   preview: GesturePreview | null;
   /** True while any gesture session runs (wheel input is dropped, like pan). */
   active: boolean;
+  /** The cursor of the handle a resize/rotate started from, held for the whole
+      gesture; null otherwise. The preview replaces the chrome the moment a
+      gesture runs (§6.3), taking the hovered handle — and its cursor — with
+      it, so the workspace flies this one until the gesture ends. */
+  handleCursor: string | null;
   onPointerDown(e: React.PointerEvent<HTMLDivElement>): void;
   onPointerMove(e: React.PointerEvent<HTMLDivElement>): void;
   /** pointerup / pointercancel / lostpointercapture — idempotent. */
@@ -175,6 +181,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const sessionRef = useRef<Session | null>(null);
   const [preview, setPreview] = useState<GesturePreview | null>(null);
   const [active, setActive] = useState(false);
+  const [handleCursor, setHandleCursor] = useState<string | null>(null);
   // Latest args for the natively-attached keyboard listener (frameRef pattern).
   const argsRef = useRef(args);
   argsRef.current = args;
@@ -207,6 +214,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     if (session.dragged()) args.suppressClickRef.current = true;
     setActive(false);
     setPreview(null);
+    setHandleCursor(null);
   };
 
   const selectedObjects = (): LayoutObject[] =>
@@ -404,6 +412,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           : { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
     }
     e.stopPropagation();
+    setHandleCursor(resizeCursor(handle, frame.rotation));
     begin(
       machineSession(
         resizeMachine,
@@ -436,6 +445,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     }
     if (Object.keys(initialRotations).length === 0) return;
     e.stopPropagation();
+    setHandleCursor(rotateCursor(frame.rotation));
     begin(
       machineSession(
         rotateMachine,
@@ -469,6 +479,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           argsRef.current.suppressClickRef.current = true;
           setActive(false);
           setPreview(null);
+          setHandleCursor(null);
           return;
         }
         const { activeTool, penAnchors } = argsRef.current;
@@ -540,6 +551,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   return {
     preview,
     active,
+    handleCursor,
     onPointerDown,
     onPointerMove,
     onPointerEnd,

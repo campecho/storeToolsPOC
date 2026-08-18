@@ -8,6 +8,7 @@ import {
   type Point,
 } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
+import { resizeCursor, rotateCursor } from "./cursors";
 
 /**
  * Committed-selection chrome (select tool only): the selection frame as a
@@ -21,6 +22,9 @@ import type { LayoutObject } from "../../core/model";
  * around it. Handles and the rotation stem rotate with it, which is also the
  * space the resize machine scales in. Multi-selections and lines fall back to
  * the union AABB drawn unrotated.
+ *
+ * Each handle carries the cursor of the direction it stretches, which turns
+ * with the frame too (canvas/cursors.ts).
  */
 
 export const CHROME_COLOR = "#2680eb";
@@ -85,6 +89,7 @@ export function SelectionChrome({
             fill="#ffffff"
             stroke={CHROME_COLOR}
             vectorEffect="non-scaling-stroke"
+            style={{ cursor: rotateCursor(rotation) }}
             onPointerDown={onRotateStart}
           />
         </>
@@ -107,6 +112,9 @@ export function SelectionChrome({
             fill="#ffffff"
             stroke={CHROME_COLOR}
             vectorEffect="non-scaling-stroke"
+            // The cursor names the direction the handle stretches, which the
+            // frame's rotation turns along with the handle itself.
+            style={{ cursor: resizeCursor(handle, rotation) }}
             onPointerDown={(e) => onResizeStart(handle, e)}
           />
         );

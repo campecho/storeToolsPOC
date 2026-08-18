@@ -74,6 +74,46 @@ export function resizeAnchor(handle: ResizeHandle, box: FrameBox): GesturePoint 
   return resizeHandlePoint(OPPOSITE_HANDLE[handle], box);
 }
 
+/**
+ * The line a handle stretches along, named by the compass pair it runs
+ * between — what the shell turns into a two-headed cursor. Direction only:
+ * the two ends are interchangeable, so `ns` covers both up and down.
+ */
+export type ResizeAxis = "ns" | "ew" | "nesw" | "nwse";
+
+/** Each handle's outward direction on the unrotated frame, degrees clockwise
+    from east (document y points down, so south is +90°). */
+const HANDLE_HEADING_DEG: Record<ResizeHandle, number> = {
+  e: 0,
+  se: 45,
+  s: 90,
+  sw: 135,
+  w: 180,
+  nw: 225,
+  n: 270,
+  ne: 315,
+};
+
+/**
+ * The axis a handle stretches along once the frame's rotation is applied —
+ * an `n` handle on a quarter-turned frame points east and stretches `ew`.
+ * The heading snaps to the nearest eighth turn, which is all a cursor can
+ * express, and opposite eighths share an axis.
+ */
+export function resizeHandleAxis(handle: ResizeHandle, rotation: number): ResizeAxis {
+  const eighth = Math.round((HANDLE_HEADING_DEG[handle] + rotation) / 45);
+  switch (((eighth % 4) + 4) % 4) {
+    case 0:
+      return "ew";
+    case 1:
+      return "nwse";
+    case 2:
+      return "ns";
+    default:
+      return "nesw";
+  }
+}
+
 export type ResizeState = DragState<ResizeContext>;
 
 /** The pointer in the frame's own unrotated space, where the anchor and the

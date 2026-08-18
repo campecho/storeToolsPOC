@@ -324,6 +324,62 @@ test("select.drag-handle.resizes a rotated frame in its own space", async ({ pag
   expectNear(after[0]?.y ?? NaN, before[0]?.y ?? NaN);
 });
 
+test("selection handles carry the cursor of the direction they stretch", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  for (const [handle, cursor] of [
+    ["n", "ns-resize"],
+    ["s", "ns-resize"],
+    ["e", "ew-resize"],
+    ["w", "ew-resize"],
+    ["nw", "nwse-resize"],
+    ["se", "nwse-resize"],
+    ["ne", "nesw-resize"],
+    ["sw", "nesw-resize"],
+  ] as const) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCSS("cursor", cursor);
+  }
+  // Rotation has no cursor keyword — the knob carries a drawn glyph.
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCSS("cursor", /^url\(.*\) 12 12, grab$/);
+
+  // A quarter turn takes the cursors with it: the handles now stretch along
+  // the frame's own edges, so every axis swaps for its partner.
+  await dragHandle(page, "rotate", { x: 3.8, y: 3.5 });
+  expect(Math.abs(shapeAt(await pageObjects(page), 0).rotation - 90)).toBeLessThanOrEqual(1);
+  for (const [handle, cursor] of [
+    ["n", "ew-resize"],
+    ["e", "ns-resize"],
+    ["nw", "nesw-resize"],
+    ["ne", "nwse-resize"],
+  ] as const) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCSS("cursor", cursor);
+  }
+});
+
+test("the handle's cursor survives the drag that hides the handle", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const area = page.getByTestId("canvas-area");
+  await expect(area).toHaveCSS("cursor", "default");
+  // Press the se handle and move without releasing: the preview replaces the
+  // chrome, so the handle is gone — the canvas area holds its cursor instead.
+  const box = await page.locator('[data-handle="se"]').boundingBox();
+  if (!box) throw new Error("se handle not visible");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y + 40, { steps: 4 });
+  await expect(page.locator('[data-handle="se"]')).toHaveCount(0);
+  await expect(area).toHaveCSS("cursor", "nwse-resize");
+  await page.mouse.up();
+  await expect(area).toHaveCSS("cursor", "default");
+});
+
 test("select.arrow.nudges", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });

@@ -11,6 +11,7 @@ import {
 import { MIN_RESIZE_SIZE_IN } from "./constants";
 import {
   resizeAnchor,
+  resizeHandleAxis,
   resizeHandlePoint,
   resizeMachine,
   type ResizeContext,
@@ -39,6 +40,8 @@ const HANDLE_POINTS: Record<ResizeHandle, GesturePoint> = {
   sw: { x: 1, y: 3 },
   w: { x: 1, y: 2 },
 };
+
+const HANDLES: readonly ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 const OPPOSITE: Record<ResizeHandle, ResizeHandle> = {
   nw: "se",
@@ -235,6 +238,40 @@ describe("select.drag-handle.resizes (rotated frame)", () => {
     // regression, this is the seam stated outright.
     const boxes = boxesOf(drag("se", { x: 5, y: 5 }));
     expect(boxes["a"]).toEqual({ x: 1, y: 1, w: 2, h: 2 });
+  });
+});
+
+describe("resizeHandleAxis", () => {
+  it("names the axis each handle stretches along on an unrotated frame", () => {
+    expect(resizeHandleAxis("n", 0)).toBe("ns");
+    expect(resizeHandleAxis("s", 0)).toBe("ns");
+    expect(resizeHandleAxis("e", 0)).toBe("ew");
+    expect(resizeHandleAxis("w", 0)).toBe("ew");
+    expect(resizeHandleAxis("nw", 0)).toBe("nwse");
+    expect(resizeHandleAxis("se", 0)).toBe("nwse");
+    expect(resizeHandleAxis("ne", 0)).toBe("nesw");
+    expect(resizeHandleAxis("sw", 0)).toBe("nesw");
+  });
+
+  it("turns with the frame: a quarter turn swaps every axis for its partner", () => {
+    expect(resizeHandleAxis("n", 90)).toBe("ew");
+    expect(resizeHandleAxis("e", 90)).toBe("ns");
+    expect(resizeHandleAxis("nw", 90)).toBe("nesw");
+    expect(resizeHandleAxis("ne", 90)).toBe("nwse");
+  });
+
+  it("is unchanged by a half turn — the two ends are interchangeable", () => {
+    for (const handle of HANDLES) {
+      expect(resizeHandleAxis(handle, 180)).toBe(resizeHandleAxis(handle, 0));
+      expect(resizeHandleAxis(handle, -180)).toBe(resizeHandleAxis(handle, 0));
+    }
+  });
+
+  it("snaps an off-axis rotation to the nearest eighth turn", () => {
+    // 20° still reads as upright; 30° has crossed into the diagonal.
+    expect(resizeHandleAxis("n", 20)).toBe("ns");
+    expect(resizeHandleAxis("n", 30)).toBe("nesw");
+    expect(resizeHandleAxis("n", -30)).toBe("nwse");
   });
 });
 
