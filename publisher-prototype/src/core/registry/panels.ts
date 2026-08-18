@@ -29,6 +29,7 @@ export const panelRegistry: readonly PanelSpec[] = [
       "Rotation: numeric angle entry, rotate 90° CW/CCW, reset rotation (§5.2).",
       "Nudge increment configuration (§2.1 configurable nudge increments).",
       "Corner radius for a rounded rectangle [ASSUMPTION: §4.4 names the shape, not where its radius is edited; the geometry panel is the numeric home for the same value the shape's adjust handle sets].",
+      "The remaining shape parameters, each shown only for the kind that stores it: star/polygon vertex count and inner radius, callout tail anchor, flowchart symbol, and a freeform path's closed state (§4.4) [ASSUMPTION: §4.4 names the shapes but never says where the parameters shaping them are edited after placement; they join corner radius here on the same reasoning, and the three with canvas adjust handles drive those handles' own actions rather than parallel ones].",
       "Position relative to page / margin / guide / object (§2.1).",
       "Lock position/size/rotation/content plus unlock, with visible locked state (§5.3).",
     ],
@@ -284,6 +285,7 @@ export const panelRegistry: readonly PanelSpec[] = [
       "RGB color selection; CMYK-aware workflow — swatch space rgb | cmyk | spot (§9.4; PLAN §6.6).",
       "Spot colors with names; custom palettes; theme colors (§9.4, §6.3).",
       "Color conversion warnings, fed to the design checker (§9.4, §10.1).",
+      "Outline detail for lines and arrows: dash pattern, start/end head shape, and head size (§4.4) [ASSUMPTION: §9.4 scopes this panel to color and names no home for dash or arrowheads; they sit under Outline as the rest of what describes a stroke, beside its color and width, rather than in a panel of their own].",
       "Schema: doc.swatches: [{id, name, space, values, spotName?}] (PLAN §6.6).",
     ],
     notes: [
