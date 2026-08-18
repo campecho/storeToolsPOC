@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UnknownAction } from "@reduxjs/toolkit";
 import {
   pxToIn,
@@ -36,11 +36,11 @@ import { resizeCursor, rotateCursor } from "./cursors";
 import {
   arrowDrawCommitted,
   gestureCancelled,
+  isDrawCommit,
   objectNudgeCommitted,
   selectionCycleCommitted,
   selectionReplaceCommitted,
   selectionToggleCommitted,
-  type AppDispatch,
   type FrameBox,
   type LineEndpoints,
   type PenAnchor,
@@ -78,11 +78,17 @@ type Session = {
   dragged(): boolean;
 };
 
+/** How a session hands its one action to the app. Every action this hook
+    produces goes through here rather than to `dispatch` directly, so the
+    draw-commit consequences (§4.1's tool switch) sit in exactly one place
+    and no commit path can quietly skip them. */
+type Commit = (action: UnknownAction) => void;
+
 function machineSession<S extends { dragged: boolean }, C extends GestureContext>(
   machine: GestureMachine<S, C>,
   start: GesturePoint,
   ctx: C,
-  dispatch: AppDispatch,
+  commit: Commit,
   onNullEnd?: (modifiers: GestureModifiers) => UnknownAction | null,
 ): Session {
   let state = machine.begin(start, ctx);
@@ -93,10 +99,10 @@ function machineSession<S extends { dragged: boolean }, C extends GestureContext
     end(modifiers) {
       const result = machine.end(state, modifiers);
       const action = result.action ?? onNullEnd?.(modifiers) ?? null;
-      if (action !== null) dispatch(action);
+      if (action !== null) commit(action);
     },
     cancel() {
-      dispatch(machine.cancel().action);
+      commit(machine.cancel().action);
     },
     preview: () => machine.preview(state),
     dragged: () => state.dragged,
@@ -109,8 +115,8 @@ function machineSession<S extends { dragged: boolean }, C extends GestureContext
 function clickSession(
   start: GesturePoint,
   zoom: number,
-  dispatch: AppDispatch,
-  commit: () => UnknownAction | null,
+  commit: Commit,
+  actionForClick: () => UnknownAction | null,
 ): Session {
   let dragged = false;
   return {
@@ -120,11 +126,11 @@ function clickSession(
     },
     end() {
       if (dragged) return;
-      const action = commit();
-      if (action !== null) dispatch(action);
+      const action = actionForClick();
+      if (action !== null) commit(action);
     },
     cancel() {
-      dispatch(gestureCancelled());
+      commit(gestureCancelled());
     },
     preview: () => null,
     dragged: () => dragged,
@@ -157,6 +163,9 @@ export type ToolGestureArgs = {
   /** The workspace's dragJustEndedRef: a completed/cancelled drag suppresses
       the trailing click exactly like a pan drag does. */
   suppressClickRef: { current: boolean };
+  /** Fired once per committed draw, after the commit dispatches — the active
+      tool lives in App, so the hook reports the draw rather than switching. */
+  onObjectDrawn?: () => void;
 };
 
 export type ToolGestures = {
@@ -193,6 +202,21 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   // Latest args for the natively-attached keyboard listener (frameRef pattern).
   const argsRef = useRef(args);
   argsRef.current = args;
+
+  // The one door every gesture action leaves by. A committed draw hands the
+  // page back to the select tool: the object just made is already selected
+  // (selectionSlice's isDrawCommit matcher), and what you do to it next —
+  // move it, resize it, style it from a panel — is select-tool work, so
+  // staying on the draw tool would cost a dock trip after every shape.
+  // ASSUMPTION: neither §4.1 nor §4.4 says whether a draw tool is sticky;
+  // switch-after-draw is the Publisher convention, pending SME review.
+  const commit = useCallback<Commit>(
+    (action) => {
+      dispatch(action);
+      if (isDrawCommit(action)) argsRef.current.onObjectDrawn?.();
+    },
+    [dispatch],
+  );
 
   const toDoc = (e: { clientX: number; clientY: number }): GesturePoint => {
     const el = args.areaRef.current;
@@ -247,7 +271,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       // select.drag-empty.marquee-selects; its under-slop end IS
       // select.click-empty.clears — the machine dispatches either itself.
       begin(
-        machineSession(marqueeMachine, point, { pageIndex, zoom, objects: [...objects] }, dispatch),
+        machineSession(marqueeMachine, point, { pageIndex, zoom, objects: [...objects] }, commit),
         pointerId,
       );
       return;
@@ -255,7 +279,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     if (modifiers.shift) {
       // select.shift-click.toggles-membership — modified downs never start move.
       begin(
-        clickSession(point, zoom, dispatch, () => selectionToggleCommitted({ id: top.id })),
+        clickSession(point, zoom, commit, () => selectionToggleCommitted({ id: top.id })),
         pointerId,
       );
       return;
@@ -265,7 +289,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       // single selection in the hit stack, wrapping to the top; a selection
       // that is not in the stack starts over at the topmost hit.
       begin(
-        clickSession(point, zoom, dispatch, () => {
+        clickSession(point, zoom, commit, () => {
           const selectedId = selectedIds.length === 1 ? selectedIds[0] : undefined;
           const at = selectedId === undefined ? -1 : hits.findIndex((h) => h.id === selectedId);
           const next = at === -1 ? hits[0] : hits[(at + 1) % hits.length];
@@ -281,9 +305,9 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       // object" (select.drag.moves-selection) and moves the new selection.
       // The contract binds the clause to "click" without fixing the moment;
       // down-commit is the Publisher convention, pending SME review.
-      dispatch(selectionReplaceCommitted({ ids: [top.id] }));
+      commit(selectionReplaceCommitted({ ids: [top.id] }));
       begin(
-        machineSession(moveMachine, point, { pageIndex, zoom, ids: [top.id] }, dispatch),
+        machineSession(moveMachine, point, { pageIndex, zoom, ids: [top.id] }, commit),
         pointerId,
       );
       return;
@@ -294,7 +318,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
         moveMachine,
         point,
         { pageIndex, zoom, ids: [...selectedIds] },
-        dispatch,
+        commit,
         (endModifiers) => {
           // ASSUMPTION: an under-slop release (machine end returns null) on a
           // member of a MULTI-selection collapses the selection to the clicked
@@ -325,7 +349,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
           },
-          dispatch,
+          commit,
         ),
         e.pointerId,
       );
@@ -343,7 +367,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             style: drawStyleFromOptions(toolOptions, "pen"),
             idFactory: createObjectId,
           },
-          dispatch,
+          commit,
         ),
         e.pointerId,
       );
@@ -363,7 +387,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             geometryForBox: (box: { x: number; y: number; w: number; h: number }) =>
               shapeConfig.geometryForBox(toolOptions, box),
           },
-          dispatch,
+          commit,
         ),
         e.pointerId,
       );
@@ -381,7 +405,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             idFactory: createObjectId,
             extras: lineExtrasFromOptions(toolOptions, activeTool),
           },
-          dispatch,
+          commit,
         ),
         e.pointerId,
       );
@@ -435,7 +459,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           rotation: frame.rotation,
           initial,
         },
-        dispatch,
+        commit,
       ),
       e.pointerId,
     );
@@ -465,7 +489,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           pivot: framePivot(frame.box),
           initialRotations,
         },
-        dispatch,
+        commit,
       ),
       e.pointerId,
     );
@@ -491,7 +515,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             cornerRadiusMachine,
             toDoc(e),
             { ...shared, initialRadius: only.cornerRadius ?? 0 },
-            dispatch,
+            commit,
           )
         : only.shape === "starPolygon"
           ? machineSession(
@@ -502,10 +526,10 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
                 initialRatio: only.innerRadiusRatio ?? 0.5,
                 points: only.points ?? 5,
               },
-              dispatch,
+              commit,
             )
           : only.shape === "callout"
-            ? machineSession(calloutTailMachine, toDoc(e), shared, dispatch)
+            ? machineSession(calloutTailMachine, toDoc(e), shared, commit)
             : null;
     if (session === null) return;
     e.stopPropagation();
@@ -536,7 +560,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           return;
         }
         const { activeTool, penAnchors } = argsRef.current;
-        if (activeTool === "pen" && penAnchors.length > 0) dispatch(gestureCancelled());
+        if (activeTool === "pen" && penAnchors.length > 0) commit(gestureCancelled());
         return;
       }
       if (e.key === "Enter") {
@@ -551,7 +575,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           drawStyleFromOptions(toolOptions, "pen"),
           createObjectId,
         );
-        if (action !== null) dispatch(action);
+        if (action !== null) commit(action);
         return;
       }
       const delta = ARROW_DELTAS[e.key];
@@ -561,7 +585,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       if (selectedIds.length === 0 || isTextEntryTarget(e.target)) return;
       e.preventDefault();
       const nudge = optionNumber(toolOptions, "select", "nudgeIncrement", 0.1);
-      dispatch(
+      commit(
         objectNudgeCommitted({
           pageIndex,
           ids: [...selectedIds],
@@ -572,7 +596,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [dispatch]);
+  }, [commit]);
 
   // Switching away from the pen mid-draft discards it (there is no way to
   // resume a draft under another tool, and stale drafts would ghost-render).
@@ -581,9 +605,9 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     const prev = prevToolRef.current;
     prevToolRef.current = args.activeTool;
     if (prev === "pen" && args.activeTool !== "pen" && argsRef.current.penAnchors.length > 0) {
-      dispatch(gestureCancelled());
+      commit(gestureCancelled());
     }
-  }, [args.activeTool, dispatch]);
+  }, [args.activeTool, commit]);
 
   const onDoubleClick = (): void => {
     const { activeTool, penAnchors, pageIndex, toolOptions } = argsRef.current;
@@ -598,7 +622,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       drawStyleFromOptions(toolOptions, "pen"),
       createObjectId,
     );
-    if (action !== null) dispatch(action);
+    if (action !== null) commit(action);
   };
 
   return {

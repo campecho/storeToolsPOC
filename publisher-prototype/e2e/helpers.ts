@@ -59,6 +59,25 @@ export async function drag(
   for (const m of modifiers) await page.keyboard.up(m);
 }
 
+/**
+ * Draw one object with a named tool — activate, then drag.
+ *
+ * Every draw needs its OWN activation: a committed draw hands the page back
+ * to the select tool (App's onObjectDrawn), so a draw tool is never still
+ * armed for the next shape. Specs that place several objects say so once
+ * through this helper rather than repeating the pair.
+ */
+export async function draw(
+  page: Page,
+  toolLabel: string,
+  from: DocPoint,
+  to: DocPoint,
+  modifiers: ("Shift" | "Alt")[] = [],
+): Promise<void> {
+  await activate(page, toolLabel);
+  await drag(page, from, to, modifiers);
+}
+
 export async function clickAt(
   page: Page,
   pt: DocPoint,

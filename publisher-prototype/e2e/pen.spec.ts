@@ -160,6 +160,9 @@ test("pen.double-click.commits-open-path", async ({ page }) => {
   expect(hasClosingZ(open.d)).toBe(false);
   expect(vertices(open.d)).toHaveLength(3);
   expect(await penAnchors(page)).toEqual([]);
+  // The committed path handed the page back to Select, so the pen has to be
+  // picked up again to start the next one.
+  await activate(page, "Pen / freeform");
   // Double-click also finishes: its own two clicks add duplicate anchors and
   // the handler drops the last duplicate, so the vertex count equals the
   // number of distinct points clicked.

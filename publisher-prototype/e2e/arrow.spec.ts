@@ -104,15 +104,20 @@ test("arrow.esc.cancels-draw", async ({ page }) => {
 });
 
 test("line.drag.creates honors the live dash option", async ({ page }) => {
+  const dashOption = () => page.getByTestId("options-bar").getByLabel("Dash", { exact: true });
   await activate(page, "Line");
-  const dash = page.getByTestId("options-bar").getByLabel("Dash", { exact: true });
-  await dash.selectOption("dotted");
+  await dashOption().selectOption("dotted");
   await drag(page, { x: 1, y: 5 }, { x: 3, y: 5.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   const dotted = lineAt(await pageObjects(page), 0);
   expect(dotted.dash).toBe("dotted");
+  // The draw handed the page back to Select, so the bar now shows the select
+  // tool: pick the line up again to reach its options. Option values are held
+  // per tool, so the dotted choice is still the one showing.
+  await activate(page, "Line");
+  await expect(dashOption()).toHaveValue("dotted");
   // Switching back to solid stores the default as ABSENT on the commit.
-  await dash.selectOption("solid");
+  await dashOption().selectOption("solid");
   await drag(page, { x: 1, y: 6.5 }, { x: 3, y: 7 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
   const solid = lineAt(await pageObjects(page), 1);
