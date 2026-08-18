@@ -1,5 +1,13 @@
-import { createAction } from "@reduxjs/toolkit";
-import type { LayoutObject, Paint } from "../model";
+import { createAction, type UnknownAction } from "@reduxjs/toolkit";
+import type {
+  ArrowHead,
+  ArrowHeadSize,
+  CalloutTailAnchor,
+  FlowchartSymbol,
+  LayoutObject,
+  LineDash,
+  Paint,
+} from "../model";
 
 /**
  * Tool commit actions on the document (PLAN.md §6.3). These are cross-tool
@@ -86,6 +94,44 @@ export type CornerRadiusCommit = {
   radius: number;
 };
 
+/** star/polygon commits: the two parameters that shape it. Split because
+    the registry gives the inner radius its own adjust-handle clause and the
+    vertex count none — one is a gesture type, the other a panel commit. */
+export type StarPointsCommit = { pageIndex: number; ids: string[]; points: number };
+export type StarInnerRadiusCommit = {
+  pageIndex: number;
+  ids: string[];
+  innerRadiusRatio: number;
+};
+
+/** callout / flowchart commits: the enum that shapes each. */
+export type CalloutTailCommit = {
+  pageIndex: number;
+  ids: string[];
+  tailAnchor: CalloutTailAnchor;
+};
+export type FlowchartSymbolCommit = {
+  pageIndex: number;
+  ids: string[];
+  symbol: FlowchartSymbol;
+};
+
+/** line/arrow outline style: the dash pattern, and the end decorations. An
+    omitted head field is left as it stands; "none"/"m" store as absence per
+    the schema's additive rule. */
+export type LineDashCommit = { pageIndex: number; ids: string[]; dash: LineDash };
+export type ArrowHeadsCommit = {
+  pageIndex: number;
+  ids: string[];
+  headStart?: ArrowHead;
+  headEnd?: ArrowHead;
+  headSize?: ArrowHeadSize;
+};
+
+/** path close/open: the placed counterpart of the pen's autoClose option —
+    appends or drops the ring-closing Z on a path shape. */
+export type PathClosedCommit = { pageIndex: number; ids: string[]; closed: boolean };
+
 /** lock commits: set the identified objects' locked flag. The one translate-
     family action that must NOT skip locked objects — unlocking is its point. */
 export type LockCommit = {
@@ -119,6 +165,53 @@ export const objectLockCommitted = createAction<LockCommit>("object/lockCommitte
 export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(
   "roundedRect/cornerRadiusCommitted",
 );
+export const starPolygonPointsCommitted = createAction<StarPointsCommit>(
+  "starPolygon/pointsCommitted",
+);
+export const starPolygonInnerRadiusCommitted = createAction<StarInnerRadiusCommit>(
+  "starPolygon/innerRadiusCommitted",
+);
+export const calloutTailCommitted = createAction<CalloutTailCommit>("callout/tailCommitted");
+export const flowchartSymbolCommitted = createAction<FlowchartSymbolCommit>(
+  "flowchart/symbolCommitted",
+);
+export const objectLineDashCommitted = createAction<LineDashCommit>("object/lineDashCommitted");
+export const objectArrowHeadsCommitted = createAction<ArrowHeadsCommit>(
+  "object/arrowHeadsCommitted",
+);
+export const objectPathClosedCommitted = createAction<PathClosedCommit>(
+  "object/pathClosedCommitted",
+);
+
+/**
+ * Every action that puts a NEW object on the page. Draw tools all commit the
+ * same DrawCommit payload, so this is the one list the selection slice and
+ * the history set both read rather than each keeping their own.
+ */
+export const DRAW_COMMIT_ACTIONS = [
+  rectDrawCommitted,
+  ellipseDrawCommitted,
+  lineDrawCommitted,
+  arrowDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
+  calloutDrawCommitted,
+  bannerDrawCommitted,
+  flowchartDrawCommitted,
+  penDrawCommitted,
+] as const;
+
+const DRAW_COMMIT_TYPES: ReadonlySet<string> = new Set(
+  DRAW_COMMIT_ACTIONS.map((creator) => creator.type),
+);
+
+/** Whether an action just drew an object — the pen's per-anchor commits are
+    deliberately NOT draws; only the finish that produces the shape is. */
+export function isDrawCommit(action: UnknownAction): action is UnknownAction & {
+  payload: DrawCommit;
+} {
+  return DRAW_COMMIT_TYPES.has(action.type);
+}
 
 /** The gesture pipeline's DevTools record for an aborted gesture (Esc during
     drag, discarded pen path). No DOCUMENT reducer handles it — an aborted

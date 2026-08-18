@@ -1,12 +1,13 @@
 import { clampCornerRadius } from "../../core/geometry/shapePaths";
 import { DPI } from "../../core/geometry/viewport";
-import { resizeHandlePoint, type ResizeHandle } from "../../core/gestures";
+import { resizeHandlePoint, starInnerArmPoint, type ResizeHandle } from "../../core/gestures";
 import {
   framePivot,
   rotatePoint,
   rotatedFrameCorners,
   selectionFrame,
   type Point,
+  type Rect,
 } from "../../core/hittest";
 import type { LayoutObject, ShapeObject } from "../../core/model";
 import { resizeCursor, rotateCursor } from "./cursors";
@@ -27,9 +28,10 @@ import { resizeCursor, rotateCursor } from "./cursors";
  * Each handle carries the cursor of the direction it stretches, which turns
  * with the frame too (canvas/cursors.ts).
  *
- * A lone rounded rectangle additionally carries the corner-radius ADJUST
- * handle — Publisher's yellow diamond, the roundedRect contract's overlay
- * target — inset along the top edge by the radius it sets.
+ * A lone shape whose kind has a parameter to drag additionally carries its
+ * ADJUST handle — Publisher's yellow diamond, each contract's overlay target
+ * — drawn at the point that parameter puts it: the rounded rect's radius
+ * along the top edge, the star's inner vertex, the callout's tail tip.
  */
 
 export const CHROME_COLOR = "#2680eb";
@@ -42,28 +44,69 @@ const ROTATE_STEM_PX = 16;
 
 const HANDLES: readonly ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
-/** The lone rounded rectangle an adjust handle belongs to, if that is what
-    is selected — every other selection has no corner to round, and a locked
-    one refuses the gesture, so it gets no handle to offer. */
-function loneRoundedRect(objects: readonly LayoutObject[]): ShapeObject | undefined {
+/** The lone adjustable shape a handle would belong to: adjust handles show
+    for one unlocked shape at a time — a multi-selection has no single
+    parameter to drag, and a locked shape refuses the gesture, so neither
+    gets a handle to offer. */
+function loneShape(objects: readonly LayoutObject[]): ShapeObject | undefined {
   const only = objects.length === 1 ? objects[0] : undefined;
-  if (only === undefined || only.type !== "shape") return undefined;
-  return only.shape === "roundedRect" && !only.locked ? only : undefined;
+  if (only === undefined || only.type !== "shape" || only.locked) return undefined;
+  return only;
 }
+
+/**
+ * Where each adjustable kind's handle sits, in the frame's UNIT box — the
+ * point the parameter puts it at, so the handle reads as the value it sets.
+ * A kind absent from here has no adjustment to offer.
+ */
+function adjustPointFor(shape: ShapeObject, box: Rect, minInsetX: number): Point | null {
+  switch (shape.shape) {
+    case "roundedRect": {
+      // On the top edge, inset by the radius: drag right to round, left to
+      // square. At radius 0 it would land under the nw resize handle, so it
+      // never draws closer than one handle-width in; the drag applies travel,
+      // not position, so that floor costs the gesture nothing.
+      const r = clampCornerRadius(shape.cornerRadius ?? 0, box.w, box.h);
+      return { x: Math.max(r, minInsetX) / (box.w || 1), y: 0 };
+    }
+    case "starPolygon":
+      // On the first inner vertex — the point the ratio literally places.
+      return starInnerArmPoint(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5);
+    case "callout": {
+      // On the tail's tip corner; dragging it to another quadrant moves the
+      // tail there.
+      const anchor = shape.tailAnchor ?? "bottom-left";
+      return {
+        x: anchor.endsWith("right") ? 0.94 : 0.06,
+        y: anchor.startsWith("bottom") ? 1 : 0,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/** The gesture an adjustable kind's handle starts, and the test id it wears. */
+const ADJUST_HANDLE_ID: Partial<Record<ShapeObject["shape"], string>> = {
+  roundedRect: "corner-radius",
+  starPolygon: "inner-radius",
+  callout: "callout-tail",
+};
 
 export function SelectionChrome({
   objects,
   zoom,
   onResizeStart,
   onRotateStart,
-  onCornerRadiusStart,
+  onShapeAdjustStart,
 }: {
   /** The selected objects, in z-order. */
   objects: readonly LayoutObject[];
   zoom: number;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
-  onCornerRadiusStart: (e: React.PointerEvent<SVGElement>) => void;
+  /** Starts whichever adjust gesture the selected shape's kind owns. */
+  onShapeAdjustStart: (e: React.PointerEvent<SVGElement>) => void;
 }) {
   const frame = selectionFrame(objects);
   if (frame === null) return null;
@@ -80,24 +123,15 @@ export function SelectionChrome({
   // stays perpendicular to that edge at any rotation.
   const stemFoot = toDoc({ x: pivot.x, y: box.y });
   const knob = toDoc({ x: pivot.x, y: box.y - pxToIn(ROTATE_STEM_PX) });
-  // The adjust handle sits on the top edge, inset by the radius it sets —
-  // drag it right to round the corners, left to square them. At radius 0 it
-  // would land under the nw resize handle, so it never draws closer than one
-  // handle-width in; the drag applies travel, not position, so that floor
-  // costs the gesture nothing.
-  const rounded = loneRoundedRect(objects);
-  const adjust =
-    rounded === undefined
+  // The adjust handle, where the selected kind's parameter puts it.
+  const shape = loneShape(objects);
+  const unit =
+    shape === undefined
       ? null
-      : toDoc({
-          x:
-            box.x +
-            Math.max(
-              clampCornerRadius(rounded.cornerRadius ?? 0, box.w, box.h),
-              Math.min(handleSize, box.w / 2),
-            ),
-          y: box.y,
-        });
+      : adjustPointFor(shape, box, Math.min(handleSize, box.w / 2));
+  const adjust =
+    unit === null ? null : toDoc({ x: box.x + unit.x * box.w, y: box.y + unit.y * box.h });
+  const adjustId = shape === undefined ? undefined : ADJUST_HANDLE_ID[shape.shape];
   return (
     <g data-testid="selection-chrome">
       <polygon
@@ -132,10 +166,10 @@ export function SelectionChrome({
           />
         </>
       )}
-      {adjust !== null && (
+      {adjust !== null && adjustId !== undefined && (
         <rect
           className="chrome-handle"
-          data-handle="corner-radius"
+          data-handle={adjustId}
           x={adjust.x - handleSize / 2}
           y={adjust.y - handleSize / 2}
           width={handleSize}
@@ -148,7 +182,7 @@ export function SelectionChrome({
           vectorEffect="non-scaling-stroke"
           // It travels along the top edge, the axis the e/w handles stretch.
           style={{ cursor: resizeCursor("e", rotation) }}
-          onPointerDown={onCornerRadiusStart}
+          onPointerDown={onShapeAdjustStart}
         />
       )}
       {HANDLES.map((handle) => {

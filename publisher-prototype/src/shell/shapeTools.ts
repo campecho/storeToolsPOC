@@ -1,13 +1,7 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
-import {
-  bannerPath,
-  calloutPath,
-  flowchartPath,
-  starPath,
-  type CalloutTailAnchor,
-  type FlowchartSymbol,
-} from "../core/geometry/shapePaths";
+import { bannerPath } from "../core/geometry/shapePaths";
 import type { DrawnShapeGeometry } from "../core/gestures";
+import type { CalloutTailAnchor, FlowchartSymbol } from "../core/model";
 import {
   bannerDrawCommitted,
   calloutDrawCommitted,
@@ -23,11 +17,10 @@ import { optionEnum, optionNumber, type ToolOptionValues } from "./toolOptions";
  * per tool, the clause action its draw dispatches and the shape kind plus
  * geometry the live options produce for a drawn box.
  *
- * The rounded rect STORES its corner radius (the SEAMS.md deferral, now
- * landed), so its adjust-handle clause is wired and the radius survives a
- * resize as a radius. The rest still bake their options into a normalized
- * path at draw time and keep their adjust-handle clauses unwired until they
- * get parametric storage of their own.
+ * Every tool whose options describe its SHAPE now stores them — rounded
+ * rect, star/polygon, callout, flowchart — so those options stay editable
+ * after the shape is placed and survive a resize as themselves. The banner
+ * alone still bakes, having no shape option to store.
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -63,20 +56,20 @@ export const SHAPE_TOOL_CONFIGS: Readonly<Record<string, ShapeToolConfig>> = {
   "star-polygon": {
     creator: starPolygonDrawCommitted,
     geometryForBox: (options) => ({
-      shape: "path",
-      d: starPath(
-        Math.round(optionNumber(options, "star-polygon", "points", 5)),
-        optionNumber(options, "star-polygon", "innerRadiusRatio", 0.5),
-      ),
+      shape: "starPolygon",
+      points: Math.round(optionNumber(options, "star-polygon", "points", 5)),
+      innerRadiusRatio: optionNumber(options, "star-polygon", "innerRadiusRatio", 0.5),
     }),
   },
   callout: {
     creator: calloutDrawCommitted,
     geometryForBox: (options) => ({
-      shape: "path",
-      d: calloutPath(optionEnum(options, "callout", "tailAnchor", TAIL_ANCHORS, "bottom-left")),
+      shape: "callout",
+      tailAnchor: optionEnum(options, "callout", "tailAnchor", TAIL_ANCHORS, "bottom-left"),
     }),
   },
+  // The banner has no pre-draw shape option to store; its contracted fold
+  // depth is not a tool option yet, so it stays a baked path.
   banner: {
     creator: bannerDrawCommitted,
     geometryForBox: () => ({ shape: "path", d: bannerPath() }),
@@ -84,8 +77,8 @@ export const SHAPE_TOOL_CONFIGS: Readonly<Record<string, ShapeToolConfig>> = {
   flowchart: {
     creator: flowchartDrawCommitted,
     geometryForBox: (options) => ({
-      shape: "path",
-      d: flowchartPath(optionEnum(options, "flowchart", "symbol", FLOWCHART_SYMBOLS, "process")),
+      shape: "flowchart",
+      symbol: optionEnum(options, "flowchart", "symbol", FLOWCHART_SYMBOLS, "process"),
     }),
   },
 };

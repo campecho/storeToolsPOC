@@ -1,12 +1,7 @@
 import { createAction, type Reducer, type UnknownAction } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import {
-  arrowDrawCommitted,
-  bannerDrawCommitted,
-  calloutDrawCommitted,
-  ellipseDrawCommitted,
-  flowchartDrawCommitted,
-  lineDrawCommitted,
+  DRAW_COMMIT_ACTIONS,
   objectFillCommitted,
   objectLockCommitted,
   objectMoveCommitted,
@@ -15,11 +10,14 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
-  penDrawCommitted,
-  rectDrawCommitted,
+  calloutTailCommitted,
+  flowchartSymbolCommitted,
+  objectArrowHeadsCommitted,
+  objectLineDashCommitted,
+  objectPathClosedCommitted,
   roundedRectCornerRadiusCommitted,
-  roundedRectDrawCommitted,
-  starPolygonDrawCommitted,
+  starPolygonInnerRadiusCommitted,
+  starPolygonPointsCommitted,
 } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
@@ -83,6 +81,14 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectStrokePaintCommitted.type,
   objectStrokeWidthCommitted.type,
   objectLockCommitted.type,
+  // Shape and outline parameters with no adjust-handle clause behind them:
+  // the star's vertex count, the flowchart symbol, the line's dash and end
+  // decorations, and a path's closed state.
+  starPolygonPointsCommitted.type,
+  flowchartSymbolCommitted.type,
+  objectLineDashCommitted.type,
+  objectArrowHeadsCommitted.type,
+  objectPathClosedCommitted.type,
 ]);
 
 /** Exactly the commit actions that mutate the document per completed
@@ -90,21 +96,14 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
     deliberately absent (no reducer, no state change), as are the load/debug
     actions (they reset history instead). */
 export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
-  rectDrawCommitted.type,
-  ellipseDrawCommitted.type,
-  lineDrawCommitted.type,
-  arrowDrawCommitted.type,
-  roundedRectDrawCommitted.type,
-  starPolygonDrawCommitted.type,
-  calloutDrawCommitted.type,
-  bannerDrawCommitted.type,
-  flowchartDrawCommitted.type,
-  penDrawCommitted.type,
+  ...DRAW_COMMIT_ACTIONS.map((creator) => creator.type),
   objectMoveCommitted.type,
   objectNudgeCommitted.type,
   objectResizeCommitted.type,
   objectRotateCommitted.type,
   roundedRectCornerRadiusCommitted.type,
+  starPolygonInnerRadiusCommitted.type,
+  calloutTailCommitted.type,
   ...PANEL_COMMIT_ACTION_TYPES,
 ]);
 

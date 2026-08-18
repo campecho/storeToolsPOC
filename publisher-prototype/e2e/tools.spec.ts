@@ -155,6 +155,20 @@ test("line.shift-drag.constrains-angle", async ({ page }) => {
   expectNear(diagonal.y2, 5.1);
 });
 
+test("a drawn object lands selected, whichever tool drew it", async ({ page }) => {
+  // Every draw tool commits the same way, so selection follows all of them —
+  // and the panels bind to the selection, which is what puts a new shape's
+  // own parameters in reach the moment it exists.
+  for (const label of ["Rectangle", "Ellipse", "Line", "Star / polygon"] as const) {
+    await activate(page, label);
+    await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
+    const objects = await pageObjects(page);
+    const drawn = objects[objects.length - 1];
+    if (!drawn) throw new Error(`${label} drew nothing`);
+    expect(await selectionIds(page)).toEqual([drawn.id]);
+  }
+});
+
 test("select.click.selects-topmost", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
@@ -230,6 +244,10 @@ test("select.drag.moves-selection", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
   await activate(page, "Select");
+  // Drawing leaves its object selected, so clear it first: the clause under
+  // test is the one that starts from an UNSELECTED object.
+  await clickAt(page, { x: 6, y: 6 });
+  expect(await selectionIds(page)).toEqual([]);
   // ASSUMPTION under test (matches the shell's early-commit decision of
   // record): dragging an UNSELECTED object commits selection/replace on
   // pointerdown and object/move on release — exactly 2 notifications.

@@ -1,4 +1,5 @@
 import { createSlice, isAnyOf, type PayloadAction } from "@reduxjs/toolkit";
+import { isDrawCommit } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
 /**
@@ -15,7 +16,9 @@ import { documentSlice } from "./documentSlice";
  *   state (which group is "open") arrives with the Phase B group tooling,
  *   and the state shape stays `{ ids }` until then.
  * - Selected ids that vanish from the document cannot happen yet — no
- *   delete action exists; pruning arrives with it.
+ *   delete action exists; pruning arrives with it. An undone draw is the
+ *   near miss: the id stays selected and simply matches nothing, exactly as
+ *   it did before drawing selected its result.
  */
 
 export type SelectionState = { ids: string[] };
@@ -56,6 +59,12 @@ export const selectionSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    // A drawn object lands SELECTED: the thing just made is the thing you
+    // want to style or move, and the panels bind to the selection, so this
+    // is what puts a new shape's own parameters in reach immediately.
+    builder.addMatcher(isDrawCommit, (state, action) => {
+      state.ids = [action.payload.object.id];
+    });
     // A document swap invalidates every selected id wholesale.
     builder.addMatcher(
       isAnyOf(

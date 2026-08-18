@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PathSeg } from "../model";
+import type { CalloutTailAnchor, FlowchartSymbol, PathSeg } from "../model";
 import {
   KAPPA,
   bannerPath,
@@ -9,8 +9,6 @@ import {
   roundedRectPath,
   roundedRectPathFor,
   starPath,
-  type CalloutTailAnchor,
-  type FlowchartSymbol,
 } from "./shapePaths";
 
 /**

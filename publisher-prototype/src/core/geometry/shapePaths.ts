@@ -1,4 +1,9 @@
-import type { PathSeg } from "../model";
+import type {
+  CalloutTailAnchor,
+  FlowchartSymbol,
+  PathSeg,
+  ShapeObject,
+} from "../model";
 
 /**
  * Path builders for the Phase B shape tools (PLAN.md §4.4) — rounded
@@ -145,7 +150,7 @@ export function starPath(points: number, innerRatio: number): PathSeg[] {
   return ringToPath(ring);
 }
 
-export type CalloutTailAnchor = "bottom-left" | "bottom-right" | "top-left" | "top-right";
+
 
 /**
  * Speech callout: rectangular body with a triangular pointer tail on the
@@ -196,7 +201,7 @@ export function bannerPath(): PathSeg[] {
   ]);
 }
 
-export type FlowchartSymbol = "process" | "decision" | "terminator" | "data" | "document";
+
 
 /**
  * Standard flowchart symbols. Terminator reuses the rounded rectangle at the
@@ -239,5 +244,34 @@ export function flowchartPath(symbol: FlowchartSymbol): PathSeg[] {
         { c: "C", x1: 0.75, y1: 0.6, x2: 0.25, y2: 1.0, x: 0, y: 0.8 },
         { c: "Z" },
       ];
+  }
+}
+
+/** Everything an outline needs from a shape: its kind and the geometry
+    fields that kind owns. A whole ShapeObject satisfies it, and so does a
+    drawn shape's geometry before it has a frame. */
+export type ShapeGeometry = Pick<
+  ShapeObject,
+  "shape" | "d" | "cornerRadius" | "points" | "innerRadiusRatio" | "tailAnchor" | "symbol"
+>;
+
+/**
+ * The normalized outline a shape draws, from whatever it stores: a path's own
+ * segments, or a parametric kind's parameter resolved against its frame. One
+ * resolver for the renderer, hit-testing and the overlay previews, so a shape
+ * can never be drawn as one thing and hit as another.
+ */
+export function shapeOutline(shape: ShapeGeometry, w: number, h: number): PathSeg[] {
+  switch (shape.shape) {
+    case "roundedRect":
+      return roundedRectPathFor(shape.cornerRadius ?? 0, w, h);
+    case "starPolygon":
+      return starPath(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5);
+    case "callout":
+      return calloutPath(shape.tailAnchor ?? "bottom-left");
+    case "flowchart":
+      return flowchartPath(shape.symbol ?? "process");
+    default:
+      return shape.d ?? [];
   }
 }

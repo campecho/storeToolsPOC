@@ -10,8 +10,9 @@ import {
   drawBoundsMachine,
   drawLineMachine,
   drawLineMachineFor,
-  drawShapeMachine,
+  calloutTailMachine,
   cornerRadiusMachine,
+  drawShapeMachine,
   finishPenDraft,
   marqueeMachine,
   moveMachine,
@@ -20,6 +21,7 @@ import {
   resizeMachine,
   rotateMachine,
   slopInInches,
+  starInnerRadiusMachine,
   type GestureContext,
   type GestureMachine,
   type GestureModifiers,
@@ -175,10 +177,11 @@ export type ToolGestures = {
   onDoubleClick(): void;
   beginResize(handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void;
   beginRotate(e: React.PointerEvent<SVGElement>): void;
-  /** rounded-rect.drag-adjust-handle.sets-corner-radius. No-op unless the
-      selection is exactly one rounded rectangle — the only thing the adjust
-      handle is drawn for. */
-  beginCornerRadius(e: React.PointerEvent<SVGElement>): void;
+  /** The adjust-handle clause the selected shape's kind owns — corner
+      radius, star inner radius, or callout tail. No-op unless the selection
+      is exactly one unlocked shape of an adjustable kind, which is also the
+      only case the handle is drawn for. */
+  beginShapeAdjust(e: React.PointerEvent<SVGElement>): void;
 };
 
 export function useToolGestures(args: ToolGestureArgs): ToolGestures {
@@ -468,31 +471,48 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     );
   };
 
-  const beginCornerRadius = (e: React.PointerEvent<SVGElement>): void => {
+  const beginShapeAdjust = (e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
     const only = selection.length === 1 ? selection[0] : undefined;
-    if (only === undefined || only.type !== "shape" || only.shape !== "roundedRect") return;
-    if (only.locked) return;
+    if (only === undefined || only.type !== "shape" || only.locked) return;
+    const shared = {
+      pageIndex: args.pageIndex,
+      zoom: args.viewport.zoom,
+      id: only.id,
+      frame: { x: only.x, y: only.y, w: only.w, h: only.h },
+      rotation: only.rotation,
+    };
+    // Each adjustable kind starts its own machine off the same handle; a kind
+    // with nothing to adjust never drew one to press.
+    const session =
+      only.shape === "roundedRect"
+        ? machineSession(
+            cornerRadiusMachine,
+            toDoc(e),
+            { ...shared, initialRadius: only.cornerRadius ?? 0 },
+            dispatch,
+          )
+        : only.shape === "starPolygon"
+          ? machineSession(
+              starInnerRadiusMachine,
+              toDoc(e),
+              {
+                ...shared,
+                initialRatio: only.innerRadiusRatio ?? 0.5,
+                points: only.points ?? 5,
+              },
+              dispatch,
+            )
+          : only.shape === "callout"
+            ? machineSession(calloutTailMachine, toDoc(e), shared, dispatch)
+            : null;
+    if (session === null) return;
     e.stopPropagation();
-    // The handle travels along the top edge, so it wears that edge's cursor.
+    // Adjust handles drag along the shape, so they wear the frame's own
+    // horizontal cursor rather than a page-axis one.
     setHandleCursor(resizeCursor("e", only.rotation));
-    begin(
-      machineSession(
-        cornerRadiusMachine,
-        toDoc(e),
-        {
-          pageIndex: args.pageIndex,
-          zoom: args.viewport.zoom,
-          id: only.id,
-          frame: { x: only.x, y: only.y, w: only.w, h: only.h },
-          rotation: only.rotation,
-          initialRadius: only.cornerRadius ?? 0,
-        },
-        dispatch,
-      ),
-      e.pointerId,
-    );
+    begin(session, e.pointerId);
   };
 
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
@@ -585,7 +605,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     preview,
     active,
     handleCursor,
-    beginCornerRadius,
+    beginShapeAdjust,
     onPointerDown,
     onPointerMove,
     onPointerEnd,

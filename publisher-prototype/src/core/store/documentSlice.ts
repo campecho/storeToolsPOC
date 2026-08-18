@@ -1,5 +1,10 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import { createEmptyDocument, type LayoutDocument, type LayoutObject } from "../model";
+import {
+  createEmptyDocument,
+  type LayoutDocument,
+  type LayoutObject,
+  type ShapeObject,
+} from "../model";
 import {
   arrowDrawCommitted,
   bannerDrawCommitted,
@@ -17,11 +22,25 @@ import {
   objectStrokeWidthCommitted,
   penDrawCommitted,
   rectDrawCommitted,
+  calloutTailCommitted,
+  flowchartSymbolCommitted,
+  objectArrowHeadsCommitted,
+  objectLineDashCommitted,
+  objectPathClosedCommitted,
   roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
+  starPolygonInnerRadiusCommitted,
+  starPolygonPointsCommitted,
+  type ArrowHeadsCommit,
+  type CalloutTailCommit,
   type CornerRadiusCommit,
   type DrawCommit,
+  type FlowchartSymbolCommit,
+  type LineDashCommit,
+  type PathClosedCommit,
+  type StarInnerRadiusCommit,
+  type StarPointsCommit,
   type FillCommit,
   type LockCommit,
   type ResizeCommit,
@@ -165,6 +184,96 @@ function applyCornerRadius(
   }
 }
 
+/** Each parametric shape edit reaches only the kind that owns the parameter
+    — every other kind has nothing to set — and skips locked objects. */
+function shapeParamApplier<P extends { pageIndex: number; ids: string[] }>(
+  kind: ShapeObject["shape"],
+  set: (obj: ShapeObject, payload: P) => void,
+) {
+  return (state: LayoutDocument, action: PayloadAction<P>): void => {
+    const page = state.pages[action.payload.pageIndex];
+    if (!page) return;
+    const ids = new Set(action.payload.ids);
+    for (const obj of page.objects) {
+      if (!ids.has(obj.id) || obj.locked) continue;
+      if (obj.type !== "shape" || obj.shape !== kind) continue;
+      set(obj, action.payload);
+    }
+  };
+}
+
+const applyStarPoints = shapeParamApplier<StarPointsCommit>("starPolygon", (obj, p) => {
+  obj.points = Math.max(3, Math.round(p.points));
+});
+
+const applyStarInnerRadius = shapeParamApplier<StarInnerRadiusCommit>("starPolygon", (obj, p) => {
+  obj.innerRadiusRatio = Math.min(Math.max(p.innerRadiusRatio, 0), 1);
+});
+
+const applyCalloutTail = shapeParamApplier<CalloutTailCommit>("callout", (obj, p) => {
+  obj.tailAnchor = p.tailAnchor;
+});
+
+const applyFlowchartSymbol = shapeParamApplier<FlowchartSymbolCommit>("flowchart", (obj, p) => {
+  obj.symbol = p.symbol;
+});
+
+/** Dash reaches lines and arrows — the objects a dash pattern describes.
+    "solid" is the absent default, per the schema's additive rule. */
+function applyLineDash(state: LayoutDocument, action: PayloadAction<LineDashCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked || obj.type !== "line") continue;
+    if (action.payload.dash === "solid") delete obj.dash;
+    else obj.dash = action.payload.dash;
+  }
+}
+
+/** Line-end decorations. An omitted field leaves that end as it stands;
+    "none" heads and the "m" size store as absence (the additive rule). */
+function applyArrowHeads(state: LayoutDocument, action: PayloadAction<ArrowHeadsCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const { ids: idList, headStart, headEnd, headSize } = action.payload;
+  const ids = new Set(idList);
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked || obj.type !== "line") continue;
+    if (headStart !== undefined) {
+      if (headStart === "none") delete obj.headStart;
+      else obj.headStart = headStart;
+    }
+    if (headEnd !== undefined) {
+      if (headEnd === "none") delete obj.headEnd;
+      else obj.headEnd = headEnd;
+    }
+    if (headSize !== undefined) {
+      if (headSize === "m") delete obj.headSize;
+      else obj.headSize = headSize;
+    }
+  }
+}
+
+/** Close or open a path shape: the placed counterpart of the pen's autoClose
+    option. Closing appends the ring-closing Z, opening drops it; a path that
+    is already in the requested state is left untouched. */
+function applyPathClosed(state: LayoutDocument, action: PayloadAction<PathClosedCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked) continue;
+    if (obj.type !== "shape" || obj.shape !== "path" || obj.d === undefined) continue;
+    const closed = obj.d[obj.d.length - 1]?.c === "Z";
+    if (action.payload.closed === closed) continue;
+    // A path shape's `d` must stay non-empty (the schema refine), so opening
+    // a bare "M … Z" that would empty out is refused rather than invalidated.
+    if (action.payload.closed) obj.d.push({ c: "Z" });
+    else if (obj.d.length > 1) obj.d.pop();
+  }
+}
+
 function applyLock(state: LayoutDocument, action: PayloadAction<LockCommit>): void {
   const page = state.pages[action.payload.pageIndex];
   if (!page) return;
@@ -216,7 +325,14 @@ export const documentSlice = createSlice({
       .addCase(objectStrokePaintCommitted, applyStrokePaint)
       .addCase(objectStrokeWidthCommitted, applyStrokeWidth)
       .addCase(objectLockCommitted, applyLock)
-      .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius);
+      .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius)
+      .addCase(starPolygonPointsCommitted, applyStarPoints)
+      .addCase(starPolygonInnerRadiusCommitted, applyStarInnerRadius)
+      .addCase(calloutTailCommitted, applyCalloutTail)
+      .addCase(flowchartSymbolCommitted, applyFlowchartSymbol)
+      .addCase(objectLineDashCommitted, applyLineDash)
+      .addCase(objectArrowHeadsCommitted, applyArrowHeads)
+      .addCase(objectPathClosedCommitted, applyPathClosed);
   },
 });
 

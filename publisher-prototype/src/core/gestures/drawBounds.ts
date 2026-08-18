@@ -1,6 +1,11 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
-import { roundedRectPathFor } from "../geometry/shapePaths";
-import type { PathSeg, ShapeObject } from "../model";
+import { shapeOutline } from "../geometry/shapePaths";
+import type {
+  CalloutTailAnchor,
+  FlowchartSymbol,
+  PathSeg,
+  ShapeObject,
+} from "../model";
 import {
   ellipseDrawCommitted,
   rectDrawCommitted,
@@ -77,15 +82,10 @@ function clickDefaultBox(point: GesturePoint): Box {
     outline derives from the parameter and the box wherever it is needed. */
 export type DrawnShapeGeometry =
   | { shape: "path"; d: PathSeg[] }
-  | { shape: "roundedRect"; cornerRadius: number };
-
-/** The outline that stands for a drawn shape mid-drag: a path's own segments,
-    or the same curve the renderer will draw for a parametric kind. */
-function outlineOf(geometry: DrawnShapeGeometry, box: { w: number; h: number }): PathSeg[] {
-  return geometry.shape === "path"
-    ? geometry.d
-    : roundedRectPathFor(geometry.cornerRadius, box.w, box.h);
-}
+  | { shape: "roundedRect"; cornerRadius: number }
+  | { shape: "starPolygon"; points: number; innerRadiusRatio: number }
+  | { shape: "callout"; tailAnchor: CalloutTailAnchor }
+  | { shape: "flowchart"; symbol: FlowchartSymbol };
 
 /**
  * Bounds-drawing machine for the parametric shape tools (rounded rect, star /
@@ -132,7 +132,13 @@ export function drawShapeMachine(
     cancel: cancelResult,
     preview(state) {
       const box = dragBounds(state.start, state.current, state.modifiers);
-      return { kind: "draw-path", ...box, d: outlineOf(state.ctx.geometryForBox(box), box) };
+      // The preview outline is the very curve the renderer will draw, from
+      // the one shared resolver.
+      return {
+        kind: "draw-path",
+        ...box,
+        d: shapeOutline(state.ctx.geometryForBox(box), box.w, box.h),
+      };
     },
   };
 }
