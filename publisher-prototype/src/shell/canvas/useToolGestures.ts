@@ -10,7 +10,8 @@ import {
   drawBoundsMachine,
   drawLineMachine,
   drawLineMachineFor,
-  drawPathMachine,
+  drawShapeMachine,
+  cornerRadiusMachine,
   finishPenDraft,
   marqueeMachine,
   moveMachine,
@@ -45,7 +46,7 @@ import {
 import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { createObjectId } from "../objectId";
-import { PATH_TOOL_CONFIGS } from "../pathTools";
+import { SHAPE_TOOL_CONFIGS } from "../shapeTools";
 import {
   drawStyleFromOptions,
   lineExtrasFromOptions,
@@ -174,6 +175,10 @@ export type ToolGestures = {
   onDoubleClick(): void;
   beginResize(handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void;
   beginRotate(e: React.PointerEvent<SVGElement>): void;
+  /** rounded-rect.drag-adjust-handle.sets-corner-radius. No-op unless the
+      selection is exactly one rounded rectangle — the only thing the adjust
+      handle is drawn for. */
+  beginCornerRadius(e: React.PointerEvent<SVGElement>): void;
 };
 
 export function useToolGestures(args: ToolGestureArgs): ToolGestures {
@@ -341,18 +346,19 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       );
       return;
     }
-    const pathConfig = PATH_TOOL_CONFIGS[activeTool];
-    if (pathConfig !== undefined) {
+    const shapeConfig = SHAPE_TOOL_CONFIGS[activeTool];
+    if (shapeConfig !== undefined) {
       begin(
         machineSession(
-          drawPathMachine(pathConfig.creator),
+          drawShapeMachine(shapeConfig.creator),
           point,
           {
             pageIndex,
             zoom,
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
-            pathForBox: (box) => pathConfig.pathForBox(toolOptions, box),
+            geometryForBox: (box: { x: number; y: number; w: number; h: number }) =>
+              shapeConfig.geometryForBox(toolOptions, box),
           },
           dispatch,
         ),
@@ -462,6 +468,33 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     );
   };
 
+  const beginCornerRadius = (e: React.PointerEvent<SVGElement>): void => {
+    if (e.button !== 0 || args.panning || sessionRef.current) return;
+    const selection = selectedObjects();
+    const only = selection.length === 1 ? selection[0] : undefined;
+    if (only === undefined || only.type !== "shape" || only.shape !== "roundedRect") return;
+    if (only.locked) return;
+    e.stopPropagation();
+    // The handle travels along the top edge, so it wears that edge's cursor.
+    setHandleCursor(resizeCursor("e", only.rotation));
+    begin(
+      machineSession(
+        cornerRadiusMachine,
+        toDoc(e),
+        {
+          pageIndex: args.pageIndex,
+          zoom: args.viewport.zoom,
+          id: only.id,
+          frame: { x: only.x, y: only.y, w: only.w, h: only.h },
+          rotation: only.rotation,
+          initialRadius: only.cornerRadius ?? 0,
+        },
+        dispatch,
+      ),
+      e.pointerId,
+    );
+  };
+
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
   // discards a pen draft between presses (pen.esc.discards-path); Enter
   // finishes the pen draft (pen.double-click.commits-open-path's keyboard
@@ -552,6 +585,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     preview,
     active,
     handleCursor,
+    beginCornerRadius,
     onPointerDown,
     onPointerMove,
     onPointerEnd,

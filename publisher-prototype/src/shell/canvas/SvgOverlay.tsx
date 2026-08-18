@@ -1,5 +1,6 @@
 import { DPI, visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
 import { penDraftSegments, type GesturePreview, type ResizeHandle } from "../../core/gestures";
+import { roundedRectPathFor } from "../../core/geometry/shapePaths";
 import { rotatedFrameCorners, type Rect } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import type { PenAnchor } from "../../core/store";
@@ -150,6 +151,25 @@ function PreviewShapes({
         </>
       );
     }
+    case "corner-radius": {
+      // The live radius on the shape being adjusted: the same outline the
+      // renderer will draw once the drag commits. Only a lone rounded rect
+      // starts this gesture, so that is the one shape to find.
+      const target = selectedObjects.find(
+        (o) => o.type === "shape" && o.shape === "roundedRect",
+      );
+      if (target === undefined || target.type !== "shape") return null;
+      return (
+        <path
+          d={pathToSvg(
+            roundedRectPathFor(preview.radius, target.w, target.h),
+            { x: 0, y: 0, w: target.w, h: target.h },
+          )}
+          transform={`translate(${target.x} ${target.y}) rotate(${target.rotation} ${target.w / 2} ${target.h / 2})`}
+          {...outline}
+        />
+      );
+    }
     case "rotate":
       return (
         <>
@@ -216,6 +236,7 @@ export function SvgOverlay({
   showChrome,
   onResizeStart,
   onRotateStart,
+  onCornerRadiusStart,
 }: {
   viewport: Viewport;
   vpSize: Size;
@@ -229,6 +250,7 @@ export function SvgOverlay({
   showChrome: boolean;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
+  onCornerRadiusStart: (e: React.PointerEvent<SVGElement>) => void;
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;
   const { size, bleed } = setup;
@@ -286,6 +308,7 @@ export function SvgOverlay({
           zoom={viewport.zoom}
           onResizeStart={onResizeStart}
           onRotateStart={onRotateStart}
+          onCornerRadiusStart={onCornerRadiusStart}
         />
       )}
       <PenDraft anchors={penDraft} zoom={viewport.zoom} />

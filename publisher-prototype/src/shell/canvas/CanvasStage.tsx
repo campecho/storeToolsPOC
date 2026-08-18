@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Circle, Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "react-konva";
+import { clampCornerRadius } from "../../core/geometry/shapePaths";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
 import type { LayoutObject, LineObject, Paint, Stroke, Swatch } from "../../core/model";
 import { arrowheadShape, dashPatternIn, headLengthIn } from "../../core/render/lineDecor";
@@ -107,6 +108,26 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
             offsetY={o.h / 2}
             width={o.w}
             height={o.h}
+            rotation={o.rotation}
+            {...paint}
+            perfectDrawEnabled={false}
+          />
+        );
+      }
+      if (o.shape === "roundedRect") {
+        // Parametric, not a baked path: Konva rounds the corners itself from
+        // the inch radius, so they stay circular arcs however the frame is
+        // scaled. The bound is applied here, never to the stored value.
+        return (
+          <Rect
+            key={o.id}
+            x={o.x + o.w / 2}
+            y={o.y + o.h / 2}
+            offsetX={o.w / 2}
+            offsetY={o.h / 2}
+            width={o.w}
+            height={o.h}
+            cornerRadius={clampCornerRadius(o.cornerRadius ?? 0, o.w, o.h)}
             rotation={o.rotation}
             {...paint}
             perfectDrawEnabled={false}

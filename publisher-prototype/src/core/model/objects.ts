@@ -234,10 +234,18 @@ export type TableFrame = z.infer<typeof TableFrameSchema>;
 export const ShapeObjectSchema = z.object({
   ...frameShared,
   type: z.literal("shape"),
-  shape: z.enum(["rect", "ellipse", "path"]),
+  shape: z.enum(["rect", "ellipse", "roundedRect", "path"]),
   /** Path shapes only: normalized segments — see PathSegSchema. Presence is
       enforced by the refine on LayoutObjectSchema. */
   d: z.array(PathSegSchema).optional(),
+  /** Rounded rectangles only: corner radius in INCHES — the parametric
+      storage SEAMS.md deferred, arriving as an additive v3 delta (no version
+      bump per the additive rule). Kept as the user set it: a resize can leave
+      it above the geometric bound of half the shorter side, and the bound is
+      applied where the shape is drawn and hit-tested (clampCornerRadius), so
+      growing the frame back restores the radius rather than losing it.
+      Presence is enforced by the refine on LayoutObjectSchema. */
+  cornerRadius: z.number().nonnegative().optional(),
 });
 export type ShapeObject = z.infer<typeof ShapeObjectSchema>;
 
@@ -295,18 +303,26 @@ const LayoutObjectUnionSchema = z.discriminatedUnion("type", [
   MergeFieldObjectSchema,
 ]);
 
-/** The object union plus the one cross-field invariant a discriminated-union
-    member can't express itself (the PhotoOpSchema pattern): a path shape
-    carries non-empty `d`; rect/ellipse carry none. */
+/** The object union plus the cross-field invariants a discriminated-union
+    member can't express itself (the PhotoOpSchema pattern): each shape kind
+    carries exactly its own geometry field — `d` for a path, `cornerRadius`
+    for a rounded rect, neither for rect/ellipse. */
 export const LayoutObjectSchema = LayoutObjectUnionSchema.superRefine((obj, ctx) => {
   if (obj.type !== "shape") return;
-  const hasD = obj.d != null && obj.d.length > 0;
-  const ok = obj.shape === "path" ? hasD : obj.d == null;
-  if (!ok) {
+  const dOk = obj.shape === "path" ? obj.d != null && obj.d.length > 0 : obj.d == null;
+  if (!dOk) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "shape: kind 'path' requires non-empty `d`; no other kind may carry `d`",
+    });
+  }
+  const radiusOk =
+    obj.shape === "roundedRect" ? obj.cornerRadius != null : obj.cornerRadius == null;
+  if (!radiusOk) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message:
-        "shape: kind 'path' requires non-empty `d`; kinds 'rect' and 'ellipse' must not carry `d`",
+        "shape: kind 'roundedRect' requires `cornerRadius`; no other kind may carry it",
     });
   }
 });

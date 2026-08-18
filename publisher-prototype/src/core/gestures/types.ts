@@ -44,7 +44,8 @@ export type GesturePreview =
   | { kind: "marquee"; x: number; y: number; w: number; h: number }
   | { kind: "move"; dx: number; dy: number }
   | { kind: "resize"; boxes: Record<string, FrameBox | LineEndpoints> }
-  | { kind: "rotate"; rotations: Record<string, number> };
+  | { kind: "rotate"; rotations: Record<string, number> }
+  | { kind: "corner-radius"; radius: number };
 
 /** `end` yields the gesture's single committed action, or null when nothing
     should commit (under-slop clicks with no click behavior, degenerate

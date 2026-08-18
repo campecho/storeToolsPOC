@@ -17,6 +17,7 @@ import {
   objectStrokeWidthCommitted,
   penDrawCommitted,
   rectDrawCommitted,
+  roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
 } from "./documentActions";
@@ -103,6 +104,7 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectNudgeCommitted.type,
   objectResizeCommitted.type,
   objectRotateCommitted.type,
+  roundedRectCornerRadiusCommitted.type,
   ...PANEL_COMMIT_ACTION_TYPES,
 ]);
 

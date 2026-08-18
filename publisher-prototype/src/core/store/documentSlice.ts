@@ -17,8 +17,10 @@ import {
   objectStrokeWidthCommitted,
   penDrawCommitted,
   rectDrawCommitted,
+  roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
+  type CornerRadiusCommit,
   type DrawCommit,
   type FillCommit,
   type LockCommit,
@@ -146,6 +148,23 @@ function applyStrokeWidth(state: LayoutDocument, action: PayloadAction<StrokeWid
   }
 }
 
+/** Corner radius applies only where there is a corner to round: a rounded
+    rect. The value stores as given — the geometric bound is applied where the
+    shape is drawn and hit-tested, so a frame grown back keeps its radius. */
+function applyCornerRadius(
+  state: LayoutDocument,
+  action: PayloadAction<CornerRadiusCommit>,
+): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked) continue;
+    if (obj.type !== "shape" || obj.shape !== "roundedRect") continue;
+    obj.cornerRadius = Math.max(action.payload.radius, 0);
+  }
+}
+
 function applyLock(state: LayoutDocument, action: PayloadAction<LockCommit>): void {
   const page = state.pages[action.payload.pageIndex];
   if (!page) return;
@@ -196,7 +215,8 @@ export const documentSlice = createSlice({
       .addCase(objectFillCommitted, applyFill)
       .addCase(objectStrokePaintCommitted, applyStrokePaint)
       .addCase(objectStrokeWidthCommitted, applyStrokeWidth)
-      .addCase(objectLockCommitted, applyLock);
+      .addCase(objectLockCommitted, applyLock)
+      .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius);
   },
 });
 

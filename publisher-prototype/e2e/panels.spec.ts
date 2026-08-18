@@ -160,6 +160,30 @@ test("transform panel: nudge increment edits the same live option the arrow keys
   expectNear(rect.y, 3.25);
 });
 
+test("transform panel: corner radius shows for a rounded rect only, and edits the same value the handle sets", async ({
+  page,
+}) => {
+  await drawAndSelectRect(page);
+  // A plain rect has no corner to round — no field, nothing to edit.
+  await expect(panel(page, "transform").getByLabel("Corner radius", { exact: true })).toHaveCount(0);
+
+  await activate(page, "Rounded rectangle");
+  await drag(page, { x: 4, y: 3 }, { x: 6, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 5, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const radius = panel(page, "transform").getByLabel("Corner radius", { exact: true });
+  await expect(radius).toHaveValue("0.1");
+
+  const before = await historyDepth(page);
+  await commitField(page, "transform", "Corner radius", "0.4");
+  expect(shapeAt(await pageObjects(page), 1).cornerRadius).toBe(0.4);
+  // One visit, one entry — the same edit-run discipline every field follows.
+  expect(await historyDepth(page)).toBe(before + 1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(shapeAt(await pageObjects(page), 1).cornerRadius).toBe(0.1);
+});
+
 test("color panel: picking a fill color commits one literal rgb paint; None hollows; undo restores", async ({
   page,
 }) => {

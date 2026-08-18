@@ -77,6 +77,15 @@ export type StrokeWidthCommit = {
   width: number;
 };
 
+/** corner-radius commits: set the identified rounded rectangles' radius in
+    inches. Every other shape kind is left alone — it has no corner to round
+    — and the value stores unclamped, per the ShapeObjectSchema note. */
+export type CornerRadiusCommit = {
+  pageIndex: number;
+  ids: string[];
+  radius: number;
+};
+
 /** lock commits: set the identified objects' locked flag. The one translate-
     family action that must NOT skip locked objects — unlocking is its point. */
 export type LockCommit = {
@@ -107,6 +116,9 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
   "object/strokeWidthCommitted",
 );
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
+export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(
+  "roundedRect/cornerRadiusCommitted",
+);
 
 /** The gesture pipeline's DevTools record for an aborted gesture (Esc during
     drag, discarded pen path). No DOCUMENT reducer handles it — an aborted

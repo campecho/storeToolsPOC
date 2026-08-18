@@ -40,7 +40,8 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   superseding the POC v2 names — the registry is the prototype's contract, and v3
   owns the lineage it copied. Deferred as additive (no version bump when added):
   gradient/pattern `Paint` kinds (arrive with the fill/gradient tool) and parametric
-  rounded-corner storage (rounded-rect currently normalizes to a vector path).
+  rounded-corner storage — the latter has since landed, see **Parametric shape
+  storage** below.
 - **Line decorations (recorded 2026-08-18, user-ratified):** the arrow tool's
   contract (`creates: "line"` with head options) needs storage the v2 lineage's
   line lacked. Additive v3 delta on `LineObject`, no version bump per the additive
@@ -101,6 +102,24 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   rotated-chrome and rotated-resize SME items together. Still open: a
   multi-selection has no single rotation, so it scales on the document axes while
   each rotated member keeps its angle, which does shear.
+- **Parametric shape storage (recorded 2026-08-18, user decision):** the rounded
+  rect stores its corner radius instead of baking it into a path — the additive v3
+  delta this file deferred, taken now because a radius nothing stores is a radius
+  no panel field and no adjust handle can drive. `shape` gains a `roundedRect`
+  kind carrying `cornerRadius` in INCHES and no `d`; the superRefine extends to
+  "each shape kind carries exactly its own geometry field". Konva rounds the
+  corners itself and hit-testing derives the outline from box + radius, so the
+  corners stay circular arcs through any resize rather than shearing into
+  ellipses the way a normalized path did. The stored radius is NOT clamped: a
+  resize can shrink a frame under a radius the user set, so the geometric bound
+  (half the shorter side, per the roundedRect contract's note) is applied
+  wherever the shape is drawn, and growing the frame back restores the radius
+  rather than losing it. One action serves both surfaces —
+  `roundedRect/cornerRadiusCommitted`, a gesture clause the Transform panel
+  reuses, per the panel-commit rule above. The other path shapes (star, callout,
+  banner, flowchart) still bake their options at draw time and keep their
+  adjust-handle clauses unwired; `drawShapeMachine`'s `DrawnShapeGeometry` union
+  is where each joins when its turn comes.
 - **Handle cursors (recorded 2026-08-18, user decision):** each handle shows the
   direction it stretches, turning with the frame — `core/gestures`'
   `resizeHandleAxis` snaps the handle's heading plus the frame's rotation to the

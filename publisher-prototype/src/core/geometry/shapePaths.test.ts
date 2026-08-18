@@ -3,9 +3,11 @@ import type { PathSeg } from "../model";
 import {
   KAPPA,
   bannerPath,
+  clampCornerRadius,
   calloutPath,
   flowchartPath,
   roundedRectPath,
+  roundedRectPathFor,
   starPath,
   type CalloutTailAnchor,
   type FlowchartSymbol,
@@ -214,5 +216,34 @@ describe("flowchartPath", () => {
     expect(segs.filter((s) => s.c === "C").length).toBe(1);
     expect(segs[segs.length - 2]?.c).toBe("C");
     expect(segs[segs.length - 1]?.c).toBe("Z");
+  });
+});
+
+describe("clampCornerRadius", () => {
+  it("bounds the radius at half the shorter side", () => {
+    expect(clampCornerRadius(0.2, 2, 1)).toBe(0.2);
+    expect(clampCornerRadius(9, 2, 1)).toBe(0.5);
+    expect(clampCornerRadius(9, 1, 4)).toBe(0.5);
+  });
+
+  it("never returns a negative radius, and survives a degenerate box", () => {
+    expect(clampCornerRadius(-3, 2, 2)).toBe(0);
+    expect(clampCornerRadius(1, 0, 0)).toBe(0);
+  });
+});
+
+describe("roundedRectPathFor", () => {
+  it("normalizes one inch radius per axis, so the drawn corner stays circular", () => {
+    // 0.25in of a 2×1in box is an eighth across and a quarter down — the
+    // normalized pair that a 2:1 box scales back to equal radii.
+    expect(roundedRectPathFor(0.25, 2, 1)).toEqual(roundedRectPath(0.125, 0.25));
+  });
+
+  it("applies the bound rather than the stored value", () => {
+    expect(roundedRectPathFor(99, 2, 1)).toEqual(roundedRectPath(0.25, 0.5));
+  });
+
+  it("degenerates to the plain rectangle at radius zero", () => {
+    expect(roundedRectPathFor(0, 2, 1)).toEqual(roundedRectPath(0, 0));
   });
 });

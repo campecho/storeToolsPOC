@@ -4,6 +4,7 @@ import {
   objectLockCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  roundedRectCornerRadiusCommitted,
   selectDocument,
   type FrameBox,
   type LineEndpoints,
@@ -26,6 +27,10 @@ import { NumberField } from "./NumberField";
  * center (decision of record in SEAMS.md); lines carry no rotation and
  * show the angle controls disabled. Locking (§5.3) disables every
  * geometry control except the lock checkbox itself — the door out.
+ *
+ * Corner radius appears only for a rounded rectangle — the one shape kind
+ * that stores one — alongside the canvas adjust handle that sets the same
+ * value (roundedRect/cornerRadiusCommitted, one action either way).
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -124,6 +129,15 @@ export function TransformPanel({
     dispatch(inEditRun(objectResizeCommitted({ pageIndex, boxes }), editRun));
   };
 
+  const commitCornerRadius = (radius: number, editRun?: string): void => {
+    dispatch(
+      inEditRun(
+        roundedRectCornerRadiusCommitted({ pageIndex, ids: [single.id], radius }),
+        editRun,
+      ),
+    );
+  };
+
   const commitRotation = (deg: number, editRun?: string): void => {
     dispatch(
       inEditRun(
@@ -206,6 +220,17 @@ export function TransformPanel({
           Reset rotation
         </button>
       </div>
+      {single.type === "shape" && single.shape === "roundedRect" && (
+        <NumberField
+          label="Corner radius"
+          value={single.cornerRadius ?? 0}
+          min={0}
+          step={0.05}
+          unit="in"
+          disabled={locked}
+          onCommit={commitCornerRadius}
+        />
+      )}
       <label className="field">
         <input
           type="checkbox"

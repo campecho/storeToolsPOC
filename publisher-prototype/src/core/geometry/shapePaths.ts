@@ -106,6 +106,25 @@ export function roundedRectPath(rx: number, ry: number): PathSeg[] {
 }
 
 /**
+ * The corner radius a box can actually draw: inches, clamped to the
+ * geometric bound of half the shorter side (the roundedRect contract's
+ * runtime clamp). The STORED radius is deliberately not clamped — a resize
+ * can shrink a frame under a radius the user set — so this is applied at
+ * every point of use and growing the frame back restores the full radius.
+ */
+export function clampCornerRadius(radiusIn: number, w: number, h: number): number {
+  const bound = Math.max(Math.min(w, h) / 2, 0);
+  return Math.min(Math.max(radiusIn, 0), bound);
+}
+
+/** A rounded rect's outline in unit-box space: one inch radius normalized
+    per axis, so it stays a circular arc once the box scales it back. */
+export function roundedRectPathFor(radiusIn: number, w: number, h: number): PathSeg[] {
+  const r = clampCornerRadius(radiusIn, w, h);
+  return roundedRectPath(w > 0 ? r / w : 0, h > 0 ? r / h : 0);
+}
+
+/**
  * Star inscribed in the unit box: 2·points vertices alternating between the
  * outer radius (1) and `innerRatio`, starting from the top point at
  * (0.5, 0) and proceeding clockwise. `points` floors and clamps to at least

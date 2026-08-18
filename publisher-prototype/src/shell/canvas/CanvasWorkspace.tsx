@@ -279,6 +279,7 @@ export function CanvasWorkspace({
           penDraft={activeTool === "pen" ? penAnchors : []}
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}
+          onCornerRadiusStart={gestures.beginCornerRadius}
           onRotateStart={gestures.beginRotate}
         />
       </div>
