@@ -1,6 +1,7 @@
 import { panelRegistry } from "../../core/registry";
 import type { PanelSpec, ToolContract, ToolMode } from "../../core/registry";
 import { WIRED_PANELS } from "../wiredTools";
+import { AlignDistributePanel } from "./AlignDistributePanel";
 import { ColorSwatchesPanel } from "./ColorSwatchesPanel";
 import { TransformPanel } from "./TransformPanel";
 
@@ -40,6 +41,8 @@ export function ControlPanel({
         );
       case "color-swatches":
         return <ColorSwatchesPanel pageIndex={pageIndex} />;
+      case "align-distribute":
+        return <AlignDistributePanel pageIndex={pageIndex} />;
       default:
         return null;
     }

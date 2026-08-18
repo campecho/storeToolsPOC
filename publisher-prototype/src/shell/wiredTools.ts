@@ -25,7 +25,11 @@ export const WIRED_TOOLS: ReadonlySet<string> = new Set([
  * tier stays pure specification — a LIVE-tier panel outside this set renders
  * its spec card with a "not wired yet" chip, exactly like an unwired tool.
  */
-export const WIRED_PANELS: ReadonlySet<string> = new Set(["transform", "color-swatches"]);
+export const WIRED_PANELS: ReadonlySet<string> = new Set([
+  "transform",
+  "color-swatches",
+  "align-distribute",
+]);
 
 /**
  * Option ids the wired implementation actually consumes, per tool. Options
