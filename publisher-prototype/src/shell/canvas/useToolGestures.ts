@@ -15,6 +15,7 @@ import {
   marqueeMachine,
   moveMachine,
   penMachine,
+  resizeAnchor,
   resizeMachine,
   rotateMachine,
   slopInInches,
@@ -25,7 +26,7 @@ import {
   type GesturePreview,
   type ResizeHandle,
 } from "../../core/gestures";
-import { hitTestPoint, selectionAabb, type Rect } from "../../core/hittest";
+import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
 import {
@@ -123,24 +124,6 @@ function clickSession(
     },
     preview: () => null,
     dragged: () => dragged,
-  };
-}
-
-/** The scaling origin the resize machine expects: the handle opposite the
-    dragged one on the initial selection AABB — corner for corner handles,
-    edge midpoint for edge handles. */
-function resizeAnchor(handle: ResizeHandle, bounds: Rect): GesturePoint {
-  return {
-    x: handle.includes("w")
-      ? bounds.x + bounds.w
-      : handle.includes("e")
-        ? bounds.x
-        : bounds.x + bounds.w / 2,
-    y: handle.includes("n")
-      ? bounds.y + bounds.h
-      : handle.includes("s")
-        ? bounds.y
-        : bounds.y + bounds.h / 2,
   };
 }
 
@@ -411,8 +394,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginResize = (handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const bounds = selectionAabb(selection);
-    if (bounds === null) return;
+    const frame = selectionFrame(selection);
+    if (frame === null) return;
     const initial: Record<string, FrameBox | LineEndpoints> = {};
     for (const obj of selection) {
       initial[obj.id] =
@@ -429,8 +412,9 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           pageIndex: args.pageIndex,
           zoom: args.viewport.zoom,
           handle,
-          anchor: resizeAnchor(handle, bounds),
-          bounds,
+          anchor: resizeAnchor(handle, frame.box),
+          bounds: frame.box,
+          rotation: frame.rotation,
           initial,
         },
         dispatch,
@@ -442,8 +426,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginRotate = (e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const bounds = selectionAabb(selection);
-    if (bounds === null) return;
+    const frame = selectionFrame(selection);
+    if (frame === null) return;
     // Lines carry no rotation field — the rotate ctx excludes them per the
     // machine's contract; an all-line selection starts no rotate at all.
     const initialRotations: Record<string, number> = {};
@@ -459,7 +443,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
         {
           pageIndex: args.pageIndex,
           zoom: args.viewport.zoom,
-          pivot: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
+          pivot: framePivot(frame.box),
           initialRotations,
         },
         dispatch,

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { rotatedFrameCorners } from "../src/core/hittest";
 import {
   activate,
   armCounter,
@@ -293,6 +294,34 @@ test("select.drag-rotate.rotates", async ({ page }) => {
   rect = shapeAt(await pageObjects(page), 0);
   expect(rect.rotation).not.toBeCloseTo(90, 5);
   expect(Math.round(rect.rotation / 15) * 15).toBeCloseTo(rect.rotation, 9);
+});
+
+test("select.drag-handle.resizes a rotated frame in its own space", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // A quarter turn: from here the chrome hugs the object, so its handles sit
+  // on the rotated frame rather than on the box around it.
+  await dragHandle(page, "rotate", { x: 3.8, y: 3.5 });
+  let rect = shapeAt(await pageObjects(page), 0);
+  expect(Math.abs(rect.rotation - 90)).toBeLessThanOrEqual(1);
+  const rotation = rect.rotation;
+  const before = rotatedFrameCorners(rect, rotation);
+  // The se handle now hangs below-left on screen. Dragging it scales the
+  // frame's OWN width and height (1.25× and 2.5×), never the document axes.
+  await armCounter(page);
+  await dragHandle(page, "se", { x: 1, y: 5 });
+  expect(await notificationCount(page)).toBe(1);
+  rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.rotation, rotation);
+  expectNear(rect.w, 2.5);
+  expectNear(rect.h, 2.5);
+  // The nw corner — the anchor opposite the dragged handle — has not moved.
+  const after = rotatedFrameCorners(rect, rotation);
+  expectNear(after[0]?.x ?? NaN, before[0]?.x ?? NaN);
+  expectNear(after[0]?.y ?? NaN, before[0]?.y ?? NaN);
 });
 
 test("select.arrow.nudges", async ({ page }) => {

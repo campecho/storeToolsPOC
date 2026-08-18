@@ -1,19 +1,26 @@
 import { DPI } from "../../core/geometry/viewport";
-import type { ResizeHandle } from "../../core/gestures";
-import { rotatedFrameCorners, selectionAabb, type Rect } from "../../core/hittest";
+import { resizeHandlePoint, type ResizeHandle } from "../../core/gestures";
+import {
+  framePivot,
+  rotatePoint,
+  rotatedFrameCorners,
+  selectionFrame,
+  type Point,
+} from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 
 /**
- * Committed-selection chrome (select tool only): the selection AABB as a
- * dashed frame carrying 8 square resize handles and the stemmed rotation
- * handle above top-center. Geometry is doc inches inside the viewBox-synced
+ * Committed-selection chrome (select tool only): the selection frame as a
+ * solid outline carrying 8 square resize handles and the stemmed rotation
+ * handle off its top edge. Geometry is doc inches inside the viewBox-synced
  * overlay; handle SIZES compute from px via zoom so they stay constant on
  * screen at any zoom.
  *
- * A single rotated object additionally draws its rotated outline; the AABB
- * frame stays the handle carrier. NOTE: rotated-selection chrome fidelity
- * (handles on the rotated frame itself) is an SME review item, matching the
- * resize machine's rotated-resize note.
+ * The frame is `selectionFrame`'s (core/hittest/aabb.ts) — a lone object's
+ * own rotated box, so the chrome HUGS the object instead of boxing the space
+ * around it. Handles and the rotation stem rotate with it, which is also the
+ * space the resize machine scales in. Multi-selections and lines fall back to
+ * the union AABB drawn unrotated.
  */
 
 export const CHROME_COLOR = "#2680eb";
@@ -21,13 +28,6 @@ const HANDLE_PX = 8;
 const ROTATE_STEM_PX = 16;
 
 const HANDLES: readonly ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
-
-function handleCenter(handle: ResizeHandle, b: Rect): { x: number; y: number } {
-  return {
-    x: handle.includes("w") ? b.x : handle.includes("e") ? b.x + b.w : b.x + b.w / 2,
-    y: handle.includes("n") ? b.y : handle.includes("s") ? b.y + b.h : b.y + b.h / 2,
-  };
-}
 
 export function SelectionChrome({
   objects,
@@ -41,56 +41,46 @@ export function SelectionChrome({
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
 }) {
-  const bounds = selectionAabb(objects);
-  if (bounds === null) return null;
+  const frame = selectionFrame(objects);
+  if (frame === null) return null;
+  const { box, rotation } = frame;
+  const pivot = framePivot(box);
+  /** Frame space → document space: the chrome's one rotation-aware step. */
+  const toDoc = (p: Point): Point => (rotation === 0 ? p : rotatePoint(p, pivot, rotation));
   const pxToIn = (px: number) => px / (DPI * zoom);
   const handleSize = pxToIn(HANDLE_PX);
-  const cx = bounds.x + bounds.w / 2;
-  const rotateY = bounds.y - pxToIn(ROTATE_STEM_PX);
   // Lines carry no rotation — an all-line selection shows no rotate handle,
   // matching the gesture router refusing to start a rotate for one.
   const rotatable = objects.some((o) => o.type !== "line");
-  const single = objects.length === 1 ? objects[0] : undefined;
+  // The stem leaves the top edge along the frame's own up direction, so it
+  // stays perpendicular to that edge at any rotation.
+  const stemFoot = toDoc({ x: pivot.x, y: box.y });
+  const knob = toDoc({ x: pivot.x, y: box.y - pxToIn(ROTATE_STEM_PX) });
   return (
     <g data-testid="selection-chrome">
-      {single !== undefined && single.type !== "line" && single.rotation !== 0 && (
-        <polygon
-          points={rotatedFrameCorners(
-            { x: single.x, y: single.y, w: single.w, h: single.h },
-            single.rotation,
-          )
-            .map((p) => `${p.x},${p.y}`)
-            .join(" ")}
-          fill="none"
-          stroke={CHROME_COLOR}
-          vectorEffect="non-scaling-stroke"
-        />
-      )}
-      <rect
-        x={bounds.x}
-        y={bounds.y}
-        width={bounds.w}
-        height={bounds.h}
+      <polygon
+        points={rotatedFrameCorners(box, rotation)
+          .map((p) => `${p.x},${p.y}`)
+          .join(" ")}
         fill="none"
         stroke={CHROME_COLOR}
-        strokeDasharray="4 3"
         vectorEffect="non-scaling-stroke"
       />
       {rotatable && (
         <>
           <line
-            x1={cx}
-            y1={bounds.y}
-            x2={cx}
-            y2={rotateY}
+            x1={stemFoot.x}
+            y1={stemFoot.y}
+            x2={knob.x}
+            y2={knob.y}
             stroke={CHROME_COLOR}
             vectorEffect="non-scaling-stroke"
           />
           <circle
             className="chrome-handle"
             data-handle="rotate"
-            cx={cx}
-            cy={rotateY}
+            cx={knob.x}
+            cy={knob.y}
             r={handleSize / 2}
             fill="#ffffff"
             stroke={CHROME_COLOR}
@@ -100,7 +90,7 @@ export function SelectionChrome({
         </>
       )}
       {HANDLES.map((handle) => {
-        const center = handleCenter(handle, bounds);
+        const center = toDoc(resizeHandlePoint(handle, box));
         return (
           <rect
             key={handle}
@@ -110,6 +100,10 @@ export function SelectionChrome({
             y={center.y - handleSize / 2}
             width={handleSize}
             height={handleSize}
+            // Squares sit square to the frame's edges, not the page's.
+            transform={
+              rotation === 0 ? undefined : `rotate(${rotation} ${center.x} ${center.y})`
+            }
             fill="#ffffff"
             stroke={CHROME_COLOR}
             vectorEffect="non-scaling-stroke"

@@ -21,7 +21,8 @@ import type { GestureContext, GestureMachine, GestureModifiers, GesturePoint } f
  */
 
 export type RotateContext = GestureContext & {
-  /** The rotation pivot: the selection AABB's center. */
+  /** The rotation pivot: the selection frame's center (selectionFrame's box
+      through framePivot — for a lone object, the object's own center). */
   pivot: GesturePoint;
   /** Absolute starting rotation per selected object id, degrees. */
   initialRotations: Record<string, number>;

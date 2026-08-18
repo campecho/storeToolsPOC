@@ -74,3 +74,15 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   width; null removes the stroke, ignored for schema-required line strokes) and
   `object/strokeWidthCommitted` (width; only where a stroke exists) so multi-object
   color application never homogenizes widths.
+- **Selection frame (recorded 2026-08-18, user decision):** the selection chrome
+  HUGS its object — a lone object's frame drawn at that object's own rotation, in
+  solid stroke, with the 8 resize handles and the rotation stem riding that frame
+  rather than the axis-aligned box around it. The frame is one function,
+  `core/hittest`'s `selectionFrame`: a lone object contributes its own box and
+  rotation, every other selection (several objects, or a line, which carries no
+  rotation) falls back to the union AABB drawn unrotated. Resize scales in that
+  frame's own space and pins the grabbed anchor in document coordinates, so a
+  rotated object stretches along its own edges and does not shear — closing the
+  rotated-chrome and rotated-resize SME items together. Still open: a
+  multi-selection has no single rotation, so it scales on the document axes while
+  each rotated member keeps its angle, which does shear.
