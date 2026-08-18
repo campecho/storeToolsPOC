@@ -1,5 +1,5 @@
-import type { DrawStyle } from "../core/gestures";
-import type { Paint, Stroke } from "../core/model";
+import type { DrawStyle, LineExtras } from "../core/gestures";
+import type { ArrowHead, ArrowHeadSize, LineDash, Paint, Stroke } from "../core/model";
 import { toolRegistry } from "../core/registry";
 import { hexToColorValue } from "../core/render/paint";
 
@@ -58,6 +58,29 @@ export function optionEnum<T extends string>(
  * `strokeWidth` is points per the contracts. A tool without a fill option
  * (line) draws with fill null; ditto stroke.
  */
+const ARROW_HEADS: readonly ArrowHead[] = ["none", "arrow", "circle", "diamond"];
+const HEAD_SIZES: readonly ArrowHeadSize[] = ["s", "m", "l"];
+const DASHES: readonly LineDash[] = ["solid", "dashed", "dotted"];
+
+/**
+ * The line-decoration fields a line-family tool's options bake onto the
+ * committed object (heads and dash). Schema defaults — "none", "m",
+ * "solid" — are OMITTED rather than stored, per the additive rule: absent
+ * means the default, and documents stay lean.
+ */
+export function lineExtrasFromOptions(values: ToolOptionValues, toolId: string): LineExtras {
+  const extras: LineExtras = {};
+  const headStart = optionEnum(values, toolId, "headStart", ARROW_HEADS, "none");
+  const headEnd = optionEnum(values, toolId, "headEnd", ARROW_HEADS, "none");
+  const headSize = optionEnum(values, toolId, "headSize", HEAD_SIZES, "m");
+  const dash = optionEnum(values, toolId, "dash", DASHES, "solid");
+  if (headStart !== "none") extras.headStart = headStart;
+  if (headEnd !== "none") extras.headEnd = headEnd;
+  if (headSize !== "m") extras.headSize = headSize;
+  if (dash !== "solid") extras.dash = dash;
+  return extras;
+}
+
 export function drawStyleFromOptions(values: ToolOptionValues, toolId: string): DrawStyle {
   const options = values[toolId] ?? {};
   const fillHex = typeof options.fill === "string" ? options.fill : null;

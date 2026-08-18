@@ -88,6 +88,7 @@ export type LockCommit = {
 export const rectDrawCommitted = createAction<DrawCommit>("rect/drawCommitted");
 export const ellipseDrawCommitted = createAction<DrawCommit>("ellipse/drawCommitted");
 export const lineDrawCommitted = createAction<DrawCommit>("line/drawCommitted");
+export const arrowDrawCommitted = createAction<DrawCommit>("arrow/drawCommitted");
 export const roundedRectDrawCommitted = createAction<DrawCommit>("roundedRect/drawCommitted");
 export const starPolygonDrawCommitted = createAction<DrawCommit>("starPolygon/drawCommitted");
 export const calloutDrawCommitted = createAction<DrawCommit>("callout/drawCommitted");

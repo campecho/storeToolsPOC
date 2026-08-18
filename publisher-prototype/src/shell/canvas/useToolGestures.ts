@@ -9,6 +9,7 @@ import {
 import {
   drawBoundsMachine,
   drawLineMachine,
+  drawLineMachineFor,
   drawPathMachine,
   marqueeMachine,
   moveMachine,
@@ -26,6 +27,7 @@ import { hitTestPoint, selectionAabb, type Rect } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
 import {
+  arrowDrawCommitted,
   gestureCancelled,
   objectNudgeCommitted,
   selectionCycleCommitted,
@@ -39,7 +41,12 @@ import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { createObjectId } from "../objectId";
 import { PATH_TOOL_CONFIGS } from "../pathTools";
-import { drawStyleFromOptions, optionNumber, type ToolOptionValues } from "../toolOptions";
+import {
+  drawStyleFromOptions,
+  lineExtrasFromOptions,
+  optionNumber,
+  type ToolOptionValues,
+} from "../toolOptions";
 
 /**
  * Tool gesture routing (PLAN.md §6.3 hard rule): the active machine's state
@@ -334,16 +341,17 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       );
       return;
     }
-    if (activeTool === "line") {
+    if (activeTool === "line" || activeTool === "arrow") {
       begin(
         machineSession(
-          drawLineMachine,
+          activeTool === "line" ? drawLineMachine : drawLineMachineFor(arrowDrawCommitted),
           point,
           {
             pageIndex,
             zoom,
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
+            extras: lineExtrasFromOptions(toolOptions, activeTool),
           },
           dispatch,
         ),

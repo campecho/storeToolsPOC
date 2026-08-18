@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toolRegistry } from "../registry/tools";
 import {
+  arrowDrawCommitted,
   bannerDrawCommitted,
   calloutDrawCommitted,
   ellipseDrawCommitted,
@@ -30,6 +31,7 @@ const documentActionCreators = [
   rectDrawCommitted,
   ellipseDrawCommitted,
   lineDrawCommitted,
+  arrowDrawCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
   calloutDrawCommitted,
@@ -47,7 +49,7 @@ const documentActionCreators = [
     their adjust-handle clauses land — those need the parametric shape
     storage SEAMS.md records as deferred; only their draw clauses are wired
     (and cross-checked through UNDOABLE_ACTION_TYPES below). */
-const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line)\//;
+const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line|arrow)\//;
 
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([

@@ -1,6 +1,7 @@
 import { createAction, type Reducer } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import {
+  arrowDrawCommitted,
   bannerDrawCommitted,
   calloutDrawCommitted,
   ellipseDrawCommitted,
@@ -63,6 +64,7 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   rectDrawCommitted.type,
   ellipseDrawCommitted.type,
   lineDrawCommitted.type,
+  arrowDrawCommitted.type,
   roundedRectDrawCommitted.type,
   starPolygonDrawCommitted.type,
   calloutDrawCommitted.type,

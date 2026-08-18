@@ -11,6 +11,7 @@ export const WIRED_TOOLS: ReadonlySet<string> = new Set([
   "rect",
   "ellipse",
   "line",
+  "arrow",
   "rounded-rect",
   "star-polygon",
   "callout",
@@ -28,15 +29,15 @@ export const WIRED_PANELS: ReadonlySet<string> = new Set(["transform", "color-sw
 /**
  * Option ids the wired implementation actually consumes, per tool. Options
  * a wired tool declares but nothing reads yet (select's showCoordinates and
- * positionRelativeTo; line's dash — LineObject carries no dash field) stay
- * rendered but disabled: the options bar is an honest surface, editable
- * exactly where editing has an effect.
+ * positionRelativeTo) stay rendered but disabled: the options bar is an
+ * honest surface, editable exactly where editing has an effect.
  */
 export const CONSUMED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["select", new Set(["nudgeIncrement"])],
   ["rect", new Set(["fill", "stroke", "strokeWidth"])],
   ["ellipse", new Set(["fill", "stroke", "strokeWidth"])],
-  ["line", new Set(["stroke", "strokeWidth"])],
+  ["line", new Set(["stroke", "strokeWidth", "dash"])],
+  ["arrow", new Set(["stroke", "strokeWidth", "dash", "headStart", "headEnd", "headSize"])],
   ["rounded-rect", new Set(["fill", "stroke", "strokeWidth", "cornerRadius"])],
   ["star-polygon", new Set(["points", "innerRadiusRatio", "fill", "stroke", "strokeWidth"])],
   ["callout", new Set(["fill", "stroke", "strokeWidth", "tailAnchor"])],

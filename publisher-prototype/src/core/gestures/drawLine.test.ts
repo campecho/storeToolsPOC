@@ -1,9 +1,20 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { describe, expect, it } from "vitest";
 import { LayoutObjectSchema, type Stroke } from "../model";
-import { lineTool } from "../registry/tools/shapes";
-import { gestureCancelled, lineDrawCommitted, type DrawCommit } from "../store/documentActions";
-import { drawLineMachine, type DrawLineContext, type DrawLineState } from "./drawLine";
+import { arrowTool, lineTool } from "../registry/tools/shapes";
+import {
+  arrowDrawCommitted,
+  gestureCancelled,
+  lineDrawCommitted,
+  type DrawCommit,
+} from "../store/documentActions";
+import {
+  drawLineMachine,
+  drawLineMachineFor,
+  type DrawLineContext,
+  type DrawLineState,
+  type LineExtras,
+} from "./drawLine";
 import type { GestureModifiers, GesturePoint, GestureResult } from "./types";
 
 const STROKE: Stroke = {
@@ -126,5 +137,46 @@ describe("line.esc.cancels-draw", () => {
     const cancelled = drawLineMachine.cancel();
     expect(cancelled.action.type).toBe(clauseAction("line.esc.cancels-draw"));
     expect(cancelled.action.type).toBe(gestureCancelled.type);
+  });
+});
+
+describe("arrow.drag.creates (drawLineMachineFor + extras)", () => {
+  it("commits a schema-valid line through the arrow clause action, baking the decoration extras", () => {
+    const machine = drawLineMachineFor(arrowDrawCommitted);
+    const extras: LineExtras = { headEnd: "arrow", headStart: "circle", headSize: "l", dash: "dashed" };
+    let state = machine.begin({ x: 1, y: 1 }, ctx({ extras }));
+    state = machine.update(state, { x: 3, y: 2 }, NONE);
+    const result = machine.end(state, NONE);
+    expect(result.action?.type).toBe(
+      arrowTool.gestures.find((g) => g.id === "arrow.drag.creates")?.action,
+    );
+    const payload = payloadOf<DrawCommit>(result, arrowDrawCommitted);
+    expect(payload.object).toMatchObject({
+      type: "line",
+      x1: 1,
+      y1: 1,
+      x2: 3,
+      y2: 2,
+      ...extras,
+    });
+    expect(() => LayoutObjectSchema.parse(payload.object)).not.toThrow();
+  });
+
+  it("omitted extras stay absent on the committed object — defaults are not stored", () => {
+    const machine = drawLineMachineFor(arrowDrawCommitted);
+    let state = machine.begin({ x: 0, y: 0 }, ctx({ extras: { headEnd: "arrow" } }));
+    state = machine.update(state, { x: 1, y: 0 }, NONE);
+    const payload = payloadOf<DrawCommit>(machine.end(state, NONE), arrowDrawCommitted);
+    expect(payload.object).toMatchObject({ headEnd: "arrow" });
+    expect("headStart" in payload.object).toBe(false);
+    expect("headSize" in payload.object).toBe(false);
+    expect("dash" in payload.object).toBe(false);
+  });
+
+  it("the plain line machine is the same factory bound to line/drawCommitted", () => {
+    let state = drawLineMachine.begin({ x: 0, y: 0 }, ctx());
+    state = drawLineMachine.update(state, { x: 2, y: 0 }, NONE);
+    const payload = payloadOf<DrawCommit>(drawLineMachine.end(state, NONE), lineDrawCommitted);
+    expect("headEnd" in payload.object).toBe(false);
   });
 });

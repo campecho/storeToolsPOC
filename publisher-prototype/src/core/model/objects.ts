@@ -241,7 +241,22 @@ export const ShapeObjectSchema = z.object({
 });
 export type ShapeObject = z.infer<typeof ShapeObjectSchema>;
 
-/** Endpoints in inches — the lineage shape, plus the v3 shared fields. */
+/** Line-end decoration vocabulary (§4.4 arrows — the arrow tool's contract
+    option set, user-ratified 2026-08-18 as an additive v3 delta recorded in
+    SEAMS.md). */
+export const ArrowHeadSchema = z.enum(["none", "arrow", "circle", "diamond"]);
+export type ArrowHead = z.infer<typeof ArrowHeadSchema>;
+
+export const ArrowHeadSizeSchema = z.enum(["s", "m", "l"]);
+export type ArrowHeadSize = z.infer<typeof ArrowHeadSizeSchema>;
+
+export const LineDashSchema = z.enum(["solid", "dashed", "dotted"]);
+export type LineDash = z.infer<typeof LineDashSchema>;
+
+/** Endpoints in inches — the lineage shape, plus the v3 shared fields and
+    the additive line-decoration delta: absent headStart/headEnd = "none",
+    absent headSize = "m", absent dash = "solid" (the additive rule — tools
+    omit default values so lean lineage documents stay valid unchanged). */
 export const LineObjectSchema = z.object({
   ...objectShared,
   type: z.literal("line"),
@@ -250,6 +265,10 @@ export const LineObjectSchema = z.object({
   x2: z.number(),
   y2: z.number(),
   stroke: StrokeSchema,
+  headStart: ArrowHeadSchema.optional(),
+  headEnd: ArrowHeadSchema.optional(),
+  headSize: ArrowHeadSizeSchema.optional(),
+  dash: LineDashSchema.optional(),
 });
 export type LineObject = z.infer<typeof LineObjectSchema>;
 

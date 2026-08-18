@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "react-konva";
+import { Circle, Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "react-konva";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
-import type { LayoutObject, Paint, Stroke, Swatch } from "../../core/model";
+import type { LayoutObject, LineObject, Paint, Stroke, Swatch } from "../../core/model";
+import { arrowheadShape, dashPatternIn, headLengthIn } from "../../core/render/lineDecor";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
 import { paintToCss } from "../../core/render/paint";
 import { pathToSvg } from "../../core/render/path";
@@ -37,6 +38,59 @@ function strokeProps(
   return stroke
     ? { stroke: paintToCss(stroke.paint, swatches), strokeWidth: stroke.width / PT_PER_IN }
     : {};
+}
+
+/** One end's head, filled with the line's stroke color. `angle` is the
+    direction the head points (from the other endpoint toward the tip). */
+function renderHead(o: LineObject, end: "start" | "end", color: string): ReactNode {
+  const head = end === "start" ? o.headStart : o.headEnd;
+  const angle =
+    end === "end"
+      ? Math.atan2(o.y2 - o.y1, o.x2 - o.x1)
+      : Math.atan2(o.y1 - o.y2, o.x1 - o.x2);
+  const tip = end === "end" ? { x: o.x2, y: o.y2 } : { x: o.x1, y: o.y1 };
+  const shape = arrowheadShape(head, tip, angle, headLengthIn(o.headSize, o.stroke.width));
+  if (shape === null) return null;
+  if (shape.kind === "circle") {
+    return (
+      <Circle
+        x={shape.center.x}
+        y={shape.center.y}
+        radius={shape.radius}
+        fill={color}
+        perfectDrawEnabled={false}
+      />
+    );
+  }
+  return (
+    <Line
+      points={shape.points.flatMap((p) => [p.x, p.y])}
+      closed
+      fill={color}
+      perfectDrawEnabled={false}
+    />
+  );
+}
+
+/** Line with its decorations: dash pattern from the schema's dash field and
+    optional heads at either end (§4.4 arrows) — all geometry from
+    core/render/lineDecor, so the dev team's output path shares it. */
+function renderLine(o: LineObject, swatches: readonly Swatch[]): ReactNode {
+  const color = paintToCss(o.stroke.paint, swatches);
+  const dash = dashPatternIn(o.dash, o.stroke.width);
+  return (
+    <Group key={o.id}>
+      <Line
+        points={[o.x1, o.y1, o.x2, o.y2]}
+        stroke={color}
+        strokeWidth={o.stroke.width / PT_PER_IN}
+        {...(dash !== null ? { dash } : {})}
+        perfectDrawEnabled={false}
+      />
+      {renderHead(o, "start", color)}
+      {renderHead(o, "end", color)}
+    </Group>
+  );
 }
 
 function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
@@ -92,14 +146,7 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
       );
     }
     case "line":
-      return (
-        <Line
-          key={o.id}
-          points={[o.x1, o.y1, o.x2, o.y2]}
-          {...strokeProps(o.stroke, swatches)}
-          perfectDrawEnabled={false}
-        />
-      );
+      return renderLine(o, swatches);
     case "textFrame":
     case "pictureFrame":
     case "table":

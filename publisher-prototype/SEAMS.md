@@ -41,6 +41,15 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   owns the lineage it copied. Deferred as additive (no version bump when added):
   gradient/pattern `Paint` kinds (arrive with the fill/gradient tool) and parametric
   rounded-corner storage (rounded-rect currently normalizes to a vector path).
+- **Line decorations (recorded 2026-08-18, user-ratified):** the arrow tool's
+  contract (`creates: "line"` with head options) needs storage the v2 lineage's
+  line lacked. Additive v3 delta on `LineObject`, no version bump per the additive
+  rule: optional `headStart`/`headEnd` (`none|arrow|circle|diamond`), `headSize`
+  (`s|m|l`), and `dash` (`solid|dashed|dotted` — activating the line tool's
+  until-now storage-less dash option). Absent = the default (`none`/`m`/`solid`);
+  tools omit defaults so lineage documents stay valid and lean. Decoration
+  geometry (dash patterns, head shapes) is pure math in `core/render/lineDecor.ts`
+  so the dev team's output path shares it with the canvas.
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no
