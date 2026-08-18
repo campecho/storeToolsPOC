@@ -9,6 +9,7 @@ import {
 import {
   drawBoundsMachine,
   drawLineMachine,
+  drawPathMachine,
   marqueeMachine,
   moveMachine,
   resizeMachine,
@@ -37,6 +38,7 @@ import {
 import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { createObjectId } from "../objectId";
+import { PATH_TOOL_CONFIGS } from "../pathTools";
 import { drawStyleFromOptions, optionNumber, type ToolOptionValues } from "../toolOptions";
 
 /**
@@ -306,6 +308,25 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             zoom,
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
+          },
+          dispatch,
+        ),
+        e.pointerId,
+      );
+      return;
+    }
+    const pathConfig = PATH_TOOL_CONFIGS[activeTool];
+    if (pathConfig !== undefined) {
+      begin(
+        machineSession(
+          drawPathMachine(pathConfig.creator),
+          point,
+          {
+            pageIndex,
+            zoom,
+            style: drawStyleFromOptions(toolOptions, activeTool),
+            idFactory: createObjectId,
+            pathForBox: (box) => pathConfig.pathForBox(toolOptions, box),
           },
           dispatch,
         ),

@@ -37,6 +37,21 @@ export function optionNumber(
   return typeof value === "number" ? value : fallback;
 }
 
+/** Enum-option read: the live value if it is one of the contract's declared
+    members, the fallback otherwise — same guard rule as optionNumber. */
+export function optionEnum<T extends string>(
+  values: ToolOptionValues,
+  toolId: string,
+  optionId: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const value = values[toolId]?.[optionId];
+  return typeof value === "string" && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
+}
+
 /**
  * The DrawStyle a draw machine's ctx consumes, from the tool's live options:
  * `fill`/`stroke` hex colors become literal rgb Paints (hexToColorValue),

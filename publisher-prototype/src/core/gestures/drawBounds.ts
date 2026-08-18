@@ -1,5 +1,10 @@
-import type { ShapeObject } from "../model";
-import { ellipseDrawCommitted, rectDrawCommitted } from "../store/documentActions";
+import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
+import type { PathSeg, ShapeObject } from "../model";
+import {
+  ellipseDrawCommitted,
+  rectDrawCommitted,
+  type DrawCommit,
+} from "../store/documentActions";
 import { DEFAULT_SHAPE_SIZE_IN } from "./constants";
 import { beginDrag, cancelResult, updateDrag, type DragState } from "./drag";
 import type {
@@ -63,6 +68,57 @@ function dragBounds(start: GesturePoint, current: GesturePoint, modifiers: Gestu
 function clickDefaultBox(point: GesturePoint): Box {
   const half = DEFAULT_SHAPE_SIZE_IN / 2;
   return { x: point.x - half, y: point.y - half, w: DEFAULT_SHAPE_SIZE_IN, h: DEFAULT_SHAPE_SIZE_IN };
+}
+
+/**
+ * Bounds-drawing machine for the path-shape tools (rounded rect, star /
+ * polygon, callout, banner, flowchart) — the same drag/Shift/Alt/click/Esc
+ * clause set as rect and ellipse, committing a `shape: "path"` object whose
+ * normalized `d` is built for the final box. `pathForBox` receives the box
+ * because inch-denominated parameters (a corner radius) normalize against
+ * the box dimensions; the preview rebuilds `d` per update so the shape is
+ * live while dragging.
+ */
+export type DrawPathContext = DrawBoundsContext & {
+  pathForBox: (box: { x: number; y: number; w: number; h: number }) => PathSeg[];
+};
+
+export type DrawPathState = DragState<DrawPathContext>;
+
+export function drawPathMachine(
+  creator: ActionCreatorWithPayload<DrawCommit>,
+): GestureMachine<DrawPathState, DrawPathContext> {
+  return {
+    begin: (point, ctx) => beginDrag(point, ctx),
+    update: (state, point, modifiers) => updateDrag(state, point, modifiers),
+    end(state, modifiers) {
+      const { ctx } = state;
+      const box = state.dragged
+        ? dragBounds(state.start, state.current, modifiers)
+        : clickDefaultBox(state.start);
+      if (box.w === 0 || box.h === 0) return { action: null };
+      const object: ShapeObject = {
+        id: ctx.idFactory(),
+        type: "shape",
+        shape: "path",
+        d: ctx.pathForBox(box),
+        x: box.x,
+        y: box.y,
+        w: box.w,
+        h: box.h,
+        rotation: 0,
+        locked: false,
+        fill: ctx.style.fill,
+        stroke: ctx.style.stroke,
+      };
+      return { action: creator({ pageIndex: ctx.pageIndex, object }) };
+    },
+    cancel: cancelResult,
+    preview(state) {
+      const box = dragBounds(state.start, state.current, state.modifiers);
+      return { kind: "draw-path", ...box, d: state.ctx.pathForBox(box) };
+    },
+  };
 }
 
 export function drawBoundsMachine(

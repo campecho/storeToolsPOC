@@ -1,7 +1,10 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { createEmptyDocument, type LayoutDocument, type LayoutObject } from "../model";
 import {
+  bannerDrawCommitted,
+  calloutDrawCommitted,
   ellipseDrawCommitted,
+  flowchartDrawCommitted,
   lineDrawCommitted,
   objectFillCommitted,
   objectLockCommitted,
@@ -12,6 +15,8 @@ import {
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   rectDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
   type DrawCommit,
   type FillCommit,
   type LockCommit,
@@ -175,6 +180,11 @@ export const documentSlice = createSlice({
       .addCase(rectDrawCommitted, applyDraw)
       .addCase(ellipseDrawCommitted, applyDraw)
       .addCase(lineDrawCommitted, applyDraw)
+      .addCase(roundedRectDrawCommitted, applyDraw)
+      .addCase(starPolygonDrawCommitted, applyDraw)
+      .addCase(calloutDrawCommitted, applyDraw)
+      .addCase(bannerDrawCommitted, applyDraw)
+      .addCase(flowchartDrawCommitted, applyDraw)
       .addCase(objectMoveCommitted, applyTranslate)
       .addCase(objectNudgeCommitted, applyTranslate)
       .addCase(objectResizeCommitted, applyResize)

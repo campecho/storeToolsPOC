@@ -3,6 +3,7 @@ import type { GesturePreview, ResizeHandle } from "../../core/gestures";
 import { objectAabb, rotatedFrameCorners } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
+import { pathToSvg } from "../../core/render/path";
 import { CHROME_COLOR, SelectionChrome } from "./SelectionChrome";
 
 /**
@@ -47,6 +48,10 @@ function PreviewShapes({
           {...outline}
         />
       );
+    case "draw-path":
+      // Normalized d denormalizes into the live drag box — same converter the
+      // content layer renders committed path shapes with.
+      return <path d={pathToSvg(preview.d, preview)} {...outline} />;
     case "line":
       return <line x1={preview.x1} y1={preview.y1} x2={preview.x2} y2={preview.y2} {...outline} />;
     case "marquee":

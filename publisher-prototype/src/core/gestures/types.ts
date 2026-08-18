@@ -1,5 +1,5 @@
 import type { UnknownAction } from "@reduxjs/toolkit";
-import type { Paint, Stroke } from "../model";
+import type { Paint, PathSeg, Stroke } from "../model";
 import type { FrameBox, LineEndpoints } from "../store/documentActions";
 
 /**
@@ -33,6 +33,7 @@ export type DrawStyle = { fill: Paint | null; stroke: Stroke | null };
  */
 export type GesturePreview =
   | { kind: "draw"; shape: "rect" | "ellipse"; x: number; y: number; w: number; h: number }
+  | { kind: "draw-path"; x: number; y: number; w: number; h: number; d: PathSeg[] }
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number }
   | { kind: "marquee"; x: number; y: number; w: number; h: number }
   | { kind: "move"; dx: number; dy: number }

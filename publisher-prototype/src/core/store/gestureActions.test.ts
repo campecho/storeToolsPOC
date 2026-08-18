@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { toolRegistry } from "../registry/tools";
 import {
+  bannerDrawCommitted,
+  calloutDrawCommitted,
   ellipseDrawCommitted,
+  flowchartDrawCommitted,
   gestureCancelled,
   lineDrawCommitted,
   objectMoveCommitted,
@@ -9,6 +12,8 @@ import {
   objectResizeCommitted,
   objectRotateCommitted,
   rectDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
 } from "./documentActions";
 import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES } from "./history";
 import { selectionSlice } from "./selectionSlice";
@@ -25,6 +30,11 @@ const documentActionCreators = [
   rectDrawCommitted,
   ellipseDrawCommitted,
   lineDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
+  calloutDrawCommitted,
+  bannerDrawCommitted,
+  flowchartDrawCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
@@ -32,6 +42,11 @@ const documentActionCreators = [
   gestureCancelled,
 ];
 
+/** Prefixes whose registry clauses are ALL wired. The path-shape tools
+    (roundedRect, starPolygon, callout, banner, flowchart) stay out until
+    their adjust-handle clauses land — those need the parametric shape
+    storage SEAMS.md records as deferred; only their draw clauses are wired
+    (and cross-checked through UNDOABLE_ACTION_TYPES below). */
 const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line)\//;
 
 describe("gesture-clause actions", () => {

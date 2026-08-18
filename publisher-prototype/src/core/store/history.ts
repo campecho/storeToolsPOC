@@ -1,7 +1,10 @@
 import { createAction, type Reducer } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import {
+  bannerDrawCommitted,
+  calloutDrawCommitted,
   ellipseDrawCommitted,
+  flowchartDrawCommitted,
   lineDrawCommitted,
   objectFillCommitted,
   objectLockCommitted,
@@ -12,6 +15,8 @@ import {
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   rectDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
 } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
@@ -58,6 +63,11 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   rectDrawCommitted.type,
   ellipseDrawCommitted.type,
   lineDrawCommitted.type,
+  roundedRectDrawCommitted.type,
+  starPolygonDrawCommitted.type,
+  calloutDrawCommitted.type,
+  bannerDrawCommitted.type,
+  flowchartDrawCommitted.type,
   objectMoveCommitted.type,
   objectNudgeCommitted.type,
   objectResizeCommitted.type,
