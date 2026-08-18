@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Swatch } from "../model";
-import { hexToColorValue, paintToCss } from "./paint";
+import { hexToColorValue, paintToCss, paintToHex } from "./paint";
 
 /**
  * Paint → CSS resolution: literal colors render directly (cmyk via the
@@ -88,5 +88,20 @@ describe("hexToColorValue", () => {
     for (const bad of ["", "4472c4", "#fff", "#12345", "#gggggg", "#1234567"]) {
       expect(hexToColorValue(bad)).toEqual({ space: "rgb", values: [0, 0, 0] });
     }
+  });
+});
+
+describe("paintToHex", () => {
+  it("formats a literal rgb color as the input[type=color] #rrggbb form", () => {
+    expect(paintToHex({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe("#4472c4");
+  });
+
+  it("resolves swatch references (spot via its cmyk fallback) like paintToCss", () => {
+    expect(paintToHex({ kind: "swatch", swatchId: "sw-rgb" }, swatches)).toBe("#336699");
+    expect(paintToHex({ kind: "swatch", swatchId: "sw-spot" }, swatches)).toBe("#ff0000");
+  });
+
+  it("renders fallback black for a dangling swatch id", () => {
+    expect(paintToHex({ kind: "swatch", swatchId: "ghost" }, swatches)).toBe("#000000");
   });
 });

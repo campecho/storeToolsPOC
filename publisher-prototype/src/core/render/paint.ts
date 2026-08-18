@@ -51,13 +51,29 @@ export function hexToColorValue(hex: string): ColorValue {
   };
 }
 
+/** Resolve a Paint to the `#rrggbb` form an `<input type="color">` needs —
+    the same preview resolution as paintToCss (cmyk/spot render fallbacks,
+    dangling swatchId falls back to black), just hex-formatted. */
+export function paintToHex(paint: Paint, swatches: readonly Swatch[]): string {
+  const rgb = resolvePaint(paint, swatches);
+  const to2 = (v: number) =>
+    Math.round(Math.min(1, Math.max(0, v)) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${to2(rgb[0])}${to2(rgb[1])}${to2(rgb[2])}`;
+}
+
 /** Resolve a Paint to a CSS color. Swatch references resolve through the
     given swatch list (spot swatches render their CMYK process fallback); a
     dangling swatchId renders the literal fallback black — the soft-reference
     rule, never an error. */
 export function paintToCss(paint: Paint, swatches: readonly Swatch[]): string {
+  return toCss(resolvePaint(paint, swatches));
+}
+
+function resolvePaint(paint: Paint, swatches: readonly Swatch[]): Rgb {
   if (paint.kind === "color") {
-    return toCss(colorValueToRgb(paint.color));
+    return colorValueToRgb(paint.color);
   }
   const swatch = swatches.find((s) => s.id === paint.swatchId);
   const rgb =
@@ -66,5 +82,5 @@ export function paintToCss(paint: Paint, swatches: readonly Swatch[]): string {
       : swatch.space === "rgb"
         ? swatch.values
         : cmykToRgb(swatch.values);
-  return toCss(paint.tint === undefined ? rgb : applyTint(rgb, paint.tint));
+  return paint.tint === undefined ? rgb : applyTint(rgb, paint.tint);
 }

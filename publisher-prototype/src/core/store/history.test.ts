@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyDocument, type LayoutDocument, type ShapeObject } from "../model";
-import { gestureCancelled, objectMoveCommitted, rectDrawCommitted } from "./documentActions";
+import {
+  createEmptyDocument,
+  type LayoutDocument,
+  type Paint,
+  type ShapeObject,
+} from "../model";
+import {
+  gestureCancelled,
+  objectFillCommitted,
+  objectLockCommitted,
+  objectMoveCommitted,
+  objectStrokePaintCommitted,
+  rectDrawCommitted,
+} from "./documentActions";
 import {
   documentLoadedCommitted,
   documentSlice,
@@ -140,6 +152,17 @@ describe("withDocumentHistory", () => {
     expect(reducer(state, { type: "viewport/panCommitted", payload: { pan: { x: 0, y: 0 } } })).toBe(
       state,
     );
+  });
+
+  it("takes one entry per panel commit — fill, stroke, and lock are gestures too", () => {
+    const state = draw(boot(), "a");
+    const red: Paint = { kind: "color", color: { space: "rgb", values: [1, 0, 0] } };
+    let next = reducer(state, objectFillCommitted({ pageIndex: 0, ids: ["a"], fill: red }));
+    next = reducer(next, objectStrokePaintCommitted({ pageIndex: 0, ids: ["a"], paint: red }));
+    next = reducer(next, objectLockCommitted({ pageIndex: 0, ids: ["a"], locked: true }));
+    expect(next.past).toHaveLength(4);
+    const undone = reducer(reducer(reducer(next, undoCommitted()), undoCommitted()), undoCommitted());
+    expect(undone.present).toBe(state.present);
   });
 
   it("snapshots per gesture even when the commit changes nothing visible", () => {

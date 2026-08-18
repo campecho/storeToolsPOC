@@ -3,14 +3,22 @@ import { createEmptyDocument, type LayoutDocument, type LayoutObject } from "../
 import {
   ellipseDrawCommitted,
   lineDrawCommitted,
+  objectFillCommitted,
+  objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectStrokePaintCommitted,
+  objectStrokeWidthCommitted,
   rectDrawCommitted,
   type DrawCommit,
+  type FillCommit,
+  type LockCommit,
   type ResizeCommit,
   type RotateCommit,
+  type StrokePaintCommit,
+  type StrokeWidthCommit,
   type TranslateCommit,
 } from "./documentActions";
 
@@ -90,6 +98,56 @@ function applyRotate(state: LayoutDocument, action: PayloadAction<RotateCommit>)
   }
 }
 
+function applyFill(state: LayoutDocument, action: PayloadAction<FillCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked || obj.type === "line") continue;
+    obj.fill = action.payload.fill;
+  }
+}
+
+/** The draw tools' contract default — the width a stroke-less frame gains
+    when a stroke paint is applied to it. */
+const DEFAULT_STROKE_WIDTH_PT = 1;
+
+function applyStrokePaint(state: LayoutDocument, action: PayloadAction<StrokePaintCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  const { paint } = action.payload;
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked) continue;
+    if (paint === null) {
+      if (obj.type !== "line") obj.stroke = null;
+    } else if (obj.stroke !== null) {
+      obj.stroke.paint = paint;
+    } else {
+      obj.stroke = { paint, width: DEFAULT_STROKE_WIDTH_PT };
+    }
+  }
+}
+
+function applyStrokeWidth(state: LayoutDocument, action: PayloadAction<StrokeWidthCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  for (const obj of page.objects) {
+    if (!ids.has(obj.id) || obj.locked || obj.stroke === null) continue;
+    obj.stroke.width = action.payload.width;
+  }
+}
+
+function applyLock(state: LayoutDocument, action: PayloadAction<LockCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  for (const obj of page.objects) {
+    if (ids.has(obj.id)) obj.locked = action.payload.locked;
+  }
+}
+
 export const documentSlice = createSlice({
   name: "document",
   initialState: createEmptyDocument(),
@@ -120,7 +178,11 @@ export const documentSlice = createSlice({
       .addCase(objectMoveCommitted, applyTranslate)
       .addCase(objectNudgeCommitted, applyTranslate)
       .addCase(objectResizeCommitted, applyResize)
-      .addCase(objectRotateCommitted, applyRotate);
+      .addCase(objectRotateCommitted, applyRotate)
+      .addCase(objectFillCommitted, applyFill)
+      .addCase(objectStrokePaintCommitted, applyStrokePaint)
+      .addCase(objectStrokeWidthCommitted, applyStrokeWidth)
+      .addCase(objectLockCommitted, applyLock);
   },
 });
 

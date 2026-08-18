@@ -10,7 +10,7 @@ import {
   objectRotateCommitted,
   rectDrawCommitted,
 } from "./documentActions";
-import { UNDOABLE_ACTION_TYPES } from "./history";
+import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES } from "./history";
 import { selectionSlice } from "./selectionSlice";
 
 /**
@@ -57,13 +57,25 @@ describe("gesture-clause actions", () => {
     expect(cancelled.length).toBeGreaterThan(0);
   });
 
-  it("lists in UNDOABLE_ACTION_TYPES only actions whose registry clauses all declare per-gesture undo", () => {
+  it("lists in UNDOABLE_ACTION_TYPES only clause-backed gestures (all per-gesture undo) or declared panel commits", () => {
     for (const type of UNDOABLE_ACTION_TYPES) {
+      if (PANEL_COMMIT_ACTION_TYPES.has(type)) continue;
       const backing = clauses.filter(({ clause }) => clause.action === type);
       expect(backing.length, type).toBeGreaterThan(0);
       for (const { tool } of backing) {
         expect(tool.undo, `${tool.id} dispatches ${type}`).toBe("per-gesture");
       }
+    }
+  });
+
+  it("keeps panel commits disjoint from clause-backed gestures — a type is one or the other", () => {
+    expect(PANEL_COMMIT_ACTION_TYPES.size).toBeGreaterThan(0);
+    for (const type of PANEL_COMMIT_ACTION_TYPES) {
+      expect(UNDOABLE_ACTION_TYPES.has(type), type).toBe(true);
+      expect(
+        clauses.some(({ clause }) => clause.action === type),
+        `${type} must not also appear as a tool gesture clause`,
+      ).toBe(false);
     }
   });
 

@@ -14,6 +14,13 @@ export const WIRED_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Panels whose controls are live (PLAN.md §7 Phase B fan-out). The registry
+ * tier stays pure specification — a LIVE-tier panel outside this set renders
+ * its spec card with a "not wired yet" chip, exactly like an unwired tool.
+ */
+export const WIRED_PANELS: ReadonlySet<string> = new Set(["transform", "color-swatches"]);
+
+/**
  * Option ids the wired implementation actually consumes, per tool. Options
  * a wired tool declares but nothing reads yet (select's showCoordinates and
  * positionRelativeTo; line's dash — LineObject carries no dash field) stay

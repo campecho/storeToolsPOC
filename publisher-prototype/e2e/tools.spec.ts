@@ -1,5 +1,19 @@
-import { expect, test, type Page } from "@playwright/test";
-import type { LayoutObject, LineObject, ShapeObject } from "../src/core/model";
+import { expect, test } from "@playwright/test";
+import {
+  activate,
+  armCounter,
+  clickAt,
+  drag,
+  dragHandle,
+  expectNear,
+  lineAt,
+  notificationCount,
+  pageObjects,
+  screenPoint,
+  selectionIds,
+  shapeAt,
+  type DocPoint,
+} from "./helpers";
 
 /**
  * Wired-tool gesture-clause tests (PLAN.md §5): titles are VERBATIM registry
@@ -12,144 +26,6 @@ import type { LayoutObject, LineObject, ShapeObject } from "../src/core/model";
  * store's viewport state (the default view shows roughly x −0.4…8.9,
  * y 2.3…8.7 — tests stay inside that band).
  */
-
-type DocPoint = { x: number; y: number };
-
-async function canvasBox(page: Page) {
-  const box = await page.getByTestId("canvas-area").boundingBox();
-  if (!box) throw new Error("canvas area not visible");
-  return box;
-}
-
-/** Doc inches → page screen px, mirroring core/geometry/viewport.ts
-    pageOriginPx/docToScreen against the live store state (zoom, pan, page
-    size) rather than hardcoding a frame. */
-async function screenPoint(page: Page, pt: DocPoint): Promise<DocPoint> {
-  const box = await canvasBox(page);
-  const local = await page.evaluate(
-    ({ vpW, vpH, x, y }) => {
-      const store = window.__PROTOTYPE_STORE__;
-      if (!store) throw new Error("dev store handle missing");
-      const state = store.getState();
-      const { zoom, pan } = state.viewport;
-      const size = state.document.present.size;
-      const DPI = 96;
-      const originX = vpW / 2 + pan.x - (size.w * DPI * zoom) / 2;
-      const originY = vpH / 2 + pan.y - (size.h * DPI * zoom) / 2;
-      return { x: originX + x * DPI * zoom, y: originY + y * DPI * zoom };
-    },
-    { vpW: box.width, vpH: box.height, x: pt.x, y: pt.y },
-  );
-  return { x: box.x + local.x, y: box.y + local.y };
-}
-
-async function activate(page: Page, toolLabel: string): Promise<void> {
-  await page.getByTestId("dock").getByRole("button", { name: toolLabel, exact: true }).click();
-}
-
-async function drag(
-  page: Page,
-  from: DocPoint,
-  to: DocPoint,
-  modifiers: ("Shift" | "Alt")[] = [],
-): Promise<void> {
-  const a = await screenPoint(page, from);
-  const b = await screenPoint(page, to);
-  for (const m of modifiers) await page.keyboard.down(m);
-  await page.mouse.move(a.x, a.y);
-  await page.mouse.down();
-  await page.mouse.move(b.x, b.y, { steps: 8 });
-  await page.mouse.up();
-  for (const m of modifiers) await page.keyboard.up(m);
-}
-
-async function clickAt(
-  page: Page,
-  pt: DocPoint,
-  modifiers: ("Shift" | "Alt")[] = [],
-): Promise<void> {
-  const p = await screenPoint(page, pt);
-  for (const m of modifiers) await page.keyboard.down(m);
-  await page.mouse.click(p.x, p.y);
-  for (const m of modifiers) await page.keyboard.up(m);
-}
-
-/** Drag starting from a selection-chrome handle (resize/rotate targets). */
-async function dragHandle(
-  page: Page,
-  handle: string,
-  to: DocPoint | { dxPx: number; dyPx: number },
-  modifiers: ("Shift" | "Alt")[] = [],
-): Promise<void> {
-  const box = await page.locator(`[data-handle="${handle}"]`).boundingBox();
-  if (!box) throw new Error(`handle ${handle} not visible`);
-  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  const target =
-    "dxPx" in to ? { x: from.x + to.dxPx, y: from.y + to.dyPx } : await screenPoint(page, to);
-  for (const m of modifiers) await page.keyboard.down(m);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(target.x, target.y, { steps: 8 });
-  await page.mouse.up();
-  for (const m of modifiers) await page.keyboard.up(m);
-}
-
-/** Store-notification counter (canvas.spec.ts pattern): the in-flight
-    preview must live outside the store, so a completed gesture notifies
-    subscribers exactly once per dispatched action. */
-async function armCounter(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const store = window.__PROTOTYPE_STORE__;
-    if (!store) throw new Error("dev store handle missing");
-    const counter = { count: 0 };
-    store.subscribe(() => {
-      counter.count++;
-    });
-    Object.assign(window, { __STORE_NOTIFICATIONS__: counter });
-  });
-}
-
-function notificationCount(page: Page): Promise<number> {
-  return page.evaluate(
-    () =>
-      (window as unknown as { __STORE_NOTIFICATIONS__: { count: number } }).__STORE_NOTIFICATIONS__
-        .count,
-  );
-}
-
-function pageObjects(page: Page): Promise<LayoutObject[]> {
-  return page.evaluate(() => {
-    const store = window.__PROTOTYPE_STORE__;
-    if (!store) throw new Error("dev store handle missing");
-    return store.getState().document.present.pages[0]?.objects ?? [];
-  });
-}
-
-function selectionIds(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const store = window.__PROTOTYPE_STORE__;
-    if (!store) throw new Error("dev store handle missing");
-    return store.getState().selection.ids;
-  });
-}
-
-function shapeAt(objects: LayoutObject[], index: number): ShapeObject {
-  const obj = objects[index];
-  if (!obj || obj.type !== "shape") throw new Error(`expected shape at index ${index}`);
-  return obj;
-}
-
-function lineAt(objects: LayoutObject[], index: number): LineObject {
-  const obj = objects[index];
-  if (!obj || obj.type !== "line") throw new Error(`expected line at index ${index}`);
-  return obj;
-}
-
-/** Dragged bounds land within ±0.01 in of the pointer's doc coordinates. */
-function expectNear(actual: number, expected: number): void {
-  expect(Math.abs(actual - expected)).toBeLessThanOrEqual(0.01);
-}
-
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("canvas-area")).toBeVisible();
@@ -465,3 +341,4 @@ test("draw, move, then undo twice returns to the empty page — one history entr
   expect((await pageObjects(page)).length).toBe(0);
   await expect(undo).toBeDisabled();
 });
+

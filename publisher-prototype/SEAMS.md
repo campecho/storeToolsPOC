@@ -41,3 +41,15 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   owns the lineage it copied. Deferred as additive (no version bump when added):
   gradient/pattern `Paint` kinds (arrive with the fill/gradient tool) and parametric
   rounded-corner storage (rounded-rect currently normalizes to a vector path).
+- **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
+  through the same store vocabulary as canvas gestures — one dispatched action per
+  committed edit, one history entry — but the registry's `PanelSpec` carries no
+  gesture clauses, so panel-originated action types have no clause backing by design.
+  Their declaration of record is `PANEL_COMMIT_ACTION_TYPES` in `core/store/history.ts`
+  (cross-validated in `gestureActions.test.ts`); a type is either a tool gesture
+  clause or a panel commit, never both. Where a panel edits geometry it reuses the
+  gesture actions themselves (`object/resizeCommitted`, `object/rotateCommitted`).
+  Outline edits split into `object/strokePaintCommitted` (color; keeps each object's
+  width; null removes the stroke, ignored for schema-required line strokes) and
+  `object/strokeWidthCommitted` (width; only where a stroke exists) so multi-object
+  color application never homogenizes widths.

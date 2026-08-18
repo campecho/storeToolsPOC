@@ -1,5 +1,5 @@
 import { createAction } from "@reduxjs/toolkit";
-import type { LayoutObject } from "../model";
+import type { LayoutObject, Paint } from "../model";
 
 /**
  * Tool commit actions on the document (PLAN.md §6.3). These are cross-tool
@@ -49,6 +49,42 @@ export type RotateCommit = {
   rotations: Record<string, number>;
 };
 
+/** fill commits: replace the identified objects' fill wholesale — a Paint or
+    null (hollow). Lines carry no fill and are skipped by the reducer. */
+export type FillCommit = {
+  pageIndex: number;
+  ids: string[];
+  fill: Paint | null;
+};
+
+/** stroke-paint commits: set the identified objects' stroke color, keeping
+    each object's own width — or remove the stroke entirely (null). A frame
+    with no stroke gains one at the draw tools' default 1pt width; a line's
+    stroke is required by schema, so the reducer ignores null for lines
+    rather than producing an invisible, unparseable object. */
+export type StrokePaintCommit = {
+  pageIndex: number;
+  ids: string[];
+  paint: Paint | null;
+};
+
+/** stroke-width commits: set the width (points) of every identified object
+    that HAS a stroke; a stroke-less frame is left alone — there is nothing
+    to thicken, and inventing a paint here would hide a real edit. */
+export type StrokeWidthCommit = {
+  pageIndex: number;
+  ids: string[];
+  width: number;
+};
+
+/** lock commits: set the identified objects' locked flag. The one translate-
+    family action that must NOT skip locked objects — unlocking is its point. */
+export type LockCommit = {
+  pageIndex: number;
+  ids: string[];
+  locked: boolean;
+};
+
 export const rectDrawCommitted = createAction<DrawCommit>("rect/drawCommitted");
 export const ellipseDrawCommitted = createAction<DrawCommit>("ellipse/drawCommitted");
 export const lineDrawCommitted = createAction<DrawCommit>("line/drawCommitted");
@@ -56,6 +92,14 @@ export const objectMoveCommitted = createAction<TranslateCommit>("object/moveCom
 export const objectNudgeCommitted = createAction<TranslateCommit>("object/nudgeCommitted");
 export const objectResizeCommitted = createAction<ResizeCommit>("object/resizeCommitted");
 export const objectRotateCommitted = createAction<RotateCommit>("object/rotateCommitted");
+export const objectFillCommitted = createAction<FillCommit>("object/fillCommitted");
+export const objectStrokePaintCommitted = createAction<StrokePaintCommit>(
+  "object/strokePaintCommitted",
+);
+export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
+  "object/strokeWidthCommitted",
+);
+export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
 
 /** The gesture pipeline's DevTools record for an aborted gesture (Esc during
     drag, discarded pen path). No reducer anywhere handles it — it is never a
