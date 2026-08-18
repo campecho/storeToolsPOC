@@ -7,15 +7,17 @@ import {
   expectNear,
   notificationCount,
   pageObjects,
+  selectionIds,
   shapeAt,
 } from "./helpers";
 
 /**
  * Live control panels (PLAN.md §4.3 "transform" and "color-swatches"): the
- * panels edit the real document through the store — numeric entry commits on
- * Enter as EXACTLY ONE action (the §6.3 one-entry-per-gesture rule applied
- * to panel commits), verified by the store-notification counter and the
- * history depth, with undo restoring the pre-commit document.
+ * panels edit the real document through the store — numeric entry applies as
+ * it is typed, and one visit to a field is EXACTLY ONE history entry (the
+ * §6.3 one-entry-per-gesture rule applied to panel commits, through the
+ * NumberField edit run), verified by the store-notification counter and the
+ * history depth, with undo restoring the pre-edit document.
  */
 
 function panel(page: Page, id: "transform" | "color-swatches") {
@@ -35,6 +37,11 @@ async function commitField(page: Page, panelId: "transform" | "color-swatches", 
   const field = panel(page, panelId).getByLabel(label, { exact: true });
   await field.fill(value);
   await field.press("Enter");
+}
+
+/** The selected rect's outline width, in points. */
+function strokeWidthOf(objects: Awaited<ReturnType<typeof pageObjects>>): number | undefined {
+  return shapeAt(objects, 0).stroke?.width;
 }
 
 function historyDepth(page: Page): Promise<number> {
@@ -191,6 +198,66 @@ test("color panel: outline color keeps the width; width entry keeps the color", 
   });
   await colorPanel.getByRole("button", { name: "None", exact: true }).click();
   expect(shapeAt(await pageObjects(page), 0).stroke).toBeNull();
+});
+
+test("color panel: outline width applies while typing, without leaving the field", async ({
+  page,
+}) => {
+  await drawAndSelectRect(page);
+  const colorPanel = panel(page, "color-swatches");
+  await colorPanel.getByLabel("Outline", { exact: true }).check();
+  const width = colorPanel.getByLabel("Width", { exact: true });
+  const before = await historyDepth(page);
+  await width.fill("");
+  // Clearing the field commits nothing — there is no value to apply yet.
+  expect(strokeWidthOf(await pageObjects(page))).toBe(0.75);
+  await width.pressSequentially("12");
+  // Still in the field, still selected: the document already shows 12pt.
+  await expect(width).toBeFocused();
+  expect(await selectionIds(page)).toHaveLength(1);
+  expect(strokeWidthOf(await pageObjects(page))).toBe(12);
+  // Both keystrokes folded into one entry, so one undo reverses the visit.
+  expect(await historyDepth(page)).toBe(before + 1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(strokeWidthOf(await pageObjects(page))).toBe(0.75);
+});
+
+test("color panel: a width field that remounts starts a fresh run", async ({ page }) => {
+  await drawAndSelectRect(page);
+  const colorPanel = panel(page, "color-swatches");
+  const outline = colorPanel.getByLabel("Outline", { exact: true });
+  const fill = colorPanel.getByLabel("Fill", { exact: true });
+  await outline.check();
+  const before = await historyDepth(page);
+  await commitField(page, "color-swatches", "Width", "3");
+  // Switching target unmounts the width field; switching back mounts a new
+  // one, whose run must not fold into the entry the first one opened.
+  await fill.check();
+  await outline.check();
+  await commitField(page, "color-swatches", "Width", "6");
+  expect(strokeWidthOf(await pageObjects(page))).toBe(6);
+  expect(await historyDepth(page)).toBe(before + 2);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(strokeWidthOf(await pageObjects(page))).toBe(3);
+});
+
+test("color panel: Escape abandons the width edit, reverting inside the same run", async ({
+  page,
+}) => {
+  await drawAndSelectRect(page);
+  const colorPanel = panel(page, "color-swatches");
+  await colorPanel.getByLabel("Outline", { exact: true }).check();
+  const width = colorPanel.getByLabel("Width", { exact: true });
+  const before = await historyDepth(page);
+  await width.fill("9");
+  expect(strokeWidthOf(await pageObjects(page))).toBe(9);
+  await width.press("Escape");
+  expect(strokeWidthOf(await pageObjects(page))).toBe(0.75);
+  // The revert rides the same run, so the abandoned edit is still one entry
+  // — one that now snapshots and restores the same width either side of it.
+  expect(await historyDepth(page)).toBe(before + 1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(strokeWidthOf(await pageObjects(page))).toBe(0.75);
 });
 
 test("color panel: a document swatch applies as a swatch REFERENCE, and undo restores the literal", async ({

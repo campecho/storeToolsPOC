@@ -74,6 +74,21 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   width; null removes the stroke, ignored for schema-required line strokes) and
   `object/strokeWidthCommitted` (width; only where a stroke exists) so multi-object
   color application never homogenizes widths.
+- **Edit runs (recorded 2026-08-18, user decision):** panel numeric entry applies to
+  the document as it is typed — a value the canvas does not show is a value the user
+  cannot judge, and the fields previously held every edit until Enter or blur.
+  "One edit, one history entry" survives that as an EDIT RUN rather than as a
+  deferred commit: `NumberField` opens a run on its first commit of a visit, stamps
+  every commit in that visit with the run id (`inEditRun`, `core/store/history.ts`),
+  and history folds actions matching the newest entry's run into it instead of
+  stacking another. The run ends when the field is left or Enter is pressed — the
+  boundary is the interaction, never a timer — and undo/redo close it, so a
+  continuation can never reopen an entry the stack has stepped past. Run ids are
+  minted per run, not per field instance (a remounted field must not reuse one).
+  Consequence of record: Escape reverts to the run's starting value inside that same
+  run, so an abandoned edit leaves one entry whose snapshot and present agree —
+  undoing it is a visible no-op. Discrete controls (±90°, reset, lock, colour) pass
+  no run and stay one entry each, exactly as before.
 - **Selection frame (recorded 2026-08-18, user decision):** the selection chrome
   HUGS its object — a lone object's frame drawn at that object's own rotation, in
   solid stroke, with the 8 resize handles and the rotation stem riding that frame
