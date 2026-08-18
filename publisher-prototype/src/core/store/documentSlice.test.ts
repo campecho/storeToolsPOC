@@ -4,15 +4,21 @@ import {
   type LayoutDocument,
   type LayoutObject,
   type LineObject,
+  type Paint,
   type ShapeObject,
+  type Stroke,
 } from "../model";
 import {
   ellipseDrawCommitted,
   lineDrawCommitted,
+  objectFillCommitted,
+  objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectStrokePaintCommitted,
+  objectStrokeWidthCommitted,
   rectDrawCommitted,
 } from "./documentActions";
 import {
@@ -198,6 +204,99 @@ describe("documentSlice", () => {
         objectRotateCommitted({ pageIndex: 0, rotations: { l: 90, a: 90, ghost: 90 } }),
       );
       expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
+  });
+
+  describe("object/fillCommitted", () => {
+    const red: Paint = { kind: "color", color: { space: "rgb", values: [1, 0, 0] } };
+
+    it("replaces fill wholesale on frame objects, including to null (hollow)", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b", { fill: red })]),
+        objectFillCommitted({ pageIndex: 0, ids: ["a"], fill: red }),
+      );
+      expect(objectsOf(state)[0]).toMatchObject({ fill: red });
+      state = reducer(state, objectFillCommitted({ pageIndex: 0, ids: ["b"], fill: null }));
+      expect(objectsOf(state)[1]).toMatchObject({ fill: null });
+    });
+
+    it("skips lines (no fill field), locked objects, and unknown ids", () => {
+      const before = docWith([line("l"), shape("a", { locked: true })]);
+      const state = reducer(
+        before,
+        objectFillCommitted({ pageIndex: 0, ids: ["l", "a", "ghost"], fill: red }),
+      );
+      expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
+  });
+
+  describe("object/strokePaintCommitted and object/strokeWidthCommitted", () => {
+    const blue: Paint = { kind: "color", color: { space: "rgb", values: [0, 0, 1] } };
+    const thick: Stroke = { paint: blue, width: 4 };
+
+    it("sets stroke paint keeping each object's own width; a stroke-less frame gains a 1pt stroke", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b", { stroke: thick }), line("l")]),
+        objectStrokePaintCommitted({ pageIndex: 0, ids: ["a", "b", "l"], paint: blue }),
+      );
+      const [a, b, l] = objectsOf(state);
+      expect(a).toMatchObject({ stroke: { paint: blue, width: 1 } });
+      expect(b).toMatchObject({ stroke: { paint: blue, width: 4 } });
+      expect(l).toMatchObject({ stroke: { paint: blue, width: 1 } });
+    });
+
+    it("removes a frame's stroke on null paint but ignores null for lines (schema-required)", () => {
+      const state = reducer(
+        docWith([shape("a", { stroke: thick }), line("l")]),
+        objectStrokePaintCommitted({ pageIndex: 0, ids: ["a", "l"], paint: null }),
+      );
+      const [a, l] = objectsOf(state);
+      expect(a).toMatchObject({ stroke: null });
+      expect(l).toMatchObject({ stroke: line("l").stroke });
+    });
+
+    it("sets width only where a stroke exists — a stroke-less frame is left alone", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b", { stroke: thick }), line("l")]),
+        objectStrokeWidthCommitted({ pageIndex: 0, ids: ["a", "b", "l"], width: 2.5 }),
+      );
+      const [a, b, l] = objectsOf(state);
+      expect(a).toMatchObject({ stroke: null });
+      expect(b).toMatchObject({ stroke: { paint: blue, width: 2.5 } });
+      expect(l).toMatchObject({ stroke: { paint: line("l").stroke.paint, width: 2.5 } });
+    });
+
+    it("skips locked objects and ignores unknown ids", () => {
+      const before = docWith([shape("a", { locked: true, stroke: thick })]);
+      let state = reducer(
+        before,
+        objectStrokePaintCommitted({ pageIndex: 0, ids: ["a", "ghost"], paint: null }),
+      );
+      state = reducer(
+        state,
+        objectStrokeWidthCommitted({ pageIndex: 0, ids: ["a", "ghost"], width: 9 }),
+      );
+      expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
+  });
+
+  describe("object/lockCommitted", () => {
+    it("locks and unlocks — the one commit that must NOT skip locked objects", () => {
+      let state = reducer(
+        docWith([shape("a"), line("l")]),
+        objectLockCommitted({ pageIndex: 0, ids: ["a", "l"], locked: true }),
+      );
+      expect(objectsOf(state).map((o) => o.locked)).toEqual([true, true]);
+      state = reducer(state, objectLockCommitted({ pageIndex: 0, ids: ["a", "l"], locked: false }));
+      expect(objectsOf(state).map((o) => o.locked)).toEqual([false, false]);
+    });
+
+    it("leaves objects not named in ids untouched and ignores unknown ids", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectLockCommitted({ pageIndex: 0, ids: ["b", "ghost"], locked: true }),
+      );
+      expect(objectsOf(state).map((o) => o.locked)).toEqual([false, true]);
     });
   });
 

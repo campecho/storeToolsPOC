@@ -9,8 +9,12 @@ import {
 import {
   drawBoundsMachine,
   drawLineMachine,
+  drawLineMachineFor,
+  drawPathMachine,
+  finishPenDraft,
   marqueeMachine,
   moveMachine,
+  penMachine,
   resizeMachine,
   rotateMachine,
   slopInInches,
@@ -25,6 +29,7 @@ import { hitTestPoint, selectionAabb, type Rect } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
 import {
+  arrowDrawCommitted,
   gestureCancelled,
   objectNudgeCommitted,
   selectionCycleCommitted,
@@ -33,11 +38,19 @@ import {
   type AppDispatch,
   type FrameBox,
   type LineEndpoints,
+  type PenAnchor,
 } from "../../core/store";
 import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { createObjectId } from "../objectId";
-import { drawStyleFromOptions, optionNumber, type ToolOptionValues } from "../toolOptions";
+import { PATH_TOOL_CONFIGS } from "../pathTools";
+import {
+  drawStyleFromOptions,
+  lineExtrasFromOptions,
+  optionBoolean,
+  optionNumber,
+  type ToolOptionValues,
+} from "../toolOptions";
 
 /**
  * Tool gesture routing (PLAN.md §6.3 hard rule): the active machine's state
@@ -149,6 +162,9 @@ export type ToolGestureArgs = {
   /** The rendered page's objects in z-order. */
   objects: readonly LayoutObject[];
   selectedIds: readonly string[];
+  /** The pen draft (penSlice state) — the pen press machine's ctx and the
+      Enter/double-click finish paths read it. */
+  penAnchors: readonly PenAnchor[];
   toolOptions: ToolOptionValues;
   areaRef: { current: HTMLDivElement | null };
   /** The workspace's dragJustEndedRef: a completed/cancelled drag suppresses
@@ -164,6 +180,9 @@ export type ToolGestures = {
   onPointerMove(e: React.PointerEvent<HTMLDivElement>): void;
   /** pointerup / pointercancel / lostpointercapture — idempotent. */
   onPointerEnd(e: React.PointerEvent<HTMLDivElement>): void;
+  /** pen.double-click.commits-open-path (the pointer half; Enter is the
+      keyboard half). No-op for every other tool. */
+  onDoubleClick(): void;
   beginResize(handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void;
   beginRotate(e: React.PointerEvent<SVGElement>): void;
 };
@@ -313,16 +332,54 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       );
       return;
     }
-    if (activeTool === "line") {
+    if (activeTool === "pen") {
       begin(
         machineSession(
-          drawLineMachine,
+          penMachine,
+          point,
+          {
+            pageIndex,
+            zoom,
+            anchors: args.penAnchors,
+            style: drawStyleFromOptions(toolOptions, "pen"),
+            idFactory: createObjectId,
+          },
+          dispatch,
+        ),
+        e.pointerId,
+      );
+      return;
+    }
+    const pathConfig = PATH_TOOL_CONFIGS[activeTool];
+    if (pathConfig !== undefined) {
+      begin(
+        machineSession(
+          drawPathMachine(pathConfig.creator),
           point,
           {
             pageIndex,
             zoom,
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
+            pathForBox: (box) => pathConfig.pathForBox(toolOptions, box),
+          },
+          dispatch,
+        ),
+        e.pointerId,
+      );
+      return;
+    }
+    if (activeTool === "line" || activeTool === "arrow") {
+      begin(
+        machineSession(
+          activeTool === "line" ? drawLineMachine : drawLineMachineFor(arrowDrawCommitted),
+          point,
+          {
+            pageIndex,
+            zoom,
+            style: drawStyleFromOptions(toolOptions, activeTool),
+            idFactory: createObjectId,
+            extras: lineExtrasFromOptions(toolOptions, activeTool),
           },
           dispatch,
         ),
@@ -411,20 +468,42 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     );
   };
 
-  // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses);
-  // arrows nudge the selection (select.arrow.nudges). Key repeat is fine for
-  // nudging: each keydown is its own nudge gesture, one history entry each.
+  // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
+  // discards a pen draft between presses (pen.esc.discards-path); Enter
+  // finishes the pen draft (pen.double-click.commits-open-path's keyboard
+  // half); arrows nudge the selection (select.arrow.nudges). Key repeat is
+  // fine for nudging: each keydown is its own nudge gesture, one history
+  // entry each.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
         const session = sessionRef.current;
-        if (!session) return;
-        sessionRef.current = null;
-        session.cancel();
-        // Suppress the trailing click so a cancelled zoom-area click can't fire.
-        argsRef.current.suppressClickRef.current = true;
-        setActive(false);
-        setPreview(null);
+        if (session) {
+          sessionRef.current = null;
+          session.cancel();
+          // Suppress the trailing click so a cancelled zoom-area click can't fire.
+          argsRef.current.suppressClickRef.current = true;
+          setActive(false);
+          setPreview(null);
+          return;
+        }
+        const { activeTool, penAnchors } = argsRef.current;
+        if (activeTool === "pen" && penAnchors.length > 0) dispatch(gestureCancelled());
+        return;
+      }
+      if (e.key === "Enter") {
+        const { activeTool, penAnchors, pageIndex, toolOptions } = argsRef.current;
+        if (activeTool !== "pen" || sessionRef.current !== null) return;
+        if (penAnchors.length === 0 || isTextEntryTarget(e.target)) return;
+        e.preventDefault();
+        const action = finishPenDraft(
+          penAnchors,
+          pageIndex,
+          optionBoolean(toolOptions, "pen", "autoClose", false),
+          drawStyleFromOptions(toolOptions, "pen"),
+          createObjectId,
+        );
+        if (action !== null) dispatch(action);
         return;
       }
       const delta = ARROW_DELTAS[e.key];
@@ -447,5 +526,41 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [dispatch]);
 
-  return { preview, active, onPointerDown, onPointerMove, onPointerEnd, beginResize, beginRotate };
+  // Switching away from the pen mid-draft discards it (there is no way to
+  // resume a draft under another tool, and stale drafts would ghost-render).
+  const prevToolRef = useRef(args.activeTool);
+  useEffect(() => {
+    const prev = prevToolRef.current;
+    prevToolRef.current = args.activeTool;
+    if (prev === "pen" && args.activeTool !== "pen" && argsRef.current.penAnchors.length > 0) {
+      dispatch(gestureCancelled());
+    }
+  }, [args.activeTool, dispatch]);
+
+  const onDoubleClick = (): void => {
+    const { activeTool, penAnchors, pageIndex, toolOptions } = argsRef.current;
+    if (activeTool !== "pen" || penAnchors.length === 0) return;
+    // The double-click's own second click just added a duplicate anchor at
+    // the same point — the finish builds from the draft without it, and the
+    // single pen/drawCommitted (or discard) clears the whole draft.
+    const action = finishPenDraft(
+      penAnchors.slice(0, -1),
+      pageIndex,
+      optionBoolean(toolOptions, "pen", "autoClose", false),
+      drawStyleFromOptions(toolOptions, "pen"),
+      createObjectId,
+    );
+    if (action !== null) dispatch(action);
+  };
+
+  return {
+    preview,
+    active,
+    onPointerDown,
+    onPointerMove,
+    onPointerEnd,
+    onDoubleClick,
+    beginResize,
+    beginRotate,
+  };
 }

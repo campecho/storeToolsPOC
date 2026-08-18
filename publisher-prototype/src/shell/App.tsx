@@ -10,7 +10,12 @@ import { OptionsBar } from "./dock/OptionsBar";
 import { useAppSelector } from "./hooks";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { ControlPanel } from "./panels/ControlPanel";
-import { defaultToolOptions, type ToolOptionValue, type ToolOptionValues } from "./toolOptions";
+import {
+  defaultToolOptions,
+  optionNumber,
+  type ToolOptionValue,
+  type ToolOptionValues,
+} from "./toolOptions";
 
 export type AppMode = Exclude<ToolMode, "both">;
 
@@ -98,7 +103,13 @@ export function App() {
           toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
         />
-        <ControlPanel mode={mode} activeTool={activeContract} />
+        <ControlPanel
+          mode={mode}
+          activeTool={activeContract}
+          pageIndex={boundedPageIndex}
+          nudgeIncrement={optionNumber(toolOptions, "select", "nudgeIncrement", 0.1)}
+          onNudgeIncrementChange={(value) => setToolOption("select", "nudgeIncrement", value)}
+        />
       </div>
     </div>
   );

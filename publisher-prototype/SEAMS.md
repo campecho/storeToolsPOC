@@ -41,3 +41,36 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   owns the lineage it copied. Deferred as additive (no version bump when added):
   gradient/pattern `Paint` kinds (arrive with the fill/gradient tool) and parametric
   rounded-corner storage (rounded-rect currently normalizes to a vector path).
+- **Line decorations (recorded 2026-08-18, user-ratified):** the arrow tool's
+  contract (`creates: "line"` with head options) needs storage the v2 lineage's
+  line lacked. Additive v3 delta on `LineObject`, no version bump per the additive
+  rule: optional `headStart`/`headEnd` (`none|arrow|circle|diamond`), `headSize`
+  (`s|m|l`), and `dash` (`solid|dashed|dotted` — activating the line tool's
+  until-now storage-less dash option). Absent = the default (`none`/`m`/`solid`);
+  tools omit defaults so lineage documents stay valid and lean. Decoration
+  geometry (dash patterns, head shapes) is pure math in `core/render/lineDecor.ts`
+  so the dev team's output path shares it with the canvas.
+- **Pen draft state (recorded 2026-08-18):** the pen contract makes each anchor
+  placement its own committed gesture with one-anchor-at-a-time undo, so the
+  in-progress path cannot live in transient gesture state. It lives in a `pen`
+  store slice as APP state (the selection precedent): anchor clauses dispatch into
+  it, `pen/drawCommitted` commits the finished shape into the document (one
+  history entry) and clears it, and the shell's undo path retracts anchors
+  (`pen/anchorRetracted`) while a draft is active instead of popping document
+  history — redo is unavailable mid-draft. `gesture/cancelled` (the
+  pen.esc.discards-path binding) now clears this draft; its no-reducer rule
+  narrows to "no DOCUMENT reducer". The committed shape normalizes into the
+  control hull's bounding box; independent handle editing and curved closing
+  segments are the node-select tranche's scope.
+- **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
+  through the same store vocabulary as canvas gestures — one dispatched action per
+  committed edit, one history entry — but the registry's `PanelSpec` carries no
+  gesture clauses, so panel-originated action types have no clause backing by design.
+  Their declaration of record is `PANEL_COMMIT_ACTION_TYPES` in `core/store/history.ts`
+  (cross-validated in `gestureActions.test.ts`); a type is either a tool gesture
+  clause or a panel commit, never both. Where a panel edits geometry it reuses the
+  gesture actions themselves (`object/resizeCommitted`, `object/rotateCommitted`).
+  Outline edits split into `object/strokePaintCommitted` (color; keeps each object's
+  width; null removes the stroke, ignored for schema-required line strokes) and
+  `object/strokeWidthCommitted` (width; only where a stroke exists) so multi-object
+  color application never homogenizes widths.

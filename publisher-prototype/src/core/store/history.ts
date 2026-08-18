@@ -1,13 +1,24 @@
 import { createAction, type Reducer } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import {
+  arrowDrawCommitted,
+  bannerDrawCommitted,
+  calloutDrawCommitted,
   ellipseDrawCommitted,
+  flowchartDrawCommitted,
   lineDrawCommitted,
+  objectFillCommitted,
+  objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectStrokePaintCommitted,
+  objectStrokeWidthCommitted,
+  penDrawCommitted,
   rectDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
 } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
@@ -34,17 +45,38 @@ export type DocumentHistoryState = {
     trivial in memory; the doc names no undo depth. */
 export const HISTORY_LIMIT = 100;
 
-/** Exactly the tool commit actions that mutate the document per completed
-    gesture. gesture/cancelled is deliberately absent (no reducer, no state
-    change), as are the load/debug actions (they reset history instead). */
+/** Document commits that originate in control panels rather than canvas
+    gestures. The registry's PanelSpec deliberately carries no gesture
+    clauses, so these types have no clause backing — this set is their
+    declaration of record, and each panel edit is one history entry exactly
+    like a completed canvas gesture. */
+export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
+  objectFillCommitted.type,
+  objectStrokePaintCommitted.type,
+  objectStrokeWidthCommitted.type,
+  objectLockCommitted.type,
+]);
+
+/** Exactly the commit actions that mutate the document per completed
+    gesture — canvas gestures plus the panel commits. gesture/cancelled is
+    deliberately absent (no reducer, no state change), as are the load/debug
+    actions (they reset history instead). */
 export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   rectDrawCommitted.type,
   ellipseDrawCommitted.type,
   lineDrawCommitted.type,
+  arrowDrawCommitted.type,
+  roundedRectDrawCommitted.type,
+  starPolygonDrawCommitted.type,
+  calloutDrawCommitted.type,
+  bannerDrawCommitted.type,
+  flowchartDrawCommitted.type,
+  penDrawCommitted.type,
   objectMoveCommitted.type,
   objectNudgeCommitted.type,
   objectResizeCommitted.type,
   objectRotateCommitted.type,
+  ...PANEL_COMMIT_ACTION_TYPES,
 ]);
 
 const HISTORY_RESET_ACTION_TYPES: ReadonlySet<string> = new Set([

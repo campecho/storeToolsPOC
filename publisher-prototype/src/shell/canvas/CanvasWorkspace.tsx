@@ -49,6 +49,7 @@ export function CanvasWorkspace({
   const committed = useAppSelector((s) => s.viewport);
   const doc = useAppSelector(selectDocument);
   const selectedIds = useAppSelector((s) => s.selection.ids);
+  const penAnchors = useAppSelector((s) => s.pen.anchors);
   const setup = effectivePageSetup(doc, pageIndex);
   const objects = doc.pages[pageIndex]?.objects ?? [];
   const selectedObjects = objects.filter((o) => selectedIds.includes(o.id));
@@ -76,6 +77,7 @@ export function CanvasWorkspace({
     pageSize,
     objects,
     selectedIds,
+    penAnchors,
     toolOptions,
     areaRef,
     suppressClickRef: dragJustEndedRef,
@@ -246,6 +248,7 @@ export function CanvasWorkspace({
           endPanDrag();
           gestures.onPointerEnd(e);
         }}
+        onDoubleClick={gestures.onDoubleClick}
         onClick={(e) => {
           if (dragJustEndedRef.current) {
             dragJustEndedRef.current = false;
@@ -273,6 +276,7 @@ export function CanvasWorkspace({
           showProbe={showProbe}
           preview={gestures.preview}
           selectedObjects={selectedObjects}
+          penDraft={activeTool === "pen" ? penAnchors : []}
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}
           onRotateStart={gestures.beginRotate}

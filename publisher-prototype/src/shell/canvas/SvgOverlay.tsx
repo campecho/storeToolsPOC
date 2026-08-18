@@ -1,8 +1,10 @@
-import { visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
-import type { GesturePreview, ResizeHandle } from "../../core/gestures";
+import { DPI, visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
+import { penDraftSegments, type GesturePreview, type ResizeHandle } from "../../core/gestures";
 import { objectAabb, rotatedFrameCorners } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
+import type { PenAnchor } from "../../core/store";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
+import { pathToSvg } from "../../core/render/path";
 import { CHROME_COLOR, SelectionChrome } from "./SelectionChrome";
 
 /**
@@ -25,9 +27,12 @@ import { CHROME_COLOR, SelectionChrome } from "./SelectionChrome";
 function PreviewShapes({
   preview,
   selectedObjects,
+  zoom,
 }: {
   preview: GesturePreview;
   selectedObjects: readonly LayoutObject[];
+  /** Chrome dots (pen anchors/handles) keep screen size through the zoom. */
+  zoom: number;
 }) {
   const outline = {
     fill: "none",
@@ -47,6 +52,29 @@ function PreviewShapes({
           {...outline}
         />
       );
+    case "draw-path":
+      // Normalized d denormalizes into the live drag box — same converter the
+      // content layer renders committed path shapes with.
+      return <path d={pathToSvg(preview.d, preview)} {...outline} />;
+    case "pen-handle": {
+      // The rubber tangent handle of an in-flight curve-anchor drag: the
+      // handle line through the anchor plus dots at its ends. An under-slop
+      // press degenerates to a single dot at the anchor.
+      const r = 3.5 / (DPI * zoom);
+      return (
+        <>
+          <line
+            x1={preview.handleIn.x}
+            y1={preview.handleIn.y}
+            x2={preview.handleOut.x}
+            y2={preview.handleOut.y}
+            {...outline}
+          />
+          <circle cx={preview.point.x} cy={preview.point.y} r={r} fill={CHROME_COLOR} />
+          <circle cx={preview.handleOut.x} cy={preview.handleOut.y} r={r * 0.7} fill={CHROME_COLOR} />
+        </>
+      );
+    }
     case "line":
       return <line x1={preview.x1} y1={preview.y1} x2={preview.x2} y2={preview.y2} {...outline} />;
     case "marquee":
@@ -111,6 +139,40 @@ function PreviewShapes({
   }
 }
 
+/** The committed pen draft (penSlice state): the drafted path so far, a dot
+    per anchor, and — once the ring is closable — a ring on the first anchor
+    marking the close target (pen.click-start.closes-path). */
+function PenDraft({ anchors, zoom }: { anchors: readonly PenAnchor[]; zoom: number }) {
+  const first = anchors[0];
+  if (first === undefined) return null;
+  const r = 3.5 / (DPI * zoom);
+  return (
+    <g data-testid="pen-draft">
+      <path
+        // Draft segments are already document inches — the identity box
+        // makes pathToSvg a pure formatter here.
+        d={pathToSvg(penDraftSegments(anchors), { x: 0, y: 0, w: 1, h: 1 })}
+        fill="none"
+        stroke={CHROME_COLOR}
+        vectorEffect="non-scaling-stroke"
+      />
+      {anchors.map((anchor, i) => (
+        <circle key={i} cx={anchor.point.x} cy={anchor.point.y} r={r} fill={CHROME_COLOR} />
+      ))}
+      {anchors.length >= 3 && (
+        <circle
+          cx={first.point.x}
+          cy={first.point.y}
+          r={2 * r}
+          fill="none"
+          stroke={CHROME_COLOR}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+    </g>
+  );
+}
+
 export function SvgOverlay({
   viewport,
   vpSize,
@@ -118,6 +180,7 @@ export function SvgOverlay({
   showProbe,
   preview,
   selectedObjects,
+  penDraft,
   showChrome,
   onResizeStart,
   onRotateStart,
@@ -128,6 +191,8 @@ export function SvgOverlay({
   showProbe: boolean;
   preview: GesturePreview | null;
   selectedObjects: readonly LayoutObject[];
+  /** The pen draft's anchors while the pen tool is active; empty otherwise. */
+  penDraft: readonly PenAnchor[];
   /** Select tool active and no gesture preview showing. */
   showChrome: boolean;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
@@ -191,9 +256,10 @@ export function SvgOverlay({
           onRotateStart={onRotateStart}
         />
       )}
+      <PenDraft anchors={penDraft} zoom={viewport.zoom} />
       {preview !== null && (
         <g data-testid="gesture-preview">
-          <PreviewShapes preview={preview} selectedObjects={selectedObjects} />
+          <PreviewShapes preview={preview} selectedObjects={selectedObjects} zoom={viewport.zoom} />
         </g>
       )}
     </svg>
