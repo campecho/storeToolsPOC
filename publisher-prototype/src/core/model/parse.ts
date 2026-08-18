@@ -80,6 +80,7 @@ export function createEmptyDocument(): LayoutDocument {
     name: "Untitled",
     size: { w: 8.5, h: 11 },
     orientation: "portrait",
+    binding: "single",
     bleed: 0.125,
     margin: 0.5,
     slug: 0,

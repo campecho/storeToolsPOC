@@ -130,14 +130,31 @@ export const PageSizeSchema = z.object({
 });
 export type PageSize = z.infer<typeof PageSizeSchema>;
 
+/** Binding (§1.2, decided in PLAN.md §6.8): "facing" turns the document into
+    spreads. Spread membership itself is NEVER stored — it derives from page
+    order via `spreadsOf` below, so it cannot drift out of agreement with the
+    page array on insert, delete, duplicate, or reorder. */
+export const BindingSchema = z.enum(["single", "facing"]);
+export type Binding = z.infer<typeof BindingSchema>;
+
+/** Per-edge margins (§1.2's mirrored inside/outside margins), inches. The
+    spine-side edge is `inside`, so a gutter allowance survives a page moving
+    from verso to recto. `effectiveMargins` resolves these to left/right for a
+    given page; under single binding inside reads as left. */
+export const EdgeMarginsSchema = z.object({
+  top: z.number().min(0),
+  bottom: z.number().min(0),
+  inside: z.number().min(0),
+  outside: z.number().min(0),
+});
+export type EdgeMargins = z.infer<typeof EdgeMarginsSchema>;
+
 /**
  * A page. `masterId` is a soft reference (the lineage rule): store actions
  * guard it; a dangling id renders furniture-less rather than erroring.
  * Per-page setup values (§1.4) follow the lineage's `sizeOverride` pattern —
  * one optional override per document-level setup field; absent = the
- * document value. ASSUMPTION: spreads are modeled as consecutive pages
- * sharing overrides — §6.6 says "per-page/per-spread" without a spread
- * structure, and none is introduced here.
+ * document value.
  */
 export const LayoutPageSchema = z.object({
   id: z.string(),
@@ -147,6 +164,8 @@ export const LayoutPageSchema = z.object({
   sizeOverride: PageSizeSchema.optional(),
   bleedOverride: z.number().min(0).optional(),
   marginOverride: z.number().min(0).optional(),
+  /** Per-edge form of `marginOverride`; wins over it where present. */
+  marginsOverride: EdgeMarginsSchema.optional(),
   slugOverride: z.number().min(0).optional(),
   columnsOverride: z.number().int().min(1).optional(),
   baselineGridOverride: BaselineGridSchema.optional(),
@@ -154,6 +173,10 @@ export const LayoutPageSchema = z.object({
   guides: GuidesSchema.optional(),
   /** Per-page layer visibility overrides, keyed by layer id (§2.2). */
   layerOverrides: z.record(z.object({ visible: z.boolean() })).optional(),
+  /** Joins this page to the preceding spread instead of starting a new one —
+      §1.2's gatefolds and island spreads. Absent = start a new spread.
+      Ignored under single binding. */
+  keepWithPrevious: z.boolean().optional(),
 });
 export type LayoutPage = z.infer<typeof LayoutPageSchema>;
 
@@ -178,9 +201,13 @@ export const LayoutDocumentSchema = z.object({
   /** Effective page dimensions in inches (already orientation-applied). */
   size: PageSizeSchema,
   orientation: OrientationSchema,
+  /** Single-page or facing-page (spread) document (§1.2). */
+  binding: BindingSchema.default("single"),
   /** Per-edge distances, inches: trim → bleed; slug joins them first-class (§1.4). */
   bleed: z.number().min(0),
   margin: z.number().min(0),
+  /** Per-edge margins; wins over the scalar `margin` where present (§1.2). */
+  margins: EdgeMarginsSchema.optional(),
   slug: z.number().min(0).default(0),
   /** Column guides derive from this. */
   columns: z.number().int().min(1),
@@ -201,3 +228,92 @@ export const LayoutDocumentSchema = z.object({
   guides: GuidesSchema.default({ v: [], h: [] }),
 });
 export type LayoutDocument = z.infer<typeof LayoutDocumentSchema>;
+
+/* ── Spreads: derived, never stored (PLAN.md §6.8) ─────────────────────── */
+
+/** One spread as the canvas and the Pages panel display it: page indices in
+    page order. Under single binding every spread holds exactly one page. */
+export type Spread = { pageIndices: number[] };
+
+/**
+ * Spread membership as a pure function of page order, binding, and
+ * `keepWithPrevious` — the §6.8 invariant. Because nothing is stored, an
+ * insert, delete, duplicate, or reorder needs no reconciliation step: the
+ * next call simply reflects the new page order.
+ *
+ * Facing rule: the first page sits alone on the recto, then pages pair;
+ * `keepWithPrevious` appends to the current spread regardless of how full it
+ * is, which is how gatefolds and island spreads exceed two pages (§1.2).
+ */
+export function spreadsOf(doc: LayoutDocument): Spread[] {
+  if (doc.binding === "single") return doc.pages.map((_, i) => ({ pageIndices: [i] }));
+
+  const spreads: Spread[] = [];
+  doc.pages.forEach((page, i) => {
+    const current = spreads[spreads.length - 1];
+    // The opening spread is the solo recto; every later spread pairs.
+    const capacity = spreads.length === 1 ? 1 : 2;
+    if (current && (page.keepWithPrevious || current.pageIndices.length < capacity)) {
+      current.pageIndices.push(i);
+    } else {
+      spreads.push({ pageIndices: [i] });
+    }
+  });
+  return spreads;
+}
+
+/** The spread a page belongs to, or undefined if the index is out of range. */
+export function spreadOfPage(doc: LayoutDocument, pageIndex: number): Spread | undefined {
+  return spreadsOf(doc).find((s) => s.pageIndices.includes(pageIndex));
+}
+
+/**
+ * Which side of the spine a page falls on. Derived from page index, not from
+ * spread membership, so it stays correct through island spreads: page 1 is
+ * the recto (right-hand) page, and sides alternate from there — the universal
+ * print convention. Single binding has no spine; every page reads as recto so
+ * `inside` resolves to the left edge.
+ */
+export function pageSide(doc: LayoutDocument, pageIndex: number): "verso" | "recto" {
+  if (doc.binding === "single") return "recto";
+  return pageIndex % 2 === 0 ? "recto" : "verso";
+}
+
+/** Margins resolved to physical edges for one page, inches. */
+export type ResolvedMargins = { top: number; bottom: number; left: number; right: number };
+
+/**
+ * Effective margins for a page. Resolution is **page level before document
+ * level** — the rule every other override in this schema follows — with the
+ * per-edge form preferred over the scalar *within* a level. So a page's
+ * uniform `marginOverride` still beats a document-wide `margins`, rather than
+ * being masked by it.
+ *
+ * Inside/outside then map to left/right by the page's side: on a recto the
+ * spine is at the left, on a verso at the right. An out-of-range index
+ * resolves to document-level values, matching the soft-reference rule
+ * `effectivePageSetup` follows.
+ *
+ * NOTE: `core/render/pageSetup.ts` still resolves the scalar margin only; it
+ * adopts this when the Document structure tranche wires spread furniture.
+ */
+export function effectiveMargins(doc: LayoutDocument, pageIndex: number): ResolvedMargins {
+  const page = doc.pages[pageIndex];
+  const uniform = (value: number): ResolvedMargins => ({
+    top: value,
+    bottom: value,
+    left: value,
+    right: value,
+  });
+
+  const edges = page?.marginsOverride ?? (page?.marginOverride === undefined ? doc.margins : undefined);
+  if (!edges) return uniform(page?.marginOverride ?? doc.margin);
+
+  const spineAtLeft = pageSide(doc, pageIndex) === "recto";
+  return {
+    top: edges.top,
+    bottom: edges.bottom,
+    left: spineAtLeft ? edges.inside : edges.outside,
+    right: spineAtLeft ? edges.outside : edges.inside,
+  };
+}
