@@ -4,13 +4,13 @@ import {
   objectLockCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
-  roundedRectCornerRadiusCommitted,
   selectDocument,
   type FrameBox,
   type LineEndpoints,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { NumberField } from "./NumberField";
+import { ShapeFields } from "./ShapeFields";
 
 /**
  * The live Transform panel (PLAN.md §4.3 "transform"; Phase B Selection &
@@ -28,9 +28,10 @@ import { NumberField } from "./NumberField";
  * show the angle controls disabled. Locking (§5.3) disables every
  * geometry control except the lock checkbox itself — the door out.
  *
- * Corner radius appears only for a rounded rectangle — the one shape kind
- * that stores one — alongside the canvas adjust handle that sets the same
- * value (roundedRect/cornerRadiusCommitted, one action either way).
+ * A selected shape also gets its KIND's own parameters (ShapeFields): every
+ * option its tool offers before drawing is editable here after, through the
+ * same commit actions the canvas adjust handles use — one value, two
+ * surfaces.
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -129,15 +130,6 @@ export function TransformPanel({
     dispatch(inEditRun(objectResizeCommitted({ pageIndex, boxes }), editRun));
   };
 
-  const commitCornerRadius = (radius: number, editRun?: string): void => {
-    dispatch(
-      inEditRun(
-        roundedRectCornerRadiusCommitted({ pageIndex, ids: [single.id], radius }),
-        editRun,
-      ),
-    );
-  };
-
   const commitRotation = (deg: number, editRun?: string): void => {
     dispatch(
       inEditRun(
@@ -220,16 +212,8 @@ export function TransformPanel({
           Reset rotation
         </button>
       </div>
-      {single.type === "shape" && single.shape === "roundedRect" && (
-        <NumberField
-          label="Corner radius"
-          value={single.cornerRadius ?? 0}
-          min={0}
-          step={0.05}
-          unit="in"
-          disabled={locked}
-          onCommit={commitCornerRadius}
-        />
+      {single.type === "shape" && (
+        <ShapeFields pageIndex={pageIndex} shape={single} disabled={locked} />
       )}
       <label className="field">
         <input

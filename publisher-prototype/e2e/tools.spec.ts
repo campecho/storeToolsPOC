@@ -5,6 +5,7 @@ import {
   armCounter,
   clickAt,
   drag,
+  drawWith,
   dragHandle,
   expectNear,
   lineAt,
@@ -137,12 +138,11 @@ test("line.drag.creates", async ({ page }) => {
 });
 
 test("line.shift-drag.constrains-angle", async ({ page }) => {
-  await activate(page, "Line");
   // Near-horizontal drag snaps to 0°: length is the drag projected onto
   // the snapped direction.
-  await drag(page, { x: 1, y: 3 }, { x: 3.9, y: 3.2 }, ["Shift"]);
+  await drawWith(page, "Line", { x: 1, y: 3 }, { x: 3.9, y: 3.2 }, ["Shift"]);
   // Near-diagonal drag snaps to 45°.
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 5.2 }, ["Shift"]);
+  await drawWith(page, "Line", { x: 1, y: 3 }, { x: 3, y: 5.2 }, ["Shift"]);
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
   const objects = await pageObjects(page);
   const horizontal = lineAt(objects, 0);
@@ -155,10 +155,12 @@ test("line.shift-drag.constrains-angle", async ({ page }) => {
   expectNear(diagonal.y2, 5.1);
 });
 
-test("a drawn object lands selected, whichever tool drew it", async ({ page }) => {
-  // Every draw tool commits the same way, so selection follows all of them —
-  // and the panels bind to the selection, which is what puts a new shape's
-  // own parameters in reach the moment it exists.
+test("a drawn object lands selected, with the Select tool active", async ({ page }) => {
+  // Every draw tool commits the same way, so both follow all of them — and
+  // the panels bind to the selection, which is what puts a new shape's own
+  // parameters in reach the moment it exists.
+  const activeTool = () =>
+    page.getByTestId("dock").locator('button[aria-pressed="true"]').first();
   for (const label of ["Rectangle", "Ellipse", "Line", "Star / polygon"] as const) {
     await activate(page, label);
     await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
@@ -166,13 +168,18 @@ test("a drawn object lands selected, whichever tool drew it", async ({ page }) =
     const drawn = objects[objects.length - 1];
     if (!drawn) throw new Error(`${label} drew nothing`);
     expect(await selectionIds(page)).toEqual([drawn.id]);
+    await expect(activeTool()).toHaveText("Select");
   }
+  // Which means the next drag MOVES what was just drawn rather than drawing
+  // another one: the count holds, the position changes.
+  const before = (await pageObjects(page)).length;
+  await drag(page, { x: 1.5, y: 3.5 }, { x: 3.5, y: 5.5 });
+  expect((await pageObjects(page)).length).toBe(before);
 });
 
 test("select.click.selects-topmost", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
-  await drag(page, { x: 2, y: 4 }, { x: 4, y: 6 });
+  await drawWith(page, "Rectangle", { x: 1, y: 3 }, { x: 3, y: 5 });
+  await drawWith(page, "Rectangle", { x: 2, y: 4 }, { x: 4, y: 6 });
   const [below, above] = await pageObjects(page);
   if (!below || !above) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -191,9 +198,8 @@ test("select.click-empty.clears", async ({ page }) => {
 });
 
 test("select.shift-click.toggles-membership", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 3, y: 3 }, { x: 4, y: 4 });
+  await drawWith(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await drawWith(page, "Rectangle", { x: 3, y: 3 }, { x: 4, y: 4 });
   const [first, second] = await pageObjects(page);
   if (!first || !second) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -208,9 +214,8 @@ test("select.shift-click.toggles-membership", async ({ page }) => {
 });
 
 test("select.alt-click.selects-beneath", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
-  await drag(page, { x: 2, y: 4 }, { x: 4, y: 6 });
+  await drawWith(page, "Rectangle", { x: 1, y: 3 }, { x: 3, y: 5 });
+  await drawWith(page, "Rectangle", { x: 2, y: 4 }, { x: 4, y: 6 });
   const [below, above] = await pageObjects(page);
   if (!below || !above) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -226,9 +231,8 @@ test("select.alt-click.selects-beneath", async ({ page }) => {
 });
 
 test("select.drag-empty.marquee-selects", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 4 }, { x: 2, y: 5 });
-  await drag(page, { x: 3, y: 4 }, { x: 4, y: 5 });
+  await drawWith(page, "Rectangle", { x: 1, y: 4 }, { x: 2, y: 5 });
+  await drawWith(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 5 });
   const [first, second] = await pageObjects(page);
   if (!first || !second) throw new Error("expected two drawn rects");
   await activate(page, "Select");

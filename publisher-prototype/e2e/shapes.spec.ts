@@ -308,6 +308,8 @@ test("flowchart.drag.creates with decision and terminator symbols", async ({ pag
   expect(hasVertex(decision.d, 1, 0.5)).toBe(true);
   expect(hasVertex(decision.d, 0.5, 1)).toBe(true);
   expect(hasVertex(decision.d, 0, 0.5)).toBe(true);
+  // Drawing returned the app to Select, so re-activate to reach the option.
+  await activate(page, "Flowchart");
   await symbol.selectOption("terminator");
   await drag(page, { x: 4, y: 3 }, { x: 6, y: 4 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);

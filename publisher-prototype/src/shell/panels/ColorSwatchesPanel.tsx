@@ -1,9 +1,19 @@
 import { useState } from "react";
-import type { Paint } from "../../core/model";
+import {
+  ArrowHeadSchema,
+  ArrowHeadSizeSchema,
+  LineDashSchema,
+  type ArrowHead,
+  type ArrowHeadSize,
+  type LineDash,
+  type Paint,
+} from "../../core/model";
 import { hexToColorValue, paintToCss, paintToHex } from "../../core/render/paint";
 import {
   inEditRun,
+  objectArrowHeadsCommitted,
   objectFillCommitted,
+  objectLineDashCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   selectDocument,
@@ -19,6 +29,10 @@ import { NumberField } from "./NumberField";
  * or none. Outline width edits per-object widths; outline color keeps them
  * (the strokePaint/strokeWidth commit split). Both apply as they are made —
  * the width field folds its run into one history entry (NumberField).
+ *
+ * A line's outline is more than colour and width, so the Outline target also
+ * carries its dash pattern and end decorations when the selection holds
+ * lines — the rest of what the line and arrow tools set before drawing.
  *
  * Which target a control edits is panel state, not document state. The
  * shown color/width read from the FIRST selected object; commits apply to
@@ -56,6 +70,12 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
           : first.fill
         : (first.stroke?.paint ?? null);
   const firstStroked = selected.find((o) => o.stroke !== null);
+  // Dash and end decorations describe a LINE's outline, so they show whenever
+  // the selection holds lines and edit exactly the ones the reducer can touch
+  // — a locked line's controls disable rather than vanish, like the width.
+  const lines = selected.filter((o) => o.type === "line");
+  const lineIds = applicable.filter((o) => o.type === "line").map((o) => o.id);
+  const lineDisabled = lineIds.length === 0;
 
   const applyPaint = (paint: Paint | null): void => {
     const ids = applicable.map((o) => o.id);
@@ -105,6 +125,86 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
           None
         </button>
       </div>
+      {target === "stroke" && lines.length > 0 && (
+        <div className="field-row">
+          <label className="field">
+            Dash
+            <select
+              aria-label="Dash"
+              value={lines[0]?.dash ?? "solid"}
+              disabled={lineDisabled}
+              onChange={(e) =>
+                dispatch(
+                  objectLineDashCommitted({
+                    pageIndex,
+                    ids: lineIds,
+                    dash: e.target.value as LineDash,
+                  }),
+                )
+              }
+            >
+              {LineDashSchema.options.map((dash) => (
+                <option key={dash} value={dash}>
+                  {dash}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(
+            [
+              ["Start head", "headStart"],
+              ["End head", "headEnd"],
+            ] as const
+          ).map(([label, field]) => (
+            <label className="field" key={field}>
+              {label}
+              <select
+                aria-label={label}
+                value={lines[0]?.[field] ?? "none"}
+                disabled={lineDisabled}
+                onChange={(e) =>
+                  dispatch(
+                    objectArrowHeadsCommitted({
+                      pageIndex,
+                      ids: lineIds,
+                      [field]: e.target.value as ArrowHead,
+                    }),
+                  )
+                }
+              >
+                {ArrowHeadSchema.options.map((head) => (
+                  <option key={head} value={head}>
+                    {head}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <label className="field">
+            Head size
+            <select
+              aria-label="Head size"
+              value={lines[0]?.headSize ?? "m"}
+              disabled={lineDisabled}
+              onChange={(e) =>
+                dispatch(
+                  objectArrowHeadsCommitted({
+                    pageIndex,
+                    ids: lineIds,
+                    headSize: e.target.value as ArrowHeadSize,
+                  }),
+                )
+              }
+            >
+              {ArrowHeadSizeSchema.options.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
       {target === "stroke" && (
         <NumberField
           label="Width"

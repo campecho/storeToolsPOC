@@ -112,6 +112,8 @@ test("line.drag.creates honors the live dash option", async ({ page }) => {
   const dotted = lineAt(await pageObjects(page), 0);
   expect(dotted.dash).toBe("dotted");
   // Switching back to solid stores the default as ABSENT on the commit.
+  // Drawing returned the app to Select, so re-activate to reach the option.
+  await activate(page, "Line");
   await dash.selectOption("solid");
   await drag(page, { x: 1, y: 6.5 }, { x: 3, y: 7 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);

@@ -43,6 +43,20 @@ export async function activate(page: Page, toolLabel: string): Promise<void> {
   await page.getByTestId("dock").getByRole("button", { name: toolLabel, exact: true }).click();
 }
 
+/** Draw one shape with a tool, activating it first. Drawing returns the app
+    to the Select tool, so every draw re-activates — which is exactly what a
+    user now does between shapes. */
+export async function drawWith(
+  page: Page,
+  toolLabel: string,
+  from: DocPoint,
+  to: DocPoint,
+  modifiers: ("Shift" | "Alt")[] = [],
+): Promise<void> {
+  await activate(page, toolLabel);
+  await drag(page, from, to, modifiers);
+}
+
 export async function drag(
   page: Page,
   from: DocPoint,

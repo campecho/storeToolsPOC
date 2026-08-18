@@ -35,6 +35,7 @@ export function CanvasWorkspace({
   showProbe,
   toolOptions,
   onVpSizeChange,
+  onObjectDrawn,
 }: {
   /** Registry tool id; wired tools (wiredTools.ts) drive the canvas. */
   activeTool: string;
@@ -44,6 +45,9 @@ export function CanvasWorkspace({
   /** Live option values (App state) the wired tools' gesture ctx consumes. */
   toolOptions: ToolOptionValues;
   onVpSizeChange: (size: Size) => void;
+  /** A committed draw returns the App to the Select tool — the drawn object
+      is already selected, so the two land together. */
+  onObjectDrawn: () => void;
 }) {
   const dispatch = useAppDispatch();
   const committed = useAppSelector((s) => s.viewport);
@@ -81,6 +85,7 @@ export function CanvasWorkspace({
     toolOptions,
     areaRef,
     suppressClickRef: dragJustEndedRef,
+    onObjectDrawn,
   });
 
   // Latest values for the natively-attached wheel listener. A running tool

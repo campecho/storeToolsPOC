@@ -120,6 +120,33 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   banner, flowchart) still bake their options at draw time and keep their
   adjust-handle clauses unwired; `drawShapeMachine`'s `DrawnShapeGeometry` union
   is where each joins when its turn comes.
+- **Every pre-draw option is editable on the selection (recorded 2026-08-18,
+  user decision):** an option a tool offers before drawing must be modifiable
+  after — a value you can only set at creation is a value you cannot correct.
+  That drove the parametric storage above to its conclusion: star (points,
+  inner radius), callout (tail anchor) and flowchart (symbol) join the rounded
+  rect in storing what shapes them. Line dash and the arrow's end decorations
+  already stored on `LineObject`; they were simply missing controls. Homes:
+  per-shape geometry in the Transform panel (`ShapeFields`, one group per
+  kind), a line's dash and heads with the Colour panel's Outline target, since
+  that is where the rest of the outline is described. Both PanelSpecs carry an
+  ASSUMPTION line — the doc names the shapes, not where their parameters are
+  edited. The banner is the one shape outside the rule: it has no pre-draw
+  shape option, and its contracted fold-depth handle stays unwired.
+  A pen path's closed state is the odd member — it lives in `d`, not a
+  parameter — but it is the placed counterpart of the pen's `autoClose`
+  option, so it is editable alongside them via `object/pathClosedCommitted`.
+- **Drawing selects, and returns to Select (recorded 2026-08-18, user
+  decision):** a committed draw leaves its object selected and switches the
+  active tool back to Select. Selection follows in the store (`selectionSlice`
+  matches every action in `DRAW_COMMIT_ACTIONS`); the tool switch is the
+  App's, since `activeTool` is App state — the gesture layer reports the draw
+  through `onObjectDrawn` rather than reaching for it. Together they mean the
+  thing just made is the thing the panels are bound to, which is what makes
+  "editable on the selection" reachable without a hunt. Consequence for tests:
+  drawing twice with one tool now needs two activations, and any test whose
+  premise was an UNSELECTED object must clear the selection first — both are
+  what a user now experiences, so the specs changed rather than the behavior.
 - **Handle cursors (recorded 2026-08-18, user decision):** each handle shows the
   direction it stretches, turning with the frame — `core/gestures`'
   `resizeHandleAxis` snaps the handle's heading plus the frame's rotation to the

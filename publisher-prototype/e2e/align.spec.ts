@@ -4,6 +4,7 @@ import {
   armCounter,
   clickAt,
   drag,
+  drawWith,
   expectNear,
   notificationCount,
   pageObjects,
@@ -49,10 +50,9 @@ test.beforeEach(async ({ page }) => {
 test("align left/right/top and center align selected AABBs — one action, one undo step per press", async ({
   page,
 }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 3, y: 4 }, { x: 4, y: 6 });
-  await drag(page, { x: 5, y: 5 }, { x: 6, y: 5.5 });
+  await drawWith(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await drawWith(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 6 });
+  await drawWith(page, "Rectangle", { x: 5, y: 5 }, { x: 6, y: 5.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(3);
   await activate(page, "Select");
   await drag(page, { x: 0.7, y: 2.7 }, { x: 6.3, y: 6.3 });
@@ -101,10 +101,9 @@ test("align left/right/top and center align selected AABBs — one action, one u
 });
 
 test("distribute horizontally equalizes gaps and preserves sizes", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 2.5, y: 3 }, { x: 3.5, y: 4 });
-  await drag(page, { x: 6, y: 3 }, { x: 8, y: 4 });
+  await drawWith(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await drawWith(page, "Rectangle", { x: 2.5, y: 3 }, { x: 3.5, y: 4 });
+  await drawWith(page, "Rectangle", { x: 6, y: 3 }, { x: 8, y: 4 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(3);
   await activate(page, "Select");
   await drag(page, { x: 0.7, y: 2.7 }, { x: 7.5, y: 4.4 });
@@ -191,9 +190,8 @@ test("enablement follows the reference and the selection count", async ({ page }
   await expect(alignButton(page, "Distribute horizontally")).toBeDisabled();
   await expect(alignButton(page, "Distribute vertically")).toBeDisabled();
 
-  await activate(page, "Rectangle");
-  await drag(page, { x: 3, y: 4 }, { x: 4, y: 5 });
-  await drag(page, { x: 5, y: 5 }, { x: 6, y: 6 });
+  await drawWith(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 5 });
+  await drawWith(page, "Rectangle", { x: 5, y: 5 }, { x: 6, y: 6 });
   await activate(page, "Select");
   await drag(page, { x: 0.7, y: 2.7 }, { x: 6.3, y: 6.3 });
   await expect.poll(() => selectionIds(page)).toHaveLength(3);
@@ -207,11 +205,9 @@ test("enablement follows the reference and the selection count", async ({ page }
 });
 
 test("locked objects are skipped by selection and never move", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 4, y: 5 }, { x: 5, y: 6 });
+  await drawWith(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await drawWith(page, "Rectangle", { x: 4, y: 5 }, { x: 5, y: 6 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
-  await activate(page, "Select");
   await clickAt(page, { x: 4.5, y: 5.5 });
   await expect.poll(() => selectionIds(page)).toHaveLength(1);
   await page.getByTestId("transform-panel").getByLabel("Locked", { exact: true }).check();

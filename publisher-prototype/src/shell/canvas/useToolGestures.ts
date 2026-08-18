@@ -36,11 +36,11 @@ import { resizeCursor, rotateCursor } from "./cursors";
 import {
   arrowDrawCommitted,
   gestureCancelled,
+  isDrawCommit,
   objectNudgeCommitted,
   selectionCycleCommitted,
   selectionReplaceCommitted,
   selectionToggleCommitted,
-  type AppDispatch,
   type FrameBox,
   type LineEndpoints,
   type PenAnchor,
@@ -66,6 +66,10 @@ import {
  * the established pan-drag pattern.
  */
 
+/** What a session needs to dispatch with: plain actions only, so the hook
+    can wrap it (AppDispatch satisfies this). */
+type DispatchAction = (action: UnknownAction) => void;
+
 /** A running gesture: the machine closed over its evolving state, plus the
     hooks the select tool's click clauses need around a null end. */
 type Session = {
@@ -82,7 +86,7 @@ function machineSession<S extends { dragged: boolean }, C extends GestureContext
   machine: GestureMachine<S, C>,
   start: GesturePoint,
   ctx: C,
-  dispatch: AppDispatch,
+  dispatch: DispatchAction,
   onNullEnd?: (modifiers: GestureModifiers) => UnknownAction | null,
 ): Session {
   let state = machine.begin(start, ctx);
@@ -109,7 +113,7 @@ function machineSession<S extends { dragged: boolean }, C extends GestureContext
 function clickSession(
   start: GesturePoint,
   zoom: number,
-  dispatch: AppDispatch,
+  dispatch: DispatchAction,
   commit: () => UnknownAction | null,
 ): Session {
   let dragged = false;
@@ -157,6 +161,9 @@ export type ToolGestureArgs = {
   /** The workspace's dragJustEndedRef: a completed/cancelled drag suppresses
       the trailing click exactly like a pan drag does. */
   suppressClickRef: { current: boolean };
+  /** Fired once per committed draw. The active tool is App state, so the
+      return to Select after drawing is the App's to make. */
+  onObjectDrawn: () => void;
 };
 
 export type ToolGestures = {
@@ -193,6 +200,14 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   // Latest args for the natively-attached keyboard listener (frameRef pattern).
   const argsRef = useRef(args);
   argsRef.current = args;
+
+  /** Every gesture dispatches through here, so a committed draw can hand the
+      shell its one follow-up: the tool returns to Select, alongside the
+      selection the store already moved to the new object. */
+  const gestureDispatch: DispatchAction = (action) => {
+    dispatch(action);
+    if (isDrawCommit(action)) argsRef.current.onObjectDrawn();
+  };
 
   const toDoc = (e: { clientX: number; clientY: number }): GesturePoint => {
     const el = args.areaRef.current;
@@ -255,7 +270,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     if (modifiers.shift) {
       // select.shift-click.toggles-membership — modified downs never start move.
       begin(
-        clickSession(point, zoom, dispatch, () => selectionToggleCommitted({ id: top.id })),
+        clickSession(point, zoom, gestureDispatch, () => selectionToggleCommitted({ id: top.id })),
         pointerId,
       );
       return;
@@ -265,7 +280,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       // single selection in the hit stack, wrapping to the top; a selection
       // that is not in the stack starts over at the topmost hit.
       begin(
-        clickSession(point, zoom, dispatch, () => {
+        clickSession(point, zoom, gestureDispatch, () => {
           const selectedId = selectedIds.length === 1 ? selectedIds[0] : undefined;
           const at = selectedId === undefined ? -1 : hits.findIndex((h) => h.id === selectedId);
           const next = at === -1 ? hits[0] : hits[(at + 1) % hits.length];
@@ -283,7 +298,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       // down-commit is the Publisher convention, pending SME review.
       dispatch(selectionReplaceCommitted({ ids: [top.id] }));
       begin(
-        machineSession(moveMachine, point, { pageIndex, zoom, ids: [top.id] }, dispatch),
+        machineSession(moveMachine, point, { pageIndex, zoom, ids: [top.id] }, gestureDispatch),
         pointerId,
       );
       return;
@@ -294,7 +309,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
         moveMachine,
         point,
         { pageIndex, zoom, ids: [...selectedIds] },
-        dispatch,
+        gestureDispatch,
         (endModifiers) => {
           // ASSUMPTION: an under-slop release (machine end returns null) on a
           // member of a MULTI-selection collapses the selection to the clicked
@@ -325,7 +340,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
           },
-          dispatch,
+          gestureDispatch,
         ),
         e.pointerId,
       );
@@ -343,7 +358,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             style: drawStyleFromOptions(toolOptions, "pen"),
             idFactory: createObjectId,
           },
-          dispatch,
+          gestureDispatch,
         ),
         e.pointerId,
       );
@@ -363,7 +378,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             geometryForBox: (box: { x: number; y: number; w: number; h: number }) =>
               shapeConfig.geometryForBox(toolOptions, box),
           },
-          dispatch,
+          gestureDispatch,
         ),
         e.pointerId,
       );
@@ -381,7 +396,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             idFactory: createObjectId,
             extras: lineExtrasFromOptions(toolOptions, activeTool),
           },
-          dispatch,
+          gestureDispatch,
         ),
         e.pointerId,
       );
@@ -435,7 +450,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           rotation: frame.rotation,
           initial,
         },
-        dispatch,
+        gestureDispatch,
       ),
       e.pointerId,
     );
@@ -465,7 +480,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           pivot: framePivot(frame.box),
           initialRotations,
         },
-        dispatch,
+        gestureDispatch,
       ),
       e.pointerId,
     );
@@ -491,7 +506,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             cornerRadiusMachine,
             toDoc(e),
             { ...shared, initialRadius: only.cornerRadius ?? 0 },
-            dispatch,
+            gestureDispatch,
           )
         : only.shape === "starPolygon"
           ? machineSession(
@@ -502,10 +517,10 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
                 initialRatio: only.innerRadiusRatio ?? 0.5,
                 points: only.points ?? 5,
               },
-              dispatch,
+              gestureDispatch,
             )
           : only.shape === "callout"
-            ? machineSession(calloutTailMachine, toDoc(e), shared, dispatch)
+            ? machineSession(calloutTailMachine, toDoc(e), shared, gestureDispatch)
             : null;
     if (session === null) return;
     e.stopPropagation();

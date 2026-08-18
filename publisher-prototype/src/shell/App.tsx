@@ -102,6 +102,10 @@ export function App() {
           showProbe={showProbe}
           toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
+          // A drawn object lands selected AND ready to adjust: the tool
+          // returns to Select, so the very next drag moves what was just
+          // made rather than drawing another one.
+          onObjectDrawn={() => setActiveTool("select")}
         />
         <ControlPanel
           mode={mode}
