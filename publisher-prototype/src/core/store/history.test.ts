@@ -11,6 +11,7 @@ import {
   objectLockCommitted,
   objectMoveCommitted,
   objectStrokePaintCommitted,
+  objectStrokeWidthCommitted,
   rectDrawCommitted,
 } from "./documentActions";
 import {
@@ -21,6 +22,7 @@ import {
 } from "./documentSlice";
 import {
   HISTORY_LIMIT,
+  inEditRun,
   redoCommitted,
   undoCommitted,
   withDocumentHistory,
@@ -37,6 +39,10 @@ import {
 
 const reducer = withDocumentHistory(documentSlice.reducer);
 
+const BLACK: Paint = { kind: "color", color: { space: "rgb", values: [0, 0, 0] } };
+/** The stroke width edit runs start from, in points. */
+const BASE_STROKE_WIDTH = 0.75;
+
 function shape(id: string): ShapeObject {
   return {
     type: "shape",
@@ -49,8 +55,19 @@ function shape(id: string): ShapeObject {
     rotation: 0,
     locked: false,
     fill: null,
-    stroke: null,
+    stroke: { paint: BLACK, width: BASE_STROKE_WIDTH },
   };
+}
+
+/** The commit a live width field dispatches, against the drawn shape. */
+function strokeWidth(width: number) {
+  return objectStrokeWidthCommitted({ pageIndex: 0, ids: ["a"], width });
+}
+
+function strokeWidthOf(doc: LayoutDocument): number | null {
+  const obj = doc.pages[0]?.objects[0];
+  if (obj === undefined || obj.type !== "shape") return null;
+  return obj.stroke?.width ?? null;
 }
 
 function boot(): DocumentHistoryState {
@@ -163,6 +180,53 @@ describe("withDocumentHistory", () => {
     expect(next.past).toHaveLength(4);
     const undone = reducer(reducer(reducer(next, undoCommitted()), undoCommitted()), undoCommitted());
     expect(undone.present).toBe(state.present);
+  });
+
+  it("folds an edit run into one entry, whatever it passes through", () => {
+    const state = draw(boot(), "a");
+    // A field applying every keystroke: 1 → 12 → 1.25pt, all one visit.
+    let next = state;
+    for (const width of [1, 12, 1.25]) {
+      next = reducer(next, inEditRun(strokeWidth(width), "field#1"));
+    }
+    expect(next.past).toHaveLength(2);
+    expect(next.past[1]).toBe(state.present);
+    expect(strokeWidthOf(next.present)).toBe(1.25);
+    // One undo reverses the whole run, not the last keystroke of it.
+    expect(reducer(next, undoCommitted()).present).toBe(state.present);
+  });
+
+  it("starts a new entry for each run — one visit to the field, one step", () => {
+    const state = draw(boot(), "a");
+    const first = reducer(state, inEditRun(strokeWidth(2), "field#1"));
+    const second = reducer(first, inEditRun(strokeWidth(3), "field#2"));
+    expect(second.past).toHaveLength(3);
+    expect(strokeWidthOf(reducer(second, undoCommitted()).present)).toBe(2);
+  });
+
+  it("never folds a run into an entry a discrete commit pushed", () => {
+    // Same run id either side of an unrelated commit: the entry the run
+    // opened is no longer the newest one, so the run reopens its own.
+    const state = reducer(draw(boot(), "a"), inEditRun(strokeWidth(2), "field#1"));
+    const between = reducer(state, objectMoveCommitted({ pageIndex: 0, ids: ["a"], dx: 1, dy: 0 }));
+    const after = reducer(between, inEditRun(strokeWidth(3), "field#1"));
+    expect(after.past).toHaveLength(4);
+  });
+
+  it("closes the run on undo, so a continuation cannot reopen the stepped-past entry", () => {
+    const state = draw(boot(), "a");
+    const run = reducer(state, inEditRun(strokeWidth(2), "field#1"));
+    const undone = reducer(run, undoCommitted());
+    const resumed = reducer(undone, inEditRun(strokeWidth(3), "field#1"));
+    expect(resumed.past).toHaveLength(2);
+    expect(strokeWidthOf(reducer(resumed, undoCommitted()).present)).toBe(BASE_STROKE_WIDTH);
+  });
+
+  it("passes an unstamped action through as its own entry", () => {
+    const state = draw(boot(), "a");
+    const one = reducer(state, strokeWidth(2));
+    const two = reducer(one, strokeWidth(3));
+    expect(two.past).toHaveLength(3);
   });
 
   it("snapshots per gesture even when the commit changes nothing visible", () => {

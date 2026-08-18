@@ -1,5 +1,11 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
-import type { PathSeg, ShapeObject } from "../model";
+import { shapeOutline } from "../geometry/shapePaths";
+import type {
+  CalloutTailAnchor,
+  FlowchartSymbol,
+  PathSeg,
+  ShapeObject,
+} from "../model";
 import {
   ellipseDrawCommitted,
   rectDrawCommitted,
@@ -70,24 +76,35 @@ function clickDefaultBox(point: GesturePoint): Box {
   return { x: point.x - half, y: point.y - half, w: DEFAULT_SHAPE_SIZE_IN, h: DEFAULT_SHAPE_SIZE_IN };
 }
 
+/** The shape-kind fields a drawn shape contributes to its object; the rest
+    of the frame comes from the drag box. A kind that stores its geometry
+    parametrically (the rounded rect's inch radius) carries no `d` — the
+    outline derives from the parameter and the box wherever it is needed. */
+export type DrawnShapeGeometry =
+  | { shape: "path"; d: PathSeg[] }
+  | { shape: "roundedRect"; cornerRadius: number }
+  | { shape: "starPolygon"; points: number; innerRadiusRatio: number }
+  | { shape: "callout"; tailAnchor: CalloutTailAnchor }
+  | { shape: "flowchart"; symbol: FlowchartSymbol };
+
 /**
- * Bounds-drawing machine for the path-shape tools (rounded rect, star /
+ * Bounds-drawing machine for the parametric shape tools (rounded rect, star /
  * polygon, callout, banner, flowchart) — the same drag/Shift/Alt/click/Esc
- * clause set as rect and ellipse, committing a `shape: "path"` object whose
- * normalized `d` is built for the final box. `pathForBox` receives the box
- * because inch-denominated parameters (a corner radius) normalize against
- * the box dimensions; the preview rebuilds `d` per update so the shape is
- * live while dragging.
+ * clause set as rect and ellipse, committing the shape kind and geometry
+ * `geometryForBox` returns for the final box. It receives the box because
+ * inch-denominated parameters normalize against the box dimensions; the
+ * preview rebuilds the outline per update so the shape is live while
+ * dragging.
  */
-export type DrawPathContext = DrawBoundsContext & {
-  pathForBox: (box: { x: number; y: number; w: number; h: number }) => PathSeg[];
+export type DrawShapeContext = DrawBoundsContext & {
+  geometryForBox: (box: { x: number; y: number; w: number; h: number }) => DrawnShapeGeometry;
 };
 
-export type DrawPathState = DragState<DrawPathContext>;
+export type DrawShapeState = DragState<DrawShapeContext>;
 
-export function drawPathMachine(
+export function drawShapeMachine(
   creator: ActionCreatorWithPayload<DrawCommit>,
-): GestureMachine<DrawPathState, DrawPathContext> {
+): GestureMachine<DrawShapeState, DrawShapeContext> {
   return {
     begin: (point, ctx) => beginDrag(point, ctx),
     update: (state, point, modifiers) => updateDrag(state, point, modifiers),
@@ -100,8 +117,7 @@ export function drawPathMachine(
       const object: ShapeObject = {
         id: ctx.idFactory(),
         type: "shape",
-        shape: "path",
-        d: ctx.pathForBox(box),
+        ...ctx.geometryForBox(box),
         x: box.x,
         y: box.y,
         w: box.w,
@@ -116,7 +132,13 @@ export function drawPathMachine(
     cancel: cancelResult,
     preview(state) {
       const box = dragBounds(state.start, state.current, state.modifiers);
-      return { kind: "draw-path", ...box, d: state.ctx.pathForBox(box) };
+      // The preview outline is the very curve the renderer will draw, from
+      // the one shared resolver.
+      return {
+        kind: "draw-path",
+        ...box,
+        d: shapeOutline(state.ctx.geometryForBox(box), box.w, box.h),
+      };
     },
   };
 }

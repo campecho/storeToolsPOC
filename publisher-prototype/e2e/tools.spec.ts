@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { rotatedFrameCorners } from "../src/core/hittest";
 import {
   activate,
   armCounter,
@@ -154,6 +155,20 @@ test("line.shift-drag.constrains-angle", async ({ page }) => {
   expectNear(diagonal.y2, 5.1);
 });
 
+test("a drawn object lands selected, whichever tool drew it", async ({ page }) => {
+  // Every draw tool commits the same way, so selection follows all of them —
+  // and the panels bind to the selection, which is what puts a new shape's
+  // own parameters in reach the moment it exists.
+  for (const label of ["Rectangle", "Ellipse", "Line", "Star / polygon"] as const) {
+    await activate(page, label);
+    await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
+    const objects = await pageObjects(page);
+    const drawn = objects[objects.length - 1];
+    if (!drawn) throw new Error(`${label} drew nothing`);
+    expect(await selectionIds(page)).toEqual([drawn.id]);
+  }
+});
+
 test("select.click.selects-topmost", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
@@ -229,6 +244,10 @@ test("select.drag.moves-selection", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
   await activate(page, "Select");
+  // Drawing leaves its object selected, so clear it first: the clause under
+  // test is the one that starts from an UNSELECTED object.
+  await clickAt(page, { x: 6, y: 6 });
+  expect(await selectionIds(page)).toEqual([]);
   // ASSUMPTION under test (matches the shell's early-commit decision of
   // record): dragging an UNSELECTED object commits selection/replace on
   // pointerdown and object/move on release — exactly 2 notifications.
@@ -293,6 +312,90 @@ test("select.drag-rotate.rotates", async ({ page }) => {
   rect = shapeAt(await pageObjects(page), 0);
   expect(rect.rotation).not.toBeCloseTo(90, 5);
   expect(Math.round(rect.rotation / 15) * 15).toBeCloseTo(rect.rotation, 9);
+});
+
+test("select.drag-handle.resizes a rotated frame in its own space", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // A quarter turn: from here the chrome hugs the object, so its handles sit
+  // on the rotated frame rather than on the box around it.
+  await dragHandle(page, "rotate", { x: 3.8, y: 3.5 });
+  let rect = shapeAt(await pageObjects(page), 0);
+  expect(Math.abs(rect.rotation - 90)).toBeLessThanOrEqual(1);
+  const rotation = rect.rotation;
+  const before = rotatedFrameCorners(rect, rotation);
+  // The se handle now hangs below-left on screen. Dragging it scales the
+  // frame's OWN width and height (1.25× and 2.5×), never the document axes.
+  await armCounter(page);
+  await dragHandle(page, "se", { x: 1, y: 5 });
+  expect(await notificationCount(page)).toBe(1);
+  rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.rotation, rotation);
+  expectNear(rect.w, 2.5);
+  expectNear(rect.h, 2.5);
+  // The nw corner — the anchor opposite the dragged handle — has not moved.
+  const after = rotatedFrameCorners(rect, rotation);
+  expectNear(after[0]?.x ?? NaN, before[0]?.x ?? NaN);
+  expectNear(after[0]?.y ?? NaN, before[0]?.y ?? NaN);
+});
+
+test("selection handles carry the cursor of the direction they stretch", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  for (const [handle, cursor] of [
+    ["n", "ns-resize"],
+    ["s", "ns-resize"],
+    ["e", "ew-resize"],
+    ["w", "ew-resize"],
+    ["nw", "nwse-resize"],
+    ["se", "nwse-resize"],
+    ["ne", "nesw-resize"],
+    ["sw", "nesw-resize"],
+  ] as const) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCSS("cursor", cursor);
+  }
+  // Rotation has no cursor keyword — the knob carries a drawn glyph.
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCSS("cursor", /^url\(.*\) 12 12, grab$/);
+
+  // A quarter turn takes the cursors with it: the handles now stretch along
+  // the frame's own edges, so every axis swaps for its partner.
+  await dragHandle(page, "rotate", { x: 3.8, y: 3.5 });
+  expect(Math.abs(shapeAt(await pageObjects(page), 0).rotation - 90)).toBeLessThanOrEqual(1);
+  for (const [handle, cursor] of [
+    ["n", "ew-resize"],
+    ["e", "ns-resize"],
+    ["nw", "nesw-resize"],
+    ["ne", "nwse-resize"],
+  ] as const) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCSS("cursor", cursor);
+  }
+});
+
+test("the handle's cursor survives the drag that hides the handle", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const area = page.getByTestId("canvas-area");
+  await expect(area).toHaveCSS("cursor", "default");
+  // Press the se handle and move without releasing: the preview replaces the
+  // chrome, so the handle is gone — the canvas area holds its cursor instead.
+  const box = await page.locator('[data-handle="se"]').boundingBox();
+  if (!box) throw new Error("se handle not visible");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y + 40, { steps: 4 });
+  await expect(page.locator('[data-handle="se"]')).toHaveCount(0);
+  await expect(area).toHaveCSS("cursor", "nwse-resize");
+  await page.mouse.up();
+  await expect(area).toHaveCSS("cursor", "default");
 });
 
 test("select.arrow.nudges", async ({ page }) => {

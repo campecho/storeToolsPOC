@@ -4,6 +4,7 @@
  */
 export * from "./types";
 export * from "./constants";
+export * from "./shapeAdjust";
 export * from "./drag";
 export * from "./drawBounds";
 export * from "./drawLine";

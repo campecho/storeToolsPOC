@@ -1,6 +1,7 @@
 import { DPI, visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
 import { penDraftSegments, type GesturePreview, type ResizeHandle } from "../../core/gestures";
-import { objectAabb, rotatedFrameCorners } from "../../core/hittest";
+import { shapeOutline } from "../../core/geometry/shapePaths";
+import { rotatedFrameCorners, type Rect } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import type { PenAnchor } from "../../core/store";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
@@ -20,6 +21,24 @@ import { CHROME_COLOR, SelectionChrome } from "./SelectionChrome";
  * The alignment probe (debug-bar toggle) draws the page and bleed bounds so
  * overlay↔canvas registration is verifiable by eye at any zoom/pan.
  */
+
+/** A frame box drawn at its own rotation — the outline every preview that
+    stands in for a frame object uses, so ghosts hug their object exactly the
+    way the committed chrome does. */
+function FramePolygon({
+  box,
+  rotation,
+  ...outline
+}: { box: Rect; rotation: number } & React.SVGProps<SVGPolygonElement>) {
+  return (
+    <polygon
+      points={rotatedFrameCorners(box, rotation)
+        .map((p) => `${p.x},${p.y}`)
+        .join(" ")}
+      {...outline}
+    />
+  );
+}
 
 /** Serializable GesturePreview → outline shapes, all in doc inches. Move and
     rotate previews derive their frames from the selected objects, which the
@@ -89,35 +108,68 @@ function PreviewShapes({
         />
       );
     case "move":
+      // Ghosts hug what is moving — a rotated frame at its own rotation, a
+      // line as a line — matching the committed chrome they replace.
       return (
         <>
-          {selectedObjects.map((o) => {
-            const box = objectAabb(o);
-            return (
-              <rect
+          {selectedObjects.map((o) =>
+            o.type === "line" ? (
+              <line
                 key={o.id}
-                x={box.x + preview.dx}
-                y={box.y + preview.dy}
-                width={box.w}
-                height={box.h}
+                x1={o.x1 + preview.dx}
+                y1={o.y1 + preview.dy}
+                x2={o.x2 + preview.dx}
+                y2={o.y2 + preview.dy}
                 {...outline}
               />
-            );
-          })}
+            ) : (
+              <FramePolygon
+                key={o.id}
+                box={{ x: o.x + preview.dx, y: o.y + preview.dy, w: o.w, h: o.h }}
+                rotation={o.rotation}
+                {...outline}
+              />
+            ),
+          )}
         </>
       );
-    case "resize":
+    case "resize": {
+      // Resize never changes rotation, so the live frame is the scaled box
+      // drawn at the object's committed angle.
+      const rotationOf = new Map(
+        selectedObjects.map((o) => [o.id, o.type === "line" ? 0 : o.rotation] as const),
+      );
       return (
         <>
           {Object.entries(preview.boxes).map(([id, box]) =>
             "w" in box ? (
-              <rect key={id} x={box.x} y={box.y} width={box.w} height={box.h} {...outline} />
+              <FramePolygon key={id} box={box} rotation={rotationOf.get(id) ?? 0} {...outline} />
             ) : (
               <line key={id} x1={box.x1} y1={box.y1} x2={box.x2} y2={box.y2} {...outline} />
             ),
           )}
         </>
       );
+    }
+    case "shape-param": {
+      // The dragged parameters merged over the shape they belong to, drawn
+      // through the same resolver the renderer uses — so the ghost is exactly
+      // what commits. Only a lone shape starts an adjust gesture.
+      const target = selectedObjects.find((o) => o.type === "shape");
+      if (target === undefined || target.type !== "shape") return null;
+      return (
+        <path
+          d={pathToSvg(shapeOutline({ ...target, ...preview.params }, target.w, target.h), {
+            x: 0,
+            y: 0,
+            w: target.w,
+            h: target.h,
+          })}
+          transform={`translate(${target.x} ${target.y}) rotate(${target.rotation} ${target.w / 2} ${target.h / 2})`}
+          {...outline}
+        />
+      );
+    }
     case "rotate":
       return (
         <>
@@ -125,11 +177,11 @@ function PreviewShapes({
             if (o.type === "line") return null;
             const rotation = preview.rotations[o.id];
             if (rotation === undefined) return null;
-            const corners = rotatedFrameCorners({ x: o.x, y: o.y, w: o.w, h: o.h }, rotation);
             return (
-              <polygon
+              <FramePolygon
                 key={o.id}
-                points={corners.map((p) => `${p.x},${p.y}`).join(" ")}
+                box={{ x: o.x, y: o.y, w: o.w, h: o.h }}
+                rotation={rotation}
                 {...outline}
               />
             );
@@ -184,6 +236,7 @@ export function SvgOverlay({
   showChrome,
   onResizeStart,
   onRotateStart,
+  onShapeAdjustStart,
 }: {
   viewport: Viewport;
   vpSize: Size;
@@ -197,6 +250,7 @@ export function SvgOverlay({
   showChrome: boolean;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
+  onShapeAdjustStart: (e: React.PointerEvent<SVGElement>) => void;
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;
   const { size, bleed } = setup;
@@ -254,6 +308,7 @@ export function SvgOverlay({
           zoom={viewport.zoom}
           onResizeStart={onResizeStart}
           onRotateStart={onRotateStart}
+          onShapeAdjustStart={onShapeAdjustStart}
         />
       )}
       <PenDraft anchors={penDraft} zoom={viewport.zoom} />

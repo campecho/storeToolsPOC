@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Paint } from "../../core/model";
 import { hexToColorValue, paintToCss, paintToHex } from "../../core/render/paint";
 import {
+  inEditRun,
   objectFillCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
@@ -16,7 +17,8 @@ import { NumberField } from "./NumberField";
  * fill or outline — a picked literal rgb color, a named document swatch
  * (kept as a swatch REFERENCE so later swatch edits restyle the document),
  * or none. Outline width edits per-object widths; outline color keeps them
- * (the strokePaint/strokeWidth commit split).
+ * (the strokePaint/strokeWidth commit split). Both apply as they are made —
+ * the width field folds its run into one history entry (NumberField).
  *
  * Which target a control edits is panel state, not document state. The
  * shown color/width read from the FIRST selected object; commits apply to
@@ -111,9 +113,16 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
           step={0.25}
           unit="pt"
           disabled={disabled}
-          onCommit={(width) =>
+          onCommit={(width, editRun) =>
             dispatch(
-              objectStrokeWidthCommitted({ pageIndex, ids: applicable.map((o) => o.id), width }),
+              inEditRun(
+                objectStrokeWidthCommitted({
+                  pageIndex,
+                  ids: applicable.map((o) => o.id),
+                  width,
+                }),
+                editRun,
+              ),
             )
           }
         />

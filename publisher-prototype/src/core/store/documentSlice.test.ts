@@ -19,6 +19,7 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  roundedRectCornerRadiusCommitted,
   rectDrawCommitted,
 } from "./documentActions";
 import {
@@ -277,6 +278,47 @@ describe("documentSlice", () => {
         objectStrokeWidthCommitted({ pageIndex: 0, ids: ["a", "ghost"], width: 9 }),
       );
       expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
+  });
+
+  describe("roundedRect/cornerRadiusCommitted", () => {
+    const rounded = (id: string, radius = 0.1) =>
+      shape(id, { shape: "roundedRect", cornerRadius: radius });
+
+    it("sets the radius on rounded rects and leaves every other kind alone", () => {
+      const state = reducer(
+        docWith([rounded("r"), shape("plain"), line("l")]),
+        roundedRectCornerRadiusCommitted({ pageIndex: 0, ids: ["r", "plain", "l"], radius: 0.4 }),
+      );
+      const [r, plain, l] = objectsOf(state);
+      expect(r).toMatchObject({ shape: "roundedRect", cornerRadius: 0.4 });
+      expect(plain).not.toHaveProperty("cornerRadius");
+      expect(l).not.toHaveProperty("cornerRadius");
+    });
+
+    it("stores a radius past the frame's bound — the bound belongs to drawing", () => {
+      // The 2×1in frame draws at most 0.5in, but shrinking a frame must not
+      // destroy the radius a wider frame is entitled to get back.
+      const state = reducer(
+        docWith([rounded("r")]),
+        roundedRectCornerRadiusCommitted({ pageIndex: 0, ids: ["r"], radius: 9 }),
+      );
+      expect(objectsOf(state)[0]).toMatchObject({ cornerRadius: 9 });
+    });
+
+    it("floors at zero, skips locked objects and ignores unknown ids", () => {
+      let state = reducer(
+        docWith([rounded("r")]),
+        roundedRectCornerRadiusCommitted({ pageIndex: 0, ids: ["r"], radius: -5 }),
+      );
+      expect(objectsOf(state)[0]).toMatchObject({ cornerRadius: 0 });
+
+      const locked = docWith([rounded("r", 0.3)].map((o) => ({ ...o, locked: true })));
+      state = reducer(
+        locked,
+        roundedRectCornerRadiusCommitted({ pageIndex: 0, ids: ["r", "ghost"], radius: 0.9 }),
+      );
+      expect(objectsOf(state)).toEqual(objectsOf(locked));
     });
   });
 

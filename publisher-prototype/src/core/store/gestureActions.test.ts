@@ -13,6 +13,7 @@ import {
   objectResizeCommitted,
   objectRotateCommitted,
   rectDrawCommitted,
+  roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
 } from "./documentActions";
@@ -33,6 +34,7 @@ const documentActionCreators = [
   ellipseDrawCommitted,
   lineDrawCommitted,
   arrowDrawCommitted,
+  roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
   calloutDrawCommitted,
@@ -45,12 +47,13 @@ const documentActionCreators = [
   gestureCancelled,
 ];
 
-/** Prefixes whose registry clauses are ALL wired. The path-shape tools
-    (roundedRect, starPolygon, callout, banner, flowchart) stay out until
-    their adjust-handle clauses land — those need the parametric shape
-    storage SEAMS.md records as deferred; only their draw clauses are wired
-    (and cross-checked through UNDOABLE_ACTION_TYPES below). */
-const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line|arrow)\//;
+/** Prefixes whose registry clauses are ALL wired. roundedRect joined when
+    its parametric storage landed, taking its adjust-handle clause with it;
+    the remaining path-shape tools (starPolygon, callout, banner, flowchart)
+    stay out until they get parametric storage of their own, so only their
+    draw clauses are wired (and cross-checked through UNDOABLE_ACTION_TYPES
+    below). */
+const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line|arrow|roundedRect)\//;
 
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([

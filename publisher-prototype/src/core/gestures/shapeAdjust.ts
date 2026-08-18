@@ -1,0 +1,184 @@
+import { clampCornerRadius } from "../geometry/shapePaths";
+import { framePivot, rotatePoint } from "../hittest";
+import type { CalloutTailAnchor } from "../model";
+import {
+  calloutTailCommitted,
+  roundedRectCornerRadiusCommitted,
+  starPolygonInnerRadiusCommitted,
+  type FrameBox,
+} from "../store/documentActions";
+import { beginDrag, cancelResult, updateDrag, type DragState } from "./drag";
+import type { GestureContext, GestureMachine, GesturePoint } from "./types";
+
+/**
+ * Adjust-handle machines — the registry's per-shape adjust clauses
+ * (src/core/registry/tools/shapes.ts):
+ *   rounded-rect.drag-adjust-handle.sets-corner-radius
+ *   star-polygon.drag-adjust-handle.sets-inner-radius
+ *   callout.drag-tail-handle.repositions-tail
+ *
+ * Each drags one parameter of one placed shape, previews it live, and commits
+ * once on release. The pointer rotates into the shape's own frame space
+ * first, so every handle tracks the rotated shape rather than the page.
+ *
+ * Continuous parameters apply TRAVEL rather than absolute position, so the
+ * value never jumps to meet the pointer however the handle happens to be
+ * drawn. The callout's tail is an enum of four corners, so it takes the
+ * pointer's quadrant outright — there is no travel to accumulate.
+ */
+
+export type ShapeAdjustContext = GestureContext & {
+  /** The shape being adjusted — one object; adjust handles show for a lone
+      shape of the matching kind only. */
+  id: string;
+  /** Its frame, unrotated, and the rotation the handle rides. */
+  frame: FrameBox;
+  rotation: number;
+};
+
+export type CornerRadiusContext = ShapeAdjustContext & {
+  /** The stored radius at press, in inches. */
+  initialRadius: number;
+};
+
+export type StarInnerRadiusContext = ShapeAdjustContext & {
+  /** The stored ratio at press, and the vertex count that fixes which arm
+      the handle rides. */
+  initialRatio: number;
+  points: number;
+};
+
+export type CalloutTailContext = ShapeAdjustContext;
+
+export type ShapeAdjustState<C extends ShapeAdjustContext> = DragState<C>;
+
+/** The pointer in the shape's own frame space, where the top edge runs
+    along +x and the frame box is axis-aligned. */
+function toFrameSpace(ctx: ShapeAdjustContext, point: GesturePoint): GesturePoint {
+  if (ctx.rotation === 0) return point;
+  return rotatePoint(point, framePivot(ctx.frame), -ctx.rotation);
+}
+
+/** Frame space → the unit box the shape builders speak, so a parameter
+    expressed as a fraction of the shape means the same at any frame size. */
+function toUnitBox(ctx: ShapeAdjustContext, point: GesturePoint): GesturePoint {
+  const local = toFrameSpace(ctx, point);
+  const { x, y, w, h } = ctx.frame;
+  return { x: w > 0 ? (local.x - x) / w : 0.5, y: h > 0 ? (local.y - y) / h : 0.5 };
+}
+
+// ── rounded rect: the radius the top edge's handle travels out ──────────────
+
+function radiusOf(state: ShapeAdjustState<CornerRadiusContext>): number {
+  const { ctx } = state;
+  const travel = toFrameSpace(ctx, state.current).x - toFrameSpace(ctx, state.start).x;
+  return clampCornerRadius(ctx.initialRadius + travel, ctx.frame.w, ctx.frame.h);
+}
+
+export const cornerRadiusMachine: GestureMachine<
+  ShapeAdjustState<CornerRadiusContext>,
+  CornerRadiusContext
+> = {
+  begin: (point, ctx) => beginDrag(point, ctx),
+  update: (state, point, modifiers) => updateDrag(state, point, modifiers),
+  end(state) {
+    if (!state.dragged) return { action: null };
+    return {
+      action: roundedRectCornerRadiusCommitted({
+        pageIndex: state.ctx.pageIndex,
+        ids: [state.ctx.id],
+        radius: radiusOf(state),
+      }),
+    };
+  },
+  cancel: cancelResult,
+  preview: (state) => ({ kind: "shape-param", params: { cornerRadius: radiusOf(state) } }),
+};
+
+// ── star: how deep the points cut, along the first inner arm ────────────────
+
+/** starPath's clamp, so the handle can never set a ratio the builder would
+    silently refuse. */
+const MIN_RATIO = 0.05;
+const MAX_RATIO = 0.95;
+
+/** The direction of the arm the inner-radius handle rides: starPath's first
+    INNER vertex, one half-step clockwise from the top point. */
+export function starInnerArmDirection(points: number): GesturePoint {
+  const n = Math.max(3, Math.floor(points));
+  const a = ((-90 + 180 / n) * Math.PI) / 180;
+  return { x: Math.cos(a), y: Math.sin(a) };
+}
+
+/** The inner vertex's position in the unit box, at a given ratio. */
+export function starInnerArmPoint(points: number, ratio: number): GesturePoint {
+  const u = starInnerArmDirection(points);
+  return { x: 0.5 + 0.5 * ratio * u.x, y: 0.5 + 0.5 * ratio * u.y };
+}
+
+/** How far along the arm a point sits, as a fraction of the outer radius. */
+function armProjection(ctx: StarInnerRadiusContext, point: GesturePoint): number {
+  const u = starInnerArmDirection(ctx.points);
+  const p = toUnitBox(ctx, point);
+  return ((p.x - 0.5) * u.x + (p.y - 0.5) * u.y) / 0.5;
+}
+
+function ratioOf(state: ShapeAdjustState<StarInnerRadiusContext>): number {
+  const { ctx } = state;
+  const travel = armProjection(ctx, state.current) - armProjection(ctx, state.start);
+  return Math.min(Math.max(ctx.initialRatio + travel, MIN_RATIO), MAX_RATIO);
+}
+
+export const starInnerRadiusMachine: GestureMachine<
+  ShapeAdjustState<StarInnerRadiusContext>,
+  StarInnerRadiusContext
+> = {
+  begin: (point, ctx) => beginDrag(point, ctx),
+  update: (state, point, modifiers) => updateDrag(state, point, modifiers),
+  end(state) {
+    if (!state.dragged) return { action: null };
+    return {
+      action: starPolygonInnerRadiusCommitted({
+        pageIndex: state.ctx.pageIndex,
+        ids: [state.ctx.id],
+        innerRadiusRatio: ratioOf(state),
+      }),
+    };
+  },
+  cancel: cancelResult,
+  preview: (state) => ({ kind: "shape-param", params: { innerRadiusRatio: ratioOf(state) } }),
+};
+
+// ── callout: which corner the tail leaves from ─────────────────────────────
+
+/** The tail anchor a point asks for: the corner of the frame it sits nearest,
+    which with four anchors is simply its quadrant. */
+export function tailAnchorAt(point: GesturePoint): CalloutTailAnchor {
+  const vertical = point.y > 0.5 ? "bottom" : "top";
+  const horizontal = point.x > 0.5 ? "right" : "left";
+  return `${vertical}-${horizontal}`;
+}
+
+function anchorOf(state: ShapeAdjustState<CalloutTailContext>): CalloutTailAnchor {
+  return tailAnchorAt(toUnitBox(state.ctx, state.current));
+}
+
+export const calloutTailMachine: GestureMachine<
+  ShapeAdjustState<CalloutTailContext>,
+  CalloutTailContext
+> = {
+  begin: (point, ctx) => beginDrag(point, ctx),
+  update: (state, point, modifiers) => updateDrag(state, point, modifiers),
+  end(state) {
+    if (!state.dragged) return { action: null };
+    return {
+      action: calloutTailCommitted({
+        pageIndex: state.ctx.pageIndex,
+        ids: [state.ctx.id],
+        tailAnchor: anchorOf(state),
+      }),
+    };
+  },
+  cancel: cancelResult,
+  preview: (state) => ({ kind: "shape-param", params: { tailAnchor: anchorOf(state) } }),
+};

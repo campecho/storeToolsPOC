@@ -1,5 +1,6 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { describe, expect, it } from "vitest";
+import { roundedRectPath } from "../geometry/shapePaths";
 import { LayoutObjectSchema, type Paint, type PathSeg, type Stroke } from "../model";
 import { ellipseTool, flowchartTool, rectTool } from "../registry/tools/shapes";
 import {
@@ -15,10 +16,10 @@ import {
 } from "../store/documentActions";
 import {
   drawBoundsMachine,
-  drawPathMachine,
+  drawShapeMachine,
   type DrawBoundsContext,
   type DrawBoundsState,
-  type DrawPathContext,
+  type DrawShapeContext,
 } from "./drawBounds";
 import type { GestureModifiers, GesturePoint, GestureResult } from "./types";
 
@@ -209,7 +210,7 @@ describe("rect.esc.cancels-draw", () => {
   });
 });
 
-describe("drawPathMachine (rounded-rect / star-polygon / callout / banner / flowchart draw clauses)", () => {
+describe("drawShapeMachine (rounded-rect / star-polygon / callout / banner / flowchart draw clauses)", () => {
   const DIAMOND: PathSeg[] = [
     { c: "M", x: 0.5, y: 0 },
     { c: "L", x: 1, y: 0.5 },
@@ -218,12 +219,12 @@ describe("drawPathMachine (rounded-rect / star-polygon / callout / banner / flow
     { c: "Z" },
   ];
 
-  function pathCtx(over: Partial<DrawPathContext> = {}): DrawPathContext {
-    return { ...ctx(), pathForBox: () => DIAMOND, ...over };
+  function pathCtx(over: Partial<DrawShapeContext> = {}): DrawShapeContext {
+    return { ...ctx(), geometryForBox: () => ({ shape: "path", d: DIAMOND }), ...over };
   }
 
   it("commits one schema-valid path ShapeObject of the dragged bounds through the clause action", () => {
-    const machine = drawPathMachine(flowchartDrawCommitted);
+    const machine = drawShapeMachine(flowchartDrawCommitted);
     let state = machine.begin({ x: 1, y: 1 }, pathCtx());
     state = machine.update(state, { x: 3, y: 2.5 }, NONE);
     const result = machine.end(state, NONE);
@@ -243,13 +244,13 @@ describe("drawPathMachine (rounded-rect / star-polygon / callout / banner / flow
     expect(() => LayoutObjectSchema.parse(payload.object)).not.toThrow();
   });
 
-  it("hands pathForBox the FINAL box, so inch-based parameters normalize correctly", () => {
+  it("hands geometryForBox the FINAL box, so inch-based parameters normalize correctly", () => {
     const seen: { x: number; y: number; w: number; h: number }[] = [];
-    const machine = drawPathMachine(roundedRectDrawCommitted);
+    const machine = drawShapeMachine(roundedRectDrawCommitted);
     let state = machine.begin({ x: 2, y: 2 }, pathCtx({
-      pathForBox: (box) => {
+      geometryForBox: (box) => {
         seen.push(box);
-        return DIAMOND;
+        return { shape: "path", d: DIAMOND };
       },
     }));
     state = machine.update(state, { x: 4, y: 3 }, NONE);
@@ -257,15 +258,40 @@ describe("drawPathMachine (rounded-rect / star-polygon / callout / banner / flow
     expect(seen.at(-1)).toEqual({ x: 2, y: 2, w: 2, h: 1 });
   });
 
+  it("commits the PARAMETRIC kind whole — a rounded rect stores its radius, no `d`", () => {
+    const machine = drawShapeMachine(roundedRectDrawCommitted);
+    let state = machine.begin({ x: 1, y: 1 }, pathCtx({
+      geometryForBox: () => ({ shape: "roundedRect", cornerRadius: 0.2 }),
+    }));
+    state = machine.update(state, { x: 3, y: 2 }, NONE);
+    const result = machine.end(state, NONE);
+    const payload = payloadOf<DrawCommit>(result, roundedRectDrawCommitted);
+    expect(payload.object).toMatchObject({ shape: "roundedRect", cornerRadius: 0.2, w: 2, h: 1 });
+    expect(payload.object).not.toHaveProperty("d");
+    expect(() => LayoutObjectSchema.parse(payload.object)).not.toThrow();
+  });
+
+  it("previews a parametric kind with the outline the renderer will draw", () => {
+    const machine = drawShapeMachine(roundedRectDrawCommitted);
+    let state = machine.begin({ x: 0, y: 0 }, pathCtx({
+      geometryForBox: () => ({ shape: "roundedRect", cornerRadius: 0.25 }),
+    }));
+    state = machine.update(state, { x: 2, y: 1 }, NONE);
+    const preview = machine.preview(state);
+    if (preview.kind !== "draw-path") throw new Error("expected a draw-path preview");
+    // 0.25in of a 2×1in box: an eighth across, a quarter down.
+    expect(preview.d).toEqual(roundedRectPath(0.125, 0.25));
+  });
+
   it("click (no drag) commits the 1×1 in default centered at the click point", () => {
-    const machine = drawPathMachine(starPolygonDrawCommitted);
+    const machine = drawShapeMachine(starPolygonDrawCommitted);
     const state = machine.begin({ x: 4, y: 4 }, pathCtx());
     const payload = payloadOf<DrawCommit>(machine.end(state, NONE), starPolygonDrawCommitted);
     expect(payload.object).toMatchObject({ x: 3.5, y: 3.5, w: 1, h: 1, shape: "path" });
   });
 
   it("commits nothing for a degenerate zero-area drag, and Shift/Alt shape the box as on rect", () => {
-    const machine = drawPathMachine(bannerDrawCommitted);
+    const machine = drawShapeMachine(bannerDrawCommitted);
     let flat = machine.begin({ x: 1, y: 1 }, pathCtx());
     flat = machine.update(flat, { x: 3, y: 1 }, NONE);
     expect(machine.end(flat, NONE).action).toBeNull();
@@ -277,7 +303,7 @@ describe("drawPathMachine (rounded-rect / star-polygon / callout / banner / flow
   });
 
   it("previews kind draw-path with the live box and its built d; cancel is the gesture/cancelled record", () => {
-    const machine = drawPathMachine(calloutDrawCommitted);
+    const machine = drawShapeMachine(calloutDrawCommitted);
     let state = machine.begin({ x: 1, y: 1 }, pathCtx());
     state = machine.update(state, { x: 2, y: 3 }, NONE);
     expect(machine.preview(state)).toEqual({ kind: "draw-path", x: 1, y: 1, w: 1, h: 2, d: DIAMOND });

@@ -1,14 +1,17 @@
 import { expect, test } from "@playwright/test";
+import { shapeOutline } from "../src/core/geometry/shapePaths";
 import type { LayoutObject, PathSeg, ShapeObject } from "../src/core/model";
 import {
   activate,
   armCounter,
   clickAt,
   drag,
+  dragHandle,
   expectNear,
   notificationCount,
   pageObjects,
   screenPoint,
+  selectionIds,
   shapeAt,
 } from "./helpers";
 
@@ -40,19 +43,29 @@ function hasVertex(d: PathSeg[], x: number, y: number): boolean {
   return vertices(d).some((v) => Math.abs(v.x - x) <= 1e-6 && Math.abs(v.y - y) <= 1e-6);
 }
 
-/** shapeAt narrowed to a path shape with well-formed data: `d` is a
-    non-empty M…Z segment list. */
-function pathShapeAt(
+/** shapeAt plus the OUTLINE it resolves to. A parametric kind stores its
+    parameters rather than a path, so geometry assertions read the curve the
+    shape actually draws — through the same resolver the renderer uses. */
+function outlineAt(
   objects: LayoutObject[],
   index: number,
 ): { shape: ShapeObject; d: PathSeg[] } {
   const shape = shapeAt(objects, index);
-  expect(shape.shape).toBe("path");
-  const d = shape.d;
-  if (!d || d.length === 0) throw new Error(`expected non-empty path data at index ${index}`);
+  const d = shapeOutline(shape, shape.w, shape.h);
+  if (d.length === 0) throw new Error(`expected a non-empty outline at index ${index}`);
   expect(d[0]?.c).toBe("M");
   expect(d[d.length - 1]?.c).toBe("Z");
   return { shape, d };
+}
+
+/** shapeAt narrowed to a rounded rect: the one shape kind that stores its
+    geometry parametrically, so it carries a radius and no `d`. */
+function roundedRectAt(objects: LayoutObject[], index: number): ShapeObject {
+  const shape = shapeAt(objects, index);
+  expect(shape.shape).toBe("roundedRect");
+  expect(shape.d).toBeUndefined();
+  expect(typeof shape.cornerRadius).toBe("number");
+  return shape;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -66,13 +79,14 @@ test("rounded-rect.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { shape, d } = pathShapeAt(await pageObjects(page), 0);
+  const shape = roundedRectAt(await pageObjects(page), 0);
   expectNear(shape.x, 1);
   expectNear(shape.y, 3);
   expectNear(shape.w, 2);
   expectNear(shape.h, 1.5);
-  // Rounded corners are cubic arcs — at least one C segment per corner.
-  expect(d.filter((seg) => seg.c === "C").length).toBeGreaterThanOrEqual(4);
+  // The tool's default radius stores AS a radius, in inches — not baked into
+  // a path, so it survives every later resize as a radius.
+  expectNear(shape.cornerRadius ?? 0, 0.1);
 });
 
 test("rounded-rect.shift-drag.constrains-square", async ({ page }) => {
@@ -81,7 +95,7 @@ test("rounded-rect.shift-drag.constrains-square", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4 }, ["Shift"]);
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { shape } = pathShapeAt(await pageObjects(page), 0);
+  const shape = roundedRectAt(await pageObjects(page), 0);
   expectNear(shape.w, 2);
   expectNear(shape.h, 2);
 });
@@ -92,7 +106,7 @@ test("rounded-rect.alt-drag.draws-from-center", async ({ page }) => {
   await drag(page, { x: 3, y: 4 }, { x: 4, y: 4.5 }, ["Alt"]);
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { shape } = pathShapeAt(await pageObjects(page), 0);
+  const shape = roundedRectAt(await pageObjects(page), 0);
   expectNear(shape.x, 2);
   expectNear(shape.y, 3.5);
   expectNear(shape.w, 2);
@@ -105,12 +119,59 @@ test("rounded-rect.click.creates-default-size", async ({ page }) => {
   await clickAt(page, { x: 4, y: 4 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { shape } = pathShapeAt(await pageObjects(page), 0);
+  const shape = roundedRectAt(await pageObjects(page), 0);
   // 1×1 in, centered at the click point (drawBounds machine ASSUMPTION).
   expectNear(shape.x, 3.5);
   expectNear(shape.y, 3.5);
   expectNear(shape.w, 1);
   expectNear(shape.h, 1);
+});
+
+test("rounded-rect.drag-adjust-handle.sets-corner-radius", async ({ page }) => {
+  await activate(page, "Rounded rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // The adjust handle is the chrome's, alongside the resize and rotate ones.
+  const adjust = page.locator('[data-handle="corner-radius"]');
+  await expect(adjust).toBeVisible();
+  // Dragging it right along the top edge grows the radius by the travel.
+  await armCounter(page);
+  await dragHandle(page, "corner-radius", { dxPx: 96 * 0.25, dyPx: 0 });
+  expect(await notificationCount(page)).toBe(1);
+  let shape = roundedRectAt(await pageObjects(page), 0);
+  expectNear(shape.cornerRadius ?? 0, 0.35);
+  // It clamps at half the shorter side — 0.5in on this 2×1in frame.
+  await dragHandle(page, "corner-radius", { dxPx: 96 * 4, dyPx: 0 });
+  shape = roundedRectAt(await pageObjects(page), 0);
+  expectNear(shape.cornerRadius ?? 0, 0.5);
+  // One drag, one history entry: undo returns the radius the first set.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  shape = roundedRectAt(await pageObjects(page), 0);
+  expectNear(shape.cornerRadius ?? 0, 0.35);
+});
+
+test("a rounded rect's radius is a radius: it survives a resize, and only rounded rects show the handle", async ({
+  page,
+}) => {
+  await activate(page, "Rounded rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await dragHandle(page, "se", { x: 6, y: 5 });
+  // Stretching the frame leaves the stored radius alone — the corner stays
+  // the size it was set to, rather than stretching into an ellipse.
+  expectNear(roundedRectAt(await pageObjects(page), 0).cornerRadius ?? 0, 0.1);
+
+  // A plain rect has no corner to round, so it carries no adjust handle.
+  await activate(page, "Rectangle");
+  await drag(page, { x: 1, y: 6 }, { x: 2, y: 7 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 6.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await expect(page.locator('[data-handle="corner-radius"]')).toHaveCount(0);
 });
 
 test("rounded-rect.esc.cancels-draw", async ({ page }) => {
@@ -142,7 +203,10 @@ test("star-polygon.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = pathShapeAt(await pageObjects(page), 0);
+  const { shape, d } = outlineAt(await pageObjects(page), 0);
+  // The tool's defaults store AS parameters — no baked path to go stale.
+  expect(shape).toMatchObject({ shape: "starPolygon", points: 5, innerRadiusRatio: 0.5 });
+  expect(shape.d).toBeUndefined();
   // Default 5-point star: 5 outer + 5 inner vertices, topmost point up.
   expect(vertices(d)).toHaveLength(10);
   expect(hasVertex(d, 0.5, 0)).toBe(true);
@@ -159,7 +223,8 @@ test("star-polygon.drag.creates honors the live points and inner-radius options"
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = pathShapeAt(await pageObjects(page), 0);
+  const { shape, d } = outlineAt(await pageObjects(page), 0);
+  expect(shape).toMatchObject({ points: 6, innerRadiusRatio: 0.3 });
   const pts = vertices(d);
   expect(pts).toHaveLength(12);
   // Vertex 1 is an inner vertex: its normalized distance from the center
@@ -175,7 +240,8 @@ test("callout.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = pathShapeAt(await pageObjects(page), 0);
+  const { shape, d } = outlineAt(await pageObjects(page), 0);
+  expect(shape).toMatchObject({ shape: "callout", tailAnchor: "bottom-left" });
   // Default tail anchor bottom-left: the tail tip touches the frame bottom
   // near the left edge; the body's right edge spans the full width.
   expect(hasVertex(d, 0.06, 1)).toBe(true);
@@ -192,7 +258,8 @@ test("callout.drag.creates with tail anchor bottom-right", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = pathShapeAt(await pageObjects(page), 0);
+  const { shape, d } = outlineAt(await pageObjects(page), 0);
+  expect(shape).toMatchObject({ tailAnchor: "bottom-right" });
   expect(hasVertex(d, 0.94, 1)).toBe(true);
 });
 
@@ -202,7 +269,7 @@ test("banner.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = pathShapeAt(await pageObjects(page), 0);
+  const { d } = outlineAt(await pageObjects(page), 0);
   // Ribbon fold notches sit at mid-height on both sides.
   expect(hasVertex(d, 0.15, 0.5)).toBe(true);
   expect(hasVertex(d, 0.85, 0.5)).toBe(true);
@@ -214,7 +281,8 @@ test("flowchart.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = pathShapeAt(await pageObjects(page), 0);
+  const { shape, d } = outlineAt(await pageObjects(page), 0);
+  expect(shape).toMatchObject({ shape: "flowchart", symbol: "process" });
   // Default symbol "process": exactly the four frame corners.
   const pts = vertices(d);
   expect(pts).toHaveLength(4);
@@ -232,7 +300,8 @@ test("flowchart.drag.creates with decision and terminator symbols", async ({ pag
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const decision = pathShapeAt(await pageObjects(page), 0);
+  const decision = outlineAt(await pageObjects(page), 0);
+  expect(decision.shape).toMatchObject({ symbol: "decision" });
   // Decision: a diamond on the frame's edge midpoints.
   expect(vertices(decision.d)).toHaveLength(4);
   expect(hasVertex(decision.d, 0.5, 0)).toBe(true);
@@ -242,7 +311,7 @@ test("flowchart.drag.creates with decision and terminator symbols", async ({ pag
   await symbol.selectOption("terminator");
   await drag(page, { x: 4, y: 3 }, { x: 6, y: 4 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
-  const terminator = pathShapeAt(await pageObjects(page), 1);
+  const terminator = outlineAt(await pageObjects(page), 1);
   // Terminator: rounded ends are cubic arcs.
   expect(terminator.d.filter((seg) => seg.c === "C").length).toBeGreaterThan(0);
 });
@@ -259,7 +328,7 @@ for (const { label, id } of [
     await clickAt(page, { x: 4, y: 4 });
     await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
     expect(await notificationCount(page)).toBe(1);
-    const { shape } = pathShapeAt(await pageObjects(page), 0);
+    const { shape } = outlineAt(await pageObjects(page), 0);
     // 1×1 in, centered at the click point (drawBounds machine ASSUMPTION).
     expectNear(shape.x, 3.5);
     expectNear(shape.y, 3.5);

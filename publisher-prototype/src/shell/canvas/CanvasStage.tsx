@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Circle, Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "react-konva";
+import { clampCornerRadius, shapeOutline } from "../../core/geometry/shapePaths";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
 import type { LayoutObject, LineObject, Paint, Stroke, Swatch } from "../../core/model";
 import { arrowheadShape, dashPatternIn, headLengthIn } from "../../core/render/lineDecor";
@@ -113,6 +114,26 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
           />
         );
       }
+      if (o.shape === "roundedRect") {
+        // Parametric, not a baked path: Konva rounds the corners itself from
+        // the inch radius, so they stay circular arcs however the frame is
+        // scaled. The bound is applied here, never to the stored value.
+        return (
+          <Rect
+            key={o.id}
+            x={o.x + o.w / 2}
+            y={o.y + o.h / 2}
+            offsetX={o.w / 2}
+            offsetY={o.h / 2}
+            width={o.w}
+            height={o.h}
+            cornerRadius={clampCornerRadius(o.cornerRadius ?? 0, o.w, o.h)}
+            rotation={o.rotation}
+            {...paint}
+            perfectDrawEnabled={false}
+          />
+        );
+      }
       if (o.shape === "ellipse") {
         // An Ellipse's own origin is its center — positioning at the frame
         // center makes rotation pivot there with no offset needed.
@@ -129,8 +150,10 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
           />
         );
       }
-      // Path data is local to the frame box; center position + matching
-      // offsets put the rotation pivot at the frame center like the others.
+      // Every remaining kind draws its outline: a stored path, or a
+      // parametric shape resolved from its parameters and this frame. Path
+      // data is local to the frame box; center position + matching offsets
+      // put the rotation pivot at the frame center like the others.
       return (
         <Path
           key={o.id}
@@ -139,7 +162,7 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
           offsetX={o.w / 2}
           offsetY={o.h / 2}
           rotation={o.rotation}
-          data={pathToSvg(o.d ?? [], { x: 0, y: 0, w: o.w, h: o.h })}
+          data={pathToSvg(shapeOutline(o, o.w, o.h), { x: 0, y: 0, w: o.w, h: o.h })}
           {...paint}
           perfectDrawEnabled={false}
         />

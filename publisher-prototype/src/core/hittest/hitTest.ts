@@ -1,3 +1,4 @@
+import { shapeOutline } from "../geometry/shapePaths";
 import type { LayoutObject, Stroke } from "../model";
 import {
   convexPolygonsOverlap,
@@ -120,8 +121,15 @@ function objectHitsPoint(obj: LayoutObject, p: Point, opts: HitTestOptions): boo
   if (obj.type === "shape" && obj.shape === "ellipse") {
     return ellipseHitsPoint(local, frame, interiorSelectable, band);
   }
-  if (obj.type === "shape" && obj.shape === "path") {
-    return pathHitsPoint(local, flattenPath(obj.d ?? [], frame), interiorSelectable, band);
+  // Every outlined kind — a stored path or a parametric shape — hit-tests
+  // against the same curve it draws.
+  if (obj.type === "shape" && obj.shape !== "rect") {
+    return pathHitsPoint(
+      local,
+      flattenPath(shapeOutline(obj, frame.w, frame.h), frame),
+      interiorSelectable,
+      band,
+    );
   }
   // Rect shape and all rectangular frames (textFrame / pictureFrame / table /
   // mergeField): their `fill` field governs the interior rule the same way.
@@ -151,7 +159,7 @@ export function hitTestPoint(
 
 /** Doc-space flattened path: local polylines rotated about the frame pivot. */
 function flattenPathToDoc(obj: LayoutObject & { type: "shape" }, frame: Rect): FlattenedSubpath[] {
-  const subs = flattenPath(obj.d ?? [], frame);
+  const subs = flattenPath(shapeOutline(obj, frame.w, frame.h), frame);
   if (obj.rotation === 0) return subs;
   const pivot = framePivot(frame);
   return subs.map((s) => ({
@@ -184,7 +192,7 @@ function objectIntersectsRect(obj: LayoutObject, rect: Rect): boolean {
     return segmentIntersectsRect({ x: obj.x1, y: obj.y1 }, { x: obj.x2, y: obj.y2 }, rect);
   }
   const frame: Rect = { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
-  if (obj.type === "shape" && obj.shape === "path") {
+  if (obj.type === "shape" && obj.shape !== "rect" && obj.shape !== "ellipse") {
     return pathIntersectsRect(flattenPathToDoc(obj, frame), rect);
   }
   if (obj.type === "shape" && obj.shape === "ellipse") {

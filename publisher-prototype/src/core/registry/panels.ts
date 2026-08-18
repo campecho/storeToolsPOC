@@ -28,6 +28,7 @@ export const panelRegistry: readonly PanelSpec[] = [
       "Width/height numeric entry [ASSUMPTION: §2.1 implies precision but does not name W/H fields].",
       "Rotation: numeric angle entry, rotate 90° CW/CCW, reset rotation (§5.2).",
       "Nudge increment configuration (§2.1 configurable nudge increments).",
+      "Corner radius for a rounded rectangle [ASSUMPTION: §4.4 names the shape, not where its radius is edited; the geometry panel is the numeric home for the same value the shape's adjust handle sets].",
       "Position relative to page / margin / guide / object (§2.1).",
       "Lock position/size/rotation/content plus unlock, with visible locked state (§5.3).",
     ],

@@ -266,6 +266,33 @@ describe("registry cross-check", () => {
     });
   }
 
+  it("a rounded rect requires `cornerRadius`, and every other kind rejects it", () => {
+    expect(() =>
+      LayoutObjectSchema.parse({ ...frameBase, type: "shape", shape: "roundedRect" }),
+    ).toThrow();
+    expect(() =>
+      LayoutObjectSchema.parse({ ...frameBase, type: "shape", shape: "rect", cornerRadius: 0.2 }),
+    ).toThrow();
+    // A radius above the frame's own bound still PARSES — the bound belongs
+    // to drawing, so a resize that shrinks the frame cannot invalidate a
+    // stored document (ShapeObjectSchema's note).
+    const parsed = LayoutObjectSchema.parse({
+      ...frameBase,
+      type: "shape",
+      shape: "roundedRect",
+      cornerRadius: 99,
+    });
+    expect(parsed).toMatchObject({ shape: "roundedRect", cornerRadius: 99 });
+    expect(() =>
+      LayoutObjectSchema.parse({
+        ...frameBase,
+        type: "shape",
+        shape: "roundedRect",
+        cornerRadius: -1,
+      }),
+    ).toThrow();
+  });
+
   it("a path shape requires non-empty `d` and rect/ellipse reject it", () => {
     expect(() => LayoutObjectSchema.parse({ ...frameBase, type: "shape", shape: "path" })).toThrow();
     expect(() =>

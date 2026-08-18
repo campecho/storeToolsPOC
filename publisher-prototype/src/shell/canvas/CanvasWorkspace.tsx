@@ -171,15 +171,15 @@ export function CanvasWorkspace({
   }, []);
 
   // Cursor comes from the active tool's contract, under the dynamic pan /
-  // Space / zoom overrides that always win while they apply.
+  // Space / zoom overrides that always win while they apply. A running
+  // resize/rotate outranks the contract too: its handle is gone from the
+  // overlay for the duration, so the area carries that handle's cursor.
   const contractCursor = toolRegistry.find((t) => t.id === activeTool)?.cursor ?? "default";
   const cursor = panDrag
     ? "grabbing"
     : panning
       ? "grab"
-      : activeTool === "zoom"
-        ? "zoom-in"
-        : contractCursor;
+      : (gestures.handleCursor ?? (activeTool === "zoom" ? "zoom-in" : contractCursor));
   const origin = pageOriginPx(effective, vpSize, pageSize);
 
   // Ends the drag from pointerup and from the interrupt paths (pointercancel,
@@ -279,6 +279,7 @@ export function CanvasWorkspace({
           penDraft={activeTool === "pen" ? penAnchors : []}
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}
+          onShapeAdjustStart={gestures.beginShapeAdjust}
           onRotateStart={gestures.beginRotate}
         />
       </div>

@@ -1,8 +1,10 @@
 import type { LayoutObject, LineObject } from "../../core/model";
 import {
+  inEditRun,
   objectLockCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  roundedRectCornerRadiusCommitted,
   selectDocument,
   type FrameBox,
   type LineEndpoints,
@@ -15,7 +17,9 @@ import { NumberField } from "./NumberField";
  * transform group): precise numeric geometry entry over the same commit
  * vocabulary the canvas gestures use — X/Y/W/H through
  * object/resizeCommitted, angle (entry, ±90°, reset) through
- * object/rotateCommitted — so one panel commit is one history entry.
+ * object/rotateCommitted. Fields apply as they are typed and fold into one
+ * history entry per visit (the NumberField edit run); the buttons are
+ * discrete commits, one entry each.
  *
  * Numeric entry binds to a SINGLE selected object: the fields show that
  * object's frame box (a line shows its endpoint bounding box; its W/H
@@ -23,6 +27,10 @@ import { NumberField } from "./NumberField";
  * center (decision of record in SEAMS.md); lines carry no rotation and
  * show the angle controls disabled. Locking (§5.3) disables every
  * geometry control except the lock checkbox itself — the door out.
+ *
+ * Corner radius appears only for a rounded rectangle — the one shape kind
+ * that stores one — alongside the canvas adjust handle that sets the same
+ * value (roundedRect/cornerRadiusCommitted, one action either way).
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -112,16 +120,30 @@ export function TransformPanel({
   const rotation = isLine ? 0 : single.rotation;
   const locked = single.locked;
 
-  const commitBox = (next: Box): void => {
+  // `editRun` is the field's continuous-edit group; the ±90° and reset
+  // buttons pass none, so each of those stays its own history entry.
+  const commitBox = (next: Box, editRun?: string): void => {
     const boxes: Record<string, FrameBox | LineEndpoints> = {
       [single.id]: single.type === "line" ? lineEndpointsFor(single, next) : next,
     };
-    dispatch(objectResizeCommitted({ pageIndex, boxes }));
+    dispatch(inEditRun(objectResizeCommitted({ pageIndex, boxes }), editRun));
   };
 
-  const commitRotation = (deg: number): void => {
+  const commitCornerRadius = (radius: number, editRun?: string): void => {
     dispatch(
-      objectRotateCommitted({ pageIndex, rotations: { [single.id]: normalizeDegrees(deg) } }),
+      inEditRun(
+        roundedRectCornerRadiusCommitted({ pageIndex, ids: [single.id], radius }),
+        editRun,
+      ),
+    );
+  };
+
+  const commitRotation = (deg: number, editRun?: string): void => {
+    dispatch(
+      inEditRun(
+        objectRotateCommitted({ pageIndex, rotations: { [single.id]: normalizeDegrees(deg) } }),
+        editRun,
+      ),
     );
   };
 
@@ -134,7 +156,7 @@ export function TransformPanel({
           step={0.05}
           unit="in"
           disabled={locked}
-          onCommit={(x) => commitBox({ ...box, x })}
+          onCommit={(x, editRun) => commitBox({ ...box, x }, editRun)}
         />
         <NumberField
           label="Y"
@@ -142,7 +164,7 @@ export function TransformPanel({
           step={0.05}
           unit="in"
           disabled={locked}
-          onCommit={(y) => commitBox({ ...box, y })}
+          onCommit={(y, editRun) => commitBox({ ...box, y }, editRun)}
         />
       </div>
       <div className="field-row">
@@ -153,7 +175,7 @@ export function TransformPanel({
           step={0.05}
           unit="in"
           disabled={locked || (isLine && box.w === 0)}
-          onCommit={(w) => commitBox({ ...box, w })}
+          onCommit={(w, editRun) => commitBox({ ...box, w }, editRun)}
         />
         <NumberField
           label="H"
@@ -162,7 +184,7 @@ export function TransformPanel({
           step={0.05}
           unit="in"
           disabled={locked || (isLine && box.h === 0)}
-          onCommit={(h) => commitBox({ ...box, h })}
+          onCommit={(h, editRun) => commitBox({ ...box, h }, editRun)}
         />
       </div>
       <div className="field-row">
@@ -198,6 +220,17 @@ export function TransformPanel({
           Reset rotation
         </button>
       </div>
+      {single.type === "shape" && single.shape === "roundedRect" && (
+        <NumberField
+          label="Corner radius"
+          value={single.cornerRadius ?? 0}
+          min={0}
+          step={0.05}
+          unit="in"
+          disabled={locked}
+          onCommit={commitCornerRadius}
+        />
+      )}
       <label className="field">
         <input
           type="checkbox"

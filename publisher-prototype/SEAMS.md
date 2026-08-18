@@ -40,7 +40,8 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   superseding the POC v2 names — the registry is the prototype's contract, and v3
   owns the lineage it copied. Deferred as additive (no version bump when added):
   gradient/pattern `Paint` kinds (arrive with the fill/gradient tool) and parametric
-  rounded-corner storage (rounded-rect currently normalizes to a vector path).
+  rounded-corner storage — the latter has since landed, see **Parametric shape
+  storage** below.
 - **Line decorations (recorded 2026-08-18, user-ratified):** the arrow tool's
   contract (`creates: "line"` with head options) needs storage the v2 lineage's
   line lacked. Additive v3 delta on `LineObject`, no version bump per the additive
@@ -74,3 +75,59 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   width; null removes the stroke, ignored for schema-required line strokes) and
   `object/strokeWidthCommitted` (width; only where a stroke exists) so multi-object
   color application never homogenizes widths.
+- **Edit runs (recorded 2026-08-18, user decision):** panel numeric entry applies to
+  the document as it is typed — a value the canvas does not show is a value the user
+  cannot judge, and the fields previously held every edit until Enter or blur.
+  "One edit, one history entry" survives that as an EDIT RUN rather than as a
+  deferred commit: `NumberField` opens a run on its first commit of a visit, stamps
+  every commit in that visit with the run id (`inEditRun`, `core/store/history.ts`),
+  and history folds actions matching the newest entry's run into it instead of
+  stacking another. The run ends when the field is left or Enter is pressed — the
+  boundary is the interaction, never a timer — and undo/redo close it, so a
+  continuation can never reopen an entry the stack has stepped past. Run ids are
+  minted per run, not per field instance (a remounted field must not reuse one).
+  Consequence of record: Escape reverts to the run's starting value inside that same
+  run, so an abandoned edit leaves one entry whose snapshot and present agree —
+  undoing it is a visible no-op. Discrete controls (±90°, reset, lock, colour) pass
+  no run and stay one entry each, exactly as before.
+- **Selection frame (recorded 2026-08-18, user decision):** the selection chrome
+  HUGS its object — a lone object's frame drawn at that object's own rotation, in
+  solid stroke, with the 8 resize handles and the rotation stem riding that frame
+  rather than the axis-aligned box around it. The frame is one function,
+  `core/hittest`'s `selectionFrame`: a lone object contributes its own box and
+  rotation, every other selection (several objects, or a line, which carries no
+  rotation) falls back to the union AABB drawn unrotated. Resize scales in that
+  frame's own space and pins the grabbed anchor in document coordinates, so a
+  rotated object stretches along its own edges and does not shear — closing the
+  rotated-chrome and rotated-resize SME items together. Still open: a
+  multi-selection has no single rotation, so it scales on the document axes while
+  each rotated member keeps its angle, which does shear.
+- **Parametric shape storage (recorded 2026-08-18, user decision):** the rounded
+  rect stores its corner radius instead of baking it into a path — the additive v3
+  delta this file deferred, taken now because a radius nothing stores is a radius
+  no panel field and no adjust handle can drive. `shape` gains a `roundedRect`
+  kind carrying `cornerRadius` in INCHES and no `d`; the superRefine extends to
+  "each shape kind carries exactly its own geometry field". Konva rounds the
+  corners itself and hit-testing derives the outline from box + radius, so the
+  corners stay circular arcs through any resize rather than shearing into
+  ellipses the way a normalized path did. The stored radius is NOT clamped: a
+  resize can shrink a frame under a radius the user set, so the geometric bound
+  (half the shorter side, per the roundedRect contract's note) is applied
+  wherever the shape is drawn, and growing the frame back restores the radius
+  rather than losing it. One action serves both surfaces —
+  `roundedRect/cornerRadiusCommitted`, a gesture clause the Transform panel
+  reuses, per the panel-commit rule above. The other path shapes (star, callout,
+  banner, flowchart) still bake their options at draw time and keep their
+  adjust-handle clauses unwired; `drawShapeMachine`'s `DrawnShapeGeometry` union
+  is where each joins when its turn comes.
+- **Handle cursors (recorded 2026-08-18, user decision):** each handle shows the
+  direction it stretches, turning with the frame — `core/gestures`'
+  `resizeHandleAxis` snaps the handle's heading plus the frame's rotation to the
+  nearest eighth turn, and the shell (`shell/canvas/cursors.ts`) names the CSS
+  keyword. Rotation has no cursor keyword, so the knob carries a drawn glyph
+  inlined as an SVG data URI — a NEW PATTERN here, taken because the built-in
+  candidates are already spoken for (`grab` is this app's pan cursor) or mean
+  something else (`alias` = make a shortcut). The glyph turns and snaps the same
+  way. A running resize/rotate joins the workspace's cursor override chain,
+  because the preview replaces the chrome mid-gesture (§6.3) and takes the
+  hovered handle's cursor with it.

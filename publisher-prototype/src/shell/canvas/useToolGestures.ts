@@ -10,14 +10,18 @@ import {
   drawBoundsMachine,
   drawLineMachine,
   drawLineMachineFor,
-  drawPathMachine,
+  calloutTailMachine,
+  cornerRadiusMachine,
+  drawShapeMachine,
   finishPenDraft,
   marqueeMachine,
   moveMachine,
   penMachine,
+  resizeAnchor,
   resizeMachine,
   rotateMachine,
   slopInInches,
+  starInnerRadiusMachine,
   type GestureContext,
   type GestureMachine,
   type GestureModifiers,
@@ -25,9 +29,10 @@ import {
   type GesturePreview,
   type ResizeHandle,
 } from "../../core/gestures";
-import { hitTestPoint, selectionAabb, type Rect } from "../../core/hittest";
+import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
+import { resizeCursor, rotateCursor } from "./cursors";
 import {
   arrowDrawCommitted,
   gestureCancelled,
@@ -43,7 +48,7 @@ import {
 import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
 import { createObjectId } from "../objectId";
-import { PATH_TOOL_CONFIGS } from "../pathTools";
+import { SHAPE_TOOL_CONFIGS } from "../shapeTools";
 import {
   drawStyleFromOptions,
   lineExtrasFromOptions,
@@ -126,24 +131,6 @@ function clickSession(
   };
 }
 
-/** The scaling origin the resize machine expects: the handle opposite the
-    dragged one on the initial selection AABB — corner for corner handles,
-    edge midpoint for edge handles. */
-function resizeAnchor(handle: ResizeHandle, bounds: Rect): GesturePoint {
-  return {
-    x: handle.includes("w")
-      ? bounds.x + bounds.w
-      : handle.includes("e")
-        ? bounds.x
-        : bounds.x + bounds.w / 2,
-    y: handle.includes("n")
-      ? bounds.y + bounds.h
-      : handle.includes("s")
-        ? bounds.y
-        : bounds.y + bounds.h / 2,
-  };
-}
-
 const ARROW_DELTAS: Record<string, readonly [number, number]> = {
   ArrowLeft: [-1, 0],
   ArrowRight: [1, 0],
@@ -176,6 +163,11 @@ export type ToolGestures = {
   preview: GesturePreview | null;
   /** True while any gesture session runs (wheel input is dropped, like pan). */
   active: boolean;
+  /** The cursor of the handle a resize/rotate started from, held for the whole
+      gesture; null otherwise. The preview replaces the chrome the moment a
+      gesture runs (§6.3), taking the hovered handle — and its cursor — with
+      it, so the workspace flies this one until the gesture ends. */
+  handleCursor: string | null;
   onPointerDown(e: React.PointerEvent<HTMLDivElement>): void;
   onPointerMove(e: React.PointerEvent<HTMLDivElement>): void;
   /** pointerup / pointercancel / lostpointercapture — idempotent. */
@@ -185,6 +177,11 @@ export type ToolGestures = {
   onDoubleClick(): void;
   beginResize(handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void;
   beginRotate(e: React.PointerEvent<SVGElement>): void;
+  /** The adjust-handle clause the selected shape's kind owns — corner
+      radius, star inner radius, or callout tail. No-op unless the selection
+      is exactly one unlocked shape of an adjustable kind, which is also the
+      only case the handle is drawn for. */
+  beginShapeAdjust(e: React.PointerEvent<SVGElement>): void;
 };
 
 export function useToolGestures(args: ToolGestureArgs): ToolGestures {
@@ -192,6 +189,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const sessionRef = useRef<Session | null>(null);
   const [preview, setPreview] = useState<GesturePreview | null>(null);
   const [active, setActive] = useState(false);
+  const [handleCursor, setHandleCursor] = useState<string | null>(null);
   // Latest args for the natively-attached keyboard listener (frameRef pattern).
   const argsRef = useRef(args);
   argsRef.current = args;
@@ -224,6 +222,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     if (session.dragged()) args.suppressClickRef.current = true;
     setActive(false);
     setPreview(null);
+    setHandleCursor(null);
   };
 
   const selectedObjects = (): LayoutObject[] =>
@@ -350,18 +349,19 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       );
       return;
     }
-    const pathConfig = PATH_TOOL_CONFIGS[activeTool];
-    if (pathConfig !== undefined) {
+    const shapeConfig = SHAPE_TOOL_CONFIGS[activeTool];
+    if (shapeConfig !== undefined) {
       begin(
         machineSession(
-          drawPathMachine(pathConfig.creator),
+          drawShapeMachine(shapeConfig.creator),
           point,
           {
             pageIndex,
             zoom,
             style: drawStyleFromOptions(toolOptions, activeTool),
             idFactory: createObjectId,
-            pathForBox: (box) => pathConfig.pathForBox(toolOptions, box),
+            geometryForBox: (box: { x: number; y: number; w: number; h: number }) =>
+              shapeConfig.geometryForBox(toolOptions, box),
           },
           dispatch,
         ),
@@ -411,8 +411,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginResize = (handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const bounds = selectionAabb(selection);
-    if (bounds === null) return;
+    const frame = selectionFrame(selection);
+    if (frame === null) return;
     const initial: Record<string, FrameBox | LineEndpoints> = {};
     for (const obj of selection) {
       initial[obj.id] =
@@ -421,6 +421,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           : { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
     }
     e.stopPropagation();
+    setHandleCursor(resizeCursor(handle, frame.rotation));
     begin(
       machineSession(
         resizeMachine,
@@ -429,8 +430,9 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           pageIndex: args.pageIndex,
           zoom: args.viewport.zoom,
           handle,
-          anchor: resizeAnchor(handle, bounds),
-          bounds,
+          anchor: resizeAnchor(handle, frame.box),
+          bounds: frame.box,
+          rotation: frame.rotation,
           initial,
         },
         dispatch,
@@ -442,8 +444,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginRotate = (e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const bounds = selectionAabb(selection);
-    if (bounds === null) return;
+    const frame = selectionFrame(selection);
+    if (frame === null) return;
     // Lines carry no rotation field — the rotate ctx excludes them per the
     // machine's contract; an all-line selection starts no rotate at all.
     const initialRotations: Record<string, number> = {};
@@ -452,6 +454,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     }
     if (Object.keys(initialRotations).length === 0) return;
     e.stopPropagation();
+    setHandleCursor(rotateCursor(frame.rotation));
     begin(
       machineSession(
         rotateMachine,
@@ -459,13 +462,57 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
         {
           pageIndex: args.pageIndex,
           zoom: args.viewport.zoom,
-          pivot: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
+          pivot: framePivot(frame.box),
           initialRotations,
         },
         dispatch,
       ),
       e.pointerId,
     );
+  };
+
+  const beginShapeAdjust = (e: React.PointerEvent<SVGElement>): void => {
+    if (e.button !== 0 || args.panning || sessionRef.current) return;
+    const selection = selectedObjects();
+    const only = selection.length === 1 ? selection[0] : undefined;
+    if (only === undefined || only.type !== "shape" || only.locked) return;
+    const shared = {
+      pageIndex: args.pageIndex,
+      zoom: args.viewport.zoom,
+      id: only.id,
+      frame: { x: only.x, y: only.y, w: only.w, h: only.h },
+      rotation: only.rotation,
+    };
+    // Each adjustable kind starts its own machine off the same handle; a kind
+    // with nothing to adjust never drew one to press.
+    const session =
+      only.shape === "roundedRect"
+        ? machineSession(
+            cornerRadiusMachine,
+            toDoc(e),
+            { ...shared, initialRadius: only.cornerRadius ?? 0 },
+            dispatch,
+          )
+        : only.shape === "starPolygon"
+          ? machineSession(
+              starInnerRadiusMachine,
+              toDoc(e),
+              {
+                ...shared,
+                initialRatio: only.innerRadiusRatio ?? 0.5,
+                points: only.points ?? 5,
+              },
+              dispatch,
+            )
+          : only.shape === "callout"
+            ? machineSession(calloutTailMachine, toDoc(e), shared, dispatch)
+            : null;
+    if (session === null) return;
+    e.stopPropagation();
+    // Adjust handles drag along the shape, so they wear the frame's own
+    // horizontal cursor rather than a page-axis one.
+    setHandleCursor(resizeCursor("e", only.rotation));
+    begin(session, e.pointerId);
   };
 
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
@@ -485,6 +532,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           argsRef.current.suppressClickRef.current = true;
           setActive(false);
           setPreview(null);
+          setHandleCursor(null);
           return;
         }
         const { activeTool, penAnchors } = argsRef.current;
@@ -556,6 +604,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   return {
     preview,
     active,
+    handleCursor,
+    beginShapeAdjust,
     onPointerDown,
     onPointerMove,
     onPointerEnd,

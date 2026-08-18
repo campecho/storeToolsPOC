@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LineObject, ShapeObject } from "../model";
-import { objectAabb, selectionAabb } from "./aabb";
+import { objectAabb, selectionAabb, selectionFrame } from "./aabb";
 
 function shapeRect(id: string, over: Partial<ShapeObject> = {}): ShapeObject {
   return {
@@ -70,5 +70,38 @@ describe("selectionAabb", () => {
 
   it("is null for an empty selection", () => {
     expect(selectionAabb([])).toBeNull();
+  });
+});
+
+describe("selectionFrame", () => {
+  it("hugs a lone object: its own box at its own rotation", () => {
+    expect(selectionFrame([shapeRect("r", { rotation: 30 })])).toEqual({
+      box: { x: 1, y: 1, w: 2, h: 1 },
+      rotation: 30,
+    });
+  });
+
+  it("falls back to the union AABB, unrotated, for several objects", () => {
+    const frame = selectionFrame([
+      shapeRect("a", { x: 0, y: 0, w: 1, h: 1 }),
+      shapeRect("b", { rotation: 90 }),
+    ]);
+    // b's rotated corners bound (1.5,0.5,1,2), unioned with a's unit square.
+    expect(frame?.rotation).toBe(0);
+    expect(frame?.box.x).toBeCloseTo(0, 6);
+    expect(frame?.box.y).toBeCloseTo(0, 6);
+    expect(frame?.box.w).toBeCloseTo(2.5, 6);
+    expect(frame?.box.h).toBeCloseTo(2.5, 6);
+  });
+
+  it("uses the endpoint AABB for a lone line, which carries no rotation", () => {
+    expect(selectionFrame([line("l")])).toEqual({
+      box: { x: 0.5, y: 0.5, w: 1.5, h: 1.5 },
+      rotation: 0,
+    });
+  });
+
+  it("is null for an empty selection", () => {
+    expect(selectionFrame([])).toBeNull();
   });
 });
