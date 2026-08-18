@@ -2,7 +2,7 @@
 
 **Document type:** Implementation plan (standalone application)
 **Status:** Draft v2.3 — plan of record
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-18
 **Source of truth:** [`docs/microsoft_publisher_feature_requirements.md`](docs/microsoft_publisher_feature_requirements.md)
 (§1–§14) — **committed in this directory** so every § citation resolves inside the handoff
 **Relationship to `storeToolsPOC`:** **reference implementation only.** The model is a
@@ -382,7 +382,7 @@ stable over a 30-minute session.
 
 | Layer | Technology | Redraw cadence |
 |---|---|---|
-| **Furniture** — pasteboard, page fill/shadow, bleed, margins, column guides, slug | **Canvas** (Konva, cached) | Page-setup or zoom change only |
+| **Furniture** — pasteboard, page fill/shadow, bleed, margins (mirrored under facing binding), column guides, slug, spine | **Canvas** (Konva, cached) | Page-setup, binding, or zoom change only |
 | **Content** — objects, text, images, master furniture beneath | **Canvas** (Konva) | Document mutation; `batchDraw` per frame |
 | **Overlay** — selection frame + 8 handles, marquee, snap guides, node handles, overflow badges | **SVG** | Interaction rate |
 | **Text editing** | **DOM** overlay (§6.4 phasing) | Only while editing |
@@ -396,6 +396,11 @@ in sync is applying zoom/pan to the SVG `viewBox`.
 Coordinates are canonical **inches, zoom-independent**, with zoom as `stage.scale` and
 pan as `stage.position`, so every snap and geometry calculation is render-agnostic pure
 math. Photo mode runs the same stage in pixel space with the same overlay pattern.
+
+**The canvas's display unit is the spread, not the page** (§6.8). Under single-page
+binding a spread is one page and nothing changes; under facing binding the stage draws
+both pages and the spine together, and object coordinates are spread-relative — which is
+what lets an object cross the spine and stay one object (§1.2).
 
 ### 6.3 State — Redux Toolkit
 
@@ -560,6 +565,8 @@ What v3 carries beyond the v2 lineage, each delta pulled in by a named consumer:
 | **Text wrap** | Text engine (§3.4) | `wrap: { mode, distance, boundary? }` on objects — consumed by the line breaker as exclusion geometry (why wrap belongs to the text tranche, not shapes) |
 | **Picture adjust** | Image panel / photo mode (§6.5) | `adjust: PhotoOp[]` + in-frame crop transform; single-image documents for standalone photo |
 | **Document setup** | Setup panel (§1.4) | `slug` joins trim/bleed as first-class; per-page/per-spread setup values; baseline-grid settings; per-page guides |
+| **Spreads & binding** | Pages panel (§1.2), Setup panel (§1.4) | `doc.binding: 'single' \| 'facing'`. Spread membership is **derived from page order, never stored** (§6.8); `page.keepWithPrevious?: true` extends the preceding spread for gatefolds and island spreads |
+| **Mirrored margins** | Setup panel (§1.4), spread furniture (§6.2) | optional per-edge `margins: { top, bottom, inside, outside }` overriding the scalar `margin`; `inside`/`outside` resolve to left/right by each page's side within its spread |
 | **Fonts** | Resource manager, PDF seam | `doc.fonts: [{ family, source, axes?, embeddingPermitted }]` |
 | **Threading (activate)** | Link tool (§3.2) | `storyId/prevFrameId/nextFrameId` in the lineage — the editor finally consumes them |
 
@@ -587,6 +594,76 @@ Dependencies: `react`, `react-dom`, `@reduxjs/toolkit`, `react-redux`, `konva`,
 `react-konva`, `zod`, `harfbuzzjs`, a UAX-14 line-break package, hyphenation patterns,
 npm font packages. All MIT/BSD/OFL-class; verified in T0. Everything declared in the
 directory's own manifest — the §0 boundary check enforces it.
+
+### 6.8 Pages and spreads — display and controls
+
+§1.2 asks for facing-page documents that "look and behave the way the finished, folded
+piece will read." That spans the schema, the canvas, and two panels, so the pairing rules
+live here once and the other sections cite them. Everything in this section is **LIVE** —
+it is all in-memory document state and canvas display. The one adjacent SURFACE is
+export's reader-spreads-vs-single-trim-pages choice (§11.1), which reads this model but
+does not belong to it.
+
+**The pairing rules.** Spread membership is a **pure function of page order and the
+binding flag, recomputed on every insert, delete, duplicate, and reorder** — never stored.
+That is the whole reason the derived model was chosen over an explicit spread array: a
+stored grouping can drift out of sync with page order, and §1.2 requires that duplication
+and reordering preserve page-level state rather than quietly corrupt it.
+
+1. Under `binding: 'single'`, every page is its own spread. This is the default, and
+   nothing else in this section applies.
+2. Under `binding: 'facing'`, the **first page sits alone on the recto**; pages 2–3, 4–5,
+   and so on pair. A page's side within its spread (verso/recto) follows from its index.
+3. `page.keepWithPrevious` appends a page to the preceding spread instead of starting a
+   new pair, and consecutive flags extend it further — this is how §1.2's "island or
+   multi-page spreads for gatefolds and multi-panel pieces" are expressed, without a
+   second addressing scheme competing with page index.
+4. Changing binding after creation is permitted (§1.2) and is **one gesture, one history
+   entry** (§6.3) — it repaginates the whole document, so it must undo in one step.
+
+**Display (canvas).** The stage draws a spread as one surface: both pages, their
+furniture, and the **spine** between them (§6.2's furniture layer). Objects are
+spread-relative, so one may cross the spine and remain a single object — §1.2 requires it
+to "export and print as one continuous object, without a seam," which is a property of the
+model here and of the dev team's output path, not of two glued page renders. The
+pasteboard is **scoped to the spread**, so staged assets travel with the spread they were
+parked beside — §2.5 says "per page or spread … as configured," and this picks the spread
+half of it for the same reason §4.3 picks document-scoped layers: the model must choose one
+and say so. §2.5's *shared* document-wide asset area is not decided here and remains open.
+Mixed page sizes within one spread are legal (§1.2, §1.4): each page keeps its own
+`sizeOverride` and the spread's extent is their union.
+*ASSUMPTION: pages of unequal size in one spread align on their top edges — the standing
+§0.1 rule applies, so this is flagged for SME validation and must not read as a decision.*
+
+**Display (Pages panel, §1.2).** Thumbnails render "as spreads … not as unrelated single
+pages," with the spine drawn and mixed sizes visible at their true relative proportions.
+Two behaviors carry real weight:
+
+- **Pairing-shift preview.** Adding or removing a page in a facing document reshuffles
+  every downstream pair. §1.2 requires the tool to "make this shift visible before it is
+  committed," so the panel previews the new pairing on the pending operation and commits
+  only on confirmation. Drag-reorder previews the same way.
+- **Page rotation is authoring-only.** A rotated page displays rotated for editing while
+  its true output orientation is preserved and independently inspectable (§1.4). The
+  navigation pane shows the output orientation, not the authoring rotation.
+
+**Controls.** No new panel — the surfaces already registered in §4.3 carry these, and this
+section is their contract:
+
+| Control | Panel | Req |
+|---|---|---|
+| Binding toggle (single/facing), changeable after creation | Document setup | §1.2 |
+| Mirrored margins — left/right fields become **inside/outside** under facing binding | Document setup | §1.2, §1.4 |
+| `keepWithPrevious` — "join to previous spread," for gatefolds and island spreads | Pages | §1.2 |
+| Add · insert before/after · delete · duplicate · drag-reorder, with pairing preview | Pages | §1.2 |
+| Per-page and per-spread setup overrides in mixed-size documents | Document setup | §1.4 |
+| Spread-scoped pasteboard extent | Document setup | §2.5 |
+
+**Consumers already waiting on this.** Sections and numbering resolve page labels against
+page order, not spread membership (§1.5) — binding changes must not renumber. The design
+checker reads it for booklet-incompatible page counts and for objects straddling the spine
+or the page/pasteboard boundary (§10.1). Booklet imposition (§9.5) and export's
+reader-spread option (§11.1) are SURFACE settings that consume the same model.
 
 ---
 
@@ -667,6 +744,18 @@ other context. Inside it:
 2. **Photo toolset rebuilt in-app** — one engine, three shapes, one recipe vocabulary;
    photo/layout is a mode switch over shared state (§6.5).
 3. **Fully client-side** — every process-boundary operation is a SURFACE seam (§6.7).
+
+**Closed after v2.3 (recorded 2026-08-18, user-ratified):**
+
+1. **Spread model — derived, with an override flag.** `doc.binding` plus
+   `page.keepWithPrevious`; membership recomputed from page order, never stored (§6.8).
+   Rejected: a stored `doc.spreads[]` array, which adds a second addressing scheme that
+   must be kept in sync on every page operation.
+2. **Mirrored margins — additive per-edge override.** The scalar `margin` stays the
+   default; an optional `margins: { top, bottom, inside, outside }` wins where present
+   (§6.6). Additive, so no version bump — the discipline already recorded in `SEAMS.md`.
+   Rejected: deriving inside/outside at render time, which cannot express the wider
+   inside margin that is the point of mirrored margins.
 
 **Carried closed from v2.2:** Redux Toolkit · shaping-engine text with the
 `PositionedGlyphRun` contract · shape presentation both ways behind a toggle · JSON
