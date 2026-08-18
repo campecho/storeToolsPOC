@@ -203,12 +203,7 @@ This is the product's primary wedge. Requirements:
 
 ## 8. Enterprise & IT considerations
 *(Designed as explicit advantages over the current Affinity/Canva model.)*
-- **Licensing:** perpetual / owned licensing option; no mandatory third-party account; no recurring online entitlement check required for core use.
-- **Deployment:** centralized mass deployment and management for IT. *(Specific mechanism depends on the delivery model — e.g., managed installers with MDM/Group Policy for a native app, or tenant/admin provisioning for a web-based app.)*
-- **Volume licensing** with centralized admin and seat management.
-- **Security & compliance roadmap:** target SOC 2 Type II and ISO 27001; documented data-handling (local-first, no forced cloud upload).
-- **Support & SLA tiers** for enterprise customers.
-- **Microsoft 365 fit:** smooth interop with the existing Office ecosystem (Word/RTF/Excel import, OneDrive/SharePoint file access).
+- **Security & compliance roadmap:** documented data-handling (local-first, no forced cloud upload).
 - **Business continuity:** published native format spec and export guarantees so customers are never locked out of their own documents.
 
 ---
