@@ -240,6 +240,17 @@ const BANNER_NOTCH = 0.125;
     so a share of the width would stretch them into a dome. */
 const BANNER_CORNER = 0.14;
 
+/** How far a fold reaches in from the panel's side edge, as a fraction of the
+    frame's WIDTH. Like the notch it is an absolute bite rather than a share of
+    the inset — measured 0.124 and 0.127 across the two references, whose
+    insets are 0.16 and 0.25. (That it lands on the notch's value too is what
+    the references show, not a constant shared on purpose.) */
+const BANNER_FOLD = 0.125;
+
+/** The radius of the one corner a fold rounds, as a fraction of the fold's own
+    height. */
+const BANNER_FOLD_ROUND = 0.4;
+
 export function clampBannerInset(inset: number): number {
   return Math.min(BANNER_INSET_MAX, Math.max(BANNER_INSET_MIN, inset));
 }
@@ -254,10 +265,11 @@ export function clampBannerHeight(height: number): number {
 function bannerParts(inset: number, height: number, w: number, h: number) {
   const x0 = clampBannerInset(inset);
   const panelBottom = clampBannerHeight(height);
-  const foldBottom = panelBottom + (1 - panelBottom) * 0.9;
   // Bounded by the panel it rounds, so a squat or narrow panel keeps a
   // drawable corner instead of overrunning its own edges.
   const radius = Math.min(BANNER_CORNER * Math.min(w, h), ((1 - 2 * x0) * w) / 2, panelBottom * h);
+  // The fold's corner, likewise bounded by the fold it rounds.
+  const foldRadius = Math.min(BANNER_FOLD_ROUND * (1 - panelBottom) * h, BANNER_FOLD * w);
   return {
     x0,
     x1: 1 - x0,
@@ -271,26 +283,25 @@ function bannerParts(inset: number, height: number, w: number, h: number) {
         BANNER_HEIGHT_MIN keeps that overlap: below half, the bands would
         part and leave the ribbon in two pieces. */
     tailTop: 1 - panelBottom,
-    /** The folds hang nearly the whole way down the tail band, tucking the
-        panel into it and stopping just short of its bottom edge. */
-    foldBottom,
     /** The V bites a fixed share of the frame, floored by the tail it cuts so
         a narrow tail keeps a sliver of body rather than being cut through. */
     notch: Math.min(BANNER_NOTCH, x0 * 0.85),
-    foldWidth: x0 * 0.65,
+    foldWidth: BANNER_FOLD,
     /** The panel's top corner radius, one radius per axis. */
     roundX: w > 0 ? radius / w : 0,
     roundY: h > 0 ? radius / h : 0,
-    /** How far the roll each fold ends in bulges below its shoulder. */
-    foldDrop: (foldBottom - panelBottom) * 0.25,
+    /** The fold's corner radius, the same one-radius-per-axis treatment. */
+    foldRoundX: w > 0 ? foldRadius / w : 0,
+    foldRoundY: h > 0 ? foldRadius / h : 0,
   };
 }
 
 /**
  * Ribbon banner: a raised centre panel with rounded top corners, two tails
  * running the full width beneath it and notched at their ends, and a fold
- * tucking each of the panel's bottom corners into the band — the PowerPoint
- * ribbon the review supplied, driven by `panelInset` and `panelHeight`.
+ * carrying the ribbon out from behind each of the panel's bottom corners —
+ * the PowerPoint ribbon the review supplied, driven by `panelInset` and
+ * `panelHeight`.
  *
  * FIVE subpaths, not one, which breaks the single-ring shape every other
  * builder here returns. It has to: the folds and the panel's bottom edge read
@@ -305,35 +316,31 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
   const ky = KAPPA * p.roundY;
   const tailMid = (p.tailTop + 1) / 2;
   const fold = (from: number, to: number): PathSeg[] => {
-    // A tongue hanging off the panel's bottom corner and ending in a roll: a
-    // shallow half-ellipse across its full width, the way a ribbon's cut end
-    // curls. Signed half-width, so the mirrored fold traces the same way.
-    const mid = (from + to) / 2;
-    const arm = (KAPPA * (to - from)) / 2;
-    const drop = KAPPA * p.foldDrop;
-    const shoulder = p.foldBottom - p.foldDrop;
+    // The ribbon coming out from behind the panel: a bar the full depth of the
+    // tail band, running IN from the panel's side edge to where it disappears
+    // under the panel. Three corners are square — the outer two continue the
+    // tail's own edges — and the INNER bottom one is round, the curl that
+    // makes the fold read as ribbon turning away rather than a block.
+    //
+    // `from` is the panel's side edge and `to` the inward end, so the x offset
+    // is signed and the mirrored fold traces the same way round.
+    const rx = Math.sign(to - from) * p.foldRoundX;
+    const kx = KAPPA * rx;
+    const ky = KAPPA * p.foldRoundY;
     return [
       { c: "M", x: from, y: p.panelBottom },
       { c: "L", x: to, y: p.panelBottom },
-      { c: "L", x: to, y: shoulder },
+      { c: "L", x: to, y: 1 - p.foldRoundY },
       {
         c: "C",
         x1: to,
-        y1: shoulder + drop,
-        x2: mid + arm,
-        y2: p.foldBottom,
-        x: mid,
-        y: p.foldBottom,
+        y1: 1 - p.foldRoundY + ky,
+        x2: to - rx + kx,
+        y2: 1,
+        x: to - rx,
+        y: 1,
       },
-      {
-        c: "C",
-        x1: mid - arm,
-        y1: p.foldBottom,
-        x2: from,
-        y2: shoulder + drop,
-        x: from,
-        y: shoulder,
-      },
+      { c: "L", x: from, y: 1 },
       { c: "Z" },
     ];
   };

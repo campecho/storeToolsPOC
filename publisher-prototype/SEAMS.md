@@ -448,3 +448,18 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   size, the only builder besides the rounded rect that needs it.
   `BANNER_HEIGHT_MIN` exists to hold the mirror together: below half, panel and
   band would part and leave the ribbon in two pieces.
+  **Amended (same day, review of a zoomed reference):** the FOLD was wrong in
+  shape, not just in size — it hung as a vertical tab ending in a half-ellipse
+  across its bottom. It is a horizontal bar: it runs IN from the panel's side
+  edge by a fixed share of the frame (0.125, the same bite the notch takes, as
+  the captures happen to show and not by shared constant), it reaches the
+  frame's BOTTOM rather than stopping short of it, and only its INNER bottom
+  corner is round — the curl that reads as ribbon turning away under the panel.
+  Its other three corners are square on purpose: the outer two continue the
+  tail's own edges, so fold and tail share one unbroken bottom line, which is
+  what makes the ribbon read as one strip passing behind the panel.
+  Not drawn: the reference SHADES the roll's underside a darker tone, and that
+  shading is a second ring nested inside the fold. Ours cannot have it — every
+  ring here is filled with the object's one fill, and a nested ring would punch
+  a hole under even-odd, which is the rule hit testing walks. The silhouette is
+  what the prototype can honestly draw.

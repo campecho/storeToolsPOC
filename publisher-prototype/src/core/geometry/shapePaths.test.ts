@@ -71,6 +71,37 @@ function hasVertexNear(segs: readonly PathSeg[], x: number, y: number): boolean 
   return vertices(segs).some(([vx, vy]) => Math.abs(vx - x) < 1e-9 && Math.abs(vy - y) < 1e-9);
 }
 
+/** Split a multi-ring path at its M commands — the banner is the one builder
+    that emits more than one, so its rings are addressed by position. */
+function subpaths(segs: readonly PathSeg[]): PathSeg[][] {
+  const rings: PathSeg[][] = [];
+  for (const seg of segs) {
+    if (seg.c === "M") rings.push([]);
+    rings[rings.length - 1]?.push(seg);
+  }
+  return rings;
+}
+
+/** One segment of a ring, narrowed to the command it must be. M and L share a
+    schema variant, so they share a getter. */
+function pointAt(
+  ring: PathSeg[] | undefined,
+  index: number,
+  command: "M" | "L",
+): Extract<PathSeg, { c: "M" | "L" }> {
+  const seg = ring?.[index];
+  if (seg === undefined || seg.c !== command) {
+    throw new Error(`expected ${command} at ${index}, got ${seg?.c}`);
+  }
+  return seg;
+}
+
+function cubicAt(ring: PathSeg[] | undefined, index: number): Extract<PathSeg, { c: "C" }> {
+  const seg = ring?.[index];
+  if (seg?.c !== "C") throw new Error(`expected C at ${index}, got ${seg?.c}`);
+  return seg;
+}
+
 describe("roundedRectPath", () => {
   it("emits a closed subpath fully inside the unit box", () => {
     expectClosedNormalizedSubpath(roundedRectPath(0.2, 0.3));
@@ -294,19 +325,35 @@ describe("bannerPath", () => {
     expect(squareCorner.x - 0.2).toBeCloseTo(squareStart.y);
   });
 
-  it("ends each fold in a roll centred on it, tucked above the tails", () => {
-    const segs = banner(0.2, 0.6);
-    const foldBottom = 0.6 + (1 - 0.6) * 0.9;
-    // The roll's low point is a cubic endpoint — one per fold, centred across
-    // the fold's width because the roll is a half-ellipse over it.
-    const isCubic = (s: PathSeg): s is Extract<PathSeg, { c: "C" }> => s.c === "C";
-    const rolls = segs.filter(isCubic).filter((s) => Math.abs(s.y - foldBottom) < 1e-9);
-    expect(rolls).toHaveLength(2);
-    expect(rolls[0]?.x).toBeCloseTo(0.2 + (0.2 * 0.65) / 2);
-    expect(rolls[1]?.x).toBeCloseTo(0.8 - (0.2 * 0.65) / 2);
-    // The tails still run to the frame's bottom edge; only the folds stop short.
-    expect(hasVertex(segs, 0, 1)).toBe(true);
-    expect(foldBottom).toBeLessThan(1);
+  it("runs each fold in from the panel's edge to the frame's bottom, curling only its inner corner", () => {
+    const [, , , left, right] = subpaths(banner(0.2, 0.6));
+    // A fixed reach in from the panel's side edge, like the notch — not a
+    // share of the inset.
+    const inner = 0.2 + 0.125;
+    // 0.4 of the fold's own height, as one radius normalized per axis.
+    const ry = 0.4 * (1 - 0.6);
+    expect(left?.[0]).toEqual({ c: "M", x: 0.2, y: 0.6 });
+    const top = pointAt(left, 1, "L");
+    expect(top.x).toBeCloseTo(inner);
+    expect(top.y).toBeCloseTo(0.6);
+    // Down the inner edge, then one cubic curling onto the bottom edge.
+    const shoulder = pointAt(left, 2, "L");
+    expect(shoulder.x).toBeCloseTo(inner);
+    expect(shoulder.y).toBeCloseTo(1 - ry);
+    const curl = cubicAt(left, 3);
+    expect(curl.y).toBe(1);
+    expect(curl.x).toBeLessThan(inner);
+    // Circular, the same treatment the panel's corners get: the corner spans
+    // the same distance in inches across as it does down.
+    expect((inner - curl.x) * W).toBeCloseTo((1 - shoulder.y) * H);
+    // Square where it meets the tail, so the two share one bottom edge.
+    expect(left?.[4]).toEqual({ c: "L", x: 0.2, y: 1 });
+    expect(left?.[5]).toEqual({ c: "Z" });
+    // The right fold is the mirror of it.
+    expect(right?.[0]).toEqual({ c: "M", x: 0.8, y: 0.6 });
+    expect(pointAt(right, 1, "L").x).toBeCloseTo(0.8 - 0.125);
+    expect(cubicAt(right, 3).x).toBeGreaterThan(0.8 - 0.125);
+    expect(right?.[4]).toEqual({ c: "L", x: 0.8, y: 1 });
   });
 
   it("clamps both parameters into their ranges", () => {
