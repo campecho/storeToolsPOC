@@ -248,3 +248,40 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   frame (dashed, faded) when the selection IS exactly one group's membership,
   which `selectedGroupId` decides. A group with a locked member still counts as
   fully selected: no selection can ever contain that member.
+- **Delete (recorded 2026-08-19, user decision):** Delete/Backspace removes the
+  selection — `object/deleteCommitted`, a gesture clause on the select tool, one
+  keypress and one history entry like the nudge and group commands beside it.
+  Locked objects are KEPT: a lock exists to refuse exactly this, and the reducer
+  skipping them matches every other commit. The selection slice prunes the deleted
+  ids (the pruning its own note said would "arrive with it"), so no chrome outlives
+  the object it framed, and an emptied selection also leaves whatever group it was
+  inside. Groups nothing sits in any more are dropped with the objects: an empty
+  group can be neither selected nor entered, so keeping it only gives the
+  round-trip something to carry. Backspace preventDefaults whether or not anything
+  was selected — some browsers still navigate back on it, and "nothing selected" is
+  no reason to leave the page.
+- **Shape presentation settled (recorded 2026-08-19, prototype review):** PLAN.md
+  §4.1 held both dock renderings — individual slots and a single slot with a flyout
+  — behind a debug-bar toggle, with the note that "the prototype review picks the
+  winner". It picked **individual slots**. The flyout rendering, its toggle and its
+  spec are gone rather than left unreachable, and §4.1 now records the closed
+  decision instead of describing a choice. Precedent worth keeping: a "decision
+  closed as both" is a decision deferred, and the prototype is where it comes due.
+- **A lone line is two points (recorded 2026-08-19, user decision):** the selection
+  chrome for a single line is its two ENDPOINT handles and no frame — dragging one
+  moves that end and leaves the other anchored (`select.drag-endpoint.moves-endpoint`,
+  `core/gestures/lineEndpoint.ts`). Boxing a line in eight stretch handles was
+  treating it as an object it is not; the POC's `SelectionOverlay` has always drawn
+  exactly these two handles for a line, and this brings the prototype to it.
+  The endpoint drag needs no vocabulary of its own: it commits
+  `object/resizeCommitted` carrying this line's endpoints, which the store already
+  speaks, and previews through the resize arm that already draws endpoints as a
+  line. Shift snaps the segment to 45° about the anchor — the same constraint the
+  line tool draws under, because placing an endpoint is the same act whether the
+  line is new or not. The drag applies TRAVEL, not pointer position, so pressing a
+  few thousandths off the handle's centre never jumps the endpoint.
+  The rotation handle STAYS on a lone line (user decision, narrowing the 2026-08-19
+  rigid-rotation entry rather than reversing it): turning the whole segment about
+  its midpoint is a different act from moving one end, and both are now reachable.
+  Inside a multi-selection a line rejoins the union frame and scales and turns with
+  the rest — that is what makes grouped rotation correct, and it is untouched.
