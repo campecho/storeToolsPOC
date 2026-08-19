@@ -482,3 +482,19 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   §4.4 of the requirements digest is UNCHANGED. It records what Publisher does,
   not what we build; PLAN.md §4.1 is the record of what we build, and it now says
   in as many words that the two differ here on purpose.
+- **Single-key shortcuts keep no escape hatch, deliberately (recorded 2026-08-19,
+  user decision):** every tool activates on a bare letter (`V`, `R`, `E`…), which
+  WCAG 2.1.4 (Character Key Shortcuts, Level A) allows only alongside one of
+  three mechanisms — turn the shortcuts off, remap them behind a modifier, or
+  scope them to a focused component. The prototype offers none. The handler
+  ignores keystrokes inside form fields and modified chords
+  (`shell/isTextEntryTarget.ts`), which stops shortcuts swallowing typing but is
+  NOT one of the three: it leaves every key live whenever focus sits on the
+  canvas, which is most of the time.
+  Deferred because the mechanism the prototype would reach for is a user
+  SETTING, and this build has no settings surface — a debug-bar toggle would not
+  count, since the mechanism has to be available to the person who needs it. The
+  dev team should assume this is unbuilt, not solved: the cheapest conformant fix
+  is an off switch in a real preferences surface. Remapping is the fuller answer
+  and carries a design consequence — `shortcut` is registry data today, one
+  string per tool, and remapping makes it user state that overrides the registry.
