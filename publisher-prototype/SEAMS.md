@@ -285,3 +285,23 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   its midpoint is a different act from moving one end, and both are now reachable.
   Inside a multi-selection a line rejoins the union frame and scales and turns with
   the rest — that is what makes grouped rotation correct, and it is untouched.
+- **The Transform panel speaks each object's own vocabulary (recorded
+  2026-08-19, user decision):** a frame shows X/Y/W/H, a LINE shows X1/Y1/X2/Y2 —
+  completing "a lone line is two points" above, which had reached only as far as
+  the canvas chrome. The panel had been mapping a line through its bounding box
+  and scaling the endpoints back out of it, which cost more than tidiness: a
+  vertical line has zero width, a zero extent cannot be scaled, so its W field
+  rendered disabled and neither end could be moved sideways from the panel at
+  all. Endpoint fields have no such degenerate case. One commit still serves both
+  vocabularies — `object/resizeCommitted` already takes a frame box or a line's
+  endpoints and applies whichever matches the object — so this is a rendering
+  change, not a new action.
+- **Chrome colour (recorded 2026-08-19, user decision):** `#cc0000`, replacing the
+  blue. It is ONE constant (`CHROME_COLOR`) covering the selection frame, its
+  handles, and every gesture preview, and it has to stay one: a preview REPLACES
+  the committed chrome mid-drag (§6.3), so a second colour would flip the frame on
+  pointer-down and back on release. The amber adjust handle keeps its own colour —
+  it says "this adjusts, it does not resize", which is the one thing in the
+  overlay that is deliberately NOT chrome. Known and left alone: the debug
+  alignment probe's `#d0396b` now reads close to the chrome red; the probe is off
+  by default and dashed, and recolouring it was not part of this change.
