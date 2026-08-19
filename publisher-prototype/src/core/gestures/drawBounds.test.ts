@@ -2,12 +2,11 @@ import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { describe, expect, it } from "vitest";
 import { roundedRectPath } from "../geometry/shapePaths";
 import { LayoutObjectSchema, type Paint, type PathSeg, type Stroke } from "../model";
-import { ellipseTool, flowchartTool, rectTool } from "../registry/tools/shapes";
+import { calloutTool, ellipseTool, rectTool } from "../registry/tools/shapes";
 import {
   bannerDrawCommitted,
   calloutDrawCommitted,
   ellipseDrawCommitted,
-  flowchartDrawCommitted,
   gestureCancelled,
   rectDrawCommitted,
   roundedRectDrawCommitted,
@@ -210,7 +209,7 @@ describe("rect.esc.cancels-draw", () => {
   });
 });
 
-describe("drawShapeMachine (rounded-rect / star-polygon / callout / banner / flowchart draw clauses)", () => {
+describe("drawShapeMachine (rounded-rect / star-polygon / callout / banner draw clauses)", () => {
   const DIAMOND: PathSeg[] = [
     { c: "M", x: 0.5, y: 0 },
     { c: "L", x: 1, y: 0.5 },
@@ -224,12 +223,12 @@ describe("drawShapeMachine (rounded-rect / star-polygon / callout / banner / flo
   }
 
   it("commits one schema-valid path ShapeObject of the dragged bounds through the clause action", () => {
-    const machine = drawShapeMachine(flowchartDrawCommitted);
+    const machine = drawShapeMachine(calloutDrawCommitted);
     let state = machine.begin({ x: 1, y: 1 }, pathCtx());
     state = machine.update(state, { x: 3, y: 2.5 }, NONE);
     const result = machine.end(state, NONE);
-    expect(result.action?.type).toBe(clauseAction(flowchartTool, "flowchart.drag.creates"));
-    const payload = payloadOf<DrawCommit>(result, flowchartDrawCommitted);
+    expect(result.action?.type).toBe(clauseAction(calloutTool, "callout.drag.creates"));
+    const payload = payloadOf<DrawCommit>(result, calloutDrawCommitted);
     expect(payload.object).toMatchObject({
       type: "shape",
       shape: "path",

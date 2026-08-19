@@ -5,7 +5,6 @@ import {
   bannerDrawCommitted,
   calloutDrawCommitted,
   ellipseDrawCommitted,
-  flowchartDrawCommitted,
   gestureCancelled,
   lineDrawCommitted,
   objectDeleteCommitted,
@@ -47,7 +46,6 @@ const documentActionCreators = [
   starPolygonInnerRadiusCommitted,
   calloutDrawCommitted,
   bannerDrawCommitted,
-  flowchartDrawCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
@@ -63,8 +61,8 @@ const documentActionCreators = [
 
 /** Prefixes whose registry clauses are ALL wired. Each joined as its last
     clause landed: roundedRect with its parametric storage and adjust
-    handle, then starPolygon (draw + inner-radius handle) and flowchart
-    (draw, its only clause) with the parametric generalization.
+    handle, then starPolygon (draw + inner-radius handle) with the
+    parametric generalization.
 
     Banner joined when the review named its two adjustments, closing the
     last parametric deferral.
@@ -74,7 +72,7 @@ const documentActionCreators = [
     waits on the text tranche. Its draw clause is cross-checked through
     UNDOABLE_ACTION_TYPES below regardless. */
 const WIRED_PREFIXES =
-  /^(selection|object|rect|ellipse|line|arrow|roundedRect|starPolygon|banner|flowchart)\//;
+  /^(selection|object|rect|ellipse|line|arrow|roundedRect|starPolygon|banner)\//;
 
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([

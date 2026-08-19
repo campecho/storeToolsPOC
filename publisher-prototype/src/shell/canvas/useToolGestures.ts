@@ -698,7 +698,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
         // select.ctrl-g.groups-selection / select.ctrl-shift-g.ungroups-selection.
         // preventDefault unconditionally once the select tool owns the chord —
         // the browser's find-again must not fire behind a command that simply
-        // had nothing to combine. Plain G stays the flowchart tool's shortcut;
+        // had nothing to combine. Plain G stays the pen tool's shortcut;
         // App's tool-shortcut handler ignores modified keys.
         const { activeTool, objects, groups, selectedIds, enteredGroupId, pageIndex } =
           argsRef.current;

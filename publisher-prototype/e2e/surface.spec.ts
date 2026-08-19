@@ -12,8 +12,8 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId("dock")).toBeVisible();
 });
 
-test("layout dock renders all 24 tools from the registry", async ({ page }) => {
-  await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(24);
+test("layout dock renders all 23 tools from the registry", async ({ page }) => {
+  await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(23);
 });
 
 test("photo mode swaps to the photo dock and panel set", async ({ page }) => {
@@ -29,7 +29,7 @@ test("photo mode swaps to the photo dock and panel set", async ({ page }) => {
   );
   await expect(page.getByTestId("options-bar")).toContainText("Pan");
   await page.getByRole("button", { name: "Layout", exact: true }).click();
-  await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(24);
+  await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(23);
 });
 
 test("selecting a contracted tool shows its options and not-wired status", async ({ page }) => {

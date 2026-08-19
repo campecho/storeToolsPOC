@@ -74,10 +74,10 @@ describe("toolRegistry", () => {
     }
   });
 
-  it("fills both docks: 24 layout tools, 9 photo tools (7 photo-scoped + zoom/pan)", () => {
+  it("fills both docks: 23 layout tools, 9 photo tools (7 photo-scoped + zoom/pan)", () => {
     const layout = toolRegistry.filter((t) => t.mode === "layout" || t.mode === "both");
     const photo = toolRegistry.filter((t) => t.mode === "photo" || t.mode === "both");
-    expect(layout.length).toBe(24);
+    expect(layout.length).toBe(23);
     expect(photo.length).toBe(9);
   });
 

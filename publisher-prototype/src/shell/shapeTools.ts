@@ -1,11 +1,10 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { BANNER_DEFAULT_HEIGHT, BANNER_DEFAULT_INSET } from "../core/geometry/shapePaths";
 import type { DrawnShapeGeometry } from "../core/gestures";
-import { tailTipFor, type CalloutTailAnchor, type FlowchartSymbol } from "../core/model";
+import { tailTipFor, type CalloutTailAnchor } from "../core/model";
 import {
   bannerDrawCommitted,
   calloutDrawCommitted,
-  flowchartDrawCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
   type DrawCommit,
@@ -17,10 +16,9 @@ import { optionEnum, optionNumber, type ToolOptionValues } from "./toolOptions";
  * per tool, the clause action its draw dispatches and the shape kind plus
  * geometry the live options produce for a drawn box.
  *
- * Every tool whose options describe its SHAPE now stores them — rounded
- * rect, star/polygon, callout, flowchart — so those options stay editable
- * after the shape is placed and survive a resize as themselves. The banner
- * alone still bakes, having no shape option to store.
+ * Every tool whose options describe its SHAPE stores them — rounded rect,
+ * star/polygon, callout, banner — so those options stay editable after the
+ * shape is placed and survive a resize as themselves.
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -35,14 +33,6 @@ const TAIL_ANCHORS: readonly CalloutTailAnchor[] = [
   "bottom-right",
   "top-left",
   "top-right",
-];
-
-const FLOWCHART_SYMBOLS: readonly FlowchartSymbol[] = [
-  "process",
-  "decision",
-  "terminator",
-  "data",
-  "document",
 ];
 
 export const SHAPE_TOOL_CONFIGS: Readonly<Record<string, ShapeToolConfig>> = {
@@ -74,13 +64,6 @@ export const SHAPE_TOOL_CONFIGS: Readonly<Record<string, ShapeToolConfig>> = {
       shape: "banner",
       panelInset: optionNumber(options, "banner", "panelInset", BANNER_DEFAULT_INSET),
       panelHeight: optionNumber(options, "banner", "panelHeight", BANNER_DEFAULT_HEIGHT),
-    }),
-  },
-  flowchart: {
-    creator: flowchartDrawCommitted,
-    geometryForBox: (options) => ({
-      shape: "flowchart",
-      symbol: optionEnum(options, "flowchart", "symbol", FLOWCHART_SYMBOLS, "process"),
     }),
   },
 };

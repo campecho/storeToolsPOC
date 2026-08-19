@@ -2,7 +2,6 @@ import { createAction, type UnknownAction } from "@reduxjs/toolkit";
 import type {
   ArrowHead,
   ArrowHeadSize,
-  FlowchartSymbol,
   Group,
   LayoutObject,
   LineDash,
@@ -132,12 +131,6 @@ export type CalloutTailCommit = {
 export type BannerPanelInsetCommit = { pageIndex: number; ids: string[]; panelInset: number };
 export type BannerPanelHeightCommit = { pageIndex: number; ids: string[]; panelHeight: number };
 
-export type FlowchartSymbolCommit = {
-  pageIndex: number;
-  ids: string[];
-  symbol: FlowchartSymbol;
-};
-
 /** line/arrow outline style: the dash pattern, and the end decorations. An
     omitted head field is left as it stands; "none"/"m" store as absence per
     the schema's additive rule. */
@@ -221,7 +214,6 @@ export const roundedRectDrawCommitted = createAction<DrawCommit>("roundedRect/dr
 export const starPolygonDrawCommitted = createAction<DrawCommit>("starPolygon/drawCommitted");
 export const calloutDrawCommitted = createAction<DrawCommit>("callout/drawCommitted");
 export const bannerDrawCommitted = createAction<DrawCommit>("banner/drawCommitted");
-export const flowchartDrawCommitted = createAction<DrawCommit>("flowchart/drawCommitted");
 export const penDrawCommitted = createAction<DrawCommit>("pen/drawCommitted");
 export const objectMoveCommitted = createAction<TranslateCommit>("object/moveCommitted");
 export const objectNudgeCommitted = createAction<TranslateCommit>("object/nudgeCommitted");
@@ -255,9 +247,6 @@ export const bannerPanelInsetCommitted = createAction<BannerPanelInsetCommit>(
 export const bannerPanelHeightCommitted = createAction<BannerPanelHeightCommit>(
   "banner/panelHeightCommitted",
 );
-export const flowchartSymbolCommitted = createAction<FlowchartSymbolCommit>(
-  "flowchart/symbolCommitted",
-);
 export const objectLineDashCommitted = createAction<LineDashCommit>("object/lineDashCommitted");
 export const objectArrowHeadsCommitted = createAction<ArrowHeadsCommit>(
   "object/arrowHeadsCommitted",
@@ -280,7 +269,6 @@ export const DRAW_COMMIT_ACTIONS = [
   starPolygonDrawCommitted,
   calloutDrawCommitted,
   bannerDrawCommitted,
-  flowchartDrawCommitted,
   penDrawCommitted,
 ] as const;
 

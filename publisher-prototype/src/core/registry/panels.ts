@@ -29,7 +29,7 @@ export const panelRegistry: readonly PanelSpec[] = [
       "Rotation: numeric angle entry, rotate 90° CW/CCW, reset rotation (§5.2).",
       "Nudge increment configuration (§2.1 configurable nudge increments).",
       "Corner radius for a rounded rectangle [ASSUMPTION: §4.4 names the shape, not where its radius is edited; the geometry panel is the numeric home for the same value the shape's adjust handle sets].",
-      "The remaining shape parameters, each shown only for the kind that stores it: star/polygon vertex count and inner radius, callout tail anchor, flowchart symbol, and a freeform path's closed state (§4.4) [ASSUMPTION: §4.4 names the shapes but never says where the parameters shaping them are edited after placement; they join corner radius here on the same reasoning, and the three with canvas adjust handles drive those handles' own actions rather than parallel ones].",
+      "The remaining shape parameters, each shown only for the kind that stores it: star/polygon vertex count and inner radius, callout tail tip, the banner's two ribbon adjustments, and a freeform path's closed state (§4.4) [ASSUMPTION: §4.4 names the shapes but never says where the parameters shaping them are edited after placement; they join corner radius here on the same reasoning, and the four with canvas adjust handles drive those handles' own actions rather than parallel ones].",
       "Position relative to page / margin / guide / object (§2.1).",
       "Lock position/size/rotation/content plus unlock, with visible locked state (§5.3).",
     ],

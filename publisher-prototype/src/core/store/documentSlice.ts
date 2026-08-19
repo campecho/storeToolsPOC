@@ -14,7 +14,6 @@ import {
   bannerDrawCommitted,
   calloutDrawCommitted,
   ellipseDrawCommitted,
-  flowchartDrawCommitted,
   lineDrawCommitted,
   objectDeleteCommitted,
   objectDuplicateCommitted,
@@ -33,7 +32,6 @@ import {
   bannerPanelHeightCommitted,
   bannerPanelInsetCommitted,
   calloutTailCommitted,
-  flowchartSymbolCommitted,
   objectArrowHeadsCommitted,
   objectLineDashCommitted,
   objectPathClosedCommitted,
@@ -50,7 +48,6 @@ import {
   type DeleteCommit,
   type DrawCommit,
   type DuplicateCommit,
-  type FlowchartSymbolCommit,
   type LineDashCommit,
   type PathClosedCommit,
   type StarInnerRadiusCommit,
@@ -260,10 +257,6 @@ const applyBannerPanelHeight = shapeParamApplier<BannerPanelHeightCommit>("banne
   obj.panelHeight = clampBannerHeight(p.panelHeight);
 });
 
-const applyFlowchartSymbol = shapeParamApplier<FlowchartSymbolCommit>("flowchart", (obj, p) => {
-  obj.symbol = p.symbol;
-});
-
 /** Dash reaches lines and arrows — the objects a dash pattern describes.
     "solid" is the absent default, per the schema's additive rule. */
 function applyLineDash(state: LayoutDocument, action: PayloadAction<LineDashCommit>): void {
@@ -460,7 +453,6 @@ export const documentSlice = createSlice({
       .addCase(starPolygonDrawCommitted, applyDraw)
       .addCase(calloutDrawCommitted, applyDraw)
       .addCase(bannerDrawCommitted, applyDraw)
-      .addCase(flowchartDrawCommitted, applyDraw)
       .addCase(penDrawCommitted, applyDraw)
       .addCase(objectMoveCommitted, applyTranslate)
       .addCase(objectNudgeCommitted, applyTranslate)
@@ -480,7 +472,6 @@ export const documentSlice = createSlice({
       .addCase(calloutTailCommitted, applyCalloutTail)
       .addCase(bannerPanelInsetCommitted, applyBannerPanelInset)
       .addCase(bannerPanelHeightCommitted, applyBannerPanelHeight)
-      .addCase(flowchartSymbolCommitted, applyFlowchartSymbol)
       .addCase(objectLineDashCommitted, applyLineDash)
       .addCase(objectArrowHeadsCommitted, applyArrowHeads)
       .addCase(objectPathClosedCommitted, applyPathClosed);

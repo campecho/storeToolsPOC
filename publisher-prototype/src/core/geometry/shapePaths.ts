@@ -1,6 +1,5 @@
 import {
   tailTipFor,
-  type FlowchartSymbol,
   type NormalizedPoint,
   type PathSeg,
   type ShapeObject,
@@ -8,14 +7,13 @@ import {
 
 /**
  * Path builders for the Phase B shape tools (PLAN.md §4.4) — rounded
- * rectangle, star/polygon, callout, banner, flowchart. Framework-free pure
- * geometry: every builder returns one closed subpath (a single M … Z) whose
- * coordinates — on-curve and control points alike — are normalized 0–1
- * within the object's frame box, per the schema's path rule, so move/resize
- * tooling works on x/y/w/h unchanged and render/hit-test consume the
- * segments as-is. Shapes are baked from tool options at draw time; storing
- * the parameters instead (true parametric shapes) is a recorded deferral in
- * SEAMS.md.
+ * rectangle, star/polygon, callout, banner. Framework-free pure geometry:
+ * coordinates — on-curve and control points alike — are normalized 0–1 within
+ * the object's frame box, per the schema's path rule, so move/resize tooling
+ * works on x/y/w/h unchanged and render/hit-test consume the segments as-is.
+ *
+ * Every builder but one returns a SINGLE closed subpath (one M … Z). The
+ * banner is the exception, and says at its own definition why it has to be.
  */
 
 /**
@@ -116,8 +114,6 @@ export function starPath(points: number, innerRatio: number): PathSeg[] {
   }
   return ringToPath(ring);
 }
-
-
 
 /**
  * How wide the tail's base sits on the body edge, as a fraction of the unit
@@ -391,50 +387,6 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
 }
 
 /**
- * Standard flowchart symbols. Terminator reuses the rounded rectangle at the
- * stadium radii (0.25, 0.5).
- *
- * ASSUMPTION: data-parallelogram skew of 0.2 and the document wave (bottom
- * edge dipping to y 0.6 / 1.0 via one cubic from y 0.8) match the common
- * flowchart glyphs by eye — working guesses for SME review.
- */
-export function flowchartPath(symbol: FlowchartSymbol): PathSeg[] {
-  switch (symbol) {
-    case "process":
-      return ringToPath([
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 1, y: 1 },
-        { x: 0, y: 1 },
-      ]);
-    case "decision":
-      return ringToPath([
-        { x: 0.5, y: 0 },
-        { x: 1, y: 0.5 },
-        { x: 0.5, y: 1 },
-        { x: 0, y: 0.5 },
-      ]);
-    case "terminator":
-      return roundedRectPath(0.25, 0.5);
-    case "data":
-      return ringToPath([
-        { x: 0.2, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0.8, y: 1 },
-        { x: 0, y: 1 },
-      ]);
-    case "document":
-      return [
-        { c: "M", x: 0, y: 0 },
-        { c: "L", x: 1, y: 0 },
-        { c: "L", x: 1, y: 0.8 },
-        { c: "C", x1: 0.75, y1: 0.6, x2: 0.25, y2: 1.0, x: 0, y: 0.8 },
-        { c: "Z" },
-      ];
-  }
-}
-
-/**
  * The normalized outline a shape draws, from whatever it stores: a path's own
  * segments, or a parametric kind's parameter resolved against its frame. One
  * resolver for the renderer, hit-testing and the overlay previews, so a shape
@@ -453,7 +405,6 @@ export type ShapeGeometry = Pick<
   | "tailTip"
   | "panelInset"
   | "panelHeight"
-  | "symbol"
 >;
 
 /**
@@ -486,8 +437,6 @@ export function shapeOutline(shape: ShapeGeometry, w: number, h: number): PathSe
         w,
         h,
       );
-    case "flowchart":
-      return flowchartPath(shape.symbol ?? "process");
     default:
       return shape.d ?? [];
   }

@@ -1,8 +1,6 @@
 import type { UnknownAction } from "@reduxjs/toolkit";
 import {
-  FlowchartSymbolSchema,
   tailTipFor,
-  type FlowchartSymbol,
   type LayoutObject,
   type LineObject,
   type ShapeObject,
@@ -11,7 +9,6 @@ import {
   bannerPanelHeightCommitted,
   bannerPanelInsetCommitted,
   calloutTailCommitted,
-  flowchartSymbolCommitted,
   inEditRun,
   objectLockCommitted,
   objectPathClosedCommitted,
@@ -36,7 +33,6 @@ import {
   CALLOUT_TIP_MIN,
 } from "../../core/geometry/shapePaths";
 import { NumberField } from "./NumberField";
-import { SelectField } from "./SelectField";
 
 /**
  * The live Transform panel (PLAN.md §4.3 "transform"; Phase B Selection &
@@ -58,9 +54,10 @@ import { SelectField } from "./SelectField";
  *
  * The Shape group is the numeric home for whatever parameter shapes the
  * selected kind — corner radius, star points and inner radius, callout tail,
- * flowchart symbol, a path's closed state. Each appears only for the kind
- * that stores it (SHAPE_GEOMETRY_FIELDS), and where a canvas adjust handle
- * sets the same parameter, both surfaces dispatch the one action.
+ * the banner's two ribbon adjustments, a path's closed state. Each appears
+ * only for the kind that stores it (SHAPE_GEOMETRY_FIELDS), and where a canvas
+ * adjust handle sets the same parameter, both surfaces dispatch the one
+ * action.
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -325,18 +322,6 @@ export function TransformPanel({
               }
             />
           </>
-        );
-      case "flowchart":
-        return (
-          <SelectField<FlowchartSymbol>
-            label="Symbol"
-            value={shape.symbol ?? "process"}
-            options={FlowchartSymbolSchema.options}
-            disabled={locked}
-            onCommit={(symbol) =>
-              commitShapeParam(flowchartSymbolCommitted({ ...shapeIds, symbol }))
-            }
-          />
         );
       case "path":
         return (

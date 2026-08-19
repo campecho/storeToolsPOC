@@ -282,9 +282,7 @@ test("transform panel: points entry refuses values outside the tool's declared r
   expect(shapeAt(await pageObjects(page), 0).points).toBe(12);
 });
 
-test("transform panel: callout tail tip and flowchart symbol commit one entry per edit", async ({
-  page,
-}) => {
+test("transform panel: the callout tail tip commits one entry per edit", async ({ page }) => {
   await draw(page, "Callout", { x: 1, y: 3 }, { x: 3, y: 4.5 });
   const transform = panel(page, "transform");
   // The tail is a free point now, so the panel gives it two numbers rather
@@ -295,16 +293,6 @@ test("transform panel: callout tail tip and flowchart symbol commit one entry pe
   await commitField(page, "transform", "Tail X", "1.4");
   expect(await notificationCount(page)).toBe(1);
   expect(shapeAt(await pageObjects(page), 0).tailTip).toEqual({ x: 1.4, y: 1.22 });
-
-  await draw(page, "Flowchart", { x: 4, y: 3 }, { x: 6, y: 4.5 });
-  const symbol = panel(page, "transform").getByLabel("Symbol", { exact: true });
-  await expect(symbol).toHaveValue("process");
-  const before = await historyDepth(page);
-  await symbol.selectOption("decision");
-  expect(shapeAt(await pageObjects(page), 1).symbol).toBe("decision");
-  expect(await historyDepth(page)).toBe(before + 1);
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
-  expect(shapeAt(await pageObjects(page), 1).symbol).toBe("process");
 });
 
 test("transform panel: Closed opens and closes a placed freeform path", async ({ page }) => {

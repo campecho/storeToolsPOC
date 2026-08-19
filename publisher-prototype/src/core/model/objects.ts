@@ -256,16 +256,6 @@ export function tailTipFor(anchor: CalloutTailAnchor): NormalizedPoint {
   };
 }
 
-/** The flowchart vocabulary the tool draws (§4.4 flowchart shapes). */
-export const FlowchartSymbolSchema = z.enum([
-  "process",
-  "decision",
-  "terminator",
-  "data",
-  "document",
-]);
-export type FlowchartSymbol = z.infer<typeof FlowchartSymbolSchema>;
-
 /**
  * Shape object — the lineage's non-content frame kinds folded under the
  * registry's single "shape" object type.
@@ -291,7 +281,6 @@ export const ShapeObjectSchema = z.object({
     "starPolygon",
     "callout",
     "banner",
-    "flowchart",
     "path",
   ]),
   /** Path shapes only: normalized segments — see PathSegSchema. */
@@ -317,8 +306,6 @@ export const ShapeObjectSchema = z.object({
       bottom edge falls. The tails, folds and notches follow from them. */
   panelInset: z.number().optional(),
   panelHeight: z.number().optional(),
-  /** Flowchart shapes only. */
-  symbol: FlowchartSymbolSchema.optional(),
 });
 export type ShapeObject = z.infer<typeof ShapeObjectSchema>;
 
@@ -331,7 +318,6 @@ export const SHAPE_GEOMETRY_FIELDS = {
   starPolygon: ["points", "innerRadiusRatio"],
   callout: ["tailTip"],
   banner: ["panelInset", "panelHeight"],
-  flowchart: ["symbol"],
   path: ["d"],
 } as const satisfies Record<ShapeObject["shape"], readonly (keyof ShapeObject)[]>;
 

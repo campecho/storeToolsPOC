@@ -17,7 +17,6 @@ import {
   bannerPanelHeightCommitted,
   bannerPanelInsetCommitted,
   calloutTailCommitted,
-  flowchartSymbolCommitted,
   objectArrowHeadsCommitted,
   objectLineDashCommitted,
   objectPathClosedCommitted,
@@ -88,10 +87,9 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectStrokeWidthCommitted.type,
   objectLockCommitted.type,
   // Shape and outline parameters with no adjust-handle clause behind them:
-  // the star's vertex count, the flowchart symbol, the line's dash and end
-  // decorations, and a path's closed state.
+  // the star's vertex count, the line's dash and end decorations, and a
+  // path's closed state.
   starPolygonPointsCommitted.type,
-  flowchartSymbolCommitted.type,
   objectLineDashCommitted.type,
   objectArrowHeadsCommitted.type,
   objectPathClosedCommitted.type,

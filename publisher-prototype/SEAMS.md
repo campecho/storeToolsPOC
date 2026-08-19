@@ -463,3 +463,22 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   ring here is filled with the object's one fill, and a nested ring would punch
   a hole under even-odd, which is the rule hit testing walks. The silhouette is
   what the prototype can honestly draw.
+- **The flowchart kind is cut (recorded 2026-08-19, user decision):** the digest's
+  §4.4 lists flowchart shapes and the prototype drew all five, but the review
+  found the tool unwanted. It is gone whole — tool contract, `"flowchart"` shape
+  kind, the `symbol` parameter, `flowchartPath`, both actions, the Transform
+  panel's Symbol select, and their tests — rather than hidden behind an unwired
+  flag, because a kind left in the schema is a kind the dev team has to keep
+  implementing.
+  This SUPERSEDES the flowchart half of "Parametric storage generalized"
+  (2026-08-18); the star and callout halves stand unchanged.
+  The schema stays at **version 3**, deliberately, and this is the exception
+  worth naming: removing a member from the shape enum is NOT additive — a stored
+  document with `shape: "flowchart"` no longer parses, and the version literal
+  exists precisely so a wrong version fails loudly. It stays at 3 because no such
+  document exists: the three fixtures carry no flowchart object, and the
+  prototype has no persisted documents outside this repo. Once it does, a removal
+  like this bumps the version and brings a migration with it.
+  §4.4 of the requirements digest is UNCHANGED. It records what Publisher does,
+  not what we build; PLAN.md §4.1 is the record of what we build, and it now says
+  in as many words that the two differ here on purpose.

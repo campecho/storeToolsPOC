@@ -336,55 +336,10 @@ test("banner.drag-inset-handle and .drag-height-handle adjust the ribbon", async
   expect(deeper.panelInset).toBeCloseTo(0.3, 2);
 });
 
-test("flowchart.drag.creates", async ({ page }) => {
-  await activate(page, "Flowchart");
-  await armCounter(page);
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
-  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
-  expect(await notificationCount(page)).toBe(1);
-  const { shape, d } = outlineAt(await pageObjects(page), 0);
-  expect(shape).toMatchObject({ shape: "flowchart", symbol: "process" });
-  // Default symbol "process": exactly the four frame corners.
-  const pts = vertices(d);
-  expect(pts).toHaveLength(4);
-  expect(hasVertex(d, 0, 0)).toBe(true);
-  expect(hasVertex(d, 1, 0)).toBe(true);
-  expect(hasVertex(d, 1, 1)).toBe(true);
-  expect(hasVertex(d, 0, 1)).toBe(true);
-});
-
-test("flowchart.drag.creates with decision and terminator symbols", async ({ page }) => {
-  const symbol = () => page.getByTestId("options-bar").getByLabel("Symbol", { exact: true });
-  await activate(page, "Flowchart");
-  await symbol().selectOption("decision");
-  await armCounter(page);
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
-  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
-  expect(await notificationCount(page)).toBe(1);
-  const decision = outlineAt(await pageObjects(page), 0);
-  expect(decision.shape).toMatchObject({ symbol: "decision" });
-  // Decision: a diamond on the frame's edge midpoints.
-  expect(vertices(decision.d)).toHaveLength(4);
-  expect(hasVertex(decision.d, 0.5, 0)).toBe(true);
-  expect(hasVertex(decision.d, 1, 0.5)).toBe(true);
-  expect(hasVertex(decision.d, 0.5, 1)).toBe(true);
-  expect(hasVertex(decision.d, 0, 0.5)).toBe(true);
-  // The draw handed the page back to Select — pick the flowchart tool up
-  // again to reach its options bar (its option values are held per tool).
-  await activate(page, "Flowchart");
-  await symbol().selectOption("terminator");
-  await drag(page, { x: 4, y: 3 }, { x: 6, y: 4 });
-  await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
-  const terminator = outlineAt(await pageObjects(page), 1);
-  // Terminator: rounded ends are cubic arcs.
-  expect(terminator.d.filter((seg) => seg.c === "C").length).toBeGreaterThan(0);
-});
-
 for (const { label, id } of [
   { label: "Star / polygon", id: "star-polygon" },
   { label: "Callout", id: "callout" },
   { label: "Banner", id: "banner" },
-  { label: "Flowchart", id: "flowchart" },
 ] as const) {
   test(`${id}.click.creates-default-size`, async ({ page }) => {
     await activate(page, label);

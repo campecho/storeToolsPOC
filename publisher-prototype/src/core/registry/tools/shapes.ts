@@ -696,85 +696,6 @@ export const bannerTool: ToolContract = {
   ],
 };
 
-export const flowchartTool: ToolContract = {
-  id: "flowchart",
-  label: "Flowchart",
-  mode: "layout",
-  group: "shapes",
-  shortcut: "F",
-  req: ["§4.4"],
-  tier: "LIVE",
-  cursor: "crosshair",
-  creates: "shape",
-  hitTest: {
-    tolerancePx: 4,
-    unfilledInterior: "passesThrough",
-    lockedObjects: "skips",
-  },
-  gestures: [
-    {
-      id: "flowchart.drag.creates",
-      trigger: "drag",
-      behavior:
-        "Creates the selected flowchart symbol in the dragged bounds (§4.4 flowchart shapes); preview renders in the overlay, one action commits on release.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.shift-drag.constrains-square",
-      trigger: "drag + Shift",
-      behavior: "Constrains the drawn symbol bounds to a square.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.alt-drag.draws-from-center",
-      trigger: "drag + Alt",
-      behavior: "Draws the symbol from the center outward instead of corner to corner.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.click.creates-default-size",
-      trigger: "click (no drag)",
-      behavior: "Creates a default 1×1 in flowchart symbol at the click point.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.esc.cancels-draw",
-      trigger: "Esc during drag",
-      behavior: "Cancels the in-flight draw; nothing commits.",
-      action: "gesture/cancelled",
-    },
-  ],
-  options: [
-    {
-      kind: "enum",
-      id: "symbol",
-      label: "Symbol",
-      default: "process",
-      values: ["process", "decision", "terminator", "data", "document"],
-    },
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
-    {
-      kind: "number",
-      id: "strokeWidth",
-      label: "Stroke width",
-      default: 0.75,
-      min: 0,
-      max: 20,
-      step: 0.25,
-      unit: "pt",
-    },
-  ],
-  panels: ["transform", "color-swatches", "effects", "align-distribute"],
-  undo: "per-gesture",
-  notes: [
-    "'Flowchart shapes.' (§4.4) · 'Create simple diagrams and design accents without external illustration tools.' (§4.4).",
-    "ASSUMPTION: the symbol is chosen in the options bar before drawing; the digest's open-ended symbol list is pinned to process|decision|terminator|data|document pending SME review.",
-    "ASSUMPTION: hit testing follows each symbol's geometry (rect-like or ellipse-like per symbol); unfilled interior passes through.",
-    "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size, Esc-cancel, fill #4472c4, and stroke #000000 are Publisher-parity fillers — §4.4 lists the shape, not the bindings.",
-  ],
-};
-
 export const penTool: ToolContract = {
   id: "pen",
   label: "Pen / freeform",
@@ -857,6 +778,5 @@ export const shapeTools: readonly ToolContract[] = [
   starPolygonTool,
   calloutTool,
   bannerTool,
-  flowchartTool,
   penTool,
 ];

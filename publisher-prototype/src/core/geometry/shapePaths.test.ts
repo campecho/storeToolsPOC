@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tailTipFor, type FlowchartSymbol, type PathSeg } from "../model";
+import { tailTipFor, type PathSeg } from "../model";
 import {
   BANNER_DEFAULT_HEIGHT,
   BANNER_DEFAULT_INSET,
@@ -13,7 +13,6 @@ import {
   outlineOvershoot,
   clampCornerRadius,
   calloutPath,
-  flowchartPath,
   roundedRectPath,
   roundedRectPathFor,
   starPath,
@@ -228,7 +227,6 @@ describe("outlineOvershoot", () => {
       "roundedRect",
       "starPolygon",
       "banner",
-      "flowchart",
       "path",
     ] as const) {
       expect(outlineOvershoot({ shape })).toEqual([]);
@@ -364,58 +362,6 @@ describe("bannerPath", () => {
   });
 });
 
-describe("flowchartPath", () => {
-  const symbols: FlowchartSymbol[] = ["process", "decision", "terminator", "data", "document"];
-
-  it("emits a closed subpath fully inside the unit box for every symbol", () => {
-    for (const symbol of symbols) {
-      expectClosedNormalizedSubpath(flowchartPath(symbol));
-    }
-  });
-
-  it("draws process as the exact unit rectangle", () => {
-    expect(flowchartPath("process")).toEqual([
-      { c: "M", x: 0, y: 0 },
-      { c: "L", x: 1, y: 0 },
-      { c: "L", x: 1, y: 1 },
-      { c: "L", x: 0, y: 1 },
-      { c: "Z" },
-    ]);
-  });
-
-  it("draws decision as the exact diamond on the box midpoints", () => {
-    expect(flowchartPath("decision")).toEqual([
-      { c: "M", x: 0.5, y: 0 },
-      { c: "L", x: 1, y: 0.5 },
-      { c: "L", x: 0.5, y: 1 },
-      { c: "L", x: 0, y: 0.5 },
-      { c: "Z" },
-    ]);
-  });
-
-  it("draws terminator as the stadium rounded rectangle (curved, via roundedRectPath)", () => {
-    const segs = flowchartPath("terminator");
-    expect(segs.filter((s) => s.c === "C").length).toBe(4);
-    expect(segs).toEqual(roundedRectPath(0.25, 0.5));
-  });
-
-  it("draws data as the exact 0.2-skew parallelogram", () => {
-    expect(flowchartPath("data")).toEqual([
-      { c: "M", x: 0.2, y: 0 },
-      { c: "L", x: 1, y: 0 },
-      { c: "L", x: 0.8, y: 1 },
-      { c: "L", x: 0, y: 1 },
-      { c: "Z" },
-    ]);
-  });
-
-  it("finishes document with a single wavy-bottom cubic right before Z", () => {
-    const segs = flowchartPath("document");
-    expect(segs.filter((s) => s.c === "C").length).toBe(1);
-    expect(segs[segs.length - 2]?.c).toBe("C");
-    expect(segs[segs.length - 1]?.c).toBe("Z");
-  });
-});
 
 describe("clampCornerRadius", () => {
   it("bounds the radius at half the shorter side", () => {

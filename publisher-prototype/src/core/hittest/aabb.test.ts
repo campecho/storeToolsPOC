@@ -109,7 +109,7 @@ describe("objectAabb over a callout", () => {
   });
 
   it("leaves every other kind on its frame corners", () => {
-    for (const shape of ["rect", "ellipse", "roundedRect", "starPolygon", "flowchart"] as const) {
+    for (const shape of ["rect", "ellipse", "roundedRect", "starPolygon", "banner"] as const) {
       expect(objectAabb(shapeRect("s", { shape, x: 1, y: 1, w: 2, h: 1 }))).toEqual({
         x: 1,
         y: 1,

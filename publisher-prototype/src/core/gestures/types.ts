@@ -26,15 +26,10 @@ export type GestureContext = { pageIndex: number; zoom: number };
 
 /** The parameters an adjust handle can change on a placed shape. */
 export type ShapeParams = Partial<
-  Pick<ShapeObject, 
-  | "cornerRadius"
-  | "points"
-  | "innerRadiusRatio"
-  | "tailTip"
-  | "panelInset"
-  | "panelHeight"
-  | "symbol"
->
+  Pick<
+    ShapeObject,
+    "cornerRadius" | "points" | "innerRadiusRatio" | "tailTip" | "panelInset" | "panelHeight"
+  >
 >;
 
 /** Fill/stroke the active tool's options provide for drawn objects. */
