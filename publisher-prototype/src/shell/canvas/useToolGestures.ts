@@ -30,14 +30,23 @@ import {
   type ResizeHandle,
 } from "../../core/gestures";
 import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
-import { enteredGroup, selectionUnit, type Group, type LayoutObject } from "../../core/model";
+import {
+  enteredGroup,
+  groupingUnits,
+  selectionUnit,
+  ungroupingGroupIds,
+  type Group,
+  type LayoutObject,
+} from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
 import { resizeCursor, rotateCursor } from "./cursors";
 import {
   arrowDrawCommitted,
   gestureCancelled,
   isDrawCommit,
+  objectGroupCommitted,
   objectNudgeCommitted,
+  objectUngroupCommitted,
   selectionCycleCommitted,
   selectionGroupEnteredCommitted,
   selectionReplaceCommitted,
@@ -48,7 +57,7 @@ import {
 } from "../../core/store";
 import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
-import { createObjectId } from "../objectId";
+import { createGroupId, createObjectId } from "../objectId";
 import { SHAPE_TOOL_CONFIGS } from "../shapeTools";
 import {
   drawStyleFromOptions,
@@ -590,11 +599,40 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
   // discards a pen draft between presses (pen.esc.discards-path); Enter
   // finishes the pen draft (pen.double-click.commits-open-path's keyboard
-  // half); arrows nudge the selection (select.arrow.nudges). Key repeat is
-  // fine for nudging: each keydown is its own nudge gesture, one history
-  // entry each.
+  // half); arrows nudge the selection (select.arrow.nudges); Ctrl/Cmd+G and
+  // Ctrl/Cmd+Shift+G group and ungroup it. Key repeat is fine for nudging:
+  // each keydown is its own nudge gesture, one history entry each.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        // select.ctrl-g.groups-selection / select.ctrl-shift-g.ungroups-selection.
+        // preventDefault unconditionally once the select tool owns the chord —
+        // the browser's find-again must not fire behind a command that simply
+        // had nothing to combine. Plain G stays the flowchart tool's shortcut;
+        // App's tool-shortcut handler ignores modified keys.
+        const { activeTool, objects, groups, selectedIds, enteredGroupId, pageIndex } =
+          argsRef.current;
+        if (activeTool !== "select" || sessionRef.current !== null) return;
+        if (isTextEntryTarget(e.target)) return;
+        e.preventDefault();
+        if (e.shiftKey) {
+          const groupIds = ungroupingGroupIds(objects, groups, selectedIds, enteredGroupId);
+          if (groupIds.length > 0) commit(objectUngroupCommitted({ groupIds }));
+          return;
+        }
+        const units = groupingUnits(objects, groups, selectedIds, enteredGroupId);
+        if (units === null) return;
+        commit(
+          objectGroupCommitted({
+            pageIndex,
+            groupId: createGroupId(),
+            // A group formed inside an entered group belongs to it.
+            ...(enteredGroupId === null ? {} : { parentGroupId: enteredGroupId }),
+            ...units,
+          }),
+        );
+        return;
+      }
       if (e.key === "Escape") {
         const session = sessionRef.current;
         if (session) {

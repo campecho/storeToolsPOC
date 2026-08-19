@@ -88,6 +88,15 @@ const GROUPED_DOCUMENT = {
 const LEFT = { x: 1.5, y: 4.5 };
 const LOOSE = { x: 7, y: 4.5 };
 
+/** How many groups the document holds — what group/ungroup commits move. */
+function groupCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const store = window.__PROTOTYPE_STORE__;
+    if (!store) throw new Error("dev store handle missing");
+    return store.getState().document.present.groups.length;
+  });
+}
+
 async function loadGroupedDocument(page: Page): Promise<void> {
   await page.getByLabel("Import document file").setInputFiles({
     name: "grouped.json",
@@ -183,6 +192,101 @@ test("clicking outside the entered group leaves it, and the group selects whole 
   await expect.poll(() => enteredGroupId(page)).toBeNull();
   await clickAt(page, LEFT);
   await expect.poll(() => selectionIds(page)).toEqual(["left", "right"]);
+});
+
+test("select.ctrl-g.groups-selection: Ctrl+G binds a selection into one group", async ({ page }) => {
+  await clickAt(page, LOOSE);
+  await clickAt(page, LEFT, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toEqual(["loose", "left", "right"]);
+  await armCounter(page);
+  await page.keyboard.press("Control+g");
+  expect(await notificationCount(page)).toBe(1);
+  // One group now holds all three: clicking any member takes the whole thing.
+  await clickAt(page, { x: 0.2, y: 6.5 });
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toHaveLength(3);
+  // …and it turns as one body, which is the point of grouping.
+  await dragHandle(page, "rotate", { x: 8, y: 4.5 });
+  const objects = await pageObjects(page);
+  for (const i of [0, 1, 2]) {
+    expect(Math.abs(shapeAt(objects, i).rotation - 90)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("Ctrl+G nests a group already in the selection instead of flattening it", async ({ page }) => {
+  await clickAt(page, LEFT);
+  await clickAt(page, LOOSE, ["Shift"]);
+  await page.keyboard.press("Control+g");
+  await expect.poll(() => groupCount(page)).toBe(2);
+  // grp-1 survives inside the new group: entering the outer one selects it
+  // whole rather than dropping straight to a member.
+  await doubleClickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toEqual(["left", "right"]);
+});
+
+test("Ctrl+G needs two units — one group re-grouped alone commits nothing", async ({ page }) => {
+  await clickAt(page, LEFT);
+  await armCounter(page);
+  await page.keyboard.press("Control+g");
+  await page.keyboard.press("Control+g");
+  expect(await notificationCount(page)).toBe(0);
+  expect(await groupCount(page)).toBe(1);
+});
+
+test("select.ctrl-shift-g.ungroups-selection: Ctrl+Shift+G takes the group apart", async ({
+  page,
+}) => {
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await armCounter(page);
+  await page.keyboard.press("Control+Shift+g");
+  expect(await notificationCount(page)).toBe(1);
+  await expect.poll(() => groupCount(page)).toBe(0);
+  // The freed objects stay selected, and each now selects alone.
+  await expect.poll(() => selectionIds(page)).toEqual(["left", "right"]);
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toEqual(["left"]);
+});
+
+test("Ctrl+Shift+G removes one nesting level, leaving the inner group standing", async ({
+  page,
+}) => {
+  await clickAt(page, LEFT);
+  await clickAt(page, LOOSE, ["Shift"]);
+  await page.keyboard.press("Control+g");
+  await expect.poll(() => groupCount(page)).toBe(2);
+  await page.keyboard.press("Control+Shift+g");
+  await expect.poll(() => groupCount(page)).toBe(1);
+  // grp-1 outlived its wrapper: its members still select together.
+  await clickAt(page, { x: 0.2, y: 6.5 });
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toEqual(["left", "right"]);
+});
+
+test("grouping and ungrouping are each one undo step", async ({ page }) => {
+  await clickAt(page, LEFT);
+  await clickAt(page, LOOSE, ["Shift"]);
+  await page.keyboard.press("Control+g");
+  await expect.poll(() => groupCount(page)).toBe(2);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect.poll(() => groupCount(page)).toBe(1);
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect.poll(() => groupCount(page)).toBe(2);
+});
+
+test("the chrome shows grouped status: a group outlines its members, a multi-selection does not", async ({
+  page,
+}) => {
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await expect(page.getByTestId("group-members")).toBeVisible();
+  // The same two objects held as an ad-hoc selection look like a selection.
+  await page.keyboard.press("Control+Shift+g");
+  await expect.poll(() => groupCount(page)).toBe(0);
+  await clickAt(page, LEFT);
+  await clickAt(page, { x: 4.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await expect(page.getByTestId("group-members")).toBeHidden();
 });
 
 test("an empty-canvas click clears the selection and the entered group with it", async ({

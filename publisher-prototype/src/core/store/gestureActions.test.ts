@@ -8,10 +8,12 @@ import {
   flowchartDrawCommitted,
   gestureCancelled,
   lineDrawCommitted,
+  objectGroupCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectUngroupCommitted,
   rectDrawCommitted,
   roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
@@ -46,6 +48,8 @@ const documentActionCreators = [
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectGroupCommitted,
+  objectUngroupCommitted,
   gestureCancelled,
 ];
 

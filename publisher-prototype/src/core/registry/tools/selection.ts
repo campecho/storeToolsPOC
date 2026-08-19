@@ -83,6 +83,20 @@ export const selectTool: ToolContract = {
       action: "object/nudgeCommitted",
     },
     {
+      id: "select.ctrl-g.groups-selection",
+      trigger: "Ctrl/Cmd+G",
+      behavior:
+        "Combines the selection into one group — a group already among the selected objects becomes a CHILD of the new one rather than being flattened (§5.1 group selected objects, support nested groups) — and restacks the members contiguously so nothing renders between them. Needs at least two units to combine.",
+      action: "object/groupCommitted",
+    },
+    {
+      id: "select.ctrl-shift-g.ungroups-selection",
+      trigger: "Ctrl/Cmd+Shift+G",
+      behavior:
+        "Ungroups the selected group, removing exactly one nesting level: its objects and subgroups re-join the enclosing group, or the page when there is none (§5.1 ungroup grouped objects). Stacking stays as grouping left it.",
+      action: "object/ungroupCommitted",
+    },
+    {
       id: "select.double-click-group.enters-group",
       trigger: "double-click on group member",
       behavior:

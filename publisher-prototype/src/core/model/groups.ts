@@ -31,6 +31,20 @@ export function groupAncestry(groups: readonly Group[], groupId: string | undefi
 }
 
 /**
+ * Raw containment: does `object` sit inside `groupId` at any nesting depth?
+ * This is the STRUCTURAL test — it counts locked members, because they are
+ * inside the group whatever the select tool does about them. Anything
+ * answering a selection question wants `groupMemberIds` instead.
+ */
+export function isInGroup(
+  groups: readonly Group[],
+  object: LayoutObject,
+  groupId: string,
+): boolean {
+  return groupAncestry(groups, object.groupId).includes(groupId);
+}
+
+/**
  * Every UNLOCKED object inside `groupId` at any nesting depth, in the
  * caller's order (the page's z-order). Locked members stay out: the select
  * tool skips locked objects by contract (`selectTool.hitTest.lockedObjects`),
@@ -42,9 +56,7 @@ export function groupMemberIds(
   groups: readonly Group[],
   groupId: string,
 ): string[] {
-  return objects
-    .filter((o) => !o.locked && groupAncestry(groups, o.groupId).includes(groupId))
-    .map((o) => o.id);
+  return objects.filter((o) => !o.locked && isInGroup(groups, o, groupId)).map((o) => o.id);
 }
 
 /** What a selection gesture resolves to: the object ids it acts on, plus the
@@ -111,4 +123,90 @@ export function enteredGroup(
   const { unit } = resolveUnit(groupAncestry(groups, object?.groupId), enteredGroupId);
   if (unit === undefined) return null;
   return { groupId: unit, ids: selectionUnit(objects, groups, objectId, unit).ids };
+}
+
+/** The unit group of one selected object, or undefined when the object sits
+    at the current level and IS the unit. The shared step behind every
+    group-command resolution below. */
+function unitGroupOf(
+  objects: readonly LayoutObject[],
+  groups: readonly Group[],
+  objectId: string,
+  enteredGroupId: string | null,
+): string | undefined {
+  const object = objects.find((o) => o.id === objectId);
+  return resolveUnit(groupAncestry(groups, object?.groupId), enteredGroupId).unit;
+}
+
+/**
+ * The two halves a group command combines: objects that join the new group
+ * directly, and existing groups that become its CHILDREN. Grouping a
+ * selection that already contains a group nests it rather than flattening
+ * it — its members keep their own `groupId` (§5.1 "support nested groups").
+ *
+ * Null when there is nothing to combine: a selection resolving to fewer than
+ * two units has no second thing to hold, so the command commits nothing (one
+ * group re-grouped alone would only wrap it in a group of one).
+ */
+export function groupingUnits(
+  objects: readonly LayoutObject[],
+  groups: readonly Group[],
+  selectedIds: readonly string[],
+  enteredGroupId: string | null,
+): { ids: string[]; groupIds: string[] } | null {
+  const ids: string[] = [];
+  const groupIds: string[] = [];
+  for (const id of selectedIds) {
+    const unit = unitGroupOf(objects, groups, id, enteredGroupId);
+    if (unit === undefined) {
+      if (!ids.includes(id)) ids.push(id);
+    } else if (!groupIds.includes(unit)) {
+      groupIds.push(unit);
+    }
+  }
+  return ids.length + groupIds.length < 2 ? null : { ids, groupIds };
+}
+
+/**
+ * The groups an ungroup command dissolves: the distinct unit groups of the
+ * selection, which at any level are the outermost groups currently held.
+ * Empty when nothing selected is grouped at this level — an ungrouped object,
+ * or a member reached by entering its own group, has no group of its own to
+ * take apart.
+ */
+export function ungroupingGroupIds(
+  objects: readonly LayoutObject[],
+  groups: readonly Group[],
+  selectedIds: readonly string[],
+  enteredGroupId: string | null,
+): string[] {
+  const groupIds: string[] = [];
+  for (const id of selectedIds) {
+    const unit = unitGroupOf(objects, groups, id, enteredGroupId);
+    if (unit !== undefined && !groupIds.includes(unit)) groupIds.push(unit);
+  }
+  return groupIds;
+}
+
+/**
+ * The group a selection IS — exactly one group's full membership — or null
+ * for an ad-hoc multi-selection, a lone object, or a partial group. This is
+ * what lets the chrome show grouped status (§5.1 "selection behavior must
+ * clearly indicate grouped status"): the two look identical otherwise, since
+ * a group's frame is the same union AABB any multi-selection draws.
+ */
+export function selectedGroupId(
+  objects: readonly LayoutObject[],
+  groups: readonly Group[],
+  selectedIds: readonly string[],
+  enteredGroupId: string | null,
+): string | null {
+  const first = selectedIds[0];
+  if (first === undefined) return null;
+  const unit = unitGroupOf(objects, groups, first, enteredGroupId);
+  if (unit === undefined) return null;
+  const members = groupMemberIds(objects, groups, unit);
+  return members.length === selectedIds.length && members.every((id) => selectedIds.includes(id))
+    ? unit
+    : null;
 }

@@ -39,6 +39,10 @@ import { resizeCursor, rotateCursor } from "./cursors";
  */
 
 export const CHROME_COLOR = "#2680eb";
+/** Group members read as a hint inside the frame, not as competing chrome:
+    the same blue, dashed and faded, so the frame's own outline still reads as
+    the thing being transformed. */
+const GROUP_MEMBER_OPACITY = 0.5;
 /** Adjust handles read as a different KIND of control from the resize
     handles, so they take Publisher's/PowerPoint's amber rather than the
     chrome blue. */
@@ -97,8 +101,43 @@ const ADJUST_HANDLE_ID: Partial<Record<ShapeObject["shape"], string>> = {
   callout: "callout-tail",
 };
 
+/**
+ * What tells a GROUP apart from an ad-hoc multi-selection: each member
+ * outlined inside the shared frame, so the frame reads as holding things
+ * rather than merely spanning them (§5.1 "selection behavior must clearly
+ * indicate grouped status"). Members are drawn where they are — a frame at
+ * its own rotation, a line as a line — exactly like the move ghost.
+ */
+function GroupMembers({ objects }: { objects: readonly LayoutObject[] }) {
+  const outline = {
+    fill: "none",
+    stroke: CHROME_COLOR,
+    strokeDasharray: "3 2",
+    opacity: GROUP_MEMBER_OPACITY,
+    vectorEffect: "non-scaling-stroke",
+  } as const;
+  return (
+    <g data-testid="group-members">
+      {objects.map((o) =>
+        o.type === "line" ? (
+          <line key={o.id} x1={o.x1} y1={o.y1} x2={o.x2} y2={o.y2} {...outline} />
+        ) : (
+          <polygon
+            key={o.id}
+            points={rotatedFrameCorners({ x: o.x, y: o.y, w: o.w, h: o.h }, o.rotation)
+              .map((p) => `${p.x},${p.y}`)
+              .join(" ")}
+            {...outline}
+          />
+        ),
+      )}
+    </g>
+  );
+}
+
 export function SelectionChrome({
   objects,
+  grouped,
   zoom,
   onResizeStart,
   onRotateStart,
@@ -106,6 +145,8 @@ export function SelectionChrome({
 }: {
   /** The selected objects, in z-order. */
   objects: readonly LayoutObject[];
+  /** True when the selection IS exactly one group's membership. */
+  grouped: boolean;
   zoom: number;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
@@ -135,6 +176,7 @@ export function SelectionChrome({
   const adjustId = shape === undefined ? undefined : ADJUST_HANDLE_ID[shape.shape];
   return (
     <g data-testid="selection-chrome">
+      {grouped && <GroupMembers objects={objects} />}
       <polygon
         points={rotatedFrameCorners(box, rotation)
           .map((p) => `${p.x},${p.y}`)

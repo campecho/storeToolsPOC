@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Group } from "./document";
-import { enteredGroup, groupAncestry, groupMemberIds, selectionUnit } from "./groups";
+import {
+  enteredGroup,
+  groupAncestry,
+  groupMemberIds,
+  groupingUnits,
+  isInGroup,
+  selectedGroupId,
+  selectionUnit,
+  ungroupingGroupIds,
+} from "./groups";
 import type { LayoutObject, ShapeObject } from "./objects";
 
 /**
@@ -34,6 +43,7 @@ const OBJECTS: LayoutObject[] = [
   rect("c", { groupId: "inner" }),
   rect("locked", { groupId: "inner", locked: true }),
   rect("loose"),
+  rect("spare"),
 ];
 
 describe("groupAncestry", () => {
@@ -53,6 +63,16 @@ describe("groupAncestry", () => {
       { id: "y", parentGroupId: "x" },
     ];
     expect(groupAncestry(cyclic, "x")).toEqual(["x", "y"]);
+  });
+});
+
+describe("isInGroup", () => {
+  it("is structural — it counts a locked member the selection helpers skip", () => {
+    const locked = OBJECTS.find((o) => o.id === "locked");
+    if (locked === undefined) throw new Error("fixture missing the locked object");
+    expect(isInGroup(GROUPS, locked, "inner")).toBe(true);
+    expect(isInGroup(GROUPS, locked, "outer")).toBe(true);
+    expect(groupMemberIds(OBJECTS, GROUPS, "inner")).not.toContain("locked");
   });
 });
 
@@ -116,5 +136,69 @@ describe("enteredGroup", () => {
   it("has nothing to enter at the innermost level, or on an ungrouped object", () => {
     expect(enteredGroup(OBJECTS, GROUPS, "b", "inner")).toBeNull();
     expect(enteredGroup(OBJECTS, GROUPS, "loose", null)).toBeNull();
+  });
+});
+
+describe("groupingUnits", () => {
+  it("splits a selection into objects joining directly and groups becoming children", () => {
+    // "b" resolves to its outer group, "loose" to itself.
+    expect(groupingUnits(OBJECTS, GROUPS, ["b", "loose"], null)).toEqual({
+      ids: ["loose"],
+      groupIds: ["outer"],
+    });
+  });
+
+  it("groups plain objects with no children", () => {
+    expect(groupingUnits(OBJECTS, GROUPS, ["loose", "spare"], null)).toEqual({
+      ids: ["loose", "spare"],
+      groupIds: [],
+    });
+  });
+
+  it("is null with fewer than two units — one group re-grouped alone stays as it is", () => {
+    expect(groupingUnits(OBJECTS, GROUPS, ["a", "b", "c"], null)).toBeNull();
+    expect(groupingUnits(OBJECTS, GROUPS, ["loose"], null)).toBeNull();
+    expect(groupingUnits(OBJECTS, GROUPS, [], null)).toBeNull();
+  });
+
+  it("resolves units inside the entered group, so a subgroup nests rather than flattens", () => {
+    expect(groupingUnits(OBJECTS, GROUPS, ["b", "a"], "outer")).toEqual({
+      ids: ["a"],
+      groupIds: ["inner"],
+    });
+  });
+});
+
+describe("ungroupingGroupIds", () => {
+  it("names the outermost group of the selection", () => {
+    expect(ungroupingGroupIds(OBJECTS, GROUPS, ["b", "c"], null)).toEqual(["outer"]);
+  });
+
+  it("names the subgroup once its parent is entered", () => {
+    expect(ungroupingGroupIds(OBJECTS, GROUPS, ["b"], "outer")).toEqual(["inner"]);
+  });
+
+  it("is empty when nothing selected is grouped at this level", () => {
+    expect(ungroupingGroupIds(OBJECTS, GROUPS, ["loose"], null)).toEqual([]);
+    // Inside its own group a member has no group of its own to take apart.
+    expect(ungroupingGroupIds(OBJECTS, GROUPS, ["b"], "inner")).toEqual([]);
+  });
+});
+
+describe("selectedGroupId", () => {
+  it("names the group when the selection is exactly its membership", () => {
+    expect(selectedGroupId(OBJECTS, GROUPS, ["a", "b", "c"], null)).toBe("outer");
+  });
+
+  it("is null for a partial group, an ad-hoc multi-selection, and a lone object", () => {
+    expect(selectedGroupId(OBJECTS, GROUPS, ["a", "b"], null)).toBeNull();
+    expect(selectedGroupId(OBJECTS, GROUPS, ["a", "b", "c", "loose"], null)).toBeNull();
+    expect(selectedGroupId(OBJECTS, GROUPS, ["loose"], null)).toBeNull();
+    expect(selectedGroupId(OBJECTS, GROUPS, [], null)).toBeNull();
+  });
+
+  it("counts a group whose locked member cannot be selected as fully selected", () => {
+    // "inner" also holds a locked object, which no selection can ever contain.
+    expect(selectedGroupId(OBJECTS, GROUPS, ["b", "c"], "outer")).toBe("inner");
   });
 });

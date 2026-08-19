@@ -142,6 +142,35 @@ export type ArrowHeadsCommit = {
     appends or drops the ring-closing Z on a path shape. */
 export type PathClosedCommit = { pageIndex: number; ids: string[]; closed: boolean };
 
+/**
+ * group commits (§5.1): the new group's id — minted by the caller, like every
+ * other id in this file — plus the two halves it combines. `ids` are objects
+ * joining it directly; `groupIds` are existing groups becoming its CHILDREN,
+ * which is how grouping a group nests rather than flattens it. Absent
+ * `parentGroupId` means the page's top level; present, it is the group
+ * context the new group is created inside.
+ *
+ * Grouping also RESTACKS: the members move to sit contiguously at the
+ * topmost member's z position, so nothing can render between two members of
+ * one group.
+ */
+export type GroupCommit = {
+  pageIndex: number;
+  groupId: string;
+  parentGroupId?: string;
+  ids: string[];
+  groupIds: string[];
+};
+
+/**
+ * ungroup commits (§5.1): remove exactly one nesting level per named group —
+ * its objects and child groups re-join its parent, or the page when it has
+ * none. No pageIndex, unlike every other commit here: `doc.groups` is
+ * document-root state, so a removed group must not leave a dangling `groupId`
+ * behind on some other page.
+ */
+export type UngroupCommit = { groupIds: string[] };
+
 /** lock commits: set the identified objects' locked flag. The one translate-
     family action that must NOT skip locked objects — unlocking is its point. */
 export type LockCommit = {
@@ -172,6 +201,8 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
   "object/strokeWidthCommitted",
 );
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
+export const objectGroupCommitted = createAction<GroupCommit>("object/groupCommitted");
+export const objectUngroupCommitted = createAction<UngroupCommit>("object/ungroupCommitted");
 export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(
   "roundedRect/cornerRadiusCommitted",
 );

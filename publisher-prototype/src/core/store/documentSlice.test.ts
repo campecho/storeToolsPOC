@@ -12,11 +12,13 @@ import {
   ellipseDrawCommitted,
   lineDrawCommitted,
   objectFillCommitted,
+  objectGroupCommitted,
   objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectUngroupCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   roundedRectCornerRadiusCommitted,
@@ -375,6 +377,144 @@ describe("documentSlice", () => {
         objectLockCommitted({ pageIndex: 0, ids: ["b", "ghost"], locked: true }),
       );
       expect(objectsOf(state).map((o) => o.locked)).toEqual([false, true]);
+    });
+  });
+
+  describe("object/groupCommitted", () => {
+    const ids = (state: LayoutDocument) => objectsOf(state).map((o) => o.id);
+
+    it("records the group and joins the named objects to it", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "c"], groupIds: [] }),
+      );
+      expect(state.groups).toEqual([{ id: "g1" }]);
+      const grouped = objectsOf(state).filter((o) => o.groupId === "g1");
+      expect(grouped.map((o) => o.id)).toEqual(["a", "c"]);
+    });
+
+    it("nests an existing group instead of flattening it — members keep their groupId", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      expect(state.groups).toEqual([{ id: "inner", parentGroupId: "outer" }, { id: "outer" }]);
+      // a and b still belong to inner; only inner moved.
+      expect(objectsOf(state).map((o) => o.groupId)).toEqual(["inner", "inner", "outer"]);
+    });
+
+    it("carries the entered group as the new group's parent", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({
+          pageIndex: 0,
+          groupId: "g1",
+          parentGroupId: "host",
+          ids: ["a", "b"],
+          groupIds: [],
+        }),
+      );
+      expect(state.groups).toEqual([{ id: "g1", parentGroupId: "host" }]);
+    });
+
+    it("restacks members contiguously, ending where the topmost member stood", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("between"), shape("b"), shape("above")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      // "between" drops below the block; the block ends at "b"'s old depth, so
+      // "above" still sits on top. Members keep their own relative order.
+      expect(ids(state)).toEqual(["between", "a", "b", "above"]);
+    });
+
+    it("restacks a locked member too — it is inside the group whatever selection does", () => {
+      const state = reducer(
+        docWith([shape("a", { locked: true }), shape("between"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      expect(ids(state)).toEqual(["between", "a", "b"]);
+    });
+
+    it("ignores a re-used group id rather than recording it twice", () => {
+      const first = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      const again = reducer(
+        first,
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a"], groupIds: [] }),
+      );
+      expect(again).toEqual(first);
+    });
+  });
+
+  describe("object/ungroupCommitted", () => {
+    it("drops the group and frees its objects to the page", () => {
+      const grouped = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      const state = reducer(grouped, objectUngroupCommitted({ groupIds: ["g1"] }));
+      expect(state.groups).toEqual([]);
+      expect(objectsOf(state).every((o) => o.groupId === undefined)).toBe(true);
+    });
+
+    it("removes exactly one level: members re-join the enclosing group", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      state = reducer(state, objectUngroupCommitted({ groupIds: ["inner"] }));
+      expect(state.groups).toEqual([{ id: "outer" }]);
+      expect(objectsOf(state).map((o) => o.groupId)).toEqual(["outer", "outer", "outer"]);
+    });
+
+    it("re-parents child groups, not just objects", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      state = reducer(state, objectUngroupCommitted({ groupIds: ["outer"] }));
+      // inner survives one level up, at the page's top level.
+      expect(state.groups).toEqual([{ id: "inner" }]);
+      expect(objectsOf(state).map((o) => o.groupId)).toEqual(["inner", "inner", undefined]);
+    });
+
+    it("leaves stacking as grouping left it", () => {
+      const grouped = reducer(
+        docWith([shape("a"), shape("between"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      const state = reducer(grouped, objectUngroupCommitted({ groupIds: ["g1"] }));
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["between", "a", "b"]);
+    });
+
+    it("frees master-page objects too, so no groupId is left pointing at nothing", () => {
+      const doc = docWith([shape("a")]);
+      doc.masters = [{ id: "m1", label: "Master A", objects: [shape("m", { groupId: "g1" })] }];
+      let state = reducer(
+        doc,
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a"], groupIds: [] }),
+      );
+      state = reducer(state, objectUngroupCommitted({ groupIds: ["g1"] }));
+      expect(state.masters[0]?.objects[0]?.groupId).toBeUndefined();
+    });
+
+    it("ignores an unknown group id", () => {
+      const before = docWith([shape("a")]);
+      expect(reducer(before, objectUngroupCommitted({ groupIds: ["ghost"] }))).toEqual(before);
     });
   });
 

@@ -1,8 +1,10 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import {
   createEmptyDocument,
+  isInGroup,
   type LayoutDocument,
   type LayoutObject,
+  type LayoutPage,
   type ShapeObject,
 } from "../model";
 import {
@@ -13,6 +15,7 @@ import {
   flowchartDrawCommitted,
   lineDrawCommitted,
   objectFillCommitted,
+  objectGroupCommitted,
   objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
@@ -20,6 +23,7 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  objectUngroupCommitted,
   penDrawCommitted,
   rectDrawCommitted,
   calloutTailCommitted,
@@ -43,6 +47,7 @@ import {
   type StarPointsCommit,
   type FillCommit,
   type FrameBox,
+  type GroupCommit,
   type LineEndpoints,
   type LockCommit,
   type ResizeCommit,
@@ -50,6 +55,7 @@ import {
   type StrokePaintCommit,
   type StrokeWidthCommit,
   type TranslateCommit,
+  type UngroupCommit,
 } from "./documentActions";
 
 /**
@@ -295,6 +301,74 @@ function applyLock(state: LayoutDocument, action: PayloadAction<LockCommit>): vo
   }
 }
 
+/**
+ * Members sit contiguously at the topmost member's z position: the block ends
+ * exactly where the frontmost member stood, and both the members and the
+ * objects left behind keep their own relative order. Without this a
+ * non-member drawn between two members would render inside the group forever,
+ * so the group would transform as a unit but never read as one.
+ */
+function restackTogether(page: LayoutPage, memberIds: ReadonlySet<string>): void {
+  const isMember = (obj: LayoutObject) => memberIds.has(obj.id);
+  const top = page.objects.reduce((at, obj, i) => (isMember(obj) ? i : at), -1);
+  if (top === -1) return;
+  const members = page.objects.filter(isMember);
+  const rest = page.objects.filter((obj) => !isMember(obj));
+  // Where the block lands: after every non-member that was below the topmost
+  // member, which is what keeps the group at that member's depth.
+  const below = page.objects.slice(0, top + 1).filter((obj) => !isMember(obj)).length;
+  page.objects = [...rest.slice(0, below), ...members, ...rest.slice(below)];
+}
+
+function applyGroup(state: LayoutDocument, action: PayloadAction<GroupCommit>): void {
+  const { pageIndex, groupId, parentGroupId, ids, groupIds } = action.payload;
+  const page = state.pages[pageIndex];
+  if (!page || state.groups.some((g) => g.id === groupId)) return;
+  state.groups.push(parentGroupId === undefined ? { id: groupId } : { id: groupId, parentGroupId });
+  const joining = new Set(ids);
+  for (const obj of page.objects) {
+    if (joining.has(obj.id)) obj.groupId = groupId;
+  }
+  const children = new Set(groupIds);
+  for (const group of state.groups) {
+    if (children.has(group.id)) group.parentGroupId = groupId;
+  }
+  // Membership for the restack is STRUCTURAL — a locked member is inside the
+  // group even though it could never have been selected into it.
+  restackTogether(
+    page,
+    new Set(page.objects.filter((o) => isInGroup(state.groups, o, groupId)).map((o) => o.id)),
+  );
+}
+
+function applyUngroup(state: LayoutDocument, action: PayloadAction<UngroupCommit>): void {
+  for (const groupId of action.payload.groupIds) {
+    const group = state.groups.find((g) => g.id === groupId);
+    if (group === undefined) continue;
+    const { parentGroupId } = group;
+    // One level only: whatever the group held re-joins its parent, or the
+    // page when it had none. Stacking stays as grouping left it.
+    //
+    // Every page AND every master: `doc.groups` is document-root state, and a
+    // master-page object carrying the removed id would be left pointing at
+    // nothing. Grouping stays page-scoped — a selection is one page's — but
+    // removal has to reach wherever the id got to.
+    for (const page of [...state.pages, ...state.masters]) {
+      for (const obj of page.objects) {
+        if (obj.groupId !== groupId) continue;
+        if (parentGroupId === undefined) delete obj.groupId;
+        else obj.groupId = parentGroupId;
+      }
+    }
+    for (const child of state.groups) {
+      if (child.parentGroupId !== groupId) continue;
+      if (parentGroupId === undefined) delete child.parentGroupId;
+      else child.parentGroupId = parentGroupId;
+    }
+    state.groups = state.groups.filter((g) => g.id !== groupId);
+  }
+}
+
 export const documentSlice = createSlice({
   name: "document",
   initialState: createEmptyDocument(),
@@ -337,6 +411,8 @@ export const documentSlice = createSlice({
       .addCase(objectStrokePaintCommitted, applyStrokePaint)
       .addCase(objectStrokeWidthCommitted, applyStrokeWidth)
       .addCase(objectLockCommitted, applyLock)
+      .addCase(objectGroupCommitted, applyGroup)
+      .addCase(objectUngroupCommitted, applyUngroup)
       .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius)
       .addCase(starPolygonPointsCommitted, applyStarPoints)
       .addCase(starPolygonInnerRadiusCommitted, applyStarInnerRadius)

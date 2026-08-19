@@ -8,6 +8,7 @@ import {
   type Size,
   type Viewport,
 } from "../../core/geometry/viewport";
+import { selectedGroupId } from "../../core/model";
 import { toolRegistry } from "../../core/registry";
 import { effectivePageSetup } from "../../core/render/pageSetup";
 import { panCommitted, selectDocument, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
@@ -57,6 +58,10 @@ export function CanvasWorkspace({
   const setup = effectivePageSetup(doc, pageIndex);
   const objects = doc.pages[pageIndex]?.objects ?? [];
   const selectedObjects = objects.filter((o) => selectedIds.includes(o.id));
+  // A group and an ad-hoc multi-selection draw the same union frame, so the
+  // chrome needs telling which it has (§5.1 indicate grouped status).
+  const groupedSelection =
+    selectedGroupId(objects, doc.groups, selectedIds, enteredGroupId) !== null;
 
   const areaRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
@@ -283,6 +288,7 @@ export function CanvasWorkspace({
           showProbe={showProbe}
           preview={gestures.preview}
           selectedObjects={selectedObjects}
+          groupedSelection={groupedSelection}
           penDraft={activeTool === "pen" ? penAnchors : []}
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}
