@@ -47,7 +47,11 @@ import { resizeCursor, rotateCursor } from "./cursors";
  * along the top edge, the star's inner vertex, the callout's tail tip.
  */
 
-export const CHROME_COLOR = "#2680eb";
+/** Every line the interaction layer draws — the selection frame and its
+    handles, and the gesture previews that stand in for them mid-drag. One
+    constant because a preview REPLACES the chrome (§6.3): a second colour
+    would flip the frame on pointer-down and back on release. */
+export const CHROME_COLOR = "#cc0000";
 /** Group members read as a hint inside the frame, not as competing chrome:
     the same blue, dashed and faded, so the frame's own outline still reads as
     the thing being transformed. */
