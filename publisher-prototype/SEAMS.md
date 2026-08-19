@@ -387,14 +387,32 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   repositioning happens through the tail adjust handle." The placed object stores
   the free point; the preset only seeds it.
   Consequence of record: the tail reaches OUTSIDE the frame box — that is what
-  gives it length — so the body fills the frame, the selection frame hugs the
-  body, and the tail extends past it, as PowerPoint's does. Point hit-testing
-  follows the drawn outline (`flattenPath(shapeOutline(...))`) and still finds the
-  tail; the AABB the marquee and align/distribute read is the frame box and does
-  NOT cover it. Known gap, flagged for SME review rather than fixed here — closing
-  it means making `objectAabb` outline-aware for every parametric kind.
+  gives it length — so the body fills the frame, the LONE selection frame hugs the
+  body, and the tail extends past it, as PowerPoint's does. That frame is also
+  what resize scales, and it has to stay the body: the tip is normalized to it, so
+  a frame that grew to swallow the tail would feed back on itself.
+  **Correction (same day):** this entry first said the marquee missed the tail. It
+  never did — `objectIntersectsRect` tests the drawn outline for every parametric
+  kind, so sweeping a tail has always selected its callout. The gap was in
+  `objectAabb`, which align/distribute and the multi-selection frame read, and it
+  is now closed; see "Bounds take in what is drawn" below.
   The tip is bounded to one box-length outside each edge (`CALLOUT_TIP_MIN/MAX`)
   so its handle cannot be dragged off the page and lost.
   The Transform panel's corner select becomes two numeric fields, since the
   parameter is continuous now — the same treatment corner radius and inner radius
   already get there.
+- **Bounds take in what is drawn (recorded 2026-08-19, user decision):**
+  `objectAabb` measured a shape's frame corners, so a callout's tail — the one
+  outline that leaves its box — fell outside the bounds align/distribute and the
+  multi-selection frame work from. Aligning a callout left parked its BODY on the
+  margin and hung the tail off the page. Bounds now take the tail in.
+  Kept O(1) rather than flattening: the callout is the only kind whose outline
+  leaves the unit box, and the only vertex that does is the tip — its base points
+  clamp to the body edge. So the fix adds one point, not a flattened path, which
+  matters because bounds are taken per object on every align and every selection
+  frame. `outlineOvershoot` in `core/geometry/shapePaths.ts` is where a kind
+  declares what it reaches past its box, next to the builder that draws it, so a
+  future overshooting kind cannot quietly go unmeasured — every other kind returns
+  nothing, which that file's tests assert builder by builder.
+  Unchanged on purpose: a LONE callout's selection frame is still its own box, not
+  this AABB. That frame is what resize scales, and the tip is normalized to it.
