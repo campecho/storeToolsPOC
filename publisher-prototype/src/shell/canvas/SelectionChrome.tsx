@@ -1,6 +1,11 @@
 import { clampCornerRadius } from "../../core/geometry/shapePaths";
 import { DPI } from "../../core/geometry/viewport";
-import { resizeHandlePoint, starInnerArmPoint, type ResizeHandle } from "../../core/gestures";
+import {
+  resizeHandlePoint,
+  starInnerArmPoint,
+  type LineEndpointHandle,
+  type ResizeHandle,
+} from "../../core/gestures";
 import {
   framePivot,
   rotatePoint,
@@ -24,6 +29,10 @@ import { resizeCursor, rotateCursor } from "./cursors";
  * around it. Handles and the rotation stem rotate with it, which is also the
  * space the resize machine scales in. Multi-selections and lines fall back to
  * the union AABB drawn unrotated.
+ *
+ * A LONE LINE is the exception, and the reason is that a line is two points
+ * rather than a box: it shows those two points as its handles and no frame at
+ * all. Inside a multi-selection it rejoins the union frame and scales with it.
  *
  * Every selection carries the rotation handle: a rotation turns the frame as
  * a rigid body about its centre, which a line answers by orbiting its
@@ -142,6 +151,7 @@ export function SelectionChrome({
   onResizeStart,
   onRotateStart,
   onShapeAdjustStart,
+  onLineEndpointStart,
 }: {
   /** The selected objects, in z-order. */
   objects: readonly LayoutObject[];
@@ -152,6 +162,8 @@ export function SelectionChrome({
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
   /** Starts whichever adjust gesture the selected shape's kind owns. */
   onShapeAdjustStart: (e: React.PointerEvent<SVGElement>) => void;
+  /** Starts the drag of one end of a lone line. */
+  onLineEndpointStart: (which: LineEndpointHandle, e: React.PointerEvent<SVGElement>) => void;
 }) {
   const frame = selectionFrame(objects);
   if (frame === null) return null;
@@ -174,17 +186,25 @@ export function SelectionChrome({
   const adjust =
     unit === null ? null : toDoc({ x: box.x + unit.x * box.w, y: box.y + unit.y * box.h });
   const adjustId = shape === undefined ? undefined : ADJUST_HANDLE_ID[shape.shape];
+  // A LONE line shows its two points and nothing else: a line is two points,
+  // so a frame with eight stretch handles would be chrome for an object it is
+  // not (the POC's SelectionOverlay draws exactly these two). The rotation
+  // stem stays — turning the whole segment is a different act from moving one
+  // end. Inside a multi-selection a line rejoins the union frame.
+  const loneLine = objects.length === 1 && objects[0]?.type === "line" ? objects[0] : undefined;
   return (
     <g data-testid="selection-chrome">
       {grouped && <GroupMembers objects={objects} />}
-      <polygon
-        points={rotatedFrameCorners(box, rotation)
-          .map((p) => `${p.x},${p.y}`)
-          .join(" ")}
-        fill="none"
-        stroke={CHROME_COLOR}
-        vectorEffect="non-scaling-stroke"
-      />
+      {loneLine === undefined && (
+        <polygon
+          points={rotatedFrameCorners(box, rotation)
+            .map((p) => `${p.x},${p.y}`)
+            .join(" ")}
+          fill="none"
+          stroke={CHROME_COLOR}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
       <line
         x1={stemFoot.x}
         y1={stemFoot.y}
@@ -224,31 +244,48 @@ export function SelectionChrome({
           onPointerDown={onShapeAdjustStart}
         />
       )}
-      {HANDLES.map((handle) => {
-        const center = toDoc(resizeHandlePoint(handle, box));
-        return (
-          <rect
-            key={handle}
-            className="chrome-handle"
-            data-handle={handle}
-            x={center.x - handleSize / 2}
-            y={center.y - handleSize / 2}
-            width={handleSize}
-            height={handleSize}
-            // Squares sit square to the frame's edges, not the page's.
-            transform={
-              rotation === 0 ? undefined : `rotate(${rotation} ${center.x} ${center.y})`
-            }
-            fill="#ffffff"
-            stroke={CHROME_COLOR}
-            vectorEffect="non-scaling-stroke"
-            // The cursor names the direction the handle stretches, which the
-            // frame's rotation turns along with the handle itself.
-            style={{ cursor: resizeCursor(handle, rotation) }}
-            onPointerDown={(e) => onResizeStart(handle, e)}
-          />
-        );
-      })}
+      {loneLine !== undefined
+        ? (["p1", "p2"] as const).map((which) => (
+            <circle
+              key={which}
+              className="chrome-handle"
+              data-handle={which}
+              cx={which === "p1" ? loneLine.x1 : loneLine.x2}
+              cy={which === "p1" ? loneLine.y1 : loneLine.y2}
+              r={handleSize / 2}
+              fill="#ffffff"
+              stroke={CHROME_COLOR}
+              vectorEffect="non-scaling-stroke"
+              // An endpoint goes wherever it is dragged — no axis to name.
+              style={{ cursor: "move" }}
+              onPointerDown={(e) => onLineEndpointStart(which, e)}
+            />
+          ))
+        : HANDLES.map((handle) => {
+            const center = toDoc(resizeHandlePoint(handle, box));
+            return (
+              <rect
+                key={handle}
+                className="chrome-handle"
+                data-handle={handle}
+                x={center.x - handleSize / 2}
+                y={center.y - handleSize / 2}
+                width={handleSize}
+                height={handleSize}
+                // Squares sit square to the frame's edges, not the page's.
+                transform={
+                  rotation === 0 ? undefined : `rotate(${rotation} ${center.x} ${center.y})`
+                }
+                fill="#ffffff"
+                stroke={CHROME_COLOR}
+                vectorEffect="non-scaling-stroke"
+                // The cursor names the direction the handle stretches, which
+                // the frame's rotation turns along with the handle itself.
+                style={{ cursor: resizeCursor(handle, rotation) }}
+                onPointerDown={(e) => onResizeStart(handle, e)}
+              />
+            );
+          })}
     </g>
   );
 }

@@ -1,5 +1,5 @@
 import { createSlice, isAnyOf, type PayloadAction } from "@reduxjs/toolkit";
-import { isDrawCommit } from "./documentActions";
+import { isDrawCommit, objectDeleteCommitted } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
 /**
@@ -20,10 +20,11 @@ import { documentSlice } from "./documentSlice";
  *   group's members instead of the group. Null is the page's top level.
  *   The shell resolves the context each click ends in and sends it with the
  *   ids, so the two can never disagree.
- * - Selected ids that vanish from the document cannot happen yet — no
- *   delete action exists; pruning arrives with it. An undone draw is the
- *   near miss: the id stays selected and simply matches nothing, exactly as
- *   it did before drawing selected its result.
+ * - Deleted ids are PRUNED here rather than left dangling: a selection
+ *   holding ids nothing matches would keep drawing chrome around objects
+ *   that are gone. An undone draw is the near miss it does not cover — the
+ *   id stays selected and simply matches nothing, exactly as it did before
+ *   drawing selected its result.
  */
 
 export type SelectionState = { ids: string[]; enteredGroupId: string | null };
@@ -92,6 +93,13 @@ export const selectionSlice = createSlice({
     builder.addMatcher(isDrawCommit, (state, action) => {
       state.ids = [action.payload.object.id];
       state.enteredGroupId = null;
+    });
+    // Deleted objects leave the selection with them. Locked ids the reducer
+    // refused to delete are filtered out too, but they could never have been
+    // selected in the first place.
+    builder.addMatcher(objectDeleteCommitted.match, (state, action) => {
+      state.ids = state.ids.filter((id) => !action.payload.ids.includes(id));
+      if (state.ids.length === 0) state.enteredGroupId = null;
     });
     // A document swap invalidates every selected id wholesale.
     builder.addMatcher(

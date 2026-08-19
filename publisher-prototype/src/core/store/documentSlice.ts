@@ -1,6 +1,7 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import {
   createEmptyDocument,
+  groupAncestry,
   isInGroup,
   type LayoutDocument,
   type LayoutObject,
@@ -14,6 +15,7 @@ import {
   ellipseDrawCommitted,
   flowchartDrawCommitted,
   lineDrawCommitted,
+  objectDeleteCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -39,6 +41,7 @@ import {
   type ArrowHeadsCommit,
   type CalloutTailCommit,
   type CornerRadiusCommit,
+  type DeleteCommit,
   type DrawCommit,
   type FlowchartSymbolCommit,
   type LineDashCommit,
@@ -320,6 +323,30 @@ function restackTogether(page: LayoutPage, memberIds: ReadonlySet<string>): void
   page.objects = [...rest.slice(0, below), ...members, ...rest.slice(below)];
 }
 
+/**
+ * Groups no object sits inside any more are dropped. One pass covers nesting:
+ * an object's ancestry names every group above it, so a parent stays only
+ * while something deep inside it does — and a group nothing can select or
+ * enter is just weight for the round-trip to carry.
+ */
+function pruneEmptyGroups(state: LayoutDocument): void {
+  const inhabited = new Set<string>();
+  for (const page of [...state.pages, ...state.masters]) {
+    for (const obj of page.objects) {
+      for (const id of groupAncestry(state.groups, obj.groupId)) inhabited.add(id);
+    }
+  }
+  state.groups = state.groups.filter((g) => inhabited.has(g.id));
+}
+
+function applyDelete(state: LayoutDocument, action: PayloadAction<DeleteCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const ids = new Set(action.payload.ids);
+  page.objects = page.objects.filter((obj) => !ids.has(obj.id) || obj.locked);
+  pruneEmptyGroups(state);
+}
+
 function applyGroup(state: LayoutDocument, action: PayloadAction<GroupCommit>): void {
   const { pageIndex, groupId, parentGroupId, ids, groupIds } = action.payload;
   const page = state.pages[pageIndex];
@@ -411,6 +438,7 @@ export const documentSlice = createSlice({
       .addCase(objectStrokePaintCommitted, applyStrokePaint)
       .addCase(objectStrokeWidthCommitted, applyStrokeWidth)
       .addCase(objectLockCommitted, applyLock)
+      .addCase(objectDeleteCommitted, applyDelete)
       .addCase(objectGroupCommitted, applyGroup)
       .addCase(objectUngroupCommitted, applyUngroup)
       .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius)

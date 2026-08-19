@@ -14,6 +14,7 @@ import {
   cornerRadiusMachine,
   drawShapeMachine,
   finishPenDraft,
+  lineEndpointMachine,
   marqueeMachine,
   moveMachine,
   penMachine,
@@ -27,6 +28,7 @@ import {
   type GestureModifiers,
   type GesturePoint,
   type GesturePreview,
+  type LineEndpointHandle,
   type ResizeHandle,
 } from "../../core/gestures";
 import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
@@ -44,6 +46,7 @@ import {
   arrowDrawCommitted,
   gestureCancelled,
   isDrawCommit,
+  objectDeleteCommitted,
   objectGroupCommitted,
   objectNudgeCommitted,
   objectUngroupCommitted,
@@ -202,6 +205,9 @@ export type ToolGestures = {
   onDoubleClick(e: React.MouseEvent<HTMLDivElement>): void;
   beginResize(handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void;
   beginRotate(e: React.PointerEvent<SVGElement>): void;
+  /** select.drag-endpoint.moves-endpoint — no-op unless the selection is one
+      unlocked line, which is also the only case endpoints are drawn for. */
+  beginLineEndpoint(which: LineEndpointHandle, e: React.PointerEvent<SVGElement>): void;
   /** The adjust-handle clause the selected shape's kind owns — corner
       radius, star inner radius, or callout tail. No-op unless the selection
       is exactly one unlocked shape of an adjustable kind, which is also the
@@ -552,6 +558,35 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     );
   };
 
+  const beginLineEndpoint = (
+    which: LineEndpointHandle,
+    e: React.PointerEvent<SVGElement>,
+  ): void => {
+    if (e.button !== 0 || args.panning || sessionRef.current) return;
+    const selection = selectedObjects();
+    const only = selection.length === 1 ? selection[0] : undefined;
+    // Only a lone line offers endpoints, which is also the only case the
+    // chrome draws them for.
+    if (only === undefined || only.type !== "line" || only.locked) return;
+    e.stopPropagation();
+    setHandleCursor("move");
+    begin(
+      machineSession(
+        lineEndpointMachine,
+        toDoc(e),
+        {
+          pageIndex: args.pageIndex,
+          zoom: args.viewport.zoom,
+          id: only.id,
+          which,
+          initial: { x1: only.x1, y1: only.y1, x2: only.x2, y2: only.y2 },
+        },
+        commit,
+      ),
+      e.pointerId,
+    );
+  };
+
   const beginShapeAdjust = (e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
@@ -599,9 +634,10 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
   // discards a pen draft between presses (pen.esc.discards-path); Enter
   // finishes the pen draft (pen.double-click.commits-open-path's keyboard
-  // half); arrows nudge the selection (select.arrow.nudges); Ctrl/Cmd+G and
-  // Ctrl/Cmd+Shift+G group and ungroup it. Key repeat is fine for nudging:
-  // each keydown is its own nudge gesture, one history entry each.
+  // half); arrows nudge the selection (select.arrow.nudges); Delete removes
+  // it; Ctrl/Cmd+G and Ctrl/Cmd+Shift+G group and ungroup it. Key repeat is
+  // fine for nudging: each keydown is its own nudge gesture, one history
+  // entry each.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
@@ -662,6 +698,21 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           createObjectId,
         );
         if (action !== null) commit(action);
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // select.delete.removes-selection. Backspace joins Delete because a
+        // laptop keyboard often has only the one key, and outside a text
+        // field it can mean nothing else here.
+        const { activeTool, selectedIds, pageIndex } = argsRef.current;
+        if (activeTool !== "select" || sessionRef.current !== null) return;
+        if (isTextEntryTarget(e.target)) return;
+        // preventDefault before the empty-selection check, not after: Backspace
+        // still navigates back in some browsers, and "nothing was selected" is
+        // no reason to leave the page.
+        e.preventDefault();
+        if (selectedIds.length === 0) return;
+        commit(objectDeleteCommitted({ pageIndex, ids: [...selectedIds] }));
         return;
       }
       const delta = ARROW_DELTAS[e.key];
@@ -734,5 +785,6 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     onDoubleClick,
     beginResize,
     beginRotate,
+    beginLineEndpoint,
   };
 }

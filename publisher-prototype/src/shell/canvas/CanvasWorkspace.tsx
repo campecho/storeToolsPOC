@@ -293,6 +293,7 @@ export function CanvasWorkspace({
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}
           onShapeAdjustStart={gestures.beginShapeAdjust}
+          onLineEndpointStart={gestures.beginLineEndpoint}
           onRotateStart={gestures.beginRotate}
         />
       </div>

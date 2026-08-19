@@ -11,6 +11,7 @@ import {
 import {
   ellipseDrawCommitted,
   lineDrawCommitted,
+  objectDeleteCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -377,6 +378,56 @@ describe("documentSlice", () => {
         objectLockCommitted({ pageIndex: 0, ids: ["b", "ghost"], locked: true }),
       );
       expect(objectsOf(state).map((o) => o.locked)).toEqual([false, true]);
+    });
+  });
+
+  describe("object/deleteCommitted", () => {
+    it("removes the named objects and leaves the rest in z-order", () => {
+      const state = reducer(
+        docWith([shape("a"), line("l"), shape("b")]),
+        objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b"] }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["l"]);
+    });
+
+    it("keeps locked objects — the lock is what refuses — and ignores unknown ids", () => {
+      const state = reducer(
+        docWith([shape("a", { locked: true }), shape("b")]),
+        objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b", "ghost"] }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a"]);
+    });
+
+    it("drops a group its last member left, at every nesting level", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      // Emptying inner leaves outer standing — c still lives there.
+      state = reducer(state, objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b"] }));
+      expect(state.groups.map((g) => g.id)).toEqual(["outer"]);
+      // Emptying outer takes it too.
+      state = reducer(state, objectDeleteCommitted({ pageIndex: 0, ids: ["c"] }));
+      expect(state.groups).toEqual([]);
+    });
+
+    it("keeps a group a locked member still sits in", () => {
+      let state = reducer(
+        docWith([shape("a", { locked: true }), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(state, objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b"] }));
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a"]);
+      expect(state.groups.map((g) => g.id)).toEqual(["g1"]);
+    });
+
+    it("ignores an unknown pageIndex", () => {
+      const before = docWith([shape("a")]);
+      expect(reducer(before, objectDeleteCommitted({ pageIndex: 5, ids: ["a"] }))).toEqual(before);
     });
   });
 

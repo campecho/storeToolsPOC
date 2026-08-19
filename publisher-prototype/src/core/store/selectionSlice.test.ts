@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "../model";
+import { objectDeleteCommitted } from "./documentActions";
 import {
   documentLoadedCommitted,
   stressFixtureCleared,
@@ -103,6 +104,16 @@ describe("selectionSlice", () => {
       selectionGroupEnteredCommitted({ groupId: "grp-1", ids: ["g1"] }),
     );
     expect(next).toEqual({ ids: ["g1"], enteredGroupId: "grp-1" });
+  });
+
+  it("prunes deleted ids, and leaves the group context when nothing is left", () => {
+    const partial = reducer(
+      selected(["a", "b", "c"], "grp-1"),
+      objectDeleteCommitted({ pageIndex: 0, ids: ["b"] }),
+    );
+    expect(partial).toEqual({ ids: ["a", "c"], enteredGroupId: "grp-1" });
+    const emptied = reducer(partial, objectDeleteCommitted({ pageIndex: 0, ids: ["a", "c"] }));
+    expect(emptied).toEqual({ ids: [], enteredGroupId: null });
   });
 
   it("clears when any document-swap action lands", () => {

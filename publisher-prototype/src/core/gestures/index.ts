@@ -8,6 +8,7 @@ export * from "./shapeAdjust";
 export * from "./drag";
 export * from "./drawBounds";
 export * from "./drawLine";
+export * from "./lineEndpoint";
 export * from "./marquee";
 export * from "./pen";
 export * from "./move";

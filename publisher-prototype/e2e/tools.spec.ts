@@ -518,3 +518,79 @@ test("draw, move, then undo twice returns to the empty page — one history entr
   await expect(undo).toBeDisabled();
 });
 
+
+test("select.delete.removes-selection", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 3, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await armCounter(page);
+  await page.keyboard.press("Delete");
+  expect(await notificationCount(page)).toBe(1);
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  // The deleted id leaves the selection with it, so no chrome outlives it.
+  await expect.poll(() => selectionIds(page)).toEqual([]);
+  await expect(page.getByTestId("selection-chrome")).toHaveCount(0);
+  // One history entry: undo brings it back.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
+});
+
+test("Backspace deletes too, and a multi-selection goes in one step", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 3, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 3.5 });
+  await clickAt(page, { x: 3.5, y: 3.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await armCounter(page);
+  await page.keyboard.press("Backspace");
+  expect(await notificationCount(page)).toBe(1);
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(0);
+});
+
+test("a lone line's chrome is its two endpoints, not a box with resize handles", async ({
+  page,
+}) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await expect(page.locator('[data-handle="p1"]')).toBeVisible();
+  await expect(page.locator('[data-handle="p2"]')).toBeVisible();
+  // None of the eight stretch handles: a line is two points, not a box.
+  for (const handle of ["nw", "n", "ne", "e", "se", "s", "sw", "w"]) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCount(0);
+  }
+  // The rotation handle stays — turning the whole segment is its own act.
+  await expect(page.locator('[data-handle="rotate"]')).toBeVisible();
+});
+
+test("select.drag-endpoint.moves-endpoint", async ({ page }) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await armCounter(page);
+  await dragHandle(page, "p2", { x: 5, y: 5.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const line = lineAt(await pageObjects(page), 0);
+  // p1 held still; only the dragged end moved.
+  expectNear(line.x1, 2);
+  expectNear(line.y1, 4);
+  expectNear(line.x2, 5);
+  expectNear(line.y2, 5.5);
+});
+
+test("a line inside a multi-selection rejoins the union frame", async ({ page }) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await draw(page, "Rectangle", { x: 5, y: 4 }, { x: 6, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await clickAt(page, { x: 5.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // Endpoints belong to a lone line only; together they scale as a box.
+  await expect(page.locator('[data-handle="p1"]')).toHaveCount(0);
+  await expect(page.locator('[data-handle="se"]')).toBeVisible();
+});

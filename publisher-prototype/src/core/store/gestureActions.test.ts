@@ -8,6 +8,7 @@ import {
   flowchartDrawCommitted,
   gestureCancelled,
   lineDrawCommitted,
+  objectDeleteCommitted,
   objectGroupCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
@@ -50,6 +51,7 @@ const documentActionCreators = [
   objectRotateCommitted,
   objectGroupCommitted,
   objectUngroupCommitted,
+  objectDeleteCommitted,
   gestureCancelled,
 ];
 

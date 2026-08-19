@@ -143,6 +143,15 @@ export type ArrowHeadsCommit = {
 export type PathClosedCommit = { pageIndex: number; ids: string[]; closed: boolean };
 
 /**
+ * delete commits: remove the identified objects from the page. Locked objects
+ * are skipped like everywhere else — a lock is exactly the protection that
+ * should stop this. Any group left holding nothing is dropped with them, so
+ * deleting a whole group takes the group itself out rather than leaving an
+ * empty one to round-trip.
+ */
+export type DeleteCommit = { pageIndex: number; ids: string[] };
+
+/**
  * group commits (§5.1): the new group's id — minted by the caller, like every
  * other id in this file — plus the two halves it combines. `ids` are objects
  * joining it directly; `groupIds` are existing groups becoming its CHILDREN,
@@ -201,6 +210,7 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
   "object/strokeWidthCommitted",
 );
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
+export const objectDeleteCommitted = createAction<DeleteCommit>("object/deleteCommitted");
 export const objectGroupCommitted = createAction<GroupCommit>("object/groupCommitted");
 export const objectUngroupCommitted = createAction<UngroupCommit>("object/ungroupCommitted");
 export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(

@@ -1,5 +1,10 @@
 import { DPI, visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
-import { penDraftSegments, type GesturePreview, type ResizeHandle } from "../../core/gestures";
+import {
+  penDraftSegments,
+  type GesturePreview,
+  type LineEndpointHandle,
+  type ResizeHandle,
+} from "../../core/gestures";
 import { shapeOutline } from "../../core/geometry/shapePaths";
 import { rotatedFrameCorners, type Rect } from "../../core/hittest";
 import type { LayoutObject } from "../../core/model";
@@ -236,6 +241,7 @@ export function SvgOverlay({
   onResizeStart,
   onRotateStart,
   onShapeAdjustStart,
+  onLineEndpointStart,
 }: {
   viewport: Viewport;
   vpSize: Size;
@@ -252,6 +258,7 @@ export function SvgOverlay({
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
   onShapeAdjustStart: (e: React.PointerEvent<SVGElement>) => void;
+  onLineEndpointStart: (which: LineEndpointHandle, e: React.PointerEvent<SVGElement>) => void;
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;
   const { size, bleed } = setup;
@@ -311,6 +318,7 @@ export function SvgOverlay({
           onResizeStart={onResizeStart}
           onRotateStart={onRotateStart}
           onShapeAdjustStart={onShapeAdjustStart}
+          onLineEndpointStart={onLineEndpointStart}
         />
       )}
       <PenDraft anchors={penDraft} zoom={viewport.zoom} />

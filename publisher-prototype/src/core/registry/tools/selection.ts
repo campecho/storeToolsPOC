@@ -69,6 +69,13 @@ export const selectTool: ToolContract = {
       action: "object/resizeCommitted",
     },
     {
+      id: "select.drag-endpoint.moves-endpoint",
+      trigger: "drag on a line's endpoint handle",
+      behavior:
+        "Moves that end of the line, leaving the other where it is; Shift snaps the segment to fixed angles like drawing one does. A lone line offers its two endpoints instead of a frame with resize handles — it is two points, not a box.",
+      action: "object/resizeCommitted",
+    },
+    {
       id: "select.drag-rotate.rotates",
       trigger: "drag on rotation handle",
       behavior:
@@ -81,6 +88,13 @@ export const selectTool: ToolContract = {
       behavior:
         "Nudges the selection by the configured increment per §2.1's keyboard nudging with configurable increments.",
       action: "object/nudgeCommitted",
+    },
+    {
+      id: "select.delete.removes-selection",
+      trigger: "Delete / Backspace",
+      behavior:
+        "Removes the selected objects from the page; a group left holding nothing goes with them. Locked objects are kept — the lock is what refuses.",
+      action: "object/deleteCommitted",
     },
     {
       id: "select.ctrl-g.groups-selection",
@@ -136,6 +150,7 @@ export const selectTool: ToolContract = {
     "Skipping locked objects follows §5.3's 'based on user settings' — the skip is the default, not absolute; locked state renders visibly and locked objects can still be intentionally unlocked.",
     "Marquee, move, resize, and rotate previews live in the overlay outside the store; each commits exactly one action (PLAN.md §6.3).",
     "select.esc.cancels-drag commits nothing — gesture/cancelled is the gesture pipeline's no-op record, never a document mutation.",
+    "A LONE line's chrome is its two endpoints plus the rotation handle: dragging an end edits the line, dragging the knob turns the whole segment. Boxing it in eight stretch handles would be chrome for an object it is not. Inside a multi-selection a line rejoins the union frame and scales and turns with the rest.",
     "A group selects as a UNIT: click, Shift-click, Alt-click and marquee all resolve a hit object to the outermost group it belongs to, so a transform never holds part of a group. Locked members stay out, exactly as the hit-test contract keeps them out of a click.",
     "Rotation is the one transform that moves a selection's members as well as changing them: object rotation pivots at each object's own centre, so a selection turns rigidly only by orbiting every member about the selection frame's centre. object/rotateCommitted therefore carries absolute geometry alongside the absolute angles, and lines — which store no angle — turn entirely through it.",
     "ASSUMPTION: empty-click clear, Shift-toggle, marquee gesture, Esc-cancel, and the Alt modifier for stack cycling are Publisher-parity fillers — §2.1/§2.2 state the capabilities, not the bindings.",

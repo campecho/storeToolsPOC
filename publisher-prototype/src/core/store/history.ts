@@ -2,6 +2,7 @@ import { createAction, type Reducer, type UnknownAction } from "@reduxjs/toolkit
 import type { LayoutDocument } from "../model";
 import {
   DRAW_COMMIT_ACTIONS,
+  objectDeleteCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -105,6 +106,7 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectRotateCommitted.type,
   objectGroupCommitted.type,
   objectUngroupCommitted.type,
+  objectDeleteCommitted.type,
   roundedRectCornerRadiusCommitted.type,
   starPolygonInnerRadiusCommitted.type,
   calloutTailCommitted.type,
