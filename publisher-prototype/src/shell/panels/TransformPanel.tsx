@@ -1,16 +1,31 @@
-import type { LayoutObject, LineObject } from "../../core/model";
+import type { UnknownAction } from "@reduxjs/toolkit";
 import {
+  CalloutTailAnchorSchema,
+  FlowchartSymbolSchema,
+  type CalloutTailAnchor,
+  type FlowchartSymbol,
+  type LayoutObject,
+  type LineObject,
+  type ShapeObject,
+} from "../../core/model";
+import {
+  calloutTailCommitted,
+  flowchartSymbolCommitted,
   inEditRun,
   objectLockCommitted,
+  objectPathClosedCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
   roundedRectCornerRadiusCommitted,
   selectDocument,
+  starPolygonInnerRadiusCommitted,
+  starPolygonPointsCommitted,
   type FrameBox,
   type LineEndpoints,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { NumberField } from "./NumberField";
+import { SelectField } from "./SelectField";
 
 /**
  * The live Transform panel (PLAN.md §4.3 "transform"; Phase B Selection &
@@ -28,9 +43,11 @@ import { NumberField } from "./NumberField";
  * show the angle controls disabled. Locking (§5.3) disables every
  * geometry control except the lock checkbox itself — the door out.
  *
- * Corner radius appears only for a rounded rectangle — the one shape kind
- * that stores one — alongside the canvas adjust handle that sets the same
- * value (roundedRect/cornerRadiusCommitted, one action either way).
+ * The Shape group is the numeric home for whatever parameter shapes the
+ * selected kind — corner radius, star points and inner radius, callout tail,
+ * flowchart symbol, a path's closed state. Each appears only for the kind
+ * that stores it (SHAPE_GEOMETRY_FIELDS), and where a canvas adjust handle
+ * sets the same parameter, both surfaces dispatch the one action.
  */
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -129,14 +146,12 @@ export function TransformPanel({
     dispatch(inEditRun(objectResizeCommitted({ pageIndex, boxes }), editRun));
   };
 
-  const commitCornerRadius = (radius: number, editRun?: string): void => {
-    dispatch(
-      inEditRun(
-        roundedRectCornerRadiusCommitted({ pageIndex, ids: [single.id], radius }),
-        editRun,
-      ),
-    );
+  /** Every shape-parameter commit takes the same shape: this one object's
+      id, optionally inside the field's edit run. */
+  const commitShapeParam = (action: UnknownAction, editRun?: string): void => {
+    dispatch(inEditRun(action, editRun));
   };
+  const shapeIds = { pageIndex, ids: [single.id] };
 
   const commitRotation = (deg: number, editRun?: string): void => {
     dispatch(
@@ -144,6 +159,124 @@ export function TransformPanel({
         objectRotateCommitted({ pageIndex, rotations: { [single.id]: normalizeDegrees(deg) } }),
         editRun,
       ),
+    );
+  };
+
+  /**
+   * The controls for whatever shapes this kind — the panel face of
+   * SHAPE_GEOMETRY_FIELDS. Each kind's parameters appear only for that kind,
+   * because a kind that stores nothing has nothing to edit here, and the
+   * bounds are the drawing tools' own contract ranges so a placed shape can
+   * be driven exactly as far as it could be drawn.
+   *
+   * Star inner radius, callout tail and corner radius each have a canvas
+   * adjust handle setting the SAME action — one commit vocabulary, two
+   * surfaces, as the roundedRect precedent established.
+   */
+  const shapeFields = (shape: ShapeObject) => {
+    switch (shape.shape) {
+      case "roundedRect":
+        return (
+          <NumberField
+            label="Corner radius"
+            // No upper bound, unlike the tool option's: the stored radius is
+            // deliberately unclamped (ShapeObjectSchema), so a big frame can
+            // carry a big radius and a shrunk one keeps what it had.
+            value={shape.cornerRadius ?? 0}
+            min={0}
+            step={0.05}
+            unit="in"
+            disabled={locked}
+            onCommit={(radius, editRun) =>
+              commitShapeParam(roundedRectCornerRadiusCommitted({ ...shapeIds, radius }), editRun)
+            }
+          />
+        );
+      case "starPolygon":
+        return (
+          <>
+            <NumberField
+              label="Points"
+              value={shape.points ?? 5}
+              min={3}
+              max={24}
+              step={1}
+              disabled={locked}
+              onCommit={(points, editRun) =>
+                commitShapeParam(starPolygonPointsCommitted({ ...shapeIds, points }), editRun)
+              }
+            />
+            <NumberField
+              label="Inner radius"
+              value={shape.innerRadiusRatio ?? 0.5}
+              min={0.1}
+              max={0.9}
+              step={0.05}
+              disabled={locked}
+              onCommit={(innerRadiusRatio, editRun) =>
+                commitShapeParam(
+                  starPolygonInnerRadiusCommitted({ ...shapeIds, innerRadiusRatio }),
+                  editRun,
+                )
+              }
+            />
+          </>
+        );
+      case "callout":
+        return (
+          <SelectField<CalloutTailAnchor>
+            label="Tail anchor"
+            value={shape.tailAnchor ?? "bottom-left"}
+            options={CalloutTailAnchorSchema.options}
+            disabled={locked}
+            onCommit={(tailAnchor) =>
+              commitShapeParam(calloutTailCommitted({ ...shapeIds, tailAnchor }))
+            }
+          />
+        );
+      case "flowchart":
+        return (
+          <SelectField<FlowchartSymbol>
+            label="Symbol"
+            value={shape.symbol ?? "process"}
+            options={FlowchartSymbolSchema.options}
+            disabled={locked}
+            onCommit={(symbol) =>
+              commitShapeParam(flowchartSymbolCommitted({ ...shapeIds, symbol }))
+            }
+          />
+        );
+      case "path":
+        return (
+          <label className="field">
+            <input
+              type="checkbox"
+              aria-label="Closed"
+              checked={(shape.d ?? []).at(-1)?.c === "Z"}
+              disabled={locked}
+              onChange={(e) =>
+                commitShapeParam(
+                  objectPathClosedCommitted({ ...shapeIds, closed: e.target.checked }),
+                )
+              }
+            />
+            Closed
+          </label>
+        );
+      // rect and ellipse are shaped by their frame box alone.
+      case "rect":
+      case "ellipse":
+        return null;
+    }
+  };
+
+  const shapeGroup = (shape: ShapeObject) => {
+    const fields = shapeFields(shape);
+    if (fields === null) return null;
+    return (
+      <div className="field-row" role="group" aria-label="Shape">
+        {fields}
+      </div>
     );
   };
 
@@ -220,17 +353,7 @@ export function TransformPanel({
           Reset rotation
         </button>
       </div>
-      {single.type === "shape" && single.shape === "roundedRect" && (
-        <NumberField
-          label="Corner radius"
-          value={single.cornerRadius ?? 0}
-          min={0}
-          step={0.05}
-          unit="in"
-          disabled={locked}
-          onCommit={commitCornerRadius}
-        />
-      )}
+      {single.type === "shape" && shapeGroup(single)}
       <label className="field">
         <input
           type="checkbox"

@@ -116,10 +116,45 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   wherever the shape is drawn, and growing the frame back restores the radius
   rather than losing it. One action serves both surfaces —
   `roundedRect/cornerRadiusCommitted`, a gesture clause the Transform panel
-  reuses, per the panel-commit rule above. The other path shapes (star, callout,
-  banner, flowchart) still bake their options at draw time and keep their
-  adjust-handle clauses unwired; `drawShapeMachine`'s `DrawnShapeGeometry` union
-  is where each joins when its turn comes.
+  reuses, per the panel-commit rule above. The other path shapes followed
+  immediately — see the generalization entry below; the banner is the one that
+  did not.
+- **Parametric storage generalized (recorded 2026-08-18, user decision):** what the
+  rounded rect proved, the star, callout and flowchart adopt — each stores what
+  shapes it (`points` + `innerRadiusRatio`, `tailAnchor`, `symbol`) instead of
+  baking it into a path at draw time. Three consequences worth carrying to the dev
+  team. First, the per-kind schema rule became a TABLE: `SHAPE_GEOMETRY_FIELDS`
+  names the geometry fields each kind owns, and one superRefine checks every object
+  against its own kind's row, so adding a parametric kind is adding a row rather
+  than extending a condition. Second, one resolver — `shapeOutline()` — now derives
+  the outline from parameters plus frame box for every kind, and the renderer, the
+  hit test and every preview read it, so those three cannot disagree about what a
+  shape is. Third, the parameters outlive the draw: they survive a resize as
+  themselves and stay editable afterwards, from the canvas adjust handle where the
+  kind has one and from the Transform panel's Shape group either way.
+  **The banner stays baked**, and not for want of effort: its contracted fold-depth
+  handle has no tool option or requirement behind it to name a parameter, so there
+  is nothing yet to store. `drawShapeMachine`'s `DrawnShapeGeometry` union is where
+  it joins once SME review names one.
+- **A drawn object is selected and hands the tool back (recorded 2026-08-18, user
+  decision):** committing a draw does two things beyond adding the object. It
+  becomes the selection (`selectionSlice` matches `isDrawCommit`), and the tool
+  that drew it steps aside for the select tool (`App`'s `onObjectDrawn`, fired at
+  `useToolGestures`' single commit door). Together they mean the thing just made is
+  the thing under the cursor: it can be moved, resized, or driven from a panel
+  without a trip to the dock, and the panels — which bind to the selection — show
+  its own parameters the moment it exists. Anchor placements are committed gestures
+  but deliberately NOT draws (`isDrawCommit` excludes them), so a pen path still
+  builds click by click and hands back only when the path itself commits.
+  ASSUMPTION, flagged for SME review: neither §4.1 nor §4.4 says whether a draw
+  tool is sticky. Switch-after-draw is the Publisher convention; a reviewer who
+  wants to place five stars in a row will feel this immediately, which is exactly
+  the kind of judgement the prototype exists to collect.
+  Consequence worth knowing: a behavioural default like this invalidates test
+  PREMISES rather than assertions. Selection-on-draw silently broke
+  `select.drag.moves-selection`, whose premise was dragging an unselected object,
+  and the tool switch broke twelve specs that drew twice with one activation. Both
+  times the fix was to restate the premise and keep the assertion.
 - **Handle cursors (recorded 2026-08-18, user decision):** each handle shows the
   direction it stretches, turning with the frame — `core/gestures`'
   `resizeHandleAxis` snaps the handle's heading plus the frame's rotation to the

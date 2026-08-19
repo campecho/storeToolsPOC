@@ -4,7 +4,9 @@ import {
   armCounter,
   clickAt,
   drag,
+  draw,
   expectNear,
+  lineAt,
   notificationCount,
   pageObjects,
   selectionIds,
@@ -182,6 +184,168 @@ test("transform panel: corner radius shows for a rounded rect only, and edits th
   expect(await historyDepth(page)).toBe(before + 1);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   expect(shapeAt(await pageObjects(page), 1).cornerRadius).toBe(0.1);
+});
+
+test("transform panel: the Shape group shows the selected kind's parameters and nothing else", async ({
+  page,
+}) => {
+  const shapeGroup = panel(page, "transform").getByRole("group", { name: "Shape" });
+  // A rect is shaped by its frame box alone — no group at all.
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await expect(shapeGroup).toHaveCount(0);
+  // A star stores two parameters; a callout stores one, and not the star's.
+  await draw(page, "Star / polygon", { x: 3, y: 3 }, { x: 5, y: 5 });
+  await expect(shapeGroup.getByLabel("Points", { exact: true })).toBeVisible();
+  await expect(shapeGroup.getByLabel("Inner radius", { exact: true })).toBeVisible();
+  await draw(page, "Callout", { x: 1, y: 6 }, { x: 3, y: 7 });
+  await expect(shapeGroup.getByLabel("Tail anchor", { exact: true })).toBeVisible();
+  await expect(shapeGroup.getByLabel("Points", { exact: true })).toHaveCount(0);
+});
+
+test("transform panel: star points and inner radius edit the drawn star, one entry per visit", async ({
+  page,
+}) => {
+  await draw(page, "Star / polygon", { x: 1, y: 3 }, { x: 3, y: 5 });
+  // The drawing tool's own contract defaults, now showing as the placed
+  // shape's stored parameters.
+  await expect(panel(page, "transform").getByLabel("Points", { exact: true })).toHaveValue("5");
+  const before = await historyDepth(page);
+  await armCounter(page);
+  await commitField(page, "transform", "Points", "9");
+  expect(await notificationCount(page)).toBe(1);
+  expect(shapeAt(await pageObjects(page), 0).points).toBe(9);
+  await commitField(page, "transform", "Inner radius", "0.25");
+  expect(shapeAt(await pageObjects(page), 0).innerRadiusRatio).toBe(0.25);
+  // Two visits, two entries — and the inner radius shares its action with
+  // the canvas adjust handle, so undo steps back through either the same way.
+  expect(await historyDepth(page)).toBe(before + 2);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(shapeAt(await pageObjects(page), 0).innerRadiusRatio).toBe(0.5);
+  expect(shapeAt(await pageObjects(page), 0).points).toBe(9);
+});
+
+test("transform panel: points entry refuses values outside the tool's declared range", async ({
+  page,
+}) => {
+  await draw(page, "Star / polygon", { x: 1, y: 3 }, { x: 3, y: 5 });
+  const points = panel(page, "transform").getByLabel("Points", { exact: true });
+  // The star tool's contract range is 3–24; beyond it nothing commits,
+  // though the draft keeps showing what was typed.
+  await points.fill("40");
+  await expect(points).toHaveValue("40");
+  expect(shapeAt(await pageObjects(page), 0).points).toBe(5);
+  await points.fill("2");
+  expect(shapeAt(await pageObjects(page), 0).points).toBe(5);
+  await points.fill("12");
+  expect(shapeAt(await pageObjects(page), 0).points).toBe(12);
+});
+
+test("transform panel: callout tail anchor and flowchart symbol commit one entry per pick", async ({
+  page,
+}) => {
+  await draw(page, "Callout", { x: 1, y: 3 }, { x: 3, y: 4.5 });
+  const tail = panel(page, "transform").getByLabel("Tail anchor", { exact: true });
+  await expect(tail).toHaveValue("bottom-left");
+  await armCounter(page);
+  await tail.selectOption("top-right");
+  expect(await notificationCount(page)).toBe(1);
+  expect(shapeAt(await pageObjects(page), 0).tailAnchor).toBe("top-right");
+
+  await draw(page, "Flowchart", { x: 4, y: 3 }, { x: 6, y: 4.5 });
+  const symbol = panel(page, "transform").getByLabel("Symbol", { exact: true });
+  await expect(symbol).toHaveValue("process");
+  const before = await historyDepth(page);
+  await symbol.selectOption("decision");
+  expect(shapeAt(await pageObjects(page), 1).symbol).toBe("decision");
+  expect(await historyDepth(page)).toBe(before + 1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(shapeAt(await pageObjects(page), 1).symbol).toBe("process");
+});
+
+test("transform panel: Closed opens and closes a placed freeform path", async ({ page }) => {
+  await activate(page, "Pen / freeform");
+  await clickAt(page, { x: 1, y: 3 });
+  await clickAt(page, { x: 3, y: 3 });
+  await clickAt(page, { x: 2, y: 5 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const closed = panel(page, "transform").getByLabel("Closed", { exact: true });
+  // Enter commits an OPEN path — the checkbox is the placed counterpart of
+  // the pen's own auto-close option.
+  await expect(closed).not.toBeChecked();
+  await closed.check();
+  const ringed = shapeAt(await pageObjects(page), 0).d ?? [];
+  expect(ringed.at(-1)?.c).toBe("Z");
+  await closed.uncheck();
+  const opened = shapeAt(await pageObjects(page), 0).d ?? [];
+  expect(opened.at(-1)?.c).not.toBe("Z");
+});
+
+test("transform panel: locking a shape disables its parameters too", async ({ page }) => {
+  await draw(page, "Star / polygon", { x: 1, y: 3 }, { x: 3, y: 5 });
+  await panel(page, "transform").getByLabel("Locked", { exact: true }).check();
+  await expect(panel(page, "transform").getByLabel("Points", { exact: true })).toBeDisabled();
+  await expect(panel(page, "transform").getByLabel("Inner radius", { exact: true })).toBeDisabled();
+});
+
+test("color panel: dash and end decorations edit a line, storing defaults as absence", async ({
+  page,
+}) => {
+  await draw(page, "Line", { x: 1, y: 3 }, { x: 4, y: 3 });
+  const colorPanel = panel(page, "color-swatches");
+  const ends = colorPanel.getByRole("group", { name: "Line ends" });
+  // Line detail belongs to the outline, so it rides the Outline target.
+  await expect(ends).toHaveCount(0);
+  await colorPanel.getByLabel("Outline", { exact: true }).check();
+  await expect(ends.getByLabel("Dash", { exact: true })).toHaveValue("solid");
+
+  await armCounter(page);
+  await ends.getByLabel("Dash", { exact: true }).selectOption("dashed");
+  expect(await notificationCount(page)).toBe(1);
+  expect(lineAt(await pageObjects(page), 0).dash).toBe("dashed");
+  await ends.getByLabel("End head", { exact: true }).selectOption("diamond");
+  await ends.getByLabel("Head size", { exact: true }).selectOption("l");
+  let line = lineAt(await pageObjects(page), 0);
+  expect(line.headEnd).toBe("diamond");
+  expect(line.headSize).toBe("l");
+  // The schema's defaults store as ABSENCE, not as the written-out value.
+  await ends.getByLabel("Dash", { exact: true }).selectOption("solid");
+  await ends.getByLabel("Head size", { exact: true }).selectOption("m");
+  await ends.getByLabel("End head", { exact: true }).selectOption("none");
+  line = lineAt(await pageObjects(page), 0);
+  expect(line.dash).toBeUndefined();
+  expect(line.headSize).toBeUndefined();
+  expect(line.headEnd).toBeUndefined();
+});
+
+test("color panel: an arrow's drawn heads show in the panel, and each pick is one undo step", async ({
+  page,
+}) => {
+  await draw(page, "Arrow", { x: 1, y: 3 }, { x: 4, y: 3 });
+  const colorPanel = panel(page, "color-swatches");
+  await colorPanel.getByLabel("Outline", { exact: true }).check();
+  const ends = colorPanel.getByRole("group", { name: "Line ends" });
+  // The arrow tool draws headEnd "arrow" by contract; the panel reads it.
+  await expect(ends.getByLabel("End head", { exact: true })).toHaveValue("arrow");
+  await expect(ends.getByLabel("Start head", { exact: true })).toHaveValue("none");
+  const before = await historyDepth(page);
+  await ends.getByLabel("Start head", { exact: true }).selectOption("circle");
+  expect(lineAt(await pageObjects(page), 0).headStart).toBe("circle");
+  expect(await historyDepth(page)).toBe(before + 1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  const reverted = lineAt(await pageObjects(page), 0);
+  expect(reverted.headStart).toBeUndefined();
+  // Editing one end leaves the other exactly as it stood.
+  expect(reverted.headEnd).toBe("arrow");
+});
+
+test("color panel: line-end controls stay hidden when no line is selected", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  const colorPanel = panel(page, "color-swatches");
+  await colorPanel.getByLabel("Outline", { exact: true }).check();
+  await expect(colorPanel.getByRole("group", { name: "Line ends" })).toHaveCount(0);
+  // Width still applies — a rect's outline has one, it just has no ends.
+  await expect(colorPanel.getByLabel("Width", { exact: true })).toBeVisible();
 });
 
 test("color panel: picking a fill color commits one literal rgb paint; None hollows; undo restores", async ({

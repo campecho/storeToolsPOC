@@ -293,9 +293,9 @@ test("flowchart.drag.creates", async ({ page }) => {
 });
 
 test("flowchart.drag.creates with decision and terminator symbols", async ({ page }) => {
+  const symbol = () => page.getByTestId("options-bar").getByLabel("Symbol", { exact: true });
   await activate(page, "Flowchart");
-  const symbol = page.getByTestId("options-bar").getByLabel("Symbol", { exact: true });
-  await symbol.selectOption("decision");
+  await symbol().selectOption("decision");
   await armCounter(page);
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
@@ -308,7 +308,10 @@ test("flowchart.drag.creates with decision and terminator symbols", async ({ pag
   expect(hasVertex(decision.d, 1, 0.5)).toBe(true);
   expect(hasVertex(decision.d, 0.5, 1)).toBe(true);
   expect(hasVertex(decision.d, 0, 0.5)).toBe(true);
-  await symbol.selectOption("terminator");
+  // The draw handed the page back to Select — pick the flowchart tool up
+  // again to reach its options bar (its option values are held per tool).
+  await activate(page, "Flowchart");
+  await symbol().selectOption("terminator");
   await drag(page, { x: 4, y: 3 }, { x: 6, y: 4 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
   const terminator = outlineAt(await pageObjects(page), 1);

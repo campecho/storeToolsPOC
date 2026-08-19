@@ -16,6 +16,7 @@ import {
   roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
+  starPolygonInnerRadiusCommitted,
 } from "./documentActions";
 import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES } from "./history";
 import { penSlice } from "./penSlice";
@@ -37,6 +38,7 @@ const documentActionCreators = [
   roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
+  starPolygonInnerRadiusCommitted,
   calloutDrawCommitted,
   bannerDrawCommitted,
   flowchartDrawCommitted,
@@ -47,13 +49,19 @@ const documentActionCreators = [
   gestureCancelled,
 ];
 
-/** Prefixes whose registry clauses are ALL wired. roundedRect joined when
-    its parametric storage landed, taking its adjust-handle clause with it;
-    the remaining path-shape tools (starPolygon, callout, banner, flowchart)
-    stay out until they get parametric storage of their own, so only their
-    draw clauses are wired (and cross-checked through UNDOABLE_ACTION_TYPES
-    below). */
-const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line|arrow|roundedRect)\//;
+/** Prefixes whose registry clauses are ALL wired. Each joined as its last
+    clause landed: roundedRect with its parametric storage and adjust
+    handle, then starPolygon (draw + inner-radius handle) and flowchart
+    (draw, its only clause) with the parametric generalization.
+
+    Still out, and each for a reason that is not parametric storage:
+    callout has storage and a wired tail handle but also
+    callout/textEditEnteredCommitted, which waits on the text tranche;
+    banner has no contracted parameter behind its fold-depth handle.
+    Their draw clauses are cross-checked through UNDOABLE_ACTION_TYPES
+    below regardless. */
+const WIRED_PREFIXES =
+  /^(selection|object|rect|ellipse|line|arrow|roundedRect|starPolygon|flowchart)\//;
 
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([
@@ -65,7 +73,7 @@ describe("gesture-clause actions", () => {
     tool.gestures.map((clause) => ({ tool, clause })),
   );
 
-  it("backs every selection/object/rect/ellipse/line gesture clause with an action creator of that type", () => {
+  it("backs every clause of a fully wired tool with an action creator of that type", () => {
     const wired = clauses.filter(({ clause }) => WIRED_PREFIXES.test(clause.action));
     expect(wired.length).toBeGreaterThan(0);
     const missing = wired

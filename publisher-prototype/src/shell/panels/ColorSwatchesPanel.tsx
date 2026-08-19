@@ -1,15 +1,26 @@
 import { useState } from "react";
-import type { Paint } from "../../core/model";
+import {
+  ArrowHeadSchema,
+  ArrowHeadSizeSchema,
+  LineDashSchema,
+  type ArrowHead,
+  type ArrowHeadSize,
+  type LineDash,
+  type Paint,
+} from "../../core/model";
 import { hexToColorValue, paintToCss, paintToHex } from "../../core/render/paint";
 import {
   inEditRun,
+  objectArrowHeadsCommitted,
   objectFillCommitted,
+  objectLineDashCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   selectDocument,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
 import { NumberField } from "./NumberField";
+import { SelectField } from "./SelectField";
 
 /**
  * The live Colour & swatches panel (PLAN.md §4.3 "color-swatches"; Phase B
@@ -19,6 +30,11 @@ import { NumberField } from "./NumberField";
  * or none. Outline width edits per-object widths; outline color keeps them
  * (the strokePaint/strokeWidth commit split). Both apply as they are made —
  * the width field folds its run into one history entry (NumberField).
+ *
+ * The Outline target also carries what else describes a line's outline: the
+ * dash pattern and the end decorations. Those reach lines only — the shape a
+ * dash or an arrowhead applies to — so they appear only when the selection
+ * holds a line, and each pick is one discrete commit (SelectField).
  *
  * Which target a control edits is panel state, not document state. The
  * shown color/width read from the FIRST selected object; commits apply to
@@ -61,6 +77,22 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
     const ids = applicable.map((o) => o.id);
     if (target === "fill") dispatch(objectFillCommitted({ pageIndex, ids, fill: paint }));
     else dispatch(objectStrokePaintCommitted({ pageIndex, ids, paint }));
+  };
+
+  // Dash and end decorations describe a LINE's outline specifically — the
+  // reducers reach lines only, so the controls appear only when the
+  // selection has one to edit, and read from the first of them. Absence is
+  // the schema's default (solid, no heads, medium), so an unset object
+  // reads as that rather than as blank.
+  const lines = applicable.filter((o) => o.type === "line");
+  const firstLine = lines[0];
+  const lineIds = lines.map((o) => o.id);
+  const commitHeads = (heads: {
+    headStart?: ArrowHead;
+    headEnd?: ArrowHead;
+    headSize?: ArrowHeadSize;
+  }): void => {
+    dispatch(objectArrowHeadsCommitted({ pageIndex, ids: lineIds, ...heads }));
   };
 
   return (
@@ -126,6 +158,34 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
             )
           }
         />
+      )}
+      {target === "stroke" && firstLine !== undefined && (
+        <div className="field-row" role="group" aria-label="Line ends">
+          <SelectField<LineDash>
+            label="Dash"
+            value={firstLine.dash ?? "solid"}
+            options={LineDashSchema.options}
+            onCommit={(dash) => dispatch(objectLineDashCommitted({ pageIndex, ids: lineIds, dash }))}
+          />
+          <SelectField<ArrowHead>
+            label="Start head"
+            value={firstLine.headStart ?? "none"}
+            options={ArrowHeadSchema.options}
+            onCommit={(headStart) => commitHeads({ headStart })}
+          />
+          <SelectField<ArrowHead>
+            label="End head"
+            value={firstLine.headEnd ?? "none"}
+            options={ArrowHeadSchema.options}
+            onCommit={(headEnd) => commitHeads({ headEnd })}
+          />
+          <SelectField<ArrowHeadSize>
+            label="Head size"
+            value={firstLine.headSize ?? "m"}
+            options={ArrowHeadSizeSchema.options}
+            onCommit={(headSize) => commitHeads({ headSize })}
+          />
+        </div>
       )}
       <div className="swatch-list" role="group" aria-label="Document swatches">
         {doc.swatches.length === 0 && <p className="panel-note">No document swatches.</p>}

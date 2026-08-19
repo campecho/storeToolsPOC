@@ -46,6 +46,12 @@ export function App() {
     setToolOptions((prev) => ({ ...prev, [toolId]: { ...prev[toolId], [optionId]: value } }));
   }, []);
 
+  // A drawn object lands selected (selectionSlice), and the select tool is
+  // what acts on a selection — so the draw tool hands the page back rather
+  // than arming another shape. Reasoned at the commit door in
+  // canvas/useToolGestures.ts, where the ASSUMPTION note lives.
+  const selectDrawnObject = useCallback(() => setActiveTool("select"), []);
+
   const activeContract = toolRegistry.find((t) => t.id === activeTool);
 
   const switchMode = (next: AppMode) => {
@@ -102,6 +108,7 @@ export function App() {
           showProbe={showProbe}
           toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
+          onObjectDrawn={selectDrawnObject}
         />
         <ControlPanel
           mode={mode}

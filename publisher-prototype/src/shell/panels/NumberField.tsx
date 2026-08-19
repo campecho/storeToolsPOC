@@ -45,6 +45,7 @@ export function NumberField({
   onCommit,
   disabled = false,
   min,
+  max,
   step,
   unit,
 }: {
@@ -55,6 +56,10 @@ export function NumberField({
   onCommit: (next: number, editRun: string) => void;
   disabled?: boolean;
   min?: number;
+  /** Upper bound, the mirror of `min`: an entry beyond it commits nothing
+      while the draft keeps showing what was typed, so a range the tool
+      contract declares can't be exceeded from the panel either. */
+  max?: number;
   step?: number;
   unit?: string;
 }) {
@@ -83,6 +88,7 @@ export function NumberField({
     const next = Number(text);
     if (text.trim() === "" || !Number.isFinite(next)) return;
     if (min !== undefined && next < min) return;
+    if (max !== undefined && next > max) return;
     commit(next);
   };
 
@@ -106,6 +112,7 @@ export function NumberField({
         aria-label={label}
         value={draft ?? formatValue(value)}
         min={min}
+        max={max}
         step={step}
         disabled={disabled}
         onChange={(e) => change(e.target.value)}
