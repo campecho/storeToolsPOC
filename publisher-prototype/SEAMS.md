@@ -280,9 +280,9 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   line tool draws under, because placing an endpoint is the same act whether the
   line is new or not. The drag applies TRAVEL, not pointer position, so pressing a
   few thousandths off the handle's centre never jumps the endpoint.
-  The rotation handle STAYS on a lone line (user decision, narrowing the 2026-08-19
-  rigid-rotation entry rather than reversing it): turning the whole segment about
-  its midpoint is a different act from moving one end, and both are now reachable.
+  The rotation handle stayed on a lone line at first (user decision, narrowing the
+  rigid-rotation entry rather than reversing it) — **superseded the same day; see
+  "A lone line turns from its endpoints" below.**
   Inside a multi-selection a line rejoins the union frame and scales and turns with
   the rest — that is what makes grouped rotation correct, and it is untouched.
 - **The Transform panel speaks each object's own vocabulary (recorded
@@ -305,3 +305,18 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   overlay that is deliberately NOT chrome. Known and left alone: the debug
   alignment probe's `#d0396b` now reads close to the chrome red; the probe is off
   by default and dashed, and recolouring it was not part of this change.
+- **A lone line turns from its endpoints (recorded 2026-08-19, user decision;
+  supersedes the rotation-handle half of "A lone line is two points"):** a lone
+  line and a lone arrow show their two endpoint handles and NOTHING else — no
+  frame, no stretch handles, and no rotation knob. Dragging an end already turns
+  the segment, so the knob was a second control for something one of the endpoints
+  does, sitting on chrome whose whole point is that a line is not a box. An arrow
+  is a `LineObject` carrying head decorations, so it takes this by the same branch
+  — there is no separate arrow object to handle.
+  Scope of record: this is the LONE case only. A multi-selection keeps the
+  rotation handle even when every member is a line, because no endpoint turns a
+  PAIR — that is rigid-body rotation, and a line inside one still follows it
+  through its endpoints (the rigid-rotation entry above stands untouched).
+  Worth keeping as a pattern: the first answer here added a control, the second
+  removed one, and the second is smaller in every sense — fewer handles on screen,
+  one way to do the thing, and one less contract clause to explain.
