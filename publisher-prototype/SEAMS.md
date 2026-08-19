@@ -166,3 +166,54 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   way. A running resize/rotate joins the workspace's cursor override chain,
   because the preview replaces the chrome mid-gesture (§6.3) and takes the
   hovered handle's cursor with it.
+- **Rotation is rigid (recorded 2026-08-19, user decision):** a selection turns as
+  ONE BODY about the selection frame's centre. An object's `rotation` pivots at its
+  own frame centre (the rotation-pivot decision above), so applying one shared
+  delta to every member's angle — what the machine did until now — spun each
+  member in place and left a multi-selection scattered across its old positions.
+  Members must therefore ORBIT the pivot as well as turn: `object/rotateCommitted`
+  gains `boxes`, the same `Record<id, FrameBox | LineEndpoints>` a resize commits,
+  carrying the absolute geometry the orbit lands each member on. One gesture still
+  commits one action and one history entry. `boxes` is optional — the Transform
+  panel's angle field turns one object about its own centre and orbits nothing —
+  and the reducer applies the two halves independently, which is what lets a LINE
+  take its whole turn through its endpoints despite storing no angle at all. A
+  lone frame object degenerates exactly: its pivot is its own centre, so the
+  emitted box is the initial one bit-for-bit and "rotate one object" still means
+  "turn it in place".
+  Consequence for Shift: it snaps the SELECTION FRAME's resulting angle to 15°,
+  not each member's own. Snapping per member hands differently-rotated members
+  different deltas, which is precisely the thing that breaks rigidity. For a lone
+  object the frame rotation IS that object's, so the familiar "snap this object to
+  15°" is unchanged; for a multi-selection the frame is unrotated, so Shift snaps
+  the turn itself.
+  Consequence for lines: they now carry a rotation handle. `selectionFrame` gives a
+  lone line its union AABB, so it turns about its own midpoint. This supersedes the
+  earlier "an all-line selection shows no rotate handle" note, which existed only
+  because rotation was an angle field lines lack.
+- **Groups select as a unit (recorded 2026-08-19, user decision):** the §5.1
+  grouping model has been storage-only since 2026-08-17; selection now reads it.
+  `core/model/groups.ts` is the one resolver — pure id bookkeeping over
+  `doc.groups` plus each object's `groupId`, no geometry, since groups own none —
+  and every selection clause routes through it: click, Shift-click, Alt-click and
+  marquee each resolve a hit object to the OUTERMOST group it belongs to. A
+  transform therefore never holds part of a group, which is what makes "a group
+  rotates together" true rather than coincidental. Locked members stay out of the
+  expansion, matching the select contract's `lockedObjects: "skips"` — a locked
+  object never joins a selection by being clicked and must not join one by being
+  grouped either.
+  Group CONTEXT is app state alongside the ids: `selection.enteredGroupId`.
+  Double-click descends exactly one nesting level
+  (`select.double-click-group.enters-group`), and inside a context resolution stops
+  one level down, so repeated double-clicks walk group → subgroup → member. Leaving
+  is implicit and has no clause of its own: a click that lands outside the entered
+  group leaves it, and an empty-canvas click clears both. The shell resolves the
+  context each click ends in and sends it WITH the ids, so the two halves of the
+  state can never disagree.
+  ASSUMPTION for SME review: a marquee resolves units in the current context but
+  neither enters nor leaves one — a single sweep can cross several levels and there
+  is no defensible level to pick for the user.
+  Still open, deliberately: nothing CREATES a group yet. §5.1's group/ungroup
+  commands need their own document action and id minting, and none of that is
+  needed to answer "do grouped items transform together" — a document that already
+  carries groups (any import, `fixtures/kitchen-sink.json`) answers it today.
