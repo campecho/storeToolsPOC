@@ -10,6 +10,8 @@ import {
   CALLOUT_TAIL_HALF_BASE,
   KAPPA,
   bannerPath,
+  bannerShading,
+  shapeShading,
   outlineOvershoot,
   clampCornerRadius,
   calloutPath,
@@ -235,20 +237,22 @@ describe("outlineOvershoot", () => {
 });
 
 describe("bannerPath", () => {
-  // A ribbon-shaped frame in inches. The builder takes the frame because two
-  // of its parts are round, and a round part has to be one radius normalized
-  // per axis or the frame's aspect stretches it.
+  // A ribbon-shaped frame in inches. The builder takes the frame because the
+  // plate's corners are round, and a round corner has to be one radius
+  // normalized per axis or the frame's aspect stretches it.
   const W = 4;
   const H = 1;
   const banner = (inset: number, height: number) => bannerPath(inset, height, W, H);
   const DEFAULT = () => banner(BANNER_DEFAULT_INSET, BANNER_DEFAULT_HEIGHT);
+  /** Where the left tail stops, having wrapped under the plate by one fold. */
+  const INNER = 0.2 + 0.125;
 
-  it("emits FIVE closed subpaths — panel, two tails, two folds", () => {
+  it("emits THREE closed subpaths — the centre plate and two side tails", () => {
     const segs = DEFAULT();
-    expect(segs.filter((s) => s.c === "M")).toHaveLength(5);
-    expect(segs.filter((s) => s.c === "Z")).toHaveLength(5);
+    expect(segs.filter((s) => s.c === "M")).toHaveLength(3);
+    expect(segs.filter((s) => s.c === "Z")).toHaveLength(3);
     // The ribbon's internal lines are why it cannot be one ring: a single
-    // silhouette has no way to draw the fold and panel-bottom strokes.
+    // silhouette has no way to draw the plate's edges where it crosses a tail.
     expect(segs[0]?.c).toBe("M");
     expect(segs[segs.length - 1]?.c).toBe("Z");
   });
@@ -266,21 +270,40 @@ describe("bannerPath", () => {
     }
   });
 
-  it("insets the panel's sides by panelInset, leaving the tails either side", () => {
+  it("insets the plate's sides by panelInset, leaving the tails either side", () => {
     const segs = banner(0.2, 0.6);
-    // The panel's bottom corners sit on the inset, and the tails start there.
+    // The plate's bottom corners sit on the inset, and each tail meets them.
     expect(hasVertex(segs, 0.2, 0.6)).toBe(true);
     expect(hasVertex(segs, 0.8, 0.6)).toBe(true);
-    // Each tail runs from the inset out to the frame edge, down to the bottom.
-    expect(hasVertex(segs, 0.2, 1)).toBe(true);
+    // Each tail runs from the plate's side out to the frame edge and down.
+    expect(hasVertex(segs, 0.2, 1 - 0.6)).toBe(true);
     expect(hasVertex(segs, 0, 1)).toBe(true);
     expect(hasVertex(segs, 1, 1)).toBe(true);
   });
 
+  it("TILES rather than overlaps: each tail wraps under the plate by one fold", () => {
+    const [plate, left, right] = subpaths(banner(0.2, 0.6));
+    // Plate and tail meet along the plate's side edge and its bottom edge —
+    // the tail turns at both corners the plate owns, so the two share edges
+    // and neither covers the other. Hit testing walks this outline even-odd,
+    // and an overlap would punch itself out as a hole.
+    expect(hasVertex(plate ?? [], 0.2, 0.6)).toBe(true);
+    expect(hasVertex(left ?? [], 0.2, 1 - 0.6)).toBe(true);
+    expect(hasVertex(left ?? [], 0.2, 0.6)).toBe(true);
+    // …then reaches in exactly one fold's width past the plate's edge.
+    expect(hasVertexNear(left ?? [], INNER, 0.6)).toBe(true);
+    expect(hasVertexNear(right ?? [], 1 - INNER, 0.6)).toBe(true);
+    // Below the plate the middle of the frame is empty: nothing reaches past
+    // the fold, which is what stops the ribbon reading as one flat band.
+    for (const p of verticesOf(banner(0.2, 0.6))) {
+      if (p.y > 0.6) expect(p.x < INNER + 1e-9 || p.x > 1 - INNER - 1e-9).toBe(true);
+    }
+  });
+
   it("notches each tail end the same distance in whatever the inset", () => {
     // The V bites a fixed share of the FRAME, so widening the tails turns
-    // them from arrowheads into flags rather than scaling the bite with them
-    // — the difference between the two reference ribbons.
+    // them from arrowheads into swallowtails rather than scaling the bite
+    // with them — the difference between the reference ribbons.
     const mid = (2 - 0.6) / 2;
     for (const inset of [0.2, BANNER_INSET_MAX]) {
       const segs = banner(inset, 0.6);
@@ -292,66 +315,29 @@ describe("bannerPath", () => {
     expect(hasVertexNear(narrow, BANNER_INSET_MIN * 0.85, mid)).toBe(true);
   });
 
-  it("mirrors the tails' band against the panel, so a deeper panel raises it", () => {
+  it("mirrors the tails' band against the plate, so a deeper plate raises it", () => {
     const shallow = banner(0.2, 0.6);
     const deep = banner(0.2, 0.85);
     expect(hasVertex(shallow, 0.2, 0.6)).toBe(true);
     expect(hasVertex(deep, 0.2, 0.85)).toBe(true);
-    // Panel and band are the same height, one anchored to the top and one to
+    // Plate and band are the same height, one anchored to the top and one to
     // the bottom: they always overlap across the middle, which is what makes
-    // the panel read as standing in front of the band.
+    // the plate read as standing in front of the band.
     expect(hasVertexNear(shallow, 0.2, 0.4)).toBe(true);
     expect(hasVertexNear(deep, 0.2, 0.15)).toBe(true);
   });
 
-  it("rounds the panel's top corners circularly, not stretched by the frame", () => {
+  it("curves the plate's top corners down circularly, not stretched by the frame", () => {
     // One radius in inches, normalized per axis — a wide ribbon's corners are
     // the same arc as a square one's, where a share of the width would flatten
     // them into a dome.
     const wide = banner(0.2, 0.6);
-    const start = wide[0];
-    const corner = wide[1];
-    if (start?.c !== "M" || corner?.c !== "C") throw new Error("panel must open with M then C");
+    const start = pointAt(subpaths(wide)[0], 0, "M");
+    const corner = cubicAt(subpaths(wide)[0], 1);
     expect((corner.x - 0.2) * W).toBeCloseTo(start.y * H);
     // Square frame: the same radius normalizes identically on both axes.
-    const square = bannerPath(0.2, 0.6, 2, 2);
-    const squareStart = square[0];
-    const squareCorner = square[1];
-    if (squareStart?.c !== "M" || squareCorner?.c !== "C") {
-      throw new Error("panel must open with M then C");
-    }
-    expect(squareCorner.x - 0.2).toBeCloseTo(squareStart.y);
-  });
-
-  it("runs each fold in from the panel's edge to the frame's bottom, curling only its inner corner", () => {
-    const [, , , left, right] = subpaths(banner(0.2, 0.6));
-    // A fixed reach in from the panel's side edge, like the notch — not a
-    // share of the inset.
-    const inner = 0.2 + 0.125;
-    // 0.4 of the fold's own height, as one radius normalized per axis.
-    const ry = 0.4 * (1 - 0.6);
-    expect(left?.[0]).toEqual({ c: "M", x: 0.2, y: 0.6 });
-    const top = pointAt(left, 1, "L");
-    expect(top.x).toBeCloseTo(inner);
-    expect(top.y).toBeCloseTo(0.6);
-    // Down the inner edge, then one cubic curling onto the bottom edge.
-    const shoulder = pointAt(left, 2, "L");
-    expect(shoulder.x).toBeCloseTo(inner);
-    expect(shoulder.y).toBeCloseTo(1 - ry);
-    const curl = cubicAt(left, 3);
-    expect(curl.y).toBe(1);
-    expect(curl.x).toBeLessThan(inner);
-    // Circular, the same treatment the panel's corners get: the corner spans
-    // the same distance in inches across as it does down.
-    expect((inner - curl.x) * W).toBeCloseTo((1 - shoulder.y) * H);
-    // Square where it meets the tail, so the two share one bottom edge.
-    expect(left?.[4]).toEqual({ c: "L", x: 0.2, y: 1 });
-    expect(left?.[5]).toEqual({ c: "Z" });
-    // The right fold is the mirror of it.
-    expect(right?.[0]).toEqual({ c: "M", x: 0.8, y: 0.6 });
-    expect(pointAt(right, 1, "L").x).toBeCloseTo(0.8 - 0.125);
-    expect(cubicAt(right, 3).x).toBeGreaterThan(0.8 - 0.125);
-    expect(right?.[4]).toEqual({ c: "L", x: 0.8, y: 1 });
+    const square = subpaths(bannerPath(0.2, 0.6, 2, 2))[0];
+    expect(cubicAt(square, 1).x - 0.2).toBeCloseTo(pointAt(square, 0, "M").y);
   });
 
   it("clamps both parameters into their ranges", () => {
@@ -359,6 +345,82 @@ describe("bannerPath", () => {
     expect(banner(5, 0.6)).toEqual(banner(BANNER_INSET_MAX, 0.6));
     expect(banner(0.2, -5)).toEqual(banner(0.2, BANNER_HEIGHT_MIN));
     expect(banner(0.2, 5)).toEqual(banner(0.2, BANNER_HEIGHT_MAX));
+  });
+});
+
+describe("bannerShading", () => {
+  const W = 4;
+  const H = 1;
+  const folds = (inset: number, height: number) => bannerShading(inset, height, W, H);
+  const INNER = 0.2 + 0.125;
+
+  it("emits one closed ring per fold", () => {
+    const segs = folds(0.2, 0.6);
+    expect(segs.filter((s) => s.c === "M")).toHaveLength(2);
+    expect(segs.filter((s) => s.c === "Z")).toHaveLength(2);
+  });
+
+  it("hangs each fold off the plate's bottom edge, reaching the tail's inner end", () => {
+    const [left, right] = subpaths(folds(0.2, 0.6));
+    // Half the space between the plate's bottom edge and the frame's, so the
+    // tail stays visible below the fold rather than the fold filling the gap.
+    const bottom = 0.6 + (1 - 0.6) * 0.5;
+    expect(hasVertexNear(left ?? [], INNER, 0.6)).toBe(true);
+    expect(hasVertexNear(left ?? [], INNER, bottom)).toBe(true);
+    expect(hasVertexNear(right ?? [], 1 - INNER, 0.6)).toBe(true);
+    expect(hasVertexNear(right ?? [], 1 - INNER, bottom)).toBe(true);
+    expect(bottom).toBeLessThan(1);
+  });
+
+  it("sits wholly inside the silhouette, so bounds and hit testing never see it", () => {
+    // The folds are shading, not geometry: every coordinate lies within the
+    // stretch of tail that already covers that ground — below the plate's
+    // bottom edge, and between the plate's side and the tail's inner end.
+    for (const inset of [BANNER_INSET_MIN, BANNER_DEFAULT_INSET, BANNER_INSET_MAX]) {
+      for (const height of [BANNER_HEIGHT_MIN, BANNER_DEFAULT_HEIGHT, BANNER_HEIGHT_MAX]) {
+        const inner = inset + 0.125;
+        for (const p of verticesOf(folds(inset, height))) {
+          expect(p.y).toBeGreaterThanOrEqual(height - 1e-9);
+          expect(p.y).toBeLessThanOrEqual(1);
+          const inLeft = p.x >= inset - 1e-9 && p.x <= inner + 1e-9;
+          const inRight = p.x >= 1 - inner - 1e-9 && p.x <= 1 - inset + 1e-9;
+          expect(inLeft || inRight).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("caps the outer end of each fold where it turns around the plate's edge", () => {
+    const [left, right] = subpaths(folds(0.2, 0.6));
+    // Two cubics per fold: the half-ellipse cap, drawn as two quarters.
+    expect(left?.filter((s) => s.c === "C")).toHaveLength(2);
+    expect(right?.filter((s) => s.c === "C")).toHaveLength(2);
+    // The cap turns about the plate's own side edge, reaching it and no
+    // further — its extreme is the first cubic's endpoint.
+    expect(cubicAt(left, 4).x).toBeCloseTo(0.2);
+    expect(cubicAt(left, 4).y).toBeCloseTo(0.6 + (1 - 0.6) * 0.5 * 0.5);
+    expect(cubicAt(right, 2).x).toBeCloseTo(0.8);
+  });
+});
+
+describe("shapeShading", () => {
+  it("gives the banner its folds", () => {
+    expect(shapeShading({ shape: "banner" }, 4, 1)).toEqual(
+      bannerShading(BANNER_DEFAULT_INSET, BANNER_DEFAULT_HEIGHT, 4, 1),
+    );
+  });
+
+  it("gives every other kind nothing — one tone is the whole shape", () => {
+    for (const shape of [
+      "rect",
+      "ellipse",
+      "roundedRect",
+      "starPolygon",
+      "callout",
+      "path",
+    ] as const) {
+      expect(shapeShading({ shape }, 4, 1)).toEqual([]);
+    }
   });
 });
 

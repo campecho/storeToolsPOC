@@ -231,21 +231,27 @@ export const BANNER_DEFAULT_HEIGHT = 0.65;
     insets of 0.16 and 0.25). */
 const BANNER_NOTCH = 0.125;
 
-/** The panel's top corner radius, as a fraction of the frame's SHORTER side —
-    the reference rounds those corners circularly, and a banner frame is wide,
-    so a share of the width would stretch them into a dome. */
-const BANNER_CORNER = 0.14;
+/** The plate's top corner radius, as a fraction of the frame's SHORTER side.
+    The reference rounds those corners circularly — measured 20px on a frame
+    212px tall — and a banner frame is wide, so a share of the width would
+    stretch them into a dome instead of a curve. */
+const BANNER_CORNER = 0.095;
 
-/** How far a fold reaches in from the panel's side edge, as a fraction of the
+/** How far a fold reaches in from the plate's side edge, as a fraction of the
     frame's WIDTH. Like the notch it is an absolute bite rather than a share of
-    the inset — measured 0.124 and 0.127 across the two references, whose
-    insets are 0.16 and 0.25. (That it lands on the notch's value too is what
-    the references show, not a constant shared on purpose.) */
+    the inset — measured 0.126 on the reference, whose inset is 0.248. (That it
+    lands on the notch's value too is what the references show, not a constant
+    shared on purpose.) */
 const BANNER_FOLD = 0.125;
 
-/** The radius of the one corner a fold rounds, as a fraction of the fold's own
-    height. */
-const BANNER_FOLD_ROUND = 0.4;
+/** How deep a fold hangs below the plate, as a share of the space between the
+    plate's bottom edge and the frame's — half of it, leaving the tail visible
+    below the fold rather than the fold filling the gap. */
+const BANNER_FOLD_DEPTH = 0.5;
+
+/** How far the fold's outer cap reaches back along it, as a share of the
+    fold's length. */
+const BANNER_FOLD_CAP = 0.27;
 
 export function clampBannerInset(inset: number): number {
   return Math.min(BANNER_INSET_MAX, Math.max(BANNER_INSET_MIN, inset));
@@ -256,92 +262,85 @@ export function clampBannerHeight(height: number): number {
 }
 
 /** The proportions the rest of the ribbon takes from the two parameters. The
-    frame size comes in because two of them are round: they have to be one
-    radius normalized per axis, or the frame's aspect stretches them. */
+    frame size comes in because the plate's corners are round: a radius has to
+    be normalized per axis, or the frame's aspect stretches it. */
 function bannerParts(inset: number, height: number, w: number, h: number) {
   const x0 = clampBannerInset(inset);
-  const panelBottom = clampBannerHeight(height);
-  // Bounded by the panel it rounds, so a squat or narrow panel keeps a
+  const plateBottom = clampBannerHeight(height);
+  // Bounded by the plate it rounds, so a squat or narrow plate keeps a
   // drawable corner instead of overrunning its own edges.
-  const radius = Math.min(BANNER_CORNER * Math.min(w, h), ((1 - 2 * x0) * w) / 2, panelBottom * h);
-  // The fold's corner, likewise bounded by the fold it rounds.
-  const foldRadius = Math.min(BANNER_FOLD_ROUND * (1 - panelBottom) * h, BANNER_FOLD * w);
+  const radius = Math.min(
+    BANNER_CORNER * Math.min(w, h),
+    ((1 - 2 * x0) * w) / 2,
+    plateBottom * h,
+  );
+  const foldHeight = (1 - plateBottom) * BANNER_FOLD_DEPTH;
   return {
     x0,
     x1: 1 - x0,
-    panelBottom,
-    /** The tails' band MIRRORS the panel: same height, anchored to the
-        bottom where the panel is anchored to the top. So a deeper panel
-        raises the tails to meet it rather than pushing them down, and the two
-        always overlap across the middle — which is what makes the panel read
-        as standing in front of the band. (Measured off the reference: a panel
-        ending at 0.63 has tails from 0.37, one ending at 0.86 from 0.14.)
-        BANNER_HEIGHT_MIN keeps that overlap: below half, the bands would
-        part and leave the ribbon in two pieces. */
-    tailTop: 1 - panelBottom,
+    plateBottom,
+    /** The tails' band MIRRORS the plate: same height, anchored to the bottom
+        where the plate is anchored to the top. So a deeper plate raises the
+        tails to meet it rather than pushing them down, and the two always
+        overlap across the middle — which is what makes the plate read as
+        standing in front of the band. (Measured off the reference: a plate
+        ending at 0.830 has tails from 0.170.) BANNER_HEIGHT_MIN keeps that
+        overlap: below half, the bands would part and leave the ribbon in two
+        pieces. */
+    tailTop: 1 - plateBottom,
+    /** How far each tail reaches IN past the plate's side edge — the width of
+        the fold it tucks under, and no further: below the plate the middle of
+        the frame is empty, which is what stops the ribbon reading as one flat
+        band with a rectangle stuck on it. */
+    reach: BANNER_FOLD,
     /** The V bites a fixed share of the frame, floored by the tail it cuts so
         a narrow tail keeps a sliver of body rather than being cut through. */
     notch: Math.min(BANNER_NOTCH, x0 * 0.85),
-    foldWidth: BANNER_FOLD,
-    /** The panel's top corner radius, one radius per axis. */
+    foldHeight,
+    /** The fold's outer end is capped by a half-ellipse, and the tail's inner
+        bottom corner turns on the same two radii — one curve, used at both
+        ends of the fold, so they read as one turn of the ribbon. */
+    capX: BANNER_FOLD * BANNER_FOLD_CAP,
+    capY: foldHeight / 2,
+    /** The plate's top corner radius, one radius per axis. */
     roundX: w > 0 ? radius / w : 0,
     roundY: h > 0 ? radius / h : 0,
-    /** The fold's corner radius, the same one-radius-per-axis treatment. */
-    foldRoundX: w > 0 ? foldRadius / w : 0,
-    foldRoundY: h > 0 ? foldRadius / h : 0,
   };
 }
 
 /**
- * Ribbon banner: a raised centre panel with rounded top corners, two tails
- * running the full width beneath it and notched at their ends, and a fold
- * carrying the ribbon out from behind each of the panel's bottom corners —
- * the PowerPoint ribbon the review supplied, driven by `panelInset` and
- * `panelHeight`.
+ * Ribbon banner, built as the reference is (PLAN.md §4.4):
  *
- * FIVE subpaths, not one, which breaks the single-ring shape every other
- * builder here returns. It has to: the folds and the panel's bottom edge read
- * as STROKED lines in the reference, and one silhouette ring cannot draw an
- * internal line. The rings only ever touch along edges — no two enclose the
- * same area — so both fill rules union them and hit-testing's even-odd walk
- * agrees.
+ *   CENTRE PLATE — a wide rectangle in the foreground, its top corners curving
+ *   down so the plate reads as a curved surface rather than a flat card.
+ *   SIDE TAILS — two horizontal ribbon ends BEHIND the plate, each cut by an
+ *   inward-pointing V (a swallowtail) at its outer end.
+ *   FOLDS — the shaded turns joining the plate's bottom corners to the inner
+ *   bottoms of the tails, which is what makes the ribbon read as 3D. They are
+ *   shading, not silhouette, so they live in `bannerShading` instead.
+ *
+ * THREE rings, which breaks the single-ring shape every other builder returns.
+ * It has to: the plate's edges read as STROKED lines where it crosses the
+ * tails, and one silhouette ring cannot draw a line inside itself.
+ *
+ * The rings TILE rather than overlap — each tail is L-shaped, wrapping under
+ * the plate exactly as far as its fold reaches and no further, so the three
+ * meet along shared edges and none covers another. That matters beyond
+ * tidiness: hit testing walks the outline even-odd, and a plate laid over
+ * full-width tails would punch the overlap out as a hole.
  */
 export function bannerPath(inset: number, height: number, w: number, h: number): PathSeg[] {
   const p = bannerParts(inset, height, w, h);
   const kx = KAPPA * p.roundX;
   const ky = KAPPA * p.roundY;
   const tailMid = (p.tailTop + 1) / 2;
-  const fold = (from: number, to: number): PathSeg[] => {
-    // The ribbon coming out from behind the panel: a bar the full depth of the
-    // tail band, running IN from the panel's side edge to where it disappears
-    // under the panel. Three corners are square — the outer two continue the
-    // tail's own edges — and the INNER bottom one is round, the curl that
-    // makes the fold read as ribbon turning away rather than a block.
-    //
-    // `from` is the panel's side edge and `to` the inward end, so the x offset
-    // is signed and the mirrored fold traces the same way round.
-    const rx = Math.sign(to - from) * p.foldRoundX;
-    const kx = KAPPA * rx;
-    const ky = KAPPA * p.foldRoundY;
-    return [
-      { c: "M", x: from, y: p.panelBottom },
-      { c: "L", x: to, y: p.panelBottom },
-      { c: "L", x: to, y: 1 - p.foldRoundY },
-      {
-        c: "C",
-        x1: to,
-        y1: 1 - p.foldRoundY + ky,
-        x2: to - rx + kx,
-        y2: 1,
-        x: to - rx,
-        y: 1,
-      },
-      { c: "L", x: from, y: 1 },
-      { c: "Z" },
-    ];
-  };
+  // Where each tail stops, having wrapped under the plate by one fold.
+  const inner = p.x0 + p.reach;
+  const innerRight = p.x1 - p.reach;
+  const kcx = KAPPA * p.capX;
+  const kcy = KAPPA * p.capY;
   return [
-    // The raised panel, rounded across its top.
+    // The centre plate, rounded across its top.
     { c: "M", x: p.x0, y: p.roundY },
     {
       c: "C",
@@ -362,27 +361,96 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
       x: p.x1,
       y: p.roundY,
     },
-    { c: "L", x: p.x1, y: p.panelBottom },
-    { c: "L", x: p.x0, y: p.panelBottom },
+    { c: "L", x: p.x1, y: p.plateBottom },
+    { c: "L", x: p.x0, y: p.plateBottom },
     { c: "Z" },
-    // Left tail, notched at its outer end.
-    ...ringToPath([
-      { x: p.x0, y: p.tailTop },
-      { x: p.x0, y: 1 },
-      { x: 0, y: 1 },
-      { x: p.notch, y: tailMid },
-      { x: 0, y: p.tailTop },
-    ]),
+    // Left tail: along the plate's side, under its bottom edge as far as the
+    // fold, then out to the swallowtail.
+    { c: "M", x: 0, y: p.tailTop },
+    { c: "L", x: p.x0, y: p.tailTop },
+    { c: "L", x: p.x0, y: p.plateBottom },
+    { c: "L", x: inner, y: p.plateBottom },
+    { c: "L", x: inner, y: 1 - p.capY },
+    {
+      c: "C",
+      x1: inner,
+      y1: 1 - p.capY + kcy,
+      x2: inner - p.capX + kcx,
+      y2: 1,
+      x: inner - p.capX,
+      y: 1,
+    },
+    { c: "L", x: 0, y: 1 },
+    { c: "L", x: p.notch, y: tailMid },
+    { c: "Z" },
     // Right tail, the same mirrored.
-    ...ringToPath([
-      { x: p.x1, y: p.tailTop },
-      { x: 1, y: p.tailTop },
-      { x: 1 - p.notch, y: tailMid },
-      { x: 1, y: 1 },
-      { x: p.x1, y: 1 },
-    ]),
-    ...fold(p.x0, p.x0 + p.foldWidth),
-    ...fold(p.x1, p.x1 - p.foldWidth),
+    { c: "M", x: p.x1, y: p.tailTop },
+    { c: "L", x: 1, y: p.tailTop },
+    { c: "L", x: 1 - p.notch, y: tailMid },
+    { c: "L", x: 1, y: 1 },
+    { c: "L", x: innerRight + p.capX, y: 1 },
+    {
+      c: "C",
+      x1: innerRight + p.capX - kcx,
+      y1: 1,
+      x2: innerRight,
+      y2: 1 - p.capY + kcy,
+      x: innerRight,
+      y: 1 - p.capY,
+    },
+    { c: "L", x: innerRight, y: p.plateBottom },
+    { c: "L", x: p.x1, y: p.plateBottom },
+    { c: "Z" },
+  ];
+}
+
+/**
+ * The banner's two FOLDS: the shaded turns under the plate's bottom corners.
+ *
+ * Each is a tongue hanging off the plate's bottom edge — flat along the top
+ * and bottom, cut square where it meets the tail's inner end, and capped by a
+ * half-ellipse at its outer end where it wraps around the plate's side. They
+ * sit wholly inside the silhouette `bannerPath` draws, which is why they are
+ * shading rather than geometry: bounds and hit testing never see them.
+ */
+export function bannerShading(inset: number, height: number, w: number, h: number): PathSeg[] {
+  const p = bannerParts(inset, height, w, h);
+  const bottom = p.plateBottom + p.foldHeight;
+  const mid = p.plateBottom + p.capY;
+  const kcx = KAPPA * p.capX;
+  const kcy = KAPPA * p.capY;
+  return [
+    // Left fold, capped where it turns around the plate's left edge.
+    { c: "M", x: p.x0 + p.capX, y: p.plateBottom },
+    { c: "L", x: p.x0 + p.reach, y: p.plateBottom },
+    { c: "L", x: p.x0 + p.reach, y: bottom },
+    { c: "L", x: p.x0 + p.capX, y: bottom },
+    { c: "C", x1: p.x0 + p.capX - kcx, y1: bottom, x2: p.x0, y2: mid + kcy, x: p.x0, y: mid },
+    {
+      c: "C",
+      x1: p.x0,
+      y1: mid - kcy,
+      x2: p.x0 + p.capX - kcx,
+      y2: p.plateBottom,
+      x: p.x0 + p.capX,
+      y: p.plateBottom,
+    },
+    { c: "Z" },
+    // Right fold, the same mirrored.
+    { c: "M", x: p.x1 - p.reach, y: p.plateBottom },
+    { c: "L", x: p.x1 - p.capX, y: p.plateBottom },
+    {
+      c: "C",
+      x1: p.x1 - p.capX + kcx,
+      y1: p.plateBottom,
+      x2: p.x1,
+      y2: mid - kcy,
+      x: p.x1,
+      y: mid,
+    },
+    { c: "C", x1: p.x1, y1: mid + kcy, x2: p.x1 - p.capX + kcx, y2: bottom, x: p.x1 - p.capX, y: bottom },
+    { c: "L", x: p.x1 - p.reach, y: bottom },
+    { c: "Z" },
   ];
 }
 
@@ -440,4 +508,29 @@ export function shapeOutline(shape: ShapeGeometry, w: number, h: number): PathSe
     default:
       return shape.d ?? [];
   }
+}
+
+/**
+ * The parts of a shape that render in a DARKER fill than the rest — shading,
+ * not silhouette. Same normalized frame coordinates `shapeOutline` uses; the
+ * renderer paints them OVER the outline in the object's fill darkened, wearing
+ * the object's own stroke.
+ *
+ * The banner's folds are the only ones: they read as the ribbon's shaded
+ * underside where it turns behind the plate, and a single fill cannot say that.
+ * They lie inside the silhouette by construction, so hit testing and bounds —
+ * which work from `shapeOutline` alone — need to know nothing about them.
+ * Every other kind returns nothing, which this file's tests assert kind by
+ * kind, so a future shaded kind declares itself HERE rather than leaving the
+ * renderer to guess.
+ */
+export function shapeShading(shape: ShapeGeometry, w: number, h: number): PathSeg[] {
+  return shape.shape === "banner"
+    ? bannerShading(
+        shape.panelInset ?? BANNER_DEFAULT_INSET,
+        shape.panelHeight ?? BANNER_DEFAULT_HEIGHT,
+        w,
+        h,
+      )
+    : [];
 }

@@ -498,3 +498,33 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   is an off switch in a real preferences surface. Remapping is the fuller answer
   and carries a design consequence — `shortcut` is registry data today, one
   string per tool, and remapping makes it user state that overrides the registry.
+- **The banner is three tiling rings plus shading (recorded 2026-08-19, user
+  decision, SUPERSEDING the fold half of "The banner is a parametric ribbon"):**
+  the review supplied a written construction and a captured rendering, and two
+  things the earlier build had structurally wrong came out of measuring that
+  capture pixel by pixel rather than eyeballing it.
+  First, the TAILS do not cross the middle. Each reaches inward past the plate's
+  side edge by exactly one fold's width and stops, so below the plate the middle
+  of the frame is EMPTY. A full-width band with a plate laid on top reads as a
+  rectangle stuck to a strip; this reads as a ribbon passing behind.
+  Second, the rings TILE instead of overlapping. Each tail is L-shaped, turning
+  at both corners the plate owns, so plate and tails meet along shared edges and
+  none covers another. That is not tidiness: hit testing walks the outline
+  even-odd, so a plate laid over full-width tails would have punched its own
+  overlap out as a hole — most of the plate's lower half would have stopped
+  responding to clicks.
+  THE FOLDS ARE NOW DRAWN, which reverses the note recorded with the earlier
+  build ("Ours cannot have it — every ring is filled with the object's one
+  fill"). The way out was not a nested ring but a second RESOLVER:
+  `shapeShading()` returns the parts that render darker, and the renderer paints
+  them over the outline in the fill scaled 0.8 toward black (measured off the
+  reference, whose fold is exactly fill × 0.80 on all three channels) wearing the
+  object's own stroke. `shapeOutline()` keeps its signature and every existing
+  caller — hit testing, bounds, previews, the e2e helpers — is untouched, because
+  the folds lie INSIDE the silhouette and change neither what the shape covers
+  nor what it reaches.
+  Consequence for the dev team: a shape's outline and its fill are no longer
+  one-to-one. A kind that needs a second tone declares it in `shapeShading`, next
+  to the builder that draws it, rather than the renderer guessing from the kind.
+  The banner is the only one today, and this file's tests assert every other kind
+  returns nothing.

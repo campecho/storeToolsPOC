@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Swatch } from "../model";
-import { hexToColorValue, paintToCss, paintToHex } from "./paint";
+import { hexToColorValue, paintToCss, paintToHex, paintToShadedCss } from "./paint";
 
 /**
  * Paint → CSS resolution: literal colors render directly (cmyk via the
@@ -103,5 +103,20 @@ describe("paintToHex", () => {
 
   it("renders fallback black for a dangling swatch id", () => {
     expect(paintToHex({ kind: "swatch", swatchId: "ghost" }, swatches)).toBe("#000000");
+  });
+});
+
+describe("paintToShadedCss", () => {
+  it("scales every channel toward black, keeping the hue", () => {
+    // The banner's folds: the same surface in shadow, not a grey wash.
+    expect(
+      paintToShadedCss({ kind: "color", color: { space: "rgb", values: [1, 0.5, 0] } }, swatches),
+    ).toBe("rgb(204, 102, 0)");
+  });
+
+  it("shades a swatch reference through the same resolution paintToCss uses", () => {
+    const paint = { kind: "swatch", swatchId: "sw-rgb" } as const;
+    expect(paintToShadedCss(paint, swatches)).not.toBe(paintToCss(paint, swatches));
+    expect(paintToShadedCss(paint, swatches)).toMatch(/^rgb\(/);
   });
 });

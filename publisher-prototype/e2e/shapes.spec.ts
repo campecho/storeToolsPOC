@@ -300,10 +300,11 @@ test("banner.drag.creates", async ({ page }) => {
   const { shape, d } = outlineAt(await pageObjects(page), 0);
   // The ribbon stores the two adjustments the tool's options seeded.
   expect(shape).toMatchObject({ shape: "banner", panelInset: 0.17, panelHeight: 0.65 });
-  // Five rings: the raised panel, two tails, two folds. One silhouette could
-  // not draw the fold and panel-bottom lines the ribbon reads by.
-  expect(d.filter((s) => s.c === "M")).toHaveLength(5);
-  // The panel's bottom corners sit on the inset, where the tails begin.
+  // Three rings that tile: the centre plate and two L-shaped tails wrapping
+  // under it. One silhouette could not draw the plate's edges where it
+  // crosses a tail, and overlapping rings would punch a hole even-odd.
+  expect(d.filter((s) => s.c === "M")).toHaveLength(3);
+  // The plate's bottom corners sit on the inset, where each tail turns.
   expect(hasVertex(d, 0.17, 0.65)).toBe(true);
   expect(hasVertex(d, 0.83, 0.65)).toBe(true);
 });
