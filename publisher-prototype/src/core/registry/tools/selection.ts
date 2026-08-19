@@ -25,7 +25,7 @@ export const selectTool: ToolContract = {
       id: "select.click.selects-topmost",
       trigger: "click",
       behavior:
-        "Selects the topmost unlocked object under the pointer, showing the selection frame with 8 handles and the rotation handle (§2.1, §5.2).",
+        "Selects the topmost unlocked object under the pointer — or, when it belongs to a group, that whole group (§5.1) — showing the selection frame with 8 handles and the rotation handle (§2.1, §5.2).",
       action: "selection/replaceCommitted",
     },
     {
@@ -72,7 +72,7 @@ export const selectTool: ToolContract = {
       id: "select.drag-rotate.rotates",
       trigger: "drag on rotation handle",
       behavior:
-        "Rotates the selection freely; Shift snaps to fixed angles (§5.2 free rotation and fixed-angle options).",
+        "Rotates the selection freely about the selection frame's centre, as one rigid body — members orbit the pivot rather than each spinning in place; Shift snaps to fixed angles (§5.2 free rotation and fixed-angle options).",
       action: "object/rotateCommitted",
     },
     {
@@ -86,7 +86,7 @@ export const selectTool: ToolContract = {
       id: "select.double-click-group.enters-group",
       trigger: "double-click on group member",
       behavior:
-        "Enters the group to select and edit the individual object (§5.1 editing inside a group where feasible).",
+        "Enters the group to select and edit the individual object (§5.1 editing inside a group where feasible); each double-click descends one nesting level, and clicking outside the entered group leaves it.",
       action: "selection/groupEnteredCommitted",
     },
     {
@@ -122,6 +122,8 @@ export const selectTool: ToolContract = {
     "Skipping locked objects follows §5.3's 'based on user settings' — the skip is the default, not absolute; locked state renders visibly and locked objects can still be intentionally unlocked.",
     "Marquee, move, resize, and rotate previews live in the overlay outside the store; each commits exactly one action (PLAN.md §6.3).",
     "select.esc.cancels-drag commits nothing — gesture/cancelled is the gesture pipeline's no-op record, never a document mutation.",
+    "A group selects as a UNIT: click, Shift-click, Alt-click and marquee all resolve a hit object to the outermost group it belongs to, so a transform never holds part of a group. Locked members stay out, exactly as the hit-test contract keeps them out of a click.",
+    "Rotation is the one transform that moves a selection's members as well as changing them: object rotation pivots at each object's own centre, so a selection turns rigidly only by orbiting every member about the selection frame's centre. object/rotateCommitted therefore carries absolute geometry alongside the absolute angles, and lines — which store no angle — turn entirely through it.",
     "ASSUMPTION: empty-click clear, Shift-toggle, marquee gesture, Esc-cancel, and the Alt modifier for stack cycling are Publisher-parity fillers — §2.1/§2.2 state the capabilities, not the bindings.",
     "ASSUMPTION: 4px hit tolerance and 0.1in default nudge are working guesses for SME review.",
   ],

@@ -40,9 +40,10 @@ function FramePolygon({
   );
 }
 
-/** Serializable GesturePreview → outline shapes, all in doc inches. Move and
-    rotate previews derive their frames from the selected objects, which the
-    machines deliberately do not carry (their payloads are deltas/rotations). */
+/** Serializable GesturePreview → outline shapes, all in doc inches. The move
+    preview derives its frames from the selected objects, which that machine
+    deliberately does not carry (its payload is one delta); resize and rotate
+    state absolute geometry and draw straight from it. */
 function PreviewShapes({
   preview,
   selectedObjects,
@@ -171,21 +172,18 @@ function PreviewShapes({
       );
     }
     case "rotate":
+      // A rigid-body turn moves members as well as turning them, so each
+      // ghost is drawn on the ORBITED geometry at its new angle — lines
+      // included, which carry the whole turn in their endpoints.
       return (
         <>
-          {selectedObjects.map((o) => {
-            if (o.type === "line") return null;
-            const rotation = preview.rotations[o.id];
-            if (rotation === undefined) return null;
-            return (
-              <FramePolygon
-                key={o.id}
-                box={{ x: o.x, y: o.y, w: o.w, h: o.h }}
-                rotation={rotation}
-                {...outline}
-              />
-            );
-          })}
+          {Object.entries(preview.boxes).map(([id, box]) =>
+            "w" in box ? (
+              <FramePolygon key={id} box={box} rotation={preview.rotations[id] ?? 0} {...outline} />
+            ) : (
+              <line key={id} x1={box.x1} y1={box.y1} x2={box.x2} y2={box.y2} {...outline} />
+            ),
+          )}
         </>
       );
   }

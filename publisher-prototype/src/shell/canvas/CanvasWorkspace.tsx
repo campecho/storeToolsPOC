@@ -52,6 +52,7 @@ export function CanvasWorkspace({
   const committed = useAppSelector((s) => s.viewport);
   const doc = useAppSelector(selectDocument);
   const selectedIds = useAppSelector((s) => s.selection.ids);
+  const enteredGroupId = useAppSelector((s) => s.selection.enteredGroupId);
   const penAnchors = useAppSelector((s) => s.pen.anchors);
   const setup = effectivePageSetup(doc, pageIndex);
   const objects = doc.pages[pageIndex]?.objects ?? [];
@@ -79,7 +80,9 @@ export function CanvasWorkspace({
     vpSize,
     pageSize,
     objects,
+    groups: doc.groups,
     selectedIds,
+    enteredGroupId,
     penAnchors,
     toolOptions,
     areaRef,

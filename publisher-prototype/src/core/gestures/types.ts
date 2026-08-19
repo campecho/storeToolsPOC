@@ -49,7 +49,9 @@ export type GesturePreview =
   | { kind: "marquee"; x: number; y: number; w: number; h: number }
   | { kind: "move"; dx: number; dy: number }
   | { kind: "resize"; boxes: Record<string, FrameBox | LineEndpoints> }
-  | { kind: "rotate"; rotations: Record<string, number> }
+  /** A rigid-body turn: each member's resulting angle, and the geometry the
+      orbit about the selection pivot lands it on. */
+  | { kind: "rotate"; rotations: Record<string, number>; boxes: Record<string, FrameBox | LineEndpoints> }
   /** An adjust handle mid-drag: the shape parameters it is changing, merged
       over the shape they belong to and resolved through the one outline
       resolver — so the ghost is exactly what will commit. */

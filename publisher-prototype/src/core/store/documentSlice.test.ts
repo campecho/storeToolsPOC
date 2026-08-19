@@ -206,6 +206,42 @@ describe("documentSlice", () => {
       );
       expect(objectsOf(state)).toEqual(objectsOf(before));
     });
+
+    it("applies the orbited geometry alongside the angles — a selection turns as one body", () => {
+      const state = reducer(
+        docWith([shape("a"), line("l")]),
+        objectRotateCommitted({
+          pageIndex: 0,
+          rotations: { a: 90 },
+          boxes: { a: { x: 4, y: 4, w: 2, h: 1 }, l: { x1: 3, y1: 0, x2: 3, y2: 2 } },
+        }),
+      );
+      const [a, l] = objectsOf(state);
+      expect(a).toMatchObject({ rotation: 90, x: 4, y: 4, w: 2, h: 1 });
+      // A line takes the whole turn through its endpoints — it has no angle.
+      expect(l).toMatchObject({ x1: 3, y1: 0, x2: 3, y2: 2 });
+    });
+
+    it("leaves geometry alone when the commit carries no boxes", () => {
+      const state = reducer(
+        docWith([shape("a")]),
+        objectRotateCommitted({ pageIndex: 0, rotations: { a: 45 } }),
+      );
+      expect(objectsOf(state)[0]).toMatchObject({ rotation: 45, x: 1, y: 1, w: 2, h: 1 });
+    });
+
+    it("skips locked objects' geometry too", () => {
+      const before = docWith([shape("a", { locked: true })]);
+      const state = reducer(
+        before,
+        objectRotateCommitted({
+          pageIndex: 0,
+          rotations: { a: 90 },
+          boxes: { a: { x: 9, y: 9, w: 9, h: 9 } },
+        }),
+      );
+      expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
   });
 
   describe("object/fillCommitted", () => {

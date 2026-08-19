@@ -148,6 +148,25 @@ export function selectionIds(page: Page): Promise<string[]> {
   });
 }
 
+/** The group the selection has descended into; null at the top level. */
+export function enteredGroupId(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const store = window.__PROTOTYPE_STORE__;
+    if (!store) throw new Error("dev store handle missing");
+    return store.getState().selection.enteredGroupId;
+  });
+}
+
+export async function doubleClickAt(page: Page, pt: DocPoint): Promise<void> {
+  const p = await screenPoint(page, pt);
+  await page.mouse.dblclick(p.x, p.y);
+}
+
+/** A frame object's centre — the point a rigid-body rotation orbits. */
+export function centerOf(obj: { x: number; y: number; w: number; h: number }): DocPoint {
+  return { x: obj.x + obj.w / 2, y: obj.y + obj.h / 2 };
+}
+
 export function shapeAt(objects: LayoutObject[], index: number): ShapeObject {
   const obj = objects[index];
   if (!obj || obj.type !== "shape") throw new Error(`expected shape at index ${index}`);

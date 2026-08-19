@@ -42,6 +42,8 @@ import {
   type StarInnerRadiusCommit,
   type StarPointsCommit,
   type FillCommit,
+  type FrameBox,
+  type LineEndpoints,
   type LockCommit,
   type ResizeCommit,
   type RotateCommit,
@@ -92,37 +94,47 @@ function applyTranslate(state: LayoutDocument, action: PayloadAction<TranslateCo
   }
 }
 
+/** Absolute geometry onto one object — frames take boxes, lines take
+    endpoints, and a mismatched entry is ignored. Shared by every commit that
+    states final geometry (resize, and rotation's orbit). */
+function applyGeometry(obj: LayoutObject, box: FrameBox | LineEndpoints): void {
+  if (obj.type === "line") {
+    if ("x1" in box) {
+      obj.x1 = box.x1;
+      obj.y1 = box.y1;
+      obj.x2 = box.x2;
+      obj.y2 = box.y2;
+    }
+  } else if ("w" in box) {
+    obj.x = box.x;
+    obj.y = box.y;
+    obj.w = box.w;
+    obj.h = box.h;
+  }
+}
+
 function applyResize(state: LayoutDocument, action: PayloadAction<ResizeCommit>): void {
   const page = state.pages[action.payload.pageIndex];
   if (!page) return;
   for (const obj of page.objects) {
     if (obj.locked) continue;
     const box = action.payload.boxes[obj.id];
-    if (!box) continue;
-    if (obj.type === "line") {
-      if ("x1" in box) {
-        obj.x1 = box.x1;
-        obj.y1 = box.y1;
-        obj.x2 = box.x2;
-        obj.y2 = box.y2;
-      }
-    } else if ("w" in box) {
-      obj.x = box.x;
-      obj.y = box.y;
-      obj.w = box.w;
-      obj.h = box.h;
-    }
+    if (box) applyGeometry(obj, box);
   }
 }
 
 function applyRotate(state: LayoutDocument, action: PayloadAction<RotateCommit>): void {
   const page = state.pages[action.payload.pageIndex];
   if (!page) return;
+  const { rotations, boxes } = action.payload;
   for (const obj of page.objects) {
-    if (obj.locked || obj.type === "line") continue;
-    const rotation = action.payload.rotations[obj.id];
-    if (rotation === undefined) continue;
-    obj.rotation = rotation;
+    if (obj.locked) continue;
+    // The two halves are independent: a line has no rotation to set but its
+    // endpoints still orbit, and a lone frame turns in place with no box.
+    const rotation = rotations[obj.id];
+    if (rotation !== undefined && obj.type !== "line") obj.rotation = rotation;
+    const box = boxes?.[obj.id];
+    if (box) applyGeometry(obj, box);
   }
 }
 

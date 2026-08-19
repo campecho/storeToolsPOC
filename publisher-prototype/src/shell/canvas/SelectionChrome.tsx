@@ -25,6 +25,10 @@ import { resizeCursor, rotateCursor } from "./cursors";
  * space the resize machine scales in. Multi-selections and lines fall back to
  * the union AABB drawn unrotated.
  *
+ * Every selection carries the rotation handle: a rotation turns the frame as
+ * a rigid body about its centre, which a line answers by orbiting its
+ * endpoints even though it stores no angle of its own.
+ *
  * Each handle carries the cursor of the direction it stretches, which turns
  * with the frame too (canvas/cursors.ts).
  *
@@ -116,9 +120,6 @@ export function SelectionChrome({
   const toDoc = (p: Point): Point => (rotation === 0 ? p : rotatePoint(p, pivot, rotation));
   const pxToIn = (px: number) => px / (DPI * zoom);
   const handleSize = pxToIn(HANDLE_PX);
-  // Lines carry no rotation — an all-line selection shows no rotate handle,
-  // matching the gesture router refusing to start a rotate for one.
-  const rotatable = objects.some((o) => o.type !== "line");
   // The stem leaves the top edge along the frame's own up direction, so it
   // stays perpendicular to that edge at any rotation.
   const stemFoot = toDoc({ x: pivot.x, y: box.y });
@@ -142,30 +143,26 @@ export function SelectionChrome({
         stroke={CHROME_COLOR}
         vectorEffect="non-scaling-stroke"
       />
-      {rotatable && (
-        <>
-          <line
-            x1={stemFoot.x}
-            y1={stemFoot.y}
-            x2={knob.x}
-            y2={knob.y}
-            stroke={CHROME_COLOR}
-            vectorEffect="non-scaling-stroke"
-          />
-          <circle
-            className="chrome-handle"
-            data-handle="rotate"
-            cx={knob.x}
-            cy={knob.y}
-            r={handleSize / 2}
-            fill="#ffffff"
-            stroke={CHROME_COLOR}
-            vectorEffect="non-scaling-stroke"
-            style={{ cursor: rotateCursor(rotation) }}
-            onPointerDown={onRotateStart}
-          />
-        </>
-      )}
+      <line
+        x1={stemFoot.x}
+        y1={stemFoot.y}
+        x2={knob.x}
+        y2={knob.y}
+        stroke={CHROME_COLOR}
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle
+        className="chrome-handle"
+        data-handle="rotate"
+        cx={knob.x}
+        cy={knob.y}
+        r={handleSize / 2}
+        fill="#ffffff"
+        stroke={CHROME_COLOR}
+        vectorEffect="non-scaling-stroke"
+        style={{ cursor: rotateCursor(rotation) }}
+        onPointerDown={onRotateStart}
+      />
       {adjust !== null && adjustId !== undefined && (
         <rect
           className="chrome-handle"

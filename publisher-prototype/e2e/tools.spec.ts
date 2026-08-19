@@ -3,6 +3,7 @@ import { rotatedFrameCorners } from "../src/core/hittest";
 import {
   activate,
   armCounter,
+  centerOf,
   clickAt,
   drag,
   dragHandle,
@@ -339,6 +340,51 @@ test("select.drag-rotate.rotates", async ({ page }) => {
   rect = shapeAt(await pageObjects(page), 0);
   expect(rect.rotation).not.toBeCloseTo(90, 5);
   expect(Math.round(rect.rotation / 15) * 15).toBeCloseTo(rect.rotation, 9);
+});
+
+test("select.drag-rotate.rotates a multi-selection as one rigid body", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 4 }, { x: 2, y: 5 });
+  await draw(page, "Rectangle", { x: 4, y: 4 }, { x: 5, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 4.5 });
+  await clickAt(page, { x: 4.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // The frame is the union AABB (1,4)–(5,5), so the pivot is (3, 4.5) — not
+  // either object's own centre. Dragging the handle east of it turns the
+  // initial −90° pointer angle into 0°.
+  await armCounter(page);
+  await dragHandle(page, "rotate", { x: 5, y: 4.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const objects = await pageObjects(page);
+  const a = centerOf(shapeAt(objects, 0));
+  const b = centerOf(shapeAt(objects, 1));
+  // Both members took the same quarter turn …
+  expect(Math.abs(shapeAt(objects, 0).rotation - 90)).toBeLessThanOrEqual(1);
+  expect(Math.abs(shapeAt(objects, 1).rotation - 90)).toBeLessThanOrEqual(1);
+  // … and orbited the pivot with it: the pair started 3in apart on a
+  // horizontal line and now stands 3in apart on a vertical one about the same
+  // midpoint. Spinning each in place would have left both centres where they
+  // were, which is exactly what a group must not do.
+  expect(Math.abs(b.x - a.x)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(Math.abs(b.y - a.y) - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs((a.x + b.x) / 2 - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs((a.y + b.y) / 2 - 4.5)).toBeLessThanOrEqual(0.06);
+});
+
+test("select.drag-rotate.rotates a line by its endpoints", async ({ page }) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // A line stores no rotation field, so its whole turn lives in its
+  // endpoints — about the centre of its own bounds, (3, 4).
+  await armCounter(page);
+  await dragHandle(page, "rotate", { x: 5, y: 4 });
+  expect(await notificationCount(page)).toBe(1);
+  const line = lineAt(await pageObjects(page), 0);
+  expect(Math.abs(line.x1 - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(line.x2 - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(Math.abs(line.y2 - line.y1) - 2)).toBeLessThanOrEqual(0.06);
 });
 
 test("select.drag-handle.resizes a rotated frame in its own space", async ({ page }) => {

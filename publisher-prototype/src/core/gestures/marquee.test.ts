@@ -43,13 +43,32 @@ const OBJECTS: LayoutObject[] = [
 ];
 
 function ctx(over: Partial<MarqueeContext> = {}): MarqueeContext {
-  return { pageIndex: 0, zoom: 1, objects: OBJECTS, ...over };
+  return {
+    pageIndex: 0,
+    zoom: 1,
+    objects: OBJECTS,
+    groups: [],
+    enteredGroupId: null,
+    ...over,
+  };
 }
 
-function drag(from: GesturePoint, to: GesturePoint): GestureResult {
-  let state = marqueeMachine.begin(from, ctx());
+function drag(
+  from: GesturePoint,
+  to: GesturePoint,
+  over: Partial<MarqueeContext> = {},
+): GestureResult {
+  let state = marqueeMachine.begin(from, ctx(over));
   state = marqueeMachine.update(state, to, NONE);
   return marqueeMachine.end(state, NONE);
+}
+
+function idsOf(result: GestureResult): string[] {
+  const action = result.action;
+  if (action === null || !selectionMarqueeCommitted.match(action)) {
+    throw new Error("expected a marquee commit");
+  }
+  return action.payload.ids;
 }
 
 function clauseAction(id: string): string {
@@ -72,12 +91,35 @@ describe("select.drag-empty.marquee-selects", () => {
   });
 
   it("commits an empty id list when the marquee touches nothing", () => {
-    const result = drag({ x: 3, y: 3 }, { x: 4, y: 4 });
-    const action = result.action;
-    if (action === null || !selectionMarqueeCommitted.match(action)) {
-      throw new Error("expected a marquee commit");
-    }
-    expect(action.payload.ids).toEqual([]);
+    expect(idsOf(drag({ x: 3, y: 3 }, { x: 4, y: 4 }))).toEqual([]);
+  });
+
+  it("takes a whole group when the marquee touches any one of its members", () => {
+    // "far" sits outside the swept rect but joins through the group; the
+    // locked member is left out, as it is everywhere else.
+    const grouped = OBJECTS.map((o) =>
+      o.id === "above" || o.id === "far" || o.id === "locked"
+        ? { ...o, groupId: "grp-1" }
+        : o,
+    );
+    const ids = idsOf(
+      drag({ x: 0.9, y: 0.9 }, { x: 1.3, y: 1.3 }, { objects: grouped, groups: [{ id: "grp-1" }] }),
+    );
+    expect(ids).toEqual(["crossing", "above", "far", "below"]);
+  });
+
+  it("resolves hits inside the entered group to their members, not the group", () => {
+    const grouped = OBJECTS.map((o) =>
+      o.id === "above" || o.id === "far" ? { ...o, groupId: "grp-1" } : o,
+    );
+    const ids = idsOf(
+      drag(
+        { x: 0.9, y: 0.9 },
+        { x: 1.3, y: 1.3 },
+        { objects: grouped, groups: [{ id: "grp-1" }], enteredGroupId: "grp-1" },
+      ),
+    );
+    expect(ids).toEqual(["crossing", "above", "below"]);
   });
 
   it("previews the normalized rect on a reverse drag", () => {

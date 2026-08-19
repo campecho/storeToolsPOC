@@ -50,11 +50,21 @@ export type ResizeCommit = {
   boxes: Record<string, FrameBox | LineEndpoints>;
 };
 
-/** rotate commits: absolute rotations in degrees per object id. Lines carry
-    no rotation field and are skipped by the reducer. */
+/**
+ * rotate commits: absolute rotations in degrees per object id, plus the
+ * absolute geometry the rotation ORBITS each object onto — same shape a
+ * resize commits. A selection turns as a rigid body about one pivot, so its
+ * members' positions move as well as their angles; `boxes` is what carries
+ * that. It is omitted where nothing orbits (the Transform panel's angle
+ * field turns one object about its own centre).
+ *
+ * Lines carry no rotation field and take no entry in `rotations`; their
+ * endpoints orbit through `boxes` like any other member's geometry.
+ */
 export type RotateCommit = {
   pageIndex: number;
   rotations: Record<string, number>;
+  boxes?: Record<string, FrameBox | LineEndpoints>;
 };
 
 /** fill commits: replace the identified objects' fill wholesale — a Paint or
