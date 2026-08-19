@@ -26,7 +26,7 @@ export type GestureContext = { pageIndex: number; zoom: number };
 
 /** The parameters an adjust handle can change on a placed shape. */
 export type ShapeParams = Partial<
-  Pick<ShapeObject, "cornerRadius" | "points" | "innerRadiusRatio" | "tailAnchor" | "symbol">
+  Pick<ShapeObject, "cornerRadius" | "points" | "innerRadiusRatio" | "tailTip" | "symbol">
 >;
 
 /** Fill/stroke the active tool's options provide for drawn objects. */

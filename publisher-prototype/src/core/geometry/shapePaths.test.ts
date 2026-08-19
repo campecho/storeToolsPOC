@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { CalloutTailAnchor, FlowchartSymbol, PathSeg } from "../model";
+import { tailTipFor, type FlowchartSymbol, type PathSeg } from "../model";
 import {
+  CALLOUT_TAIL_HALF_BASE,
   KAPPA,
   bannerPath,
   clampCornerRadius,
@@ -19,13 +20,18 @@ import {
  */
 
 /** Every builder's shared contract: starts with exactly one M, ends with Z,
- * single subpath, all coordinates (control points included) within [0, 1]. */
-function expectClosedNormalizedSubpath(segs: readonly PathSeg[]): void {
+ * one subpath. The callout is the one builder whose coordinates leave [0, 1]
+ * — its tail points past the body on purpose — so the range check is separate. */
+function expectClosedSubpath(segs: readonly PathSeg[]): void {
   expect(segs.length).toBeGreaterThan(2);
   expect(segs[0]?.c).toBe("M");
   expect(segs[segs.length - 1]?.c).toBe("Z");
   expect(segs.filter((s) => s.c === "M").length).toBe(1);
   expect(segs.filter((s) => s.c === "Z").length).toBe(1);
+}
+
+function expectClosedNormalizedSubpath(segs: readonly PathSeg[]): void {
+  expectClosedSubpath(segs);
   for (const seg of segs) {
     if (seg.c === "Z") continue;
     const coords =
@@ -42,6 +48,11 @@ function vertices(segs: readonly PathSeg[]): [number, number][] {
   return segs
     .filter((s): s is Extract<PathSeg, { c: "M" | "L" }> => s.c === "M" || s.c === "L")
     .map((s) => [s.x, s.y]);
+}
+
+/** The same vertices as points, for the callout's edge bookkeeping. */
+function verticesOf(segs: readonly PathSeg[]): { x: number; y: number }[] {
+  return vertices(segs).map(([x, y]) => ({ x, y }));
 }
 
 function hasVertex(segs: readonly PathSeg[], x: number, y: number): boolean {
@@ -115,40 +126,47 @@ describe("starPath", () => {
 });
 
 describe("calloutPath", () => {
-  const anchors: CalloutTailAnchor[] = ["bottom-left", "bottom-right", "top-left", "top-right"];
-
-  it("emits a closed subpath fully inside the unit box for every anchor", () => {
-    for (const anchor of anchors) {
-      expectClosedNormalizedSubpath(calloutPath(anchor));
+  it("emits a closed subpath for every preset", () => {
+    for (const anchor of ["bottom-left", "bottom-right", "top-left", "top-right"] as const) {
+      expectClosedSubpath(calloutPath(tailTipFor(anchor)));
     }
   });
 
-  it("points the bottom-left tail tip at (0.06, 1) with the body edge on y 0.75", () => {
-    const segs = calloutPath("bottom-left");
-    expect(hasVertex(segs, 0.06, 1)).toBe(true);
-    expect(hasVertex(segs, 1, 0.75)).toBe(true);
-    expect(hasVertex(segs, 0.28, 0.75)).toBe(true);
+  it("runs the tail out to the tip, based on the body edge it leaves by", () => {
+    // Bottom-left preset: the tip is below the box, so the tail leaves by the
+    // bottom edge with its base either side of where the ray crosses y = 1.
+    const segs = calloutPath(tailTipFor("bottom-left"));
+    const tip = tailTipFor("bottom-left");
+    expect(hasVertex(segs, tip.x, tip.y)).toBe(true);
+    // Four vertices sit on y = 1: the two body corners and the tail's base.
+    expect(verticesOf(segs).filter((p) => p.y === 1)).toHaveLength(4);
+    const base = verticesOf(segs).filter((p) => p.y === 1 && p.x > 0 && p.x < 1);
+    expect(base).toHaveLength(2);
+    expect(Math.abs((base[1]?.x ?? 0) - (base[0]?.x ?? 0))).toBeCloseTo(
+      2 * CALLOUT_TAIL_HALF_BASE,
+      9,
+    );
   });
 
-  it("points the bottom-right tail tip at (0.94, 1) with the body edge on y 0.75", () => {
-    const segs = calloutPath("bottom-right");
-    expect(hasVertex(segs, 0.94, 1)).toBe(true);
-    expect(hasVertex(segs, 0, 0.75)).toBe(true);
-    expect(hasVertex(segs, 0.72, 0.75)).toBe(true);
+  it("leaves by whichever edge the tip faces", () => {
+    const rightward = verticesOf(calloutPath({ x: 1.5, y: 0.5 }));
+    expect(rightward.filter((p) => p.x === 1)).toHaveLength(4); // 2 corners + 2 base
+    const upward = verticesOf(calloutPath({ x: 0.5, y: -0.5 }));
+    expect(upward.filter((p) => p.y === 0)).toHaveLength(4);
   });
 
-  it("points the top-left tail tip at (0.06, 0) with the body edge on y 0.25", () => {
-    const segs = calloutPath("top-left");
-    expect(hasVertex(segs, 0.06, 0)).toBe(true);
-    expect(hasVertex(segs, 1, 0.25)).toBe(true);
-    expect(hasVertex(segs, 0.28, 0.25)).toBe(true);
+  it("draws the body alone when the tip is inside it — there is no tail to see", () => {
+    expect(calloutPath({ x: 0.5, y: 0.6 })).toEqual(calloutPath({ x: 0.5, y: 0.5 }));
+    expect(verticesOf(calloutPath({ x: 0.5, y: 0.5 }))).toHaveLength(4);
   });
 
-  it("points the top-right tail tip at (0.94, 0) with the body edge on y 0.25", () => {
-    const segs = calloutPath("top-right");
-    expect(hasVertex(segs, 0.94, 0)).toBe(true);
-    expect(hasVertex(segs, 0, 0.25)).toBe(true);
-    expect(hasVertex(segs, 0.72, 0.25)).toBe(true);
+  it("keeps the base on the edge it leaves by, never wrapping past a corner", () => {
+    // A tail leaving hard against the bottom-right corner narrows instead of
+    // spilling onto the right-hand edge.
+    for (const p of verticesOf(calloutPath({ x: 1.02, y: 1.6 }))) {
+      expect(p.x).toBeLessThanOrEqual(1.02);
+      expect(p.y).toBeLessThanOrEqual(1.6);
+    }
   });
 });
 

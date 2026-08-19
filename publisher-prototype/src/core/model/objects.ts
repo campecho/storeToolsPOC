@@ -229,7 +229,16 @@ export const TableFrameSchema = z.object({
 });
 export type TableFrame = z.infer<typeof TableFrameSchema>;
 
-/** Where a callout's pointer tail leaves the balloon (§4.4 callouts). */
+/** A point in the frame's unit box — the coordinate space every normalized
+    path here speaks. Not clamped: a callout's tail tip lives outside it. */
+export const NormalizedPointSchema = z.object({ x: z.number(), y: z.number() });
+export type NormalizedPoint = z.infer<typeof NormalizedPointSchema>;
+
+/**
+ * The four corners a callout's tail can be SEEDED from (§4.4 callouts) — a
+ * draw-time preset in the tool's options bar, not storage. The placed object
+ * keeps a free `tailTip` instead, which the adjust handle moves anywhere.
+ */
 export const CalloutTailAnchorSchema = z.enum([
   "bottom-left",
   "bottom-right",
@@ -237,6 +246,15 @@ export const CalloutTailAnchorSchema = z.enum([
   "top-right",
 ]);
 export type CalloutTailAnchor = z.infer<typeof CalloutTailAnchorSchema>;
+
+/** Where each preset puts the tip: just outside that corner, so a freshly
+    drawn callout has a tail of real length pointing the way it was asked to. */
+export function tailTipFor(anchor: CalloutTailAnchor): NormalizedPoint {
+  return {
+    x: anchor.endsWith("right") ? 0.94 : 0.06,
+    y: anchor.startsWith("bottom") ? 1.22 : -0.22,
+  };
+}
 
 /** The flowchart vocabulary the tool draws (§4.4 flowchart shapes). */
 export const FlowchartSymbolSchema = z.enum([
@@ -287,8 +305,12 @@ export const ShapeObjectSchema = z.object({
       a fraction of the outer radius. */
   points: z.number().int().min(3).optional(),
   innerRadiusRatio: z.number().min(0).max(1).optional(),
-  /** Callouts only. */
-  tailAnchor: CalloutTailAnchorSchema.optional(),
+  /** Callouts only: where the pointer tail's TIP sits, normalized to the
+      frame box like every other path coordinate here. Usually outside 0–1 —
+      that is what gives the tail length — so the tail reaches past the body
+      the way PowerPoint's does. Dragging it changes the tail's length and
+      angle together. */
+  tailTip: NormalizedPointSchema.optional(),
   /** Flowchart shapes only. */
   symbol: FlowchartSymbolSchema.optional(),
 });
@@ -301,7 +323,7 @@ export const SHAPE_GEOMETRY_FIELDS = {
   ellipse: [],
   roundedRect: ["cornerRadius"],
   starPolygon: ["points", "innerRadiusRatio"],
-  callout: ["tailAnchor"],
+  callout: ["tailTip"],
   flowchart: ["symbol"],
   path: ["d"],
 } as const satisfies Record<ShapeObject["shape"], readonly (keyof ShapeObject)[]>;

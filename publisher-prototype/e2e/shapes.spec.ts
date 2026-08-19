@@ -7,6 +7,7 @@ import {
   clickAt,
   drag,
   dragHandle,
+  draw,
   expectNear,
   notificationCount,
   pageObjects,
@@ -241,26 +242,53 @@ test("callout.drag.creates", async ({ page }) => {
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
   const { shape, d } = outlineAt(await pageObjects(page), 0);
-  expect(shape).toMatchObject({ shape: "callout", tailAnchor: "bottom-left" });
-  // Default tail anchor bottom-left: the tail tip touches the frame bottom
-  // near the left edge; the body's right edge spans the full width.
-  expect(hasVertex(d, 0.06, 1)).toBe(true);
-  expect(hasVertex(d, 1, 0.75)).toBe(true);
+  // The bottom-left preset seeds a free tip just below and left of the body,
+  // which is where the drawn tail points.
+  expect(shape).toMatchObject({ shape: "callout", tailTip: { x: 0.06, y: 1.22 } });
+  expect(hasVertex(d, 0.06, 1.22)).toBe(true);
+  // The body fills the frame, so its corners are the unit box's.
+  expect(hasVertex(d, 1, 0)).toBe(true);
+  expect(hasVertex(d, 1, 1)).toBe(true);
 });
 
-test("callout.drag.creates with tail anchor bottom-right", async ({ page }) => {
+test("callout.drag.creates with the tail seeded bottom-right", async ({ page }) => {
   await activate(page, "Callout");
   await page
     .getByTestId("options-bar")
-    .getByLabel("Tail anchor", { exact: true })
+    .getByLabel("Tail from", { exact: true })
     .selectOption("bottom-right");
   await armCounter(page);
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
   const { shape, d } = outlineAt(await pageObjects(page), 0);
-  expect(shape).toMatchObject({ tailAnchor: "bottom-right" });
-  expect(hasVertex(d, 0.94, 1)).toBe(true);
+  expect(shape).toMatchObject({ tailTip: { x: 0.94, y: 1.22 } });
+  expect(hasVertex(d, 0.94, 1.22)).toBe(true);
+});
+
+test("callout.drag-tail-handle.repositions-tail sets length AND angle", async ({ page }) => {
+  await draw(page, "Callout", { x: 2, y: 4 }, { x: 4, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // The handle sits ON the tip, which the bottom-left preset put below-left
+  // of the body — outside the frame, where a callout points.
+  await expect(page.locator('[data-handle="callout-tail"]')).toBeVisible();
+  await armCounter(page);
+  // Drag it far to the upper right: the tail should now leave by the top edge
+  // and reach further than it did.
+  await dragHandle(page, "callout-tail", { x: 5.5, y: 2.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const tip = shapeAt(await pageObjects(page), 0).tailTip;
+  if (tip === undefined) throw new Error("expected a stored tail tip");
+  // Frame (2,4)–(4,5): the drop point is 1.75 across and −2 up in unit terms.
+  expect(tip.x).toBeGreaterThan(1);
+  expect(tip.y).toBeLessThan(0);
+  // The drawn outline follows it: the tip is a vertex, and the tail now
+  // leaves by the TOP edge rather than the bottom it started on.
+  const { d } = outlineAt(await pageObjects(page), 0);
+  expect(hasVertex(d, tip.x, tip.y)).toBe(true);
+  expect(d.filter((s) => (s.c === "M" || s.c === "L") && s.y === 0)).toHaveLength(4);
 });
 
 test("banner.drag.creates", async ({ page }) => {

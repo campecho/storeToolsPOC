@@ -1,8 +1,9 @@
-import type {
-  CalloutTailAnchor,
-  FlowchartSymbol,
-  PathSeg,
-  ShapeObject,
+import {
+  tailTipFor,
+  type FlowchartSymbol,
+  type NormalizedPoint,
+  type PathSeg,
+  type ShapeObject,
 } from "../model";
 
 /**
@@ -23,12 +24,6 @@ import type {
  */
 export const KAPPA = 0.5522847498307936;
 
-/** Round off float noise from mirror arithmetic (1 − x) so mirrored vertices
- * land on the same exact doubles as their hand-traced counterparts. */
-function snapNoise(v: number): number {
-  return Math.round(v * 1e12) / 1e12;
-}
-
 /** Snap values within 1e-12 of the landmark coordinates 0, 0.5, 1 to those
  * exact values, so vertex positions computed via trig assert exactly. */
 function snapLandmarks(v: number): number {
@@ -47,34 +42,6 @@ function ringToPath(ring: readonly Vertex[]): PathSeg[] {
     ...ring.map((v, i): PathSeg => ({ c: i === 0 ? "M" : "L", x: v.x, y: v.y })),
     { c: "Z" },
   ];
-}
-
-/** Extract the vertex ring of a straight-edged closed subpath (M/L … Z). */
-function pathToRing(segs: readonly PathSeg[]): Vertex[] {
-  const ring: Vertex[] = [];
-  for (const seg of segs) {
-    if (seg.c === "M" || seg.c === "L") ring.push({ x: seg.x, y: seg.y });
-  }
-  return ring;
-}
-
-/** Mirror a straight-edged closed subpath across the frame's vertical
- * center line (x → 1 − x). Mirroring flips the winding, so the ring is
- * reversed to keep the outline clockwise, then re-normalized to M … Z. */
-function mirrorAcrossVertical(segs: readonly PathSeg[]): PathSeg[] {
-  const ring = pathToRing(segs)
-    .map((v) => ({ x: snapNoise(1 - v.x), y: v.y }))
-    .reverse();
-  return ringToPath(ring);
-}
-
-/** Mirror a straight-edged closed subpath across the frame's horizontal
- * center line (y → 1 − y), reversing the ring to keep clockwise winding. */
-function mirrorAcrossHorizontal(segs: readonly PathSeg[]): PathSeg[] {
-  const ring = pathToRing(segs)
-    .map((v) => ({ x: v.x, y: snapNoise(1 - v.y) }))
-    .reverse();
-  return ringToPath(ring);
 }
 
 /**
@@ -153,35 +120,91 @@ export function starPath(points: number, innerRatio: number): PathSeg[] {
 
 
 /**
- * Speech callout: rectangular body with a triangular pointer tail on the
- * anchored corner. Built from one bottom-left base shape and mirrored into
- * the other three anchors.
- *
- * ASSUMPTION: body takes the top 3/4 of the frame (tail zone 0.25 tall) and
- * the tail spans x 0.12–0.28 on the body edge with its tip at x 0.06 —
- * eyeballed from Publisher's callout proportions, working guess for SME
- * review.
+ * How wide the tail's base sits on the body edge, as a fraction of the unit
+ * box, measured either side of where the tail leaves. ASSUMPTION: 0.09 keeps
+ * the base close to the proportions the fixed four-corner callout drew —
+ * eyeballed from Publisher, working guess for SME review.
  */
-export function calloutPath(tailAnchor: CalloutTailAnchor): PathSeg[] {
-  const base = ringToPath([
-    { x: 0, y: 0 },
-    { x: 1, y: 0 },
-    { x: 1, y: 0.75 },
-    { x: 0.28, y: 0.75 },
-    { x: 0.06, y: 1 },
-    { x: 0.12, y: 0.75 },
-    { x: 0, y: 0.75 },
+export const CALLOUT_TAIL_HALF_BASE = 0.09;
+
+/** How far outside the frame the tip may be dragged, in box lengths. The tip
+    is deliberately allowed OUT of the box — that is what gives the tail real
+    length — but not so far that its handle leaves the page. */
+export const CALLOUT_TIP_MIN = -1;
+export const CALLOUT_TIP_MAX = 2;
+
+export function clampCalloutTip(tip: NormalizedPoint): NormalizedPoint {
+  const axis = (v: number) => Math.min(CALLOUT_TIP_MAX, Math.max(CALLOUT_TIP_MIN, v));
+  return { x: axis(tip.x), y: axis(tip.y) };
+}
+
+/** The unit-box corners the body ring walks, in order: tl, tr, br, bl. Edge i
+    runs from corner i to corner i+1, so inserting the tail after corner i
+    keeps the ring wound the way it started. */
+const BODY_CORNERS: NormalizedPoint[] = [
+  { x: 0, y: 0 },
+  { x: 1, y: 0 },
+  { x: 1, y: 1 },
+  { x: 0, y: 1 },
+];
+
+/** Unit vector along edge i, in the ring's direction. */
+const EDGE_DIRECTION: NormalizedPoint[] = [
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: -1, y: 0 },
+  { x: 0, y: -1 },
+];
+
+/**
+ * Where a tail aimed at `tip` leaves the body, and along which edge — the ray
+ * from the body's centre, stopped at the first side it crosses. Null when the
+ * tip is inside the body (or at its centre): there is no tail to draw, and a
+ * ray with nowhere to go would divide by zero.
+ */
+function tailExit(tip: NormalizedPoint): { point: NormalizedPoint; edge: number } | null {
+  const dx = tip.x - 0.5;
+  const dy = tip.y - 0.5;
+  const toX = dx === 0 ? Infinity : 0.5 / Math.abs(dx);
+  const toY = dy === 0 ? Infinity : 0.5 / Math.abs(dy);
+  const t = Math.min(toX, toY);
+  if (!Number.isFinite(t) || t >= 1) return null;
+  return {
+    point: { x: 0.5 + dx * t, y: 0.5 + dy * t },
+    edge: toX <= toY ? (dx > 0 ? 1 : 3) : dy > 0 ? 2 : 0,
+  };
+}
+
+/**
+ * Speech callout: a rectangular body filling the frame, with a triangular
+ * pointer running from a fixed-width base on the body edge out to `tip`.
+ * Dragging the tip changes the tail's LENGTH and ANGLE together, PowerPoint's
+ * behaviour, rather than snapping it to one of four corners.
+ *
+ * The tip is in unit-box coordinates and normally sits OUTSIDE the box, which
+ * is what gives the tail length to have. The body ring is the frame, so the
+ * selection frame hugs the body and the tail extends past it — again as
+ * PowerPoint does. A tip inside the body draws no tail at all.
+ */
+export function calloutPath(tip: NormalizedPoint): PathSeg[] {
+  const exit = tailExit(tip);
+  if (exit === null) return ringToPath(BODY_CORNERS);
+  const u = EDGE_DIRECTION[exit.edge] ?? { x: 1, y: 0 };
+  // The base spans the edge either side of the exit, never past its corners —
+  // a tail leaving near a corner narrows rather than wrapping onto the
+  // neighbouring side.
+  const clamped = (v: number) => Math.min(1, Math.max(0, v));
+  const base = (sign: number): NormalizedPoint => ({
+    x: clamped(exit.point.x + sign * u.x * CALLOUT_TAIL_HALF_BASE),
+    y: clamped(exit.point.y + sign * u.y * CALLOUT_TAIL_HALF_BASE),
+  });
+  return ringToPath([
+    ...BODY_CORNERS.slice(0, exit.edge + 1),
+    base(-1),
+    tip,
+    base(1),
+    ...BODY_CORNERS.slice(exit.edge + 1),
   ]);
-  switch (tailAnchor) {
-    case "bottom-left":
-      return base;
-    case "bottom-right":
-      return mirrorAcrossVertical(base);
-    case "top-left":
-      return mirrorAcrossHorizontal(base);
-    case "top-right":
-      return mirrorAcrossVertical(mirrorAcrossHorizontal(base));
-  }
 }
 
 /**
@@ -252,7 +275,7 @@ export function flowchartPath(symbol: FlowchartSymbol): PathSeg[] {
     drawn shape's geometry before it has a frame. */
 export type ShapeGeometry = Pick<
   ShapeObject,
-  "shape" | "d" | "cornerRadius" | "points" | "innerRadiusRatio" | "tailAnchor" | "symbol"
+  "shape" | "d" | "cornerRadius" | "points" | "innerRadiusRatio" | "tailTip" | "symbol"
 >;
 
 /**
@@ -268,7 +291,7 @@ export function shapeOutline(shape: ShapeGeometry, w: number, h: number): PathSe
     case "starPolygon":
       return starPath(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5);
     case "callout":
-      return calloutPath(shape.tailAnchor ?? "bottom-left");
+      return calloutPath(shape.tailTip ?? tailTipFor("bottom-left"));
     case "flowchart":
       return flowchartPath(shape.symbol ?? "process");
     default:

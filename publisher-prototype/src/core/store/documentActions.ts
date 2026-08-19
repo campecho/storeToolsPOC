@@ -2,11 +2,11 @@ import { createAction, type UnknownAction } from "@reduxjs/toolkit";
 import type {
   ArrowHead,
   ArrowHeadSize,
-  CalloutTailAnchor,
   FlowchartSymbol,
   Group,
   LayoutObject,
   LineDash,
+  NormalizedPoint,
   Paint,
 } from "../model";
 
@@ -119,12 +119,14 @@ export type StarInnerRadiusCommit = {
   innerRadiusRatio: number;
 };
 
-/** callout / flowchart commits: the enum that shapes each. */
+/** callout tail commits: where the pointer's TIP goes, in the frame's unit
+    box — the tail's length and angle both follow from it. */
 export type CalloutTailCommit = {
   pageIndex: number;
   ids: string[];
-  tailAnchor: CalloutTailAnchor;
+  tailTip: NormalizedPoint;
 };
+
 export type FlowchartSymbolCommit = {
   pageIndex: number;
   ids: string[];

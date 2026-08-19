@@ -239,7 +239,8 @@ test("transform panel: the Shape group shows the selected kind's parameters and 
   await expect(shapeGroup.getByLabel("Points", { exact: true })).toBeVisible();
   await expect(shapeGroup.getByLabel("Inner radius", { exact: true })).toBeVisible();
   await draw(page, "Callout", { x: 1, y: 6 }, { x: 3, y: 7 });
-  await expect(shapeGroup.getByLabel("Tail anchor", { exact: true })).toBeVisible();
+  await expect(shapeGroup.getByLabel("Tail X", { exact: true })).toBeVisible();
+  await expect(shapeGroup.getByLabel("Tail Y", { exact: true })).toBeVisible();
   await expect(shapeGroup.getByLabel("Points", { exact: true })).toHaveCount(0);
 });
 
@@ -281,16 +282,19 @@ test("transform panel: points entry refuses values outside the tool's declared r
   expect(shapeAt(await pageObjects(page), 0).points).toBe(12);
 });
 
-test("transform panel: callout tail anchor and flowchart symbol commit one entry per pick", async ({
+test("transform panel: callout tail tip and flowchart symbol commit one entry per edit", async ({
   page,
 }) => {
   await draw(page, "Callout", { x: 1, y: 3 }, { x: 3, y: 4.5 });
-  const tail = panel(page, "transform").getByLabel("Tail anchor", { exact: true });
-  await expect(tail).toHaveValue("bottom-left");
+  const transform = panel(page, "transform");
+  // The tail is a free point now, so the panel gives it two numbers rather
+  // than a corner preset — seeded from the tool's bottom-left default.
+  await expect(transform.getByLabel("Tail X", { exact: true })).toHaveValue("0.06");
+  await expect(transform.getByLabel("Tail Y", { exact: true })).toHaveValue("1.22");
   await armCounter(page);
-  await tail.selectOption("top-right");
+  await commitField(page, "transform", "Tail X", "1.4");
   expect(await notificationCount(page)).toBe(1);
-  expect(shapeAt(await pageObjects(page), 0).tailAnchor).toBe("top-right");
+  expect(shapeAt(await pageObjects(page), 0).tailTip).toEqual({ x: 1.4, y: 1.22 });
 
   await draw(page, "Flowchart", { x: 4, y: 3 }, { x: 6, y: 4.5 });
   const symbol = panel(page, "transform").getByLabel("Symbol", { exact: true });

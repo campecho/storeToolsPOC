@@ -241,7 +241,7 @@ const applyStarInnerRadius = shapeParamApplier<StarInnerRadiusCommit>("starPolyg
 });
 
 const applyCalloutTail = shapeParamApplier<CalloutTailCommit>("callout", (obj, p) => {
-  obj.tailAnchor = p.tailAnchor;
+  obj.tailTip = p.tailTip;
 });
 
 const applyFlowchartSymbol = shapeParamApplier<FlowchartSymbolCommit>("flowchart", (obj, p) => {

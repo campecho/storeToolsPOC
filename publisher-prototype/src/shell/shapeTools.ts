@@ -1,7 +1,7 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { bannerPath } from "../core/geometry/shapePaths";
 import type { DrawnShapeGeometry } from "../core/gestures";
-import type { CalloutTailAnchor, FlowchartSymbol } from "../core/model";
+import { tailTipFor, type CalloutTailAnchor, type FlowchartSymbol } from "../core/model";
 import {
   bannerDrawCommitted,
   calloutDrawCommitted,
@@ -65,7 +65,7 @@ export const SHAPE_TOOL_CONFIGS: Readonly<Record<string, ShapeToolConfig>> = {
     creator: calloutDrawCommitted,
     geometryForBox: (options) => ({
       shape: "callout",
-      tailAnchor: optionEnum(options, "callout", "tailAnchor", TAIL_ANCHORS, "bottom-left"),
+      tailTip: tailTipFor(optionEnum(options, "callout", "tailAnchor", TAIL_ANCHORS, "bottom-left")),
     }),
   },
   // The banner has no pre-draw shape option to store; its contracted fold

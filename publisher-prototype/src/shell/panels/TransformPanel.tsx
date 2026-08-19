@@ -1,8 +1,7 @@
 import type { UnknownAction } from "@reduxjs/toolkit";
 import {
-  CalloutTailAnchorSchema,
   FlowchartSymbolSchema,
-  type CalloutTailAnchor,
+  tailTipFor,
   type FlowchartSymbol,
   type LayoutObject,
   type LineObject,
@@ -24,6 +23,7 @@ import {
   type LineEndpoints,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
+import { CALLOUT_TIP_MAX, CALLOUT_TIP_MIN } from "../../core/geometry/shapePaths";
 import { NumberField } from "./NumberField";
 import { SelectField } from "./SelectField";
 
@@ -256,18 +256,38 @@ export function TransformPanel({
             />
           </>
         );
-      case "callout":
+      case "callout": {
+        // The tip in unit-box coordinates — the numeric face of the yellow
+        // handle. Outside 0–1 is normal and useful: that is the tail reaching
+        // past the body, which is where a callout usually points.
+        const tip = shape.tailTip ?? tailTipFor("bottom-left");
         return (
-          <SelectField<CalloutTailAnchor>
-            label="Tail anchor"
-            value={shape.tailAnchor ?? "bottom-left"}
-            options={CalloutTailAnchorSchema.options}
-            disabled={locked}
-            onCommit={(tailAnchor) =>
-              commitShapeParam(calloutTailCommitted({ ...shapeIds, tailAnchor }))
-            }
-          />
+          <>
+            <NumberField
+              label="Tail X"
+              value={tip.x}
+              min={CALLOUT_TIP_MIN}
+              max={CALLOUT_TIP_MAX}
+              step={0.05}
+              disabled={locked}
+              onCommit={(x, editRun) =>
+                commitShapeParam(calloutTailCommitted({ ...shapeIds, tailTip: { ...tip, x } }), editRun)
+              }
+            />
+            <NumberField
+              label="Tail Y"
+              value={tip.y}
+              min={CALLOUT_TIP_MIN}
+              max={CALLOUT_TIP_MAX}
+              step={0.05}
+              disabled={locked}
+              onCommit={(y, editRun) =>
+                commitShapeParam(calloutTailCommitted({ ...shapeIds, tailTip: { ...tip, y } }), editRun)
+              }
+            />
+          </>
         );
+      }
       case "flowchart":
         return (
           <SelectField<FlowchartSymbol>

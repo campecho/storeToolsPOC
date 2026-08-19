@@ -541,7 +541,7 @@ export const calloutTool: ToolContract = {
       id: "callout.drag-tail-handle.repositions-tail",
       trigger: "drag on tail adjust handle",
       behavior:
-        "Repositions the pointer tail of the placed callout; preview in overlay, one commit on release.",
+        "Drags the pointer tail's TIP, setting its length and angle together — PowerPoint's behaviour, rather than snapping to one of four corners; preview in overlay, one commit on release.",
       action: "callout/tailCommitted",
     },
     {
@@ -573,7 +573,7 @@ export const calloutTool: ToolContract = {
     {
       kind: "enum",
       id: "tailAnchor",
-      label: "Tail anchor",
+      label: "Tail from",
       default: "bottom-left",
       values: ["bottom-left", "bottom-right", "top-left", "top-right"],
     },
@@ -584,7 +584,8 @@ export const calloutTool: ToolContract = {
     "'Callouts.' (§4.4) · 'Use shapes for backgrounds, dividers, badges, callouts, and signage.' (§4.4).",
     "ASSUMPTION: the callout accepts text — Publisher parity; the doc lists only the shape.",
     "ASSUMPTION: the tail counts as part of the path for hit testing, and the tail adjust handle is an overlay target.",
-    "ASSUMPTION: the digest's free tail-anchor point is simplified to preset anchor positions in the options bar; free repositioning happens through the tail adjust handle.",
+    "The digest's free tail-anchor point: the options bar seeds it from four corner presets at draw time, and the adjust handle then moves it anywhere — the placed object stores a free `tailTip`, not the preset.",
+    "The tail reaches OUTSIDE the frame box, as PowerPoint's does, so the selection frame hugs the body and the tail extends past it. Point hit-testing follows the drawn outline and still finds the tail; the AABB the marquee and align read does not — it is the frame box.",
     "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size, Esc-cancel, double-click-to-edit-text, fill #4472c4, and stroke #000000 are Publisher-parity fillers — §4.4 lists the shape, not the bindings.",
   ],
 };

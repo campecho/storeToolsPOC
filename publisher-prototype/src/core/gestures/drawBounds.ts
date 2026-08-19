@@ -1,7 +1,7 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { shapeOutline } from "../geometry/shapePaths";
 import type {
-  CalloutTailAnchor,
+  NormalizedPoint,
   FlowchartSymbol,
   PathSeg,
   ShapeObject,
@@ -84,7 +84,7 @@ export type DrawnShapeGeometry =
   | { shape: "path"; d: PathSeg[] }
   | { shape: "roundedRect"; cornerRadius: number }
   | { shape: "starPolygon"; points: number; innerRadiusRatio: number }
-  | { shape: "callout"; tailAnchor: CalloutTailAnchor }
+  | { shape: "callout"; tailTip: NormalizedPoint }
   | { shape: "flowchart"; symbol: FlowchartSymbol };
 
 /**

@@ -14,7 +14,7 @@ import {
   type Point,
   type Rect,
 } from "../../core/hittest";
-import type { LayoutObject, ShapeObject } from "../../core/model";
+import { tailTipFor, type LayoutObject, type ShapeObject } from "../../core/model";
 import { resizeCursor, rotateCursor } from "./cursors";
 
 /**
@@ -96,15 +96,11 @@ function adjustPointFor(shape: ShapeObject, box: Rect, minInsetX: number): Point
     case "starPolygon":
       // On the first inner vertex — the point the ratio literally places.
       return starInnerArmPoint(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5);
-    case "callout": {
-      // On the tail's tip corner; dragging it to another quadrant moves the
-      // tail there.
-      const anchor = shape.tailAnchor ?? "bottom-left";
-      return {
-        x: anchor.endsWith("right") ? 0.94 : 0.06,
-        y: anchor.startsWith("bottom") ? 1 : 0,
-      };
-    }
+    case "callout":
+      // ON the tail's tip — the handle IS the point it sets, so dragging it
+      // changes the tail's length and angle at once. Usually outside the unit
+      // box, which is why the handle can sit beyond the selection frame.
+      return shape.tailTip ?? tailTipFor("bottom-left");
     default:
       return null;
   }
