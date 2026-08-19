@@ -20,10 +20,17 @@ function ToolButton({
     <button
       className={wired ? "dock-tool" : "dock-tool unwired"}
       aria-pressed={active}
-      title={`${tool.label} (${tool.shortcut}) — ${tool.tier}${wired ? "" : ", not wired yet"}`}
+      // Only what the label does NOT already say. Text content wins over
+      // `title` in the accessible-name computation, so this is the button's
+      // DESCRIPTION — repeating the name and shortcut here would just have a
+      // screen reader announce them twice.
+      title={`${tool.tier}${wired ? "" : ", not wired yet"}`}
       onClick={() => onToolChange(tool.id)}
     >
-      <span className="dock-tool-label">{tool.label}</span>
+      {/* The shortcut is real text in the button, not a decoration hidden
+          from assistive tech: the accessible name then matches the visible
+          label exactly, which is what WCAG 2.5.3 (Label in Name) asks for. */}
+      <span className="dock-tool-label">{`${tool.label} (${tool.shortcut})`}</span>
       {tool.tier === "SURFACE" && <sup className="tier-badge">S</sup>}
     </button>
   );

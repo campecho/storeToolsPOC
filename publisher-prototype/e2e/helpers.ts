@@ -39,8 +39,17 @@ export async function screenPoint(page: Page, pt: DocPoint): Promise<DocPoint> {
   return { x: box.x + local.x, y: box.y + local.y };
 }
 
+/** A dock button, found by the tool's NAME. Dock buttons read
+    "Label (Shortcut)", so the match anchors on the label and lets the
+    shortcut follow: a spec names the tool it means, not the key it happens
+    to carry, and rebinding a shortcut moves no test. */
+export function dockTool(page: Page, toolLabel: string) {
+  const label = toolLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return page.getByTestId("dock").getByRole("button", { name: new RegExp(`^${label} \\(`) });
+}
+
 export async function activate(page: Page, toolLabel: string): Promise<void> {
-  await page.getByTestId("dock").getByRole("button", { name: toolLabel, exact: true }).click();
+  await dockTool(page, toolLabel).click();
 }
 
 export async function drag(

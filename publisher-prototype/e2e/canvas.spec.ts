@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { dockTool } from "./helpers";
 
 /**
  * Gesture-clause tests (PLAN.md §5 testing note): Konva renders to canvas,
@@ -47,14 +48,14 @@ test("zoom.wheel.ctrl-zooms-at-cursor", async ({ page }) => {
 });
 
 test("zoom.click.steps-in", async ({ page }) => {
-  await page.getByRole("button", { name: "Zoom", exact: true }).click();
+  await dockTool(page, "Zoom").click();
   const center = await canvasCenter(page);
   await page.mouse.click(center.x, center.y);
   await expect.poll(async () => (await viewportState(page)).zoom).toBe(1.25);
 });
 
 test("zoom.alt-click.steps-out", async ({ page }) => {
-  await page.getByRole("button", { name: "Zoom", exact: true }).click();
+  await dockTool(page, "Zoom").click();
   const center = await canvasCenter(page);
   await page.keyboard.down("Alt");
   await page.mouse.click(center.x, center.y);
