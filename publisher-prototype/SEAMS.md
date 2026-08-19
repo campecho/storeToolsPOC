@@ -217,3 +217,34 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   commands need their own document action and id minting, and none of that is
   needed to answer "do grouped items transform together" — a document that already
   carries groups (any import, `fixtures/kitchen-sink.json`) answers it today.
+- **Group and ungroup (recorded 2026-08-19, user decision):** §5.1's commands land
+  on Ctrl/Cmd+G and Ctrl/Cmd+Shift+G — keyboard only, since the Layers panel that
+  would otherwise host them is not wired. They are gesture clauses on the select
+  tool like `select.arrow.nudges`, so one keypress is one action and one history
+  entry, and they need no schema change: `doc.groups` and `groupId` have been the
+  model of record since 2026-08-17. The group id mints at the shell edge beside
+  `createObjectId`, keeping the reducer free of id generation (§6.3).
+  Grouping NESTS. A group already inside the selection becomes a CHILD of the new
+  one rather than being flattened into it, so `object/groupCommitted` carries two
+  halves — `ids` joining directly and `groupIds` becoming children — and its
+  members keep the `groupId` they had. Ungrouping is the exact inverse of one
+  level: objects and subgroups re-join the removed group's parent, or the page
+  when it had none. Two units are required to group; one group re-grouped alone
+  would only wrap itself, so nothing commits.
+  Grouping also RESTACKS, which is the part that is not bookkeeping: members move
+  to sit contiguously at the topmost member's z position. Without it an object
+  drawn between two members renders inside the group forever — the group would
+  transform as a unit but never read as one. Ungroup deliberately does NOT undo
+  the restack: undo is what puts stacking back, and quietly re-scattering members
+  on ungroup would surprise anyone who arranged them afterwards.
+  `object/ungroupCommitted` is the one commit here with no `pageIndex`. Groups are
+  document-root state, so removal sweeps every page AND every master — a
+  master-page object left holding a removed id would point at nothing. Grouping
+  stays page-scoped, because a selection is one page's.
+  Consequence of record: §5.1's "selection behavior must clearly indicate grouped
+  status" became answerable only once groups could be made, and it needed
+  answering — a group's frame is the same union AABB any multi-selection draws, so
+  the two were indistinguishable. The chrome now outlines each member inside that
+  frame (dashed, faded) when the selection IS exactly one group's membership,
+  which `selectedGroupId` decides. A group with a locked member still counts as
+  fully selected: no selection can ever contain that member.
