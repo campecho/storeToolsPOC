@@ -72,6 +72,15 @@ function hasVertexNear(segs: readonly PathSeg[], x: number, y: number): boolean 
   return vertices(segs).some(([vx, vy]) => Math.abs(vx - x) < 1e-9 && Math.abs(vy - y) < 1e-9);
 }
 
+/** Every ON-CURVE point of a path: the M/L vertices plus the endpoint of each
+    cubic. The banner's wrap begins and ends on cubics, so its landmarks live
+    here rather than in `vertices`. */
+function hasAnchor(segs: readonly PathSeg[], x: number, y: number): boolean {
+  return segs
+    .filter((s): s is Exclude<PathSeg, { c: "Z" }> => s.c !== "Z")
+    .some((s) => Math.abs(s.x - x) < 1e-9 && Math.abs(s.y - y) < 1e-9);
+}
+
 /** Split a multi-ring path at its M commands — the banner is the one builder
     that emits more than one, so its rings are addressed by position. */
 function subpaths(segs: readonly PathSeg[]): PathSeg[][] {
@@ -236,16 +245,26 @@ describe("outlineOvershoot", () => {
   });
 });
 
+// A ribbon-shaped frame in inches. The builders take the frame because the
+// plate's corners are round, and a round corner has to be one radius
+// normalized per axis or the frame's aspect stretches it.
+const W = 4;
+const H = 1;
+const banner = (inset: number, height: number) => bannerPath(inset, height, W, H);
+const folds = (inset: number, height: number) => bannerShading(inset, height, W, H);
+
+/** Where the left tail stops, having wrapped under the plate by one fold. */
+const INNER = 0.2 + 0.125;
+
+/** The wrap's two radii at inset 0.2 / height 0.6: a fixed share of the fold's
+    length across, a quarter of the drop below the plate down. The plate's
+    bottom corner, the fold's cap and the tail's inner bottom all turn through
+    them, which is what makes the wrap one curve. */
+const CAP_X = 0.125 * 0.18;
+const CAP_Y = (1 - 0.6) / 4;
+
 describe("bannerPath", () => {
-  // A ribbon-shaped frame in inches. The builder takes the frame because the
-  // plate's corners are round, and a round corner has to be one radius
-  // normalized per axis or the frame's aspect stretches it.
-  const W = 4;
-  const H = 1;
-  const banner = (inset: number, height: number) => bannerPath(inset, height, W, H);
   const DEFAULT = () => banner(BANNER_DEFAULT_INSET, BANNER_DEFAULT_HEIGHT);
-  /** Where the left tail stops, having wrapped under the plate by one fold. */
-  const INNER = 0.2 + 0.125;
 
   it("emits THREE closed subpaths — the centre plate and two side tails", () => {
     const segs = DEFAULT();
@@ -272,13 +291,27 @@ describe("bannerPath", () => {
 
   it("insets the plate's sides by panelInset, leaving the tails either side", () => {
     const segs = banner(0.2, 0.6);
-    // The plate's bottom corners sit on the inset, and each tail meets them.
-    expect(hasVertex(segs, 0.2, 0.6)).toBe(true);
-    expect(hasVertex(segs, 0.8, 0.6)).toBe(true);
+    // The plate's sides run down the inset. They do not STOP at its bottom
+    // edge — they carry on to the centre of the wrap, half a fold lower.
+    expect(hasAnchor(segs, 0.2, 0.6 + CAP_Y)).toBe(true);
+    expect(hasAnchor(segs, 0.8, 0.6 + CAP_Y)).toBe(true);
     // Each tail runs from the plate's side out to the frame edge and down.
     expect(hasVertex(segs, 0.2, 1 - 0.6)).toBe(true);
     expect(hasVertex(segs, 0, 1)).toBe(true);
     expect(hasVertex(segs, 1, 1)).toBe(true);
+  });
+
+  it("turns the plate's bottom corners into the wrap rather than squaring them", () => {
+    // The whole reason the wrap reads as one curve: the bottom edge stops one
+    // cap short of the side, turns down through a quarter ellipse, and meets
+    // the side edge half a fold below. Square that corner off and a hard line
+    // cuts across the top of the fold.
+    const plate = subpaths(banner(0.2, 0.6))[0];
+    expect(hasAnchor(plate ?? [], 0.2, 0.6)).toBe(false);
+    expect(hasAnchor(plate ?? [], 0.2 + CAP_X, 0.6)).toBe(true);
+    expect(hasAnchor(plate ?? [], 0.2, 0.6 + CAP_Y)).toBe(true);
+    // Both bottom corners turn, and nothing else on the plate does.
+    expect(plate?.filter((s) => s.c === "C")).toHaveLength(4);
   });
 
   it("TILES rather than overlaps: each tail wraps under the plate by one fold", () => {
@@ -287,9 +320,9 @@ describe("bannerPath", () => {
     // the tail turns at both corners the plate owns, so the two share edges
     // and neither covers the other. Hit testing walks this outline even-odd,
     // and an overlap would punch itself out as a hole.
-    expect(hasVertex(plate ?? [], 0.2, 0.6)).toBe(true);
+    expect(hasAnchor(plate ?? [], 0.2, 0.6 + CAP_Y)).toBe(true);
     expect(hasVertex(left ?? [], 0.2, 1 - 0.6)).toBe(true);
-    expect(hasVertex(left ?? [], 0.2, 0.6)).toBe(true);
+    expect(hasAnchor(left ?? [], 0.2, 0.6 + CAP_Y)).toBe(true);
     // …then reaches in exactly one fold's width past the plate's edge.
     expect(hasVertexNear(left ?? [], INNER, 0.6)).toBe(true);
     expect(hasVertexNear(right ?? [], 1 - INNER, 0.6)).toBe(true);
@@ -318,8 +351,8 @@ describe("bannerPath", () => {
   it("mirrors the tails' band against the plate, so a deeper plate raises it", () => {
     const shallow = banner(0.2, 0.6);
     const deep = banner(0.2, 0.85);
-    expect(hasVertex(shallow, 0.2, 0.6)).toBe(true);
-    expect(hasVertex(deep, 0.2, 0.85)).toBe(true);
+    expect(hasAnchor(shallow, 0.2 + CAP_X, 0.6)).toBe(true);
+    expect(hasAnchor(deep, 0.2 + CAP_X, 0.85)).toBe(true);
     // Plate and band are the same height, one anchored to the top and one to
     // the bottom: they always overlap across the middle, which is what makes
     // the plate read as standing in front of the band.
@@ -349,11 +382,6 @@ describe("bannerPath", () => {
 });
 
 describe("bannerShading", () => {
-  const W = 4;
-  const H = 1;
-  const folds = (inset: number, height: number) => bannerShading(inset, height, W, H);
-  const INNER = 0.2 + 0.125;
-
   it("emits one closed ring per fold", () => {
     const segs = folds(0.2, 0.6);
     expect(segs.filter((s) => s.c === "M")).toHaveLength(2);
@@ -366,10 +394,22 @@ describe("bannerShading", () => {
     // tail stays visible below the fold rather than the fold filling the gap.
     const bottom = 0.6 + (1 - 0.6) * 0.5;
     expect(hasVertexNear(left ?? [], INNER, 0.6)).toBe(true);
-    expect(hasVertexNear(left ?? [], INNER, bottom)).toBe(true);
+    expect(hasAnchor(left ?? [], INNER - CAP_X, bottom)).toBe(true);
     expect(hasVertexNear(right ?? [], 1 - INNER, 0.6)).toBe(true);
-    expect(hasVertexNear(right ?? [], 1 - INNER, bottom)).toBe(true);
+    expect(hasAnchor(right ?? [], 1 - INNER + CAP_X, bottom)).toBe(true);
     expect(bottom).toBeLessThan(1);
+  });
+
+  it("closes the fold onto the tail's own rise, so the two meet in a cusp", () => {
+    // The underside descends to exactly the height the tail's bottom corner
+    // rises to, leaving no straight edge between two corners — arithmetic,
+    // not luck: capY is a quarter of the drop below the plate.
+    const [left, right] = subpaths(folds(0.2, 0.6));
+    expect(hasAnchor(left ?? [], INNER, 1 - CAP_Y)).toBe(true);
+    expect(hasAnchor(right ?? [], 1 - INNER, 1 - CAP_Y)).toBe(true);
+    // The tail turns up to the same point, off the same radii.
+    const tail = subpaths(banner(0.2, 0.6))[1];
+    expect(hasAnchor(tail ?? [], INNER, 1 - CAP_Y)).toBe(true);
   });
 
   it("sits wholly inside the silhouette, so bounds and hit testing never see it", () => {
@@ -392,14 +432,14 @@ describe("bannerShading", () => {
 
   it("caps the outer end of each fold where it turns around the plate's edge", () => {
     const [left, right] = subpaths(folds(0.2, 0.6));
-    // Two cubics per fold: the half-ellipse cap, drawn as two quarters.
-    expect(left?.filter((s) => s.c === "C")).toHaveLength(2);
-    expect(right?.filter((s) => s.c === "C")).toHaveLength(2);
+    // Three cubics per fold: the cap's two quarters, and the turn onto the
+    // tail at the inner end.
+    expect(left?.filter((s) => s.c === "C")).toHaveLength(3);
+    expect(right?.filter((s) => s.c === "C")).toHaveLength(3);
     // The cap turns about the plate's own side edge, reaching it and no
-    // further — its extreme is the first cubic's endpoint.
-    expect(cubicAt(left, 4).x).toBeCloseTo(0.2);
-    expect(cubicAt(left, 4).y).toBeCloseTo(0.6 + (1 - 0.6) * 0.5 * 0.5);
-    expect(cubicAt(right, 2).x).toBeCloseTo(0.8);
+    // further, at the centre of the wrap.
+    expect(hasAnchor(left ?? [], 0.2, 0.6 + CAP_Y)).toBe(true);
+    expect(hasAnchor(right ?? [], 0.8, 0.6 + CAP_Y)).toBe(true);
   });
 });
 

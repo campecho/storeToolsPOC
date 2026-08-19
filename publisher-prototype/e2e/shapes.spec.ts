@@ -304,9 +304,12 @@ test("banner.drag.creates", async ({ page }) => {
   // under it. One silhouette could not draw the plate's edges where it
   // crosses a tail, and overlapping rings would punch a hole even-odd.
   expect(d.filter((s) => s.c === "M")).toHaveLength(3);
-  // The plate's bottom corners sit on the inset, where each tail turns.
-  expect(hasVertex(d, 0.17, 0.65)).toBe(true);
-  expect(hasVertex(d, 0.83, 0.65)).toBe(true);
+  // The plate's sides run down the inset and carry PAST its bottom edge, to
+  // the centre of the wrap its folds continue — the turn is one curve, not a
+  // corner, so the bottom edge stops short and the side runs long.
+  const capY = (1 - 0.65) / 4;
+  expect(hasVertex(d, 0.17, 0.65 + capY)).toBe(true);
+  expect(hasVertex(d, 0.83, 0.65 + capY)).toBe(true);
 });
 
 test("banner.drag-inset-handle and .drag-height-handle adjust the ribbon", async ({ page }) => {

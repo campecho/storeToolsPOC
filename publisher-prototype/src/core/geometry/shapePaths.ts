@@ -249,9 +249,11 @@ const BANNER_FOLD = 0.125;
     below the fold rather than the fold filling the gap. */
 const BANNER_FOLD_DEPTH = 0.5;
 
-/** How far the fold's outer cap reaches back along it, as a share of the
-    fold's length. */
-const BANNER_FOLD_CAP = 0.27;
+/** How far the wrap reaches back along the fold — the horizontal radius of
+    the quarter ellipse the plate's bottom corner, the fold's cap and the
+    tail's inner bottom all turn through. Measured 20px on the reference's
+    111px fold. */
+const BANNER_FOLD_CAP = 0.18;
 
 export function clampBannerInset(inset: number): number {
   return Math.min(BANNER_INSET_MAX, Math.max(BANNER_INSET_MIN, inset));
@@ -319,6 +321,14 @@ function bannerParts(inset: number, height: number, w: number, h: number) {
  *   bottoms of the tails, which is what makes the ribbon read as 3D. They are
  *   shading, not silhouette, so they live in `bannerShading` instead.
  *
+ * The WRAP is the thing to get right, and it is one curve rather than a
+ * corner. The plate's bottom edge does not run flat to its side edge and stop:
+ * it turns DOWN through a quarter ellipse and meets that edge half a fold
+ * lower, and the fold's cap is the other half of the same ellipse. Plate, fold
+ * and tail therefore share one continuous turn. Run the bottom edge straight
+ * into the corner instead and a hard line cuts across the top of the fold —
+ * which is exactly what the reference does not have.
+ *
  * THREE rings, which breaks the single-ring shape every other builder returns.
  * It has to: the plate's edges read as STROKED lines where it crosses the
  * tails, and one silhouette ring cannot draw a line inside itself.
@@ -333,14 +343,18 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
   const p = bannerParts(inset, height, w, h);
   const kx = KAPPA * p.roundX;
   const ky = KAPPA * p.roundY;
+  const kcx = KAPPA * p.capX;
+  const kcy = KAPPA * p.capY;
   const tailMid = (p.tailTop + 1) / 2;
   // Where each tail stops, having wrapped under the plate by one fold.
   const inner = p.x0 + p.reach;
   const innerRight = p.x1 - p.reach;
-  const kcx = KAPPA * p.capX;
-  const kcy = KAPPA * p.capY;
+  // Where the plate's side edges end: the centre of the turn, half a fold
+  // below its bottom edge.
+  const turn = p.plateBottom + p.capY;
   return [
-    // The centre plate, rounded across its top.
+    // The centre plate: rounded across the top, turning down at the bottom
+    // corners into the wrap its folds continue.
     { c: "M", x: p.x0, y: p.roundY },
     {
       c: "C",
@@ -361,14 +375,41 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
       x: p.x1,
       y: p.roundY,
     },
-    { c: "L", x: p.x1, y: p.plateBottom },
-    { c: "L", x: p.x0, y: p.plateBottom },
+    { c: "L", x: p.x1, y: turn },
+    {
+      c: "C",
+      x1: p.x1,
+      y1: turn - kcy,
+      x2: p.x1 - p.capX + kcx,
+      y2: p.plateBottom,
+      x: p.x1 - p.capX,
+      y: p.plateBottom,
+    },
+    { c: "L", x: p.x0 + p.capX, y: p.plateBottom },
+    {
+      c: "C",
+      x1: p.x0 + p.capX - kcx,
+      y1: p.plateBottom,
+      x2: p.x0,
+      y2: turn - kcy,
+      x: p.x0,
+      y: turn,
+    },
     { c: "Z" },
-    // Left tail: along the plate's side, under its bottom edge as far as the
-    // fold, then out to the swallowtail.
+    // Left tail: down the plate's side, around the same turn, under its bottom
+    // edge as far as the fold reaches, then out to the swallowtail.
     { c: "M", x: 0, y: p.tailTop },
     { c: "L", x: p.x0, y: p.tailTop },
-    { c: "L", x: p.x0, y: p.plateBottom },
+    { c: "L", x: p.x0, y: turn },
+    {
+      c: "C",
+      x1: p.x0,
+      y1: turn - kcy,
+      x2: p.x0 + p.capX - kcx,
+      y2: p.plateBottom,
+      x: p.x0 + p.capX,
+      y: p.plateBottom,
+    },
     { c: "L", x: inner, y: p.plateBottom },
     { c: "L", x: inner, y: 1 - p.capY },
     {
@@ -399,7 +440,16 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
       y: 1 - p.capY,
     },
     { c: "L", x: innerRight, y: p.plateBottom },
-    { c: "L", x: p.x1, y: p.plateBottom },
+    { c: "L", x: p.x1 - p.capX, y: p.plateBottom },
+    {
+      c: "C",
+      x1: p.x1 - p.capX + kcx,
+      y1: p.plateBottom,
+      x2: p.x1,
+      y2: turn - kcy,
+      x: p.x1,
+      y: turn,
+    },
     { c: "Z" },
   ];
 }
@@ -407,49 +457,96 @@ export function bannerPath(inset: number, height: number, w: number, h: number):
 /**
  * The banner's two FOLDS: the shaded turns under the plate's bottom corners.
  *
- * Each is a tongue hanging off the plate's bottom edge — flat along the top
- * and bottom, cut square where it meets the tail's inner end, and capped by a
- * half-ellipse at its outer end where it wraps around the plate's side. They
- * sit wholly inside the silhouette `bannerPath` draws, which is why they are
- * shading rather than geometry: bounds and hit testing never see them.
+ * Each is capped by the SAME quarter ellipse the plate's bottom corner turns
+ * through — its upper arc IS that corner, traced the other way — so the wrap
+ * reads as one curve from the plate's face, around its edge, and under to the
+ * tail. The inner end is cut where the tail stops, rounded off rather than
+ * squared so nothing in the turn meets at an angle.
+ *
+ * They sit wholly inside the silhouette `bannerPath` draws, which is why they
+ * are shading rather than geometry: bounds and hit testing never see them.
  */
 export function bannerShading(inset: number, height: number, w: number, h: number): PathSeg[] {
   const p = bannerParts(inset, height, w, h);
+  const turn = p.plateBottom + p.capY;
   const bottom = p.plateBottom + p.foldHeight;
-  const mid = p.plateBottom + p.capY;
+  const inner = p.x0 + p.reach;
+  const innerRight = p.x1 - p.reach;
   const kcx = KAPPA * p.capX;
   const kcy = KAPPA * p.capY;
+  // Where the fold's underside meets the cut. It descends to exactly the point
+  // the tail's own bottom rises to, so the sliver of tail showing below the
+  // fold closes to nothing there and the two curves meet in a cusp instead of
+  // a pair of corners either side of a straight edge. That the two land
+  // together is arithmetic, not luck: capY is a quarter of the drop below the
+  // plate, so plateBottom + 4·capY is the frame's bottom exactly.
+  const meet = 1 - p.capY;
   return [
-    // Left fold, capped where it turns around the plate's left edge.
-    { c: "M", x: p.x0 + p.capX, y: p.plateBottom },
-    { c: "L", x: p.x0 + p.reach, y: p.plateBottom },
-    { c: "L", x: p.x0 + p.reach, y: bottom },
-    { c: "L", x: p.x0 + p.capX, y: bottom },
-    { c: "C", x1: p.x0 + p.capX - kcx, y1: bottom, x2: p.x0, y2: mid + kcy, x: p.x0, y: mid },
+    // Left fold: up the cap into the plate's bottom corner, in along its
+    // bottom edge, then back under.
+    { c: "M", x: p.x0, y: turn },
     {
       c: "C",
       x1: p.x0,
-      y1: mid - kcy,
+      y1: turn - kcy,
       x2: p.x0 + p.capX - kcx,
       y2: p.plateBottom,
       x: p.x0 + p.capX,
       y: p.plateBottom,
     },
+    { c: "L", x: inner, y: p.plateBottom },
+    { c: "L", x: inner, y: meet },
+    {
+      c: "C",
+      x1: inner,
+      y1: meet - kcy,
+      x2: inner - p.capX + kcx,
+      y2: bottom,
+      x: inner - p.capX,
+      y: bottom,
+    },
+    { c: "L", x: p.x0 + p.capX, y: bottom },
+    {
+      c: "C",
+      x1: p.x0 + p.capX - kcx,
+      y1: bottom,
+      x2: p.x0,
+      y2: turn + kcy,
+      x: p.x0,
+      y: turn,
+    },
     { c: "Z" },
     // Right fold, the same mirrored.
-    { c: "M", x: p.x1 - p.reach, y: p.plateBottom },
+    { c: "M", x: innerRight, y: p.plateBottom },
     { c: "L", x: p.x1 - p.capX, y: p.plateBottom },
     {
       c: "C",
       x1: p.x1 - p.capX + kcx,
       y1: p.plateBottom,
       x2: p.x1,
-      y2: mid - kcy,
+      y2: turn - kcy,
       x: p.x1,
-      y: mid,
+      y: turn,
     },
-    { c: "C", x1: p.x1, y1: mid + kcy, x2: p.x1 - p.capX + kcx, y2: bottom, x: p.x1 - p.capX, y: bottom },
-    { c: "L", x: p.x1 - p.reach, y: bottom },
+    {
+      c: "C",
+      x1: p.x1,
+      y1: turn + kcy,
+      x2: p.x1 - p.capX + kcx,
+      y2: bottom,
+      x: p.x1 - p.capX,
+      y: bottom,
+    },
+    { c: "L", x: innerRight + p.capX, y: bottom },
+    {
+      c: "C",
+      x1: innerRight + p.capX - kcx,
+      y1: bottom,
+      x2: innerRight,
+      y2: meet - kcy,
+      x: innerRight,
+      y: meet,
+    },
     { c: "Z" },
   ];
 }

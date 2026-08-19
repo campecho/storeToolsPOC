@@ -528,3 +528,17 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   to the builder that draws it, rather than the renderer guessing from the kind.
   The banner is the only one today, and this file's tests assert every other kind
   returns nothing.
+  **Amended (same day, review of the wrap):** the plate's bottom edge must NOT
+  run flat to its side edge and stop. It stops one cap short, turns DOWN through
+  a quarter ellipse, and meets the side edge half a fold lower — and the fold's
+  cap is the other half of that same ellipse, its upper arc literally the
+  plate's bottom corner traced the other way. Square that corner off instead and
+  a hard line cuts straight across the top of the fold, which is what the review
+  saw and the reference does not have. The plate, the fold and the tail share
+  one continuous turn, off one pair of radii used in three places.
+  The turn also closes the fold's inner end: the underside descends to exactly
+  the height the tail's own bottom corner rises to, so the sliver of tail below
+  the fold narrows to nothing there and the two curves meet in a cusp rather
+  than as corners either side of a straight edge. That the two land together is
+  arithmetic, not tuning — the vertical radius is a quarter of the drop below
+  the plate, so four of them is the drop exactly.
