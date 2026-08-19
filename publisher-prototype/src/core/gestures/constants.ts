@@ -34,6 +34,11 @@ export const ROTATE_SNAP_DEG = 15;
 /** Shift-line snaps to 45° increments (the contract's 0/45/90°). */
 export const LINE_SNAP_DEG = 45;
 
+/** Shift-move snaps travel to 45° increments — horizontal, vertical, and
+    both diagonals fall out of one rule, chosen by whichever the drag is
+    nearest at the moment it is asked. */
+export const MOVE_SNAP_DEG = 45;
+
 /** Click/drag slop threshold in document inches at the given zoom. */
 export function slopInInches(zoom: number): number {
   return GESTURE_SLOP_PX / (DPI * zoom);

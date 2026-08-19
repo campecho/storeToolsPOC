@@ -3,6 +3,7 @@ import type { LayoutDocument } from "../model";
 import {
   DRAW_COMMIT_ACTIONS,
   objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -107,6 +108,7 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectGroupCommitted.type,
   objectUngroupCommitted.type,
   objectDeleteCommitted.type,
+  objectDuplicateCommitted.type,
   roundedRectCornerRadiusCommitted.type,
   starPolygonInnerRadiusCommitted.type,
   calloutTailCommitted.type,

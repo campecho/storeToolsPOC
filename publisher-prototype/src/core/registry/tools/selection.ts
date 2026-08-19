@@ -62,6 +62,20 @@ export const selectTool: ToolContract = {
       action: "object/moveCommitted",
     },
     {
+      id: "select.shift-drag.constrains-move",
+      trigger: "drag on selected object + Shift",
+      behavior:
+        "Constrains the move to the nearest 45° — horizontal, vertical or either diagonal — chosen live from the drag's current direction, so turning the drag changes the axis and releasing Shift frees it again.",
+      action: "object/moveCommitted",
+    },
+    {
+      id: "select.alt-drag.duplicates",
+      trigger: "drag on selected object + Alt/Option",
+      behavior:
+        "Leaves the originals in place and drops a copy where the drag ends; a copied group is itself a group. The pointer shows the platform copy cursor while Alt is held. Alt WITHOUT travel stays select.alt-click.selects-beneath.",
+      action: "object/duplicateCommitted",
+    },
+    {
       id: "select.drag-handle.resizes",
       trigger: "drag on resize handle",
       behavior:

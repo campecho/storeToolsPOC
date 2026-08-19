@@ -38,6 +38,25 @@ export function updateDrag<S extends DragState<GestureContext>>(
   return Object.assign({}, state, { current: point, modifiers, dragged });
 }
 
+/**
+ * A drag delta pulled onto the nearest `stepDeg` ray, at the distance the
+ * drag projects onto it — the shared shape of every Shift constraint here
+ * (a line's angle, a move's direction). An unmodified delta passes straight
+ * through, so callers can hand this every update unconditionally.
+ */
+export function snappedDelta(
+  dx: number,
+  dy: number,
+  stepDeg: number,
+): { dx: number; dy: number } {
+  const step = (stepDeg * Math.PI) / 180;
+  const snapped = Math.round(Math.atan2(dy, dx) / step) * step;
+  const cos = Math.cos(snapped);
+  const sin = Math.sin(snapped);
+  const len = dx * cos + dy * sin;
+  return { dx: len * cos, dy: len * sin };
+}
+
 /** The one dispatch an aborted gesture makes (PLAN.md §6.3): the caller
     dispatches gesture/cancelled and discards the preview. */
 export function cancelResult(): GestureCancelResult {

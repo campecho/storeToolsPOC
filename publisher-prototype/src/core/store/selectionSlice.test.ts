@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "../model";
-import { objectDeleteCommitted } from "./documentActions";
+import { objectDeleteCommitted, objectDuplicateCommitted } from "./documentActions";
 import {
   documentLoadedCommitted,
   stressFixtureCleared,
@@ -104,6 +104,21 @@ describe("selectionSlice", () => {
       selectionGroupEnteredCommitted({ groupId: "grp-1", ids: ["g1"] }),
     );
     expect(next).toEqual({ ids: ["g1"], enteredGroupId: "grp-1" });
+  });
+
+  it("selects the copies an Alt-drag drops", () => {
+    const next = reducer(
+      selected(["a", "b"]),
+      objectDuplicateCommitted({
+        pageIndex: 0,
+        objects: [
+          { id: "c1", type: "shape", shape: "rect", x: 0, y: 0, w: 1, h: 1, rotation: 0, locked: false, fill: null, stroke: null },
+          { id: "c2", type: "shape", shape: "rect", x: 0, y: 0, w: 1, h: 1, rotation: 0, locked: false, fill: null, stroke: null },
+        ],
+        groups: [],
+      }),
+    );
+    expect(next.ids).toEqual(["c1", "c2"]);
   });
 
   it("prunes deleted ids, and leaves the group context when nothing is left", () => {

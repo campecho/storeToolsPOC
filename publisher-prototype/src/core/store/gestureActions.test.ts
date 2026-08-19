@@ -9,6 +9,7 @@ import {
   gestureCancelled,
   lineDrawCommitted,
   objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectGroupCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
@@ -52,6 +53,7 @@ const documentActionCreators = [
   objectGroupCommitted,
   objectUngroupCommitted,
   objectDeleteCommitted,
+  objectDuplicateCommitted,
   gestureCancelled,
 ];
 

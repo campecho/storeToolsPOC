@@ -611,3 +611,87 @@ test("a line inside a multi-selection rejoins the union frame", async ({ page })
   await expect(page.locator('[data-handle="p1"]')).toHaveCount(0);
   await expect(page.locator('[data-handle="se"]')).toBeVisible();
 });
+
+test("select.shift-drag.constrains-move", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 2.5, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // A drag mostly sideways lands flat: the y travel is dropped, not kept.
+  await armCounter(page);
+  await drag(page, { x: 2.5, y: 4.5 }, { x: 5, y: 5 }, ["Shift"]);
+  expect(await notificationCount(page)).toBe(1);
+  let rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.x, 4.5);
+  expectNear(rect.y, 4);
+  // A drag mostly downward lands vertical.
+  await drag(page, { x: 5, y: 4.5 }, { x: 5.4, y: 6.5 }, ["Shift"]);
+  rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.x, 4.5);
+  expectNear(rect.y, 6);
+});
+
+test("select.shift-click.toggles-membership still works on a selected object", async ({ page }) => {
+  // Shift now starts a constrained move on an already-selected object, so the
+  // toggle has to survive as the release that never travelled.
+  await draw(page, "Rectangle", { x: 1, y: 4 }, { x: 2, y: 5 });
+  await draw(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 4.5 });
+  await clickAt(page, { x: 3.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await clickAt(page, { x: 3.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+});
+
+test("select.alt-drag.duplicates", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 2.5, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const original = shapeAt(await pageObjects(page), 0).id;
+  await armCounter(page);
+  await drag(page, { x: 2.5, y: 4.5 }, { x: 5.5, y: 6 }, ["Alt"]);
+  expect(await notificationCount(page)).toBe(1);
+  const objects = await pageObjects(page);
+  expect(objects).toHaveLength(2);
+  // The original stayed exactly where it was; the copy landed at the drag end.
+  const first = shapeAt(objects, 0);
+  expectNear(first.x, 2);
+  expectNear(first.y, 4);
+  const copy = shapeAt(objects, 1);
+  expectNear(copy.x, 5);
+  expectNear(copy.y, 5.5);
+  expect(copy.id).not.toBe(original);
+  // The copy is what you are now holding, like a freshly drawn object.
+  await expect.poll(() => selectionIds(page)).toEqual([copy.id]);
+  // One history entry.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+});
+
+test("select.alt-click.selects-beneath survives beside the duplicate drag", async ({ page }) => {
+  // Alt without travel must still cycle — the two clauses share one binding.
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 4, y: 6 });
+  await draw(page, "Rectangle", { x: 2.5, y: 4.5 }, { x: 3.5, y: 5.5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 5 });
+  const top = (await selectionIds(page))[0];
+  await clickAt(page, { x: 3, y: 5 }, ["Alt"]);
+  await expect.poll(async () => (await selectionIds(page))[0]).not.toBe(top);
+  // …and nothing was duplicated by the click.
+  expect(await pageObjects(page)).toHaveLength(2);
+});
+
+test("Alt over a selection shows the copy cursor before the drag starts", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 2.5, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const area = page.getByTestId("canvas-area");
+  await expect(area).toHaveCSS("cursor", "default");
+  await page.keyboard.down("Alt");
+  await expect(area).toHaveCSS("cursor", "copy");
+  await page.keyboard.up("Alt");
+  await expect(area).toHaveCSS("cursor", "default");
+});

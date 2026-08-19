@@ -1,5 +1,9 @@
 import { createSlice, isAnyOf, type PayloadAction } from "@reduxjs/toolkit";
-import { isDrawCommit, objectDeleteCommitted } from "./documentActions";
+import {
+  isDrawCommit,
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
+} from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
 /**
@@ -93,6 +97,12 @@ export const selectionSlice = createSlice({
     builder.addMatcher(isDrawCommit, (state, action) => {
       state.ids = [action.payload.object.id];
       state.enteredGroupId = null;
+    });
+    // The copies an Alt-drag drops become the selection, for the same reason
+    // a drawn object does: they are what the gesture just made, and they are
+    // what the next drag or panel edit should reach.
+    builder.addMatcher(objectDuplicateCommitted.match, (state, action) => {
+      state.ids = action.payload.objects.map((o) => o.id);
     });
     // Deleted objects leave the selection with them. Locked ids the reducer
     // refused to delete are filtered out too, but they could never have been
