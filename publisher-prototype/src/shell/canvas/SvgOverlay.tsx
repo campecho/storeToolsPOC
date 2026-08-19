@@ -260,7 +260,7 @@ export function SvgOverlay({
   showChrome: boolean;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
-  onShapeAdjustStart: (e: React.PointerEvent<SVGElement>) => void;
+  onShapeAdjustStart: (handleId: string, e: React.PointerEvent<SVGElement>) => void;
   onLineEndpointStart: (which: LineEndpointHandle, e: React.PointerEvent<SVGElement>) => void;
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;

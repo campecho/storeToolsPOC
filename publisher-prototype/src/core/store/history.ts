@@ -14,6 +14,8 @@ import {
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   objectUngroupCommitted,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   calloutTailCommitted,
   flowchartSymbolCommitted,
   objectArrowHeadsCommitted,
@@ -112,6 +114,8 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   roundedRectCornerRadiusCommitted.type,
   starPolygonInnerRadiusCommitted.type,
   calloutTailCommitted.type,
+  bannerPanelInsetCommitted.type,
+  bannerPanelHeightCommitted.type,
   ...PANEL_COMMIT_ACTION_TYPES,
 ]);
 

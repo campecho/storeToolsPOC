@@ -46,7 +46,7 @@ export const CONSUMED_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Ma
   ["rounded-rect", new Set(["fill", "stroke", "strokeWidth", "cornerRadius"])],
   ["star-polygon", new Set(["points", "innerRadiusRatio", "fill", "stroke", "strokeWidth"])],
   ["callout", new Set(["fill", "stroke", "strokeWidth", "tailAnchor"])],
-  ["banner", new Set(["fill", "stroke", "strokeWidth"])],
+  ["banner", new Set(["fill", "stroke", "strokeWidth", "panelInset", "panelHeight"])],
   ["flowchart", new Set(["symbol", "fill", "stroke", "strokeWidth"])],
   ["pen", new Set(["fill", "stroke", "strokeWidth", "autoClose"])],
 ]);

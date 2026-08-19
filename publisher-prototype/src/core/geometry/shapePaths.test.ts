@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { tailTipFor, type FlowchartSymbol, type PathSeg } from "../model";
 import {
+  BANNER_DEFAULT_HEIGHT,
+  BANNER_DEFAULT_INSET,
+  BANNER_HEIGHT_MAX,
+  BANNER_HEIGHT_MIN,
+  BANNER_INSET_MAX,
+  BANNER_INSET_MIN,
   CALLOUT_TAIL_HALF_BASE,
   KAPPA,
   bannerPath,
@@ -58,6 +64,11 @@ function verticesOf(segs: readonly PathSeg[]): { x: number; y: number }[] {
 
 function hasVertex(segs: readonly PathSeg[], x: number, y: number): boolean {
   return vertices(segs).some(([vx, vy]) => vx === x && vy === y);
+}
+
+/** Same, tolerant of the float noise a derived coordinate carries. */
+function hasVertexNear(segs: readonly PathSeg[], x: number, y: number): boolean {
+  return vertices(segs).some(([vx, vy]) => Math.abs(vx - x) < 1e-9 && Math.abs(vy - y) < 1e-9);
 }
 
 describe("roundedRectPath", () => {
@@ -180,21 +191,129 @@ describe("outlineOvershoot", () => {
   });
 
   it("reports nothing for every kind whose outline stays inside its box", () => {
-    for (const shape of ["rect", "ellipse", "roundedRect", "starPolygon", "flowchart", "path"] as const) {
+    for (const shape of [
+      "rect",
+      "ellipse",
+      "roundedRect",
+      "starPolygon",
+      "banner",
+      "flowchart",
+      "path",
+    ] as const) {
       expect(outlineOvershoot({ shape })).toEqual([]);
     }
   });
 });
 
 describe("bannerPath", () => {
-  it("emits a closed subpath fully inside the unit box", () => {
-    expectClosedNormalizedSubpath(bannerPath());
+  // A ribbon-shaped frame in inches. The builder takes the frame because two
+  // of its parts are round, and a round part has to be one radius normalized
+  // per axis or the frame's aspect stretches it.
+  const W = 4;
+  const H = 1;
+  const banner = (inset: number, height: number) => bannerPath(inset, height, W, H);
+  const DEFAULT = () => banner(BANNER_DEFAULT_INSET, BANNER_DEFAULT_HEIGHT);
+
+  it("emits FIVE closed subpaths — panel, two tails, two folds", () => {
+    const segs = DEFAULT();
+    expect(segs.filter((s) => s.c === "M")).toHaveLength(5);
+    expect(segs.filter((s) => s.c === "Z")).toHaveLength(5);
+    // The ribbon's internal lines are why it cannot be one ring: a single
+    // silhouette has no way to draw the fold and panel-bottom strokes.
+    expect(segs[0]?.c).toBe("M");
+    expect(segs[segs.length - 1]?.c).toBe("Z");
   });
 
-  it("cuts the V-notches inward to (0.15, 0.5) and (0.85, 0.5)", () => {
-    const segs = bannerPath();
-    expect(hasVertex(segs, 0.15, 0.5)).toBe(true);
-    expect(hasVertex(segs, 0.85, 0.5)).toBe(true);
+  it("stays inside the unit box at every setting", () => {
+    for (const inset of [BANNER_INSET_MIN, BANNER_DEFAULT_INSET, BANNER_INSET_MAX]) {
+      for (const height of [BANNER_HEIGHT_MIN, BANNER_DEFAULT_HEIGHT, BANNER_HEIGHT_MAX]) {
+        for (const p of verticesOf(banner(inset, height))) {
+          expect(p.x).toBeGreaterThanOrEqual(0);
+          expect(p.x).toBeLessThanOrEqual(1);
+          expect(p.y).toBeGreaterThanOrEqual(0);
+          expect(p.y).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  it("insets the panel's sides by panelInset, leaving the tails either side", () => {
+    const segs = banner(0.2, 0.6);
+    // The panel's bottom corners sit on the inset, and the tails start there.
+    expect(hasVertex(segs, 0.2, 0.6)).toBe(true);
+    expect(hasVertex(segs, 0.8, 0.6)).toBe(true);
+    // Each tail runs from the inset out to the frame edge, down to the bottom.
+    expect(hasVertex(segs, 0.2, 1)).toBe(true);
+    expect(hasVertex(segs, 0, 1)).toBe(true);
+    expect(hasVertex(segs, 1, 1)).toBe(true);
+  });
+
+  it("notches each tail end the same distance in whatever the inset", () => {
+    // The V bites a fixed share of the FRAME, so widening the tails turns
+    // them from arrowheads into flags rather than scaling the bite with them
+    // — the difference between the two reference ribbons.
+    const mid = (2 - 0.6) / 2;
+    for (const inset of [0.2, BANNER_INSET_MAX]) {
+      const segs = banner(inset, 0.6);
+      expect(hasVertexNear(segs, 0.125, mid)).toBe(true);
+      expect(hasVertexNear(segs, 0.875, mid)).toBe(true);
+    }
+    // Floored by the tail it cuts, so the narrowest tail keeps a body.
+    const narrow = banner(BANNER_INSET_MIN, 0.6);
+    expect(hasVertexNear(narrow, BANNER_INSET_MIN * 0.85, mid)).toBe(true);
+  });
+
+  it("mirrors the tails' band against the panel, so a deeper panel raises it", () => {
+    const shallow = banner(0.2, 0.6);
+    const deep = banner(0.2, 0.85);
+    expect(hasVertex(shallow, 0.2, 0.6)).toBe(true);
+    expect(hasVertex(deep, 0.2, 0.85)).toBe(true);
+    // Panel and band are the same height, one anchored to the top and one to
+    // the bottom: they always overlap across the middle, which is what makes
+    // the panel read as standing in front of the band.
+    expect(hasVertexNear(shallow, 0.2, 0.4)).toBe(true);
+    expect(hasVertexNear(deep, 0.2, 0.15)).toBe(true);
+  });
+
+  it("rounds the panel's top corners circularly, not stretched by the frame", () => {
+    // One radius in inches, normalized per axis — a wide ribbon's corners are
+    // the same arc as a square one's, where a share of the width would flatten
+    // them into a dome.
+    const wide = banner(0.2, 0.6);
+    const start = wide[0];
+    const corner = wide[1];
+    if (start?.c !== "M" || corner?.c !== "C") throw new Error("panel must open with M then C");
+    expect((corner.x - 0.2) * W).toBeCloseTo(start.y * H);
+    // Square frame: the same radius normalizes identically on both axes.
+    const square = bannerPath(0.2, 0.6, 2, 2);
+    const squareStart = square[0];
+    const squareCorner = square[1];
+    if (squareStart?.c !== "M" || squareCorner?.c !== "C") {
+      throw new Error("panel must open with M then C");
+    }
+    expect(squareCorner.x - 0.2).toBeCloseTo(squareStart.y);
+  });
+
+  it("ends each fold in a roll centred on it, tucked above the tails", () => {
+    const segs = banner(0.2, 0.6);
+    const foldBottom = 0.6 + (1 - 0.6) * 0.9;
+    // The roll's low point is a cubic endpoint — one per fold, centred across
+    // the fold's width because the roll is a half-ellipse over it.
+    const isCubic = (s: PathSeg): s is Extract<PathSeg, { c: "C" }> => s.c === "C";
+    const rolls = segs.filter(isCubic).filter((s) => Math.abs(s.y - foldBottom) < 1e-9);
+    expect(rolls).toHaveLength(2);
+    expect(rolls[0]?.x).toBeCloseTo(0.2 + (0.2 * 0.65) / 2);
+    expect(rolls[1]?.x).toBeCloseTo(0.8 - (0.2 * 0.65) / 2);
+    // The tails still run to the frame's bottom edge; only the folds stop short.
+    expect(hasVertex(segs, 0, 1)).toBe(true);
+    expect(foldBottom).toBeLessThan(1);
+  });
+
+  it("clamps both parameters into their ranges", () => {
+    expect(banner(-5, 0.6)).toEqual(banner(BANNER_INSET_MIN, 0.6));
+    expect(banner(5, 0.6)).toEqual(banner(BANNER_INSET_MAX, 0.6));
+    expect(banner(0.2, -5)).toEqual(banner(0.2, BANNER_HEIGHT_MIN));
+    expect(banner(0.2, 5)).toEqual(banner(0.2, BANNER_HEIGHT_MAX));
   });
 });
 

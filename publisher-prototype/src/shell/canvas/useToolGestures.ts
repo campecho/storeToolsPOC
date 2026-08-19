@@ -10,6 +10,8 @@ import {
   drawBoundsMachine,
   drawLineMachine,
   drawLineMachineFor,
+  bannerPanelHeightMachine,
+  bannerPanelInsetMachine,
   calloutTailMachine,
   cornerRadiusMachine,
   drawShapeMachine,
@@ -211,11 +213,11 @@ export type ToolGestures = {
   /** select.drag-endpoint.moves-endpoint — no-op unless the selection is one
       unlocked line, which is also the only case endpoints are drawn for. */
   beginLineEndpoint(which: LineEndpointHandle, e: React.PointerEvent<SVGElement>): void;
-  /** The adjust-handle clause the selected shape's kind owns — corner
-      radius, star inner radius, or callout tail. No-op unless the selection
-      is exactly one unlocked shape of an adjustable kind, which is also the
-      only case the handle is drawn for. */
-  beginShapeAdjust(e: React.PointerEvent<SVGElement>): void;
+  /** The adjust-handle clause the NAMED handle owns — corner radius, star
+      inner radius, callout tail, or either of the banner's two. No-op unless
+      the selection is exactly one unlocked shape of an adjustable kind, which
+      is also the only case a handle is drawn for. */
+  beginShapeAdjust(handleId: string, e: React.PointerEvent<SVGElement>): void;
 };
 
 export function useToolGestures(args: ToolGestureArgs): ToolGestures {
@@ -633,7 +635,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     );
   };
 
-  const beginShapeAdjust = (e: React.PointerEvent<SVGElement>): void => {
+  const beginShapeAdjust = (handleId: string, e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
     const only = selection.length === 1 ? selection[0] : undefined;
@@ -668,7 +670,13 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             )
           : only.shape === "callout"
             ? machineSession(calloutTailMachine, toDoc(e), shared, commit)
-            : null;
+            : // The banner's two handles share a ctx and differ only in the
+              // machine, which is what the handle id picks.
+              only.shape === "banner" && handleId === "banner-inset"
+              ? machineSession(bannerPanelInsetMachine, toDoc(e), shared, commit)
+              : only.shape === "banner" && handleId === "banner-height"
+                ? machineSession(bannerPanelHeightMachine, toDoc(e), shared, commit)
+                : null;
     if (session === null) return;
     e.stopPropagation();
     // Adjust handles drag along the shape, so they wear the frame's own

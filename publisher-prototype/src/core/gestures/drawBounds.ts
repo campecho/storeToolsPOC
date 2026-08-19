@@ -85,6 +85,7 @@ export type DrawnShapeGeometry =
   | { shape: "roundedRect"; cornerRadius: number }
   | { shape: "starPolygon"; points: number; innerRadiusRatio: number }
   | { shape: "callout"; tailTip: NormalizedPoint }
+  | { shape: "banner"; panelInset: number; panelHeight: number }
   | { shape: "flowchart"; symbol: FlowchartSymbol };
 
 /**

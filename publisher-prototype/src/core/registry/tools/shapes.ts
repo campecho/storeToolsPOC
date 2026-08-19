@@ -632,11 +632,18 @@ export const bannerTool: ToolContract = {
       action: "banner/drawCommitted",
     },
     {
-      id: "banner.drag-adjust-handle.sets-fold-depth",
-      trigger: "drag on fold adjust handle",
+      id: "banner.drag-inset-handle.sets-panel-inset",
+      trigger: "drag on the panel-inset adjust handle",
       behavior:
-        "Varies the ribbon fold depth of the placed banner; preview in overlay, one commit on release.",
-      action: "banner/foldDepthCommitted",
+        "Slides the raised panel's sides in or out, widening or narrowing the tails either side of it; preview in overlay, one commit on release.",
+      action: "banner/panelInsetCommitted",
+    },
+    {
+      id: "banner.drag-height-handle.sets-panel-height",
+      trigger: "drag on the panel-height adjust handle",
+      behavior:
+        "Moves the raised panel's bottom edge, taking the folds with it and raising the tails' band to meet it; preview in overlay, one commit on release.",
+      action: "banner/panelHeightCommitted",
     },
     {
       id: "banner.esc.cancels-draw",
@@ -658,13 +665,32 @@ export const bannerTool: ToolContract = {
       step: 0.25,
       unit: "pt",
     },
+    {
+      kind: "number",
+      id: "panelInset",
+      label: "Panel inset",
+      default: 0.17,
+      min: 0.05,
+      max: 0.35,
+      step: 0.01,
+    },
+    {
+      kind: "number",
+      id: "panelHeight",
+      label: "Panel height",
+      default: 0.65,
+      min: 0.55,
+      max: 0.9,
+      step: 0.01,
+    },
   ],
   panels: ["transform", "color-swatches", "effects"],
   undo: "per-gesture",
   notes: [
-    "'Banners.' (§4.4). The doc is silent on the banner's adjust parameters — the fold-depth handle carries no dedicated option until SME review names one.",
+    "'Banners.' (§4.4). The banner is the one kind with TWO adjust handles, because its ribbon takes two numbers: how far the raised panel's sides sit in, and where its bottom edge falls. Both are fractions of the frame; the tails, folds and notches derive from them.",
+    "The ribbon's proportions are measured off the two PowerPoint reference ribbons supplied at review: the tails' band mirrors the panel (same height, anchored to the bottom), the V bites a fixed share of the FRAME rather than of the tail, and the panel's top corners are one radius normalized per axis so a wide frame does not flatten them. The adjustment ranges are still eyeballed — working guesses for SME review, as with every other shape's here.",
     "ASSUMPTION: hit testing is path-accurate as on star-polygon — concavities in the ribbon must not hit; unfilled interior passes through.",
-    "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size, Esc-cancel, and the fold-depth adjust handle are Publisher-parity fillers — §4.4 lists the shape, not the bindings.",
+    "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size and Esc-cancel are Publisher-parity fillers — §4.4 lists the shape, not the bindings. The two adjust handles sit where the reference ribbon puts them: the inset handle at the foot of the panel's left edge, the height handle at the centre of its bottom edge.",
     "ASSUMPTION: fill default #4472c4 and stroke default #000000 — the doc names no default colors.",
   ],
 };

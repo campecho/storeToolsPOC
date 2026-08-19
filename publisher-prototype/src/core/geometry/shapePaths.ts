@@ -208,23 +208,180 @@ export function calloutPath(tip: NormalizedPoint): PathSeg[] {
 }
 
 /**
- * Ribbon banner: rectangle with a V-notch cut inward at each end.
+ * Banner adjustment ranges. `panelInset` is how far the raised panel's sides
+ * sit in from the frame edges, leaving the tails visible either side;
+ * `panelHeight` is where the panel's bottom edge falls. Both are fractions of
+ * the frame, and between them they are the two yellow handles.
  *
- * ASSUMPTION: notch depth 0.15 of the width — looks right at typical banner
- * aspect ratios, working guess for SME review.
+ * The proportions the ribbon derives from the two parameters are MEASURED off
+ * the pair of PowerPoint reference ribbons the review supplied, at the two
+ * settings they were captured at.
+ *
+ * ASSUMPTION: the four bounds are not — they are eyeballed to keep the ribbon
+ * drawable either side of those two settings, working guesses for SME review
+ * as every other builder's ranges here are.
  */
-export function bannerPath(): PathSeg[] {
-  return ringToPath([
-    { x: 0, y: 0 },
-    { x: 1, y: 0 },
-    { x: 0.85, y: 0.5 },
-    { x: 1, y: 1 },
-    { x: 0, y: 1 },
-    { x: 0.15, y: 0.5 },
-  ]);
+export const BANNER_INSET_MIN = 0.05;
+export const BANNER_INSET_MAX = 0.35;
+export const BANNER_HEIGHT_MIN = 0.55;
+export const BANNER_HEIGHT_MAX = 0.9;
+export const BANNER_DEFAULT_INSET = 0.17;
+export const BANNER_DEFAULT_HEIGHT = 0.65;
+
+/** How deep the V cuts into a tail end, as a fraction of the frame's WIDTH —
+    an absolute bite, not a share of the tail. Widening the tails therefore
+    turns them from arrowheads into flags, which is exactly what separates the
+    two reference ribbons (the bite measures 0.12 and 0.13 of the frame across
+    insets of 0.16 and 0.25). */
+const BANNER_NOTCH = 0.125;
+
+/** The panel's top corner radius, as a fraction of the frame's SHORTER side —
+    the reference rounds those corners circularly, and a banner frame is wide,
+    so a share of the width would stretch them into a dome. */
+const BANNER_CORNER = 0.14;
+
+export function clampBannerInset(inset: number): number {
+  return Math.min(BANNER_INSET_MAX, Math.max(BANNER_INSET_MIN, inset));
 }
 
+export function clampBannerHeight(height: number): number {
+  return Math.min(BANNER_HEIGHT_MAX, Math.max(BANNER_HEIGHT_MIN, height));
+}
 
+/** The proportions the rest of the ribbon takes from the two parameters. The
+    frame size comes in because two of them are round: they have to be one
+    radius normalized per axis, or the frame's aspect stretches them. */
+function bannerParts(inset: number, height: number, w: number, h: number) {
+  const x0 = clampBannerInset(inset);
+  const panelBottom = clampBannerHeight(height);
+  const foldBottom = panelBottom + (1 - panelBottom) * 0.9;
+  // Bounded by the panel it rounds, so a squat or narrow panel keeps a
+  // drawable corner instead of overrunning its own edges.
+  const radius = Math.min(BANNER_CORNER * Math.min(w, h), ((1 - 2 * x0) * w) / 2, panelBottom * h);
+  return {
+    x0,
+    x1: 1 - x0,
+    panelBottom,
+    /** The tails' band MIRRORS the panel: same height, anchored to the
+        bottom where the panel is anchored to the top. So a deeper panel
+        raises the tails to meet it rather than pushing them down, and the two
+        always overlap across the middle — which is what makes the panel read
+        as standing in front of the band. (Measured off the reference: a panel
+        ending at 0.63 has tails from 0.37, one ending at 0.86 from 0.14.)
+        BANNER_HEIGHT_MIN keeps that overlap: below half, the bands would
+        part and leave the ribbon in two pieces. */
+    tailTop: 1 - panelBottom,
+    /** The folds hang nearly the whole way down the tail band, tucking the
+        panel into it and stopping just short of its bottom edge. */
+    foldBottom,
+    /** The V bites a fixed share of the frame, floored by the tail it cuts so
+        a narrow tail keeps a sliver of body rather than being cut through. */
+    notch: Math.min(BANNER_NOTCH, x0 * 0.85),
+    foldWidth: x0 * 0.65,
+    /** The panel's top corner radius, one radius per axis. */
+    roundX: w > 0 ? radius / w : 0,
+    roundY: h > 0 ? radius / h : 0,
+    /** How far the roll each fold ends in bulges below its shoulder. */
+    foldDrop: (foldBottom - panelBottom) * 0.25,
+  };
+}
+
+/**
+ * Ribbon banner: a raised centre panel with rounded top corners, two tails
+ * running the full width beneath it and notched at their ends, and a fold
+ * tucking each of the panel's bottom corners into the band — the PowerPoint
+ * ribbon the review supplied, driven by `panelInset` and `panelHeight`.
+ *
+ * FIVE subpaths, not one, which breaks the single-ring shape every other
+ * builder here returns. It has to: the folds and the panel's bottom edge read
+ * as STROKED lines in the reference, and one silhouette ring cannot draw an
+ * internal line. The rings only ever touch along edges — no two enclose the
+ * same area — so both fill rules union them and hit-testing's even-odd walk
+ * agrees.
+ */
+export function bannerPath(inset: number, height: number, w: number, h: number): PathSeg[] {
+  const p = bannerParts(inset, height, w, h);
+  const kx = KAPPA * p.roundX;
+  const ky = KAPPA * p.roundY;
+  const tailMid = (p.tailTop + 1) / 2;
+  const fold = (from: number, to: number): PathSeg[] => {
+    // A tongue hanging off the panel's bottom corner and ending in a roll: a
+    // shallow half-ellipse across its full width, the way a ribbon's cut end
+    // curls. Signed half-width, so the mirrored fold traces the same way.
+    const mid = (from + to) / 2;
+    const arm = (KAPPA * (to - from)) / 2;
+    const drop = KAPPA * p.foldDrop;
+    const shoulder = p.foldBottom - p.foldDrop;
+    return [
+      { c: "M", x: from, y: p.panelBottom },
+      { c: "L", x: to, y: p.panelBottom },
+      { c: "L", x: to, y: shoulder },
+      {
+        c: "C",
+        x1: to,
+        y1: shoulder + drop,
+        x2: mid + arm,
+        y2: p.foldBottom,
+        x: mid,
+        y: p.foldBottom,
+      },
+      {
+        c: "C",
+        x1: mid - arm,
+        y1: p.foldBottom,
+        x2: from,
+        y2: shoulder + drop,
+        x: from,
+        y: shoulder,
+      },
+      { c: "Z" },
+    ];
+  };
+  return [
+    // The raised panel, rounded across its top.
+    { c: "M", x: p.x0, y: p.roundY },
+    {
+      c: "C",
+      x1: p.x0,
+      y1: p.roundY - ky,
+      x2: p.x0 + p.roundX - kx,
+      y2: 0,
+      x: p.x0 + p.roundX,
+      y: 0,
+    },
+    { c: "L", x: p.x1 - p.roundX, y: 0 },
+    {
+      c: "C",
+      x1: p.x1 - p.roundX + kx,
+      y1: 0,
+      x2: p.x1,
+      y2: p.roundY - ky,
+      x: p.x1,
+      y: p.roundY,
+    },
+    { c: "L", x: p.x1, y: p.panelBottom },
+    { c: "L", x: p.x0, y: p.panelBottom },
+    { c: "Z" },
+    // Left tail, notched at its outer end.
+    ...ringToPath([
+      { x: p.x0, y: p.tailTop },
+      { x: p.x0, y: 1 },
+      { x: 0, y: 1 },
+      { x: p.notch, y: tailMid },
+      { x: 0, y: p.tailTop },
+    ]),
+    // Right tail, the same mirrored.
+    ...ringToPath([
+      { x: p.x1, y: p.tailTop },
+      { x: 1, y: p.tailTop },
+      { x: 1 - p.notch, y: tailMid },
+      { x: 1, y: 1 },
+      { x: p.x1, y: 1 },
+    ]),
+    ...fold(p.x0, p.x0 + p.foldWidth),
+    ...fold(p.x1, p.x1 - p.foldWidth),
+  ];
+}
 
 /**
  * Standard flowchart symbols. Terminator reuses the rounded rectangle at the
@@ -281,7 +438,15 @@ export function flowchartPath(symbol: FlowchartSymbol): PathSeg[] {
     drawn shape's geometry before it has a frame. */
 export type ShapeGeometry = Pick<
   ShapeObject,
-  "shape" | "d" | "cornerRadius" | "points" | "innerRadiusRatio" | "tailTip" | "symbol"
+  | "shape"
+  | "d"
+  | "cornerRadius"
+  | "points"
+  | "innerRadiusRatio"
+  | "tailTip"
+  | "panelInset"
+  | "panelHeight"
+  | "symbol"
 >;
 
 /**
@@ -307,6 +472,13 @@ export function shapeOutline(shape: ShapeGeometry, w: number, h: number): PathSe
       return starPath(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5);
     case "callout":
       return calloutPath(shape.tailTip ?? tailTipFor("bottom-left"));
+    case "banner":
+      return bannerPath(
+        shape.panelInset ?? BANNER_DEFAULT_INSET,
+        shape.panelHeight ?? BANNER_DEFAULT_HEIGHT,
+        w,
+        h,
+      );
     case "flowchart":
       return flowchartPath(shape.symbol ?? "process");
     default:

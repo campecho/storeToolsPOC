@@ -1,5 +1,5 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
-import { bannerPath } from "../core/geometry/shapePaths";
+import { BANNER_DEFAULT_HEIGHT, BANNER_DEFAULT_INSET } from "../core/geometry/shapePaths";
 import type { DrawnShapeGeometry } from "../core/gestures";
 import { tailTipFor, type CalloutTailAnchor, type FlowchartSymbol } from "../core/model";
 import {
@@ -68,11 +68,13 @@ export const SHAPE_TOOL_CONFIGS: Readonly<Record<string, ShapeToolConfig>> = {
       tailTip: tailTipFor(optionEnum(options, "callout", "tailAnchor", TAIL_ANCHORS, "bottom-left")),
     }),
   },
-  // The banner has no pre-draw shape option to store; its contracted fold
-  // depth is not a tool option yet, so it stays a baked path.
   banner: {
     creator: bannerDrawCommitted,
-    geometryForBox: () => ({ shape: "path", d: bannerPath() }),
+    geometryForBox: (options) => ({
+      shape: "banner",
+      panelInset: optionNumber(options, "banner", "panelInset", BANNER_DEFAULT_INSET),
+      panelHeight: optionNumber(options, "banner", "panelHeight", BANNER_DEFAULT_HEIGHT),
+    }),
   },
   flowchart: {
     creator: flowchartDrawCommitted,

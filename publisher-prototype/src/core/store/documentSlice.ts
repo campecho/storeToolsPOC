@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import { clampBannerHeight, clampBannerInset } from "../geometry/shapePaths";
 import {
   createEmptyDocument,
   groupAncestry,
@@ -29,6 +30,8 @@ import {
   objectUngroupCommitted,
   penDrawCommitted,
   rectDrawCommitted,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   calloutTailCommitted,
   flowchartSymbolCommitted,
   objectArrowHeadsCommitted,
@@ -40,6 +43,8 @@ import {
   starPolygonInnerRadiusCommitted,
   starPolygonPointsCommitted,
   type ArrowHeadsCommit,
+  type BannerPanelHeightCommit,
+  type BannerPanelInsetCommit,
   type CalloutTailCommit,
   type CornerRadiusCommit,
   type DeleteCommit,
@@ -242,6 +247,17 @@ const applyStarInnerRadius = shapeParamApplier<StarInnerRadiusCommit>("starPolyg
 
 const applyCalloutTail = shapeParamApplier<CalloutTailCommit>("callout", (obj, p) => {
   obj.tailTip = p.tailTip;
+});
+
+// Both banner adjustments store CLAMPED: unlike the rounded rect's radius,
+// which a resize can legitimately push past its geometric bound, these are
+// fractions of the frame that mean nothing outside their range.
+const applyBannerPanelInset = shapeParamApplier<BannerPanelInsetCommit>("banner", (obj, p) => {
+  obj.panelInset = clampBannerInset(p.panelInset);
+});
+
+const applyBannerPanelHeight = shapeParamApplier<BannerPanelHeightCommit>("banner", (obj, p) => {
+  obj.panelHeight = clampBannerHeight(p.panelHeight);
 });
 
 const applyFlowchartSymbol = shapeParamApplier<FlowchartSymbolCommit>("flowchart", (obj, p) => {
@@ -462,6 +478,8 @@ export const documentSlice = createSlice({
       .addCase(starPolygonPointsCommitted, applyStarPoints)
       .addCase(starPolygonInnerRadiusCommitted, applyStarInnerRadius)
       .addCase(calloutTailCommitted, applyCalloutTail)
+      .addCase(bannerPanelInsetCommitted, applyBannerPanelInset)
+      .addCase(bannerPanelHeightCommitted, applyBannerPanelHeight)
       .addCase(flowchartSymbolCommitted, applyFlowchartSymbol)
       .addCase(objectLineDashCommitted, applyLineDash)
       .addCase(objectArrowHeadsCommitted, applyArrowHeads)

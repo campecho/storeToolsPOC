@@ -1,4 +1,10 @@
-import { clampCornerRadius } from "../../core/geometry/shapePaths";
+import {
+  BANNER_DEFAULT_HEIGHT,
+  BANNER_DEFAULT_INSET,
+  clampBannerHeight,
+  clampBannerInset,
+  clampCornerRadius,
+} from "../../core/geometry/shapePaths";
 import { DPI } from "../../core/geometry/viewport";
 import {
   resizeHandlePoint,
@@ -78,12 +84,17 @@ function loneShape(objects: readonly LayoutObject[]): ShapeObject | undefined {
   return only;
 }
 
+/** One adjust handle: the gesture it starts (its `data-handle` id) and where
+    it sits, in the frame's UNIT box. */
+export type AdjustHandle = { id: string; point: Point };
+
 /**
- * Where each adjustable kind's handle sits, in the frame's UNIT box — the
- * point the parameter puts it at, so the handle reads as the value it sets.
- * A kind absent from here has no adjustment to offer.
+ * Where each adjustable kind's handles sit — the point each parameter puts
+ * its handle at, so a handle reads as the value it sets. A kind absent from
+ * here has no adjustment to offer, and the BANNER is the one kind with two:
+ * its ribbon takes two numbers, so it takes two handles.
  */
-function adjustPointFor(shape: ShapeObject, box: Rect, minInsetX: number): Point | null {
+function adjustHandlesFor(shape: ShapeObject, box: Rect, minInsetX: number): AdjustHandle[] {
   switch (shape.shape) {
     case "roundedRect": {
       // On the top edge, inset by the radius: drag right to round, left to
@@ -91,27 +102,42 @@ function adjustPointFor(shape: ShapeObject, box: Rect, minInsetX: number): Point
       // never draws closer than one handle-width in; the drag applies travel,
       // not position, so that floor costs the gesture nothing.
       const r = clampCornerRadius(shape.cornerRadius ?? 0, box.w, box.h);
-      return { x: Math.max(r, minInsetX) / (box.w || 1), y: 0 };
+      return [{ id: "corner-radius", point: { x: Math.max(r, minInsetX) / (box.w || 1), y: 0 } }];
     }
     case "starPolygon":
       // On the first inner vertex — the point the ratio literally places.
-      return starInnerArmPoint(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5);
+      return [
+        {
+          id: "inner-radius",
+          point: starInnerArmPoint(shape.points ?? 5, shape.innerRadiusRatio ?? 0.5),
+        },
+      ];
     case "callout":
       // ON the tail's tip — the handle IS the point it sets, so dragging it
       // changes the tail's length and angle at once. Usually outside the unit
       // box, which is why the handle can sit beyond the selection frame.
-      return shape.tailTip ?? tailTipFor("bottom-left");
+      return [{ id: "callout-tail", point: shape.tailTip ?? tailTipFor("bottom-left") }];
+    case "banner": {
+      // One at the foot of the panel's left edge, one at the centre of its
+      // bottom edge — each sitting on the edge it moves, where the reference
+      // ribbon puts them. The inset handle shares the bottom edge with the sw
+      // resize handle, so it keeps the same one-handle-width floor the corner
+      // radius does; the drag reads where it is DROPPED, so the floor only
+      // moves the diamond on a tiny banner, never the value it sets.
+      const inset = clampBannerInset(shape.panelInset ?? BANNER_DEFAULT_INSET);
+      const height = clampBannerHeight(shape.panelHeight ?? BANNER_DEFAULT_HEIGHT);
+      return [
+        {
+          id: "banner-inset",
+          point: { x: Math.max(inset * box.w, minInsetX) / (box.w || 1), y: 1 },
+        },
+        { id: "banner-height", point: { x: 0.5, y: height } },
+      ];
+    }
     default:
-      return null;
+      return [];
   }
 }
-
-/** The gesture an adjustable kind's handle starts, and the test id it wears. */
-const ADJUST_HANDLE_ID: Partial<Record<ShapeObject["shape"], string>> = {
-  roundedRect: "corner-radius",
-  starPolygon: "inner-radius",
-  callout: "callout-tail",
-};
 
 /**
  * What tells a GROUP apart from an ad-hoc multi-selection: each member
@@ -167,8 +193,8 @@ export function SelectionChrome({
   zoom: number;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
-  /** Starts whichever adjust gesture the selected shape's kind owns. */
-  onShapeAdjustStart: (e: React.PointerEvent<SVGElement>) => void;
+  /** Starts the adjust gesture the named handle owns. */
+  onShapeAdjustStart: (handleId: string, e: React.PointerEvent<SVGElement>) => void;
   /** Starts the drag of one end of a lone line. */
   onLineEndpointStart: (which: LineEndpointHandle, e: React.PointerEvent<SVGElement>) => void;
 }) {
@@ -184,15 +210,15 @@ export function SelectionChrome({
   // stays perpendicular to that edge at any rotation.
   const stemFoot = toDoc({ x: pivot.x, y: box.y });
   const knob = toDoc({ x: pivot.x, y: box.y - pxToIn(ROTATE_STEM_PX) });
-  // The adjust handle, where the selected kind's parameter puts it.
+  // The adjust handles, each where its own parameter puts it.
   const shape = loneShape(objects);
-  const unit =
+  const adjusts =
     shape === undefined
-      ? null
-      : adjustPointFor(shape, box, Math.min(handleSize, box.w / 2));
-  const adjust =
-    unit === null ? null : toDoc({ x: box.x + unit.x * box.w, y: box.y + unit.y * box.h });
-  const adjustId = shape === undefined ? undefined : ADJUST_HANDLE_ID[shape.shape];
+      ? []
+      : adjustHandlesFor(shape, box, Math.min(handleSize, box.w / 2)).map((handle) => ({
+          id: handle.id,
+          at: toDoc({ x: box.x + handle.point.x * box.w, y: box.y + handle.point.y * box.h }),
+        }));
   // A LONE line shows its two points and nothing else: a line is two points,
   // so a frame with eight stretch handles would be chrome for an object it is
   // not (the POC's SelectionOverlay draws exactly these two). No rotation knob
@@ -237,25 +263,25 @@ export function SelectionChrome({
           />
         </>
       )}
-      {adjust !== null && adjustId !== undefined && (
+      {adjusts.map(({ id, at }) => (
         <rect
+          key={id}
           className="chrome-handle"
-          data-handle={adjustId}
-          x={adjust.x - handleSize / 2}
-          y={adjust.y - handleSize / 2}
+          data-handle={id}
+          x={at.x - handleSize / 2}
+          y={at.y - handleSize / 2}
           width={handleSize}
           height={handleSize}
           // A diamond, turned with the frame — the shape Publisher and
           // PowerPoint both use to say "this one adjusts, it does not resize".
-          transform={`rotate(${rotation + 45} ${adjust.x} ${adjust.y})`}
+          transform={`rotate(${rotation + 45} ${at.x} ${at.y})`}
           fill={ADJUST_COLOR}
           stroke="#8a6800"
           vectorEffect="non-scaling-stroke"
-          // It travels along the top edge, the axis the e/w handles stretch.
           style={{ cursor: resizeCursor("e", rotation) }}
-          onPointerDown={onShapeAdjustStart}
+          onPointerDown={(e) => onShapeAdjustStart(id, e)}
         />
-      )}
+      ))}
       {loneLine !== undefined
         ? (["p1", "p2"] as const).map((which) => (
             <circle

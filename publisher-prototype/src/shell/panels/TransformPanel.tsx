@@ -8,6 +8,8 @@ import {
   type ShapeObject,
 } from "../../core/model";
 import {
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   calloutTailCommitted,
   flowchartSymbolCommitted,
   inEditRun,
@@ -23,7 +25,16 @@ import {
   type LineEndpoints,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
-import { CALLOUT_TIP_MAX, CALLOUT_TIP_MIN } from "../../core/geometry/shapePaths";
+import {
+  BANNER_DEFAULT_HEIGHT,
+  BANNER_DEFAULT_INSET,
+  BANNER_HEIGHT_MAX,
+  BANNER_HEIGHT_MIN,
+  BANNER_INSET_MAX,
+  BANNER_INSET_MIN,
+  CALLOUT_TIP_MAX,
+  CALLOUT_TIP_MIN,
+} from "../../core/geometry/shapePaths";
 import { NumberField } from "./NumberField";
 import { SelectField } from "./SelectField";
 
@@ -288,6 +299,33 @@ export function TransformPanel({
           </>
         );
       }
+      case "banner":
+        return (
+          <>
+            <NumberField
+              label="Panel inset"
+              value={shape.panelInset ?? BANNER_DEFAULT_INSET}
+              min={BANNER_INSET_MIN}
+              max={BANNER_INSET_MAX}
+              step={0.01}
+              disabled={locked}
+              onCommit={(panelInset, editRun) =>
+                commitShapeParam(bannerPanelInsetCommitted({ ...shapeIds, panelInset }), editRun)
+              }
+            />
+            <NumberField
+              label="Panel height"
+              value={shape.panelHeight ?? BANNER_DEFAULT_HEIGHT}
+              min={BANNER_HEIGHT_MIN}
+              max={BANNER_HEIGHT_MAX}
+              step={0.01}
+              disabled={locked}
+              onCommit={(panelHeight, editRun) =>
+                commitShapeParam(bannerPanelHeightCommitted({ ...shapeIds, panelHeight }), editRun)
+              }
+            />
+          </>
+        );
       case "flowchart":
         return (
           <SelectField<FlowchartSymbol>

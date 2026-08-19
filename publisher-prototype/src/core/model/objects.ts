@@ -290,6 +290,7 @@ export const ShapeObjectSchema = z.object({
     "roundedRect",
     "starPolygon",
     "callout",
+    "banner",
     "flowchart",
     "path",
   ]),
@@ -311,6 +312,11 @@ export const ShapeObjectSchema = z.object({
       the way PowerPoint's does. Dragging it changes the tail's length and
       angle together. */
   tailTip: NormalizedPointSchema.optional(),
+  /** Banners only: the two ribbon adjustments, each a fraction of the frame —
+      how far the raised panel's sides sit in from the edges, and where its
+      bottom edge falls. The tails, folds and notches follow from them. */
+  panelInset: z.number().optional(),
+  panelHeight: z.number().optional(),
   /** Flowchart shapes only. */
   symbol: FlowchartSymbolSchema.optional(),
 });
@@ -324,6 +330,7 @@ export const SHAPE_GEOMETRY_FIELDS = {
   roundedRect: ["cornerRadius"],
   starPolygon: ["points", "innerRadiusRatio"],
   callout: ["tailTip"],
+  banner: ["panelInset", "panelHeight"],
   flowchart: ["symbol"],
   path: ["d"],
 } as const satisfies Record<ShapeObject["shape"], readonly (keyof ShapeObject)[]>;

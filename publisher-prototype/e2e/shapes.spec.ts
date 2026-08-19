@@ -297,10 +297,43 @@ test("banner.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = outlineAt(await pageObjects(page), 0);
-  // Ribbon fold notches sit at mid-height on both sides.
-  expect(hasVertex(d, 0.15, 0.5)).toBe(true);
-  expect(hasVertex(d, 0.85, 0.5)).toBe(true);
+  const { shape, d } = outlineAt(await pageObjects(page), 0);
+  // The ribbon stores the two adjustments the tool's options seeded.
+  expect(shape).toMatchObject({ shape: "banner", panelInset: 0.17, panelHeight: 0.65 });
+  // Five rings: the raised panel, two tails, two folds. One silhouette could
+  // not draw the fold and panel-bottom lines the ribbon reads by.
+  expect(d.filter((s) => s.c === "M")).toHaveLength(5);
+  // The panel's bottom corners sit on the inset, where the tails begin.
+  expect(hasVertex(d, 0.17, 0.65)).toBe(true);
+  expect(hasVertex(d, 0.83, 0.65)).toBe(true);
+});
+
+test("banner.drag-inset-handle and .drag-height-handle adjust the ribbon", async ({ page }) => {
+  await draw(page, "Banner", { x: 2, y: 4 }, { x: 6, y: 6 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 4, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // Two yellow handles, which no other kind has.
+  await expect(page.locator('[data-handle="banner-inset"]')).toBeVisible();
+  await expect(page.locator('[data-handle="banner-height"]')).toBeVisible();
+
+  // Sliding the inset handle right narrows the panel and widens the tails.
+  await armCounter(page);
+  await dragHandle(page, "banner-inset", { x: 3.2, y: 5.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const wider = shapeAt(await pageObjects(page), 0);
+  expect(wider.panelInset).toBeCloseTo(0.3, 2);
+  expect(wider.panelHeight).toBeCloseTo(0.65, 6);
+
+  // Dragging the height handle down deepens the panel, raising the tails'
+  // band to meet it — between them the two reach the second reference picture
+  // from the first, which is the whole point of having both.
+  await armCounter(page);
+  await dragHandle(page, "banner-height", { x: 4, y: 5.6 });
+  expect(await notificationCount(page)).toBe(1);
+  const deeper = shapeAt(await pageObjects(page), 0);
+  expect(deeper.panelHeight).toBeCloseTo(0.8, 2);
+  expect(deeper.panelInset).toBeCloseTo(0.3, 2);
 });
 
 test("flowchart.drag.creates", async ({ page }) => {

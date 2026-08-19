@@ -416,3 +416,35 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   nothing, which that file's tests assert builder by builder.
   Unchanged on purpose: a LONE callout's selection frame is still its own box, not
   this AABB. That frame is what resize scales, and the tip is normalized to it.
+- **The banner is a parametric ribbon (recorded 2026-08-19, user decision):** the
+  banner baked one fixed outline — a rectangle with a V cut into each end — which
+  is a pennant, not the PowerPoint ribbon the review compared it against. It is
+  now that ribbon, and the two numbers that shape it are STORED: how far the
+  raised panel's sides sit in (`panelInset`), and where its bottom edge falls
+  (`panelHeight`). Both are optional and default to absence, so the schema
+  version does not move.
+  Two adjust handles, not one. The banner is the first kind with more than a
+  single yellow handle, so `adjustHandlesFor` returns a LIST keyed by handle id
+  and the adjust gesture takes that id rather than assuming the shape has one.
+  Each handle is its own machine, its own commit and its own history entry,
+  exactly as the star's two parameters are. Both read an absolute position in the
+  shape's unit box rather than travel, because each sits ON the value it sets.
+  FIVE subpaths, not one — the one builder here that is not a single closed ring.
+  It cannot be: the folds and the panel's bottom edge read as internal STROKES in
+  the reference, and one silhouette has no way to draw a line inside itself. The
+  rings only ever touch along edges, none enclosing another, so both fill rules
+  union them and hit testing's even-odd walk agrees.
+  The proportions are MEASURED off the two reference captures, not invented, and
+  three of them are worth stating because they are counter-intuitive. The tails'
+  band mirrors the panel — same height, one anchored to the top and one to the
+  bottom — so a deeper panel RAISES the tails to meet it rather than pushing them
+  down, and the two always overlap across the middle, which is what makes the
+  panel read as standing in front of the band. The V bites a fixed share of the
+  FRAME rather than of the tail, which is what turns the tails from arrowheads
+  into flags as the panel narrows — the difference between the two captures. And
+  the panel's top corners are one radius normalized per axis, the treatment
+  `roundedRectPathFor` already uses, so a wide ribbon's corners stay circular
+  instead of flattening into a dome; that is why `bannerPath` takes the frame
+  size, the only builder besides the rounded rect that needs it.
+  `BANNER_HEIGHT_MIN` exists to hold the mirror together: below half, panel and
+  band would part and leave the ribbon in two pieces.

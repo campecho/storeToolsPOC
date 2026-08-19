@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { CALLOUT_TIP_MAX, CALLOUT_TIP_MIN } from "../geometry/shapePaths";
+import {
+  BANNER_HEIGHT_MIN,
+  BANNER_INSET_MAX,
+  CALLOUT_TIP_MAX,
+  CALLOUT_TIP_MIN,
+} from "../geometry/shapePaths";
 import { framePivot, rotatePoint } from "../hittest";
 import type { NormalizedPoint } from "../model";
-import { calloutTool, roundedRectTool, starPolygonTool } from "../registry/tools/shapes";
+import { bannerTool, calloutTool, roundedRectTool, starPolygonTool } from "../registry/tools/shapes";
 import {
   calloutTailCommitted,
   gestureCancelled,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   roundedRectCornerRadiusCommitted,
   starPolygonInnerRadiusCommitted,
   type CalloutTailCommit,
@@ -14,10 +21,13 @@ import {
   type StarInnerRadiusCommit,
 } from "../store/documentActions";
 import {
+  bannerPanelHeightMachine,
+  bannerPanelInsetMachine,
   calloutTailMachine,
   cornerRadiusMachine,
   starInnerArmPoint,
   starInnerRadiusMachine,
+  type BannerAdjustContext,
   type CalloutTailContext,
   type CornerRadiusContext,
   type StarInnerRadiusContext,
@@ -254,5 +264,76 @@ describe("callout.drag-tail-handle.repositions-tail", () => {
     const still = calloutTailMachine.begin({ x: 1, y: 3 }, calloutCtx());
     expect(calloutTailMachine.end(still, NONE).action).toBeNull();
     expect(calloutTailMachine.cancel().action.type).toBe(gestureCancelled.type);
+  });
+});
+
+describe("banner.drag-inset-handle / banner.drag-height-handle", () => {
+  const FRAME: FrameBox = { x: 1, y: 1, w: 2, h: 2 };
+
+  function ctx(over: Partial<BannerAdjustContext> = {}): BannerAdjustContext {
+    return { pageIndex: 0, zoom: 1, id: "b", frame: FRAME, rotation: 0, ...over };
+  }
+
+  function drag(
+    machine: typeof bannerPanelInsetMachine,
+    to: GesturePoint,
+    over: Partial<BannerAdjustContext> = {},
+  ): GestureResult {
+    let state = machine.begin({ x: FRAME.x, y: FRAME.y }, ctx(over));
+    state = machine.update(state, to, NONE);
+    return machine.end(state, NONE);
+  }
+
+  it("each commits its own registry clause's action", () => {
+    const clauseFor = (id: string) => {
+      const clause = bannerTool.gestures.find((g) => g.id === id);
+      if (!clause) throw new Error(`missing registry clause ${id}`);
+      return clause.action;
+    };
+    expect(drag(bannerPanelInsetMachine, { x: 1.5, y: 2 }).action?.type).toBe(
+      clauseFor("banner.drag-inset-handle.sets-panel-inset"),
+    );
+    expect(drag(bannerPanelHeightMachine, { x: 2, y: 2.4 }).action?.type).toBe(
+      clauseFor("banner.drag-height-handle.sets-panel-height"),
+    );
+  });
+
+  it("the inset handle reads the pointer's x in the shape's unit box", () => {
+    const action = drag(bannerPanelInsetMachine, { x: 1.5, y: 2 }).action;
+    if (action === null || !bannerPanelInsetCommitted.match(action)) {
+      throw new Error("expected a panel-inset commit");
+    }
+    // 1.5in across a 2in frame starting at x = 1 is a quarter in.
+    expect(action.payload.panelInset).toBeCloseTo(0.25, 9);
+  });
+
+  it("the height handle reads the pointer's y, ignoring how far it strayed sideways", () => {
+    const action = drag(bannerPanelHeightMachine, { x: 3.9, y: 2.4 }).action;
+    if (action === null || !bannerPanelHeightCommitted.match(action)) {
+      throw new Error("expected a panel-height commit");
+    }
+    expect(action.payload.panelHeight).toBeCloseTo(0.7, 9);
+  });
+
+  it("clamps each to its own range rather than letting the ribbon collapse", () => {
+    const inset = drag(bannerPanelInsetMachine, { x: 40, y: 2 }).action;
+    if (inset === null || !bannerPanelInsetCommitted.match(inset)) throw new Error("expected");
+    expect(inset.payload.panelInset).toBe(BANNER_INSET_MAX);
+    const height = drag(bannerPanelHeightMachine, { x: 2, y: -40 }).action;
+    if (height === null || !bannerPanelHeightCommitted.match(height)) throw new Error("expected");
+    expect(height.payload.panelHeight).toBe(BANNER_HEIGHT_MIN);
+  });
+
+  it("reads in the frame's own space, so a rotated banner agrees", () => {
+    const rotated = rotatePoint({ x: 1.5, y: 2 }, framePivot(FRAME), 90);
+    const action = drag(bannerPanelInsetMachine, rotated, { rotation: 90 }).action;
+    if (action === null || !bannerPanelInsetCommitted.match(action)) throw new Error("expected");
+    expect(action.payload.panelInset).toBeCloseTo(0.25, 9);
+  });
+
+  it("commits nothing on an under-slop end; cancel is the gesture/cancelled record", () => {
+    const still = bannerPanelInsetMachine.begin({ x: 1, y: 1 }, ctx());
+    expect(bannerPanelInsetMachine.end(still, NONE).action).toBeNull();
+    expect(bannerPanelHeightMachine.cancel().action.type).toBe(gestureCancelled.type);
   });
 });

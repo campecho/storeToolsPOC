@@ -127,6 +127,11 @@ export type CalloutTailCommit = {
   tailTip: NormalizedPoint;
 };
 
+/** banner commits: the two ribbon adjustments, each its own commit so each
+    handle is its own gesture and its own history entry. */
+export type BannerPanelInsetCommit = { pageIndex: number; ids: string[]; panelInset: number };
+export type BannerPanelHeightCommit = { pageIndex: number; ids: string[]; panelHeight: number };
+
 export type FlowchartSymbolCommit = {
   pageIndex: number;
   ids: string[];
@@ -244,6 +249,12 @@ export const starPolygonInnerRadiusCommitted = createAction<StarInnerRadiusCommi
   "starPolygon/innerRadiusCommitted",
 );
 export const calloutTailCommitted = createAction<CalloutTailCommit>("callout/tailCommitted");
+export const bannerPanelInsetCommitted = createAction<BannerPanelInsetCommit>(
+  "banner/panelInsetCommitted",
+);
+export const bannerPanelHeightCommitted = createAction<BannerPanelHeightCommit>(
+  "banner/panelHeightCommitted",
+);
 export const flowchartSymbolCommitted = createAction<FlowchartSymbolCommit>(
   "flowchart/symbolCommitted",
 );

@@ -17,6 +17,8 @@ import {
   objectRotateCommitted,
   objectUngroupCommitted,
   rectDrawCommitted,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
@@ -54,6 +56,8 @@ const documentActionCreators = [
   objectUngroupCommitted,
   objectDeleteCommitted,
   objectDuplicateCommitted,
+  bannerPanelInsetCommitted,
+  bannerPanelHeightCommitted,
   gestureCancelled,
 ];
 
@@ -62,14 +66,15 @@ const documentActionCreators = [
     handle, then starPolygon (draw + inner-radius handle) and flowchart
     (draw, its only clause) with the parametric generalization.
 
-    Still out, and each for a reason that is not parametric storage:
-    callout has storage and a wired tail handle but also
-    callout/textEditEnteredCommitted, which waits on the text tranche;
-    banner has no contracted parameter behind its fold-depth handle.
-    Their draw clauses are cross-checked through UNDOABLE_ACTION_TYPES
-    below regardless. */
+    Banner joined when the review named its two adjustments, closing the
+    last parametric deferral.
+
+    Still out, and not for want of parametric storage: callout has storage
+    and a wired tail handle but also callout/textEditEnteredCommitted, which
+    waits on the text tranche. Its draw clause is cross-checked through
+    UNDOABLE_ACTION_TYPES below regardless. */
 const WIRED_PREFIXES =
-  /^(selection|object|rect|ellipse|line|arrow|roundedRect|starPolygon|flowchart)\//;
+  /^(selection|object|rect|ellipse|line|arrow|roundedRect|starPolygon|banner|flowchart)\//;
 
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([
