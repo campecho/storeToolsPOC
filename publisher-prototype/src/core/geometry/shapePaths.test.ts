@@ -4,6 +4,7 @@ import {
   CALLOUT_TAIL_HALF_BASE,
   KAPPA,
   bannerPath,
+  outlineOvershoot,
   clampCornerRadius,
   calloutPath,
   flowchartPath,
@@ -166,6 +167,21 @@ describe("calloutPath", () => {
     for (const p of verticesOf(calloutPath({ x: 1.02, y: 1.6 }))) {
       expect(p.x).toBeLessThanOrEqual(1.02);
       expect(p.y).toBeLessThanOrEqual(1.6);
+    }
+  });
+});
+
+describe("outlineOvershoot", () => {
+  it("reports a callout's tail tip — the one point any builder puts outside its box", () => {
+    expect(outlineOvershoot({ shape: "callout", tailTip: { x: 1.4, y: -0.3 } })).toEqual([
+      { x: 1.4, y: -0.3 },
+    ]);
+    expect(outlineOvershoot({ shape: "callout" })).toEqual([tailTipFor("bottom-left")]);
+  });
+
+  it("reports nothing for every kind whose outline stays inside its box", () => {
+    for (const shape of ["rect", "ellipse", "roundedRect", "starPolygon", "flowchart", "path"] as const) {
+      expect(outlineOvershoot({ shape })).toEqual([]);
     }
   });
 });

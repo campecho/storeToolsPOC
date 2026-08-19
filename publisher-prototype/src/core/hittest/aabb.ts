@@ -1,3 +1,4 @@
+import { outlineOvershoot } from "../geometry/shapePaths";
 import type { LayoutObject } from "../model";
 import {
   boundsOfPoints,
@@ -9,10 +10,12 @@ import {
 } from "./geometry";
 
 /**
- * Axis-aligned bounds over schema-v3 objects — what the marquee gesture and
- * the align/distribute math consume. Rotation-aware: a rotated frame's AABB
- * is the bounds of its rotated corners (pivot rule in geometry.ts); a line's
- * extent is the bounds of its endpoints.
+ * Axis-aligned bounds over schema-v3 objects — what the align/distribute math
+ * and the selection frame consume. (The marquee does NOT: it tests the drawn
+ * outline directly, in hitTest.ts.) Rotation-aware: a rotated frame's AABB is
+ * the bounds of its rotated corners (pivot rule in geometry.ts); a line's
+ * extent is the bounds of its endpoints; a callout's takes in its tail, which
+ * is drawn outside the frame box.
  *
  * `selectionFrame` sits on top: the ROTATED frame the selection chrome draws
  * and the resize/rotate contexts scale about.
@@ -22,17 +25,35 @@ export function objectAabb(obj: LayoutObject): Rect {
   return boundsOfPoints(outlinePoints([obj]));
 }
 
-/** Every point a selection's bounds must contain: a frame's rotated corners,
-    a line's two endpoints. */
+/**
+ * Every point a selection's bounds must contain: a frame's rotated corners, a
+ * line's two endpoints, and — for a shape whose outline leaves its box — the
+ * points it reaches past those corners.
+ *
+ * Only the callout does that today, and only at its tail tip: its base points
+ * clamp to the body edge. So this stays exact without flattening anything,
+ * which matters because bounds are taken per object, per align and per
+ * selection frame. `outlineOvershoot` is the one place a kind declares it.
+ */
 function outlinePoints(objects: readonly LayoutObject[]): Point[] {
-  return objects.flatMap((obj) =>
-    obj.type === "line"
-      ? [
-          { x: obj.x1, y: obj.y1 },
-          { x: obj.x2, y: obj.y2 },
-        ]
-      : rotatedFrameCorners({ x: obj.x, y: obj.y, w: obj.w, h: obj.h }, obj.rotation),
-  );
+  return objects.flatMap((obj) => {
+    if (obj.type === "line") {
+      return [
+        { x: obj.x1, y: obj.y1 },
+        { x: obj.x2, y: obj.y2 },
+      ];
+    }
+    const frame = { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
+    const corners = rotatedFrameCorners(frame, obj.rotation);
+    if (obj.type !== "shape") return corners;
+    const pivot = framePivot(frame);
+    return corners.concat(
+      outlineOvershoot(obj).map((u) => {
+        const p = { x: frame.x + u.x * frame.w, y: frame.y + u.y * frame.h };
+        return obj.rotation === 0 ? p : rotatePoint(p, pivot, obj.rotation);
+      }),
+    );
+  });
 }
 
 /**

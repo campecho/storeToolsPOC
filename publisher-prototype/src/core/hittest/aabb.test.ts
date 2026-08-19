@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LineObject, ShapeObject } from "../model";
+import { tailTipFor, type LineObject, type ShapeObject } from "../model";
 import { objectAabb, orientedSelectionBox, selectionAabb, selectionFrame } from "./aabb";
 import { boundsOfPoints, rotatePoint, rotatedFrameCorners } from "./geometry";
 
@@ -71,6 +71,52 @@ describe("selectionAabb", () => {
 
   it("is null for an empty selection", () => {
     expect(selectionAabb([])).toBeNull();
+  });
+});
+
+describe("objectAabb over a callout", () => {
+  const callout = (over: Partial<ShapeObject> = {}): ShapeObject =>
+    shapeRect("c", { shape: "callout", x: 1, y: 1, w: 2, h: 1, ...over });
+
+  it("takes in the tail, which is drawn outside the frame box", () => {
+    // Default tip (0.06, 1.22) on a 2×1in frame at (1,1) lands at y 2.22,
+    // below the frame's own bottom edge at y 2.
+    const box = objectAabb(callout({ tailTip: tailTipFor("bottom-left") }));
+    expect(box.y + box.h).toBeCloseTo(2.22, 9);
+    // Nothing reaches past the frame the other way, so those edges stand.
+    expect(box.x).toBeCloseTo(1, 9);
+    expect(box.y).toBeCloseTo(1, 9);
+  });
+
+  it("stretches sideways for a tail pointing sideways", () => {
+    const box = objectAabb(callout({ tailTip: { x: 1.5, y: 0.5 } }));
+    expect(box.x + box.w).toBeCloseTo(4, 9); // 1 + 1.5 × 2in
+    expect(box.y).toBeCloseTo(1, 9);
+    expect(box.h).toBeCloseTo(1, 9);
+  });
+
+  it("turns the tail with the object, like every other corner", () => {
+    const upright = objectAabb(callout({ tailTip: { x: 1.5, y: 0.5 } }));
+    const turned = objectAabb(callout({ tailTip: { x: 1.5, y: 0.5 }, rotation: 90 }));
+    // A quarter turn swaps which way the tail reaches, so the bounds swap too.
+    expect(turned.h).toBeCloseTo(upright.w, 9);
+    expect(turned.w).toBeCloseTo(upright.h, 9);
+  });
+
+  it("is the plain frame when the tip sits inside the body — no tail is drawn", () => {
+    const box = objectAabb(callout({ tailTip: { x: 0.5, y: 0.6 } }));
+    expect(box).toEqual({ x: 1, y: 1, w: 2, h: 1 });
+  });
+
+  it("leaves every other kind on its frame corners", () => {
+    for (const shape of ["rect", "ellipse", "roundedRect", "starPolygon", "flowchart"] as const) {
+      expect(objectAabb(shapeRect("s", { shape, x: 1, y: 1, w: 2, h: 1 }))).toEqual({
+        x: 1,
+        y: 1,
+        w: 2,
+        h: 1,
+      });
+    }
   });
 });
 

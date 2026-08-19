@@ -270,6 +270,12 @@ export function flowchartPath(symbol: FlowchartSymbol): PathSeg[] {
   }
 }
 
+/**
+ * The normalized outline a shape draws, from whatever it stores: a path's own
+ * segments, or a parametric kind's parameter resolved against its frame. One
+ * resolver for the renderer, hit-testing and the overlay previews, so a shape
+ * can never be drawn as one thing and hit as another.
+ */
 /** Everything an outline needs from a shape: its kind and the geometry
     fields that kind owns. A whole ShapeObject satisfies it, and so does a
     drawn shape's geometry before it has a frame. */
@@ -279,11 +285,20 @@ export type ShapeGeometry = Pick<
 >;
 
 /**
- * The normalized outline a shape draws, from whatever it stores: a path's own
- * segments, or a parametric kind's parameter resolved against its frame. One
- * resolver for the renderer, hit-testing and the overlay previews, so a shape
- * can never be drawn as one thing and hit as another.
+ * The points a kind's outline reaches OUTSIDE its unit box, in unit-box
+ * coordinates — the callout's tail tip is the only one, because it is the
+ * only builder that leaves the box on purpose. Bounds math adds these so an
+ * object's AABB covers what is actually drawn.
+ *
+ * Every other kind is normalized inside [0, 1] and returns nothing, which
+ * this file's tests assert builder by builder. A future kind that overshoots
+ * declares it HERE, next to the builder that draws it, rather than leaving
+ * bounds math to guess.
  */
+export function outlineOvershoot(shape: ShapeGeometry): NormalizedPoint[] {
+  return shape.shape === "callout" ? [shape.tailTip ?? tailTipFor("bottom-left")] : [];
+}
+
 export function shapeOutline(shape: ShapeGeometry, w: number, h: number): PathSeg[] {
   switch (shape.shape) {
     case "roundedRect":
