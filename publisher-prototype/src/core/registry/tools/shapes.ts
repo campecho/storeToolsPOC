@@ -395,6 +395,7 @@ export const arrowTool: ToolContract = {
     "'Arrows.' (§4.4). Hit testing follows line: no interior, stroke-only within tolerance — the hairline tolerance is the canonical PLAN.md §5 case.",
     "No Alt-from-center and no click-for-default-size — the digest defines neither for arrows.",
     "ASSUMPTION: the entire arrowhead option set (headStart none, headEnd arrow, s|m|l sizes, and the head-shape values beyond 'arrow') is Publisher-parity filler — the digest's list is open-ended.",
+    "A decorated end draws a SHORTER stroke: the segment stops where its head first grows wide enough to cover the stroke's end — the arrow's back edge, the diamond's waist — because a head narrows to a point at the tip and a full-width stroke run to the endpoint spills out past it. A circle head is centred on the endpoint and needs no room. Hit testing and bounds still use the stored endpoints; only the drawn stroke is trimmed.",
     "ASSUMPTION: the 0/45/90° Shift constraint, Esc-cancel, dash values, and stroke default #000000 are working guesses for SME review, as on line.",
   ],
 };

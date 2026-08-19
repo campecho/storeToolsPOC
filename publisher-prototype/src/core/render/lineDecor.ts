@@ -57,6 +57,10 @@ const ARROW_HALF_WIDTH = 0.4;
 const DIAMOND_HALF_WIDTH = 0.35;
 const CIRCLE_RADIUS = 0.3;
 
+/** Where the diamond reaches its full width, as a fraction of head length —
+    halfway, which makes it symmetric about that waist. */
+const DIAMOND_WAIST = 0.5;
+
 /** Arrowhead geometry in inches at a line endpoint. `angle` is the
     direction the head points, in radians — the direction from the line's
     other endpoint toward `tip`. Absent or "none" → null, no head. */
@@ -89,9 +93,50 @@ export function arrowheadShape(
     kind: "polygon",
     points: [
       tip,
-      at(0.5 * len, DIAMOND_HALF_WIDTH * len),
+      at(DIAMOND_WAIST * len, DIAMOND_HALF_WIDTH * len),
       at(len, 0),
-      at(0.5 * len, -DIAMOND_HALF_WIDTH * len),
+      at(DIAMOND_WAIST * len, -DIAMOND_HALF_WIDTH * len),
     ],
   };
+}
+
+/**
+ * How far behind the tip the stroke has to stop: the first point going back
+ * from the tip where the head is wide enough to cover the stroke's end.
+ *
+ * A head narrows to a POINT at the tip while the stroke keeps its full width
+ * right up to it, so a segment drawn to the endpoint spills out either side of
+ * that point instead of meeting the head. The arrow's cover is its back edge,
+ * one whole head length in. The diamond's is its WAIST, not its rear vertex —
+ * that vertex is another point, and stopping there would leave a wedge of gap
+ * either side of the stroke's square end. A circle is centred ON the tip and
+ * covers the end from every direction, so it asks for nothing.
+ */
+export function headInsetIn(head: ArrowHead | undefined, lengthIn: number): number {
+  if (head === "arrow") return lengthIn;
+  return head === "diamond" ? DIAMOND_WAIST * lengthIn : 0;
+}
+
+/** The segment a decorated line actually draws: each end pulled in by what
+    its head covers. Heads longer than the line between them would cross over
+    and draw it backwards, so they scale down together to meet at one point —
+    the line vanishes under its own heads rather than reversing. */
+export function trimmedSegment(
+  p1: DecorPoint,
+  p2: DecorPoint,
+  startInset: number,
+  endInset: number,
+): [DecorPoint, DecorPoint] {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const length = Math.hypot(dx, dy);
+  const total = startInset + endInset;
+  if (length === 0 || total === 0) return [p1, p2];
+  const scale = total > length ? length / total : 1;
+  const start = (startInset * scale) / length;
+  const end = (endInset * scale) / length;
+  return [
+    { x: p1.x + dx * start, y: p1.y + dy * start },
+    { x: p2.x - dx * end, y: p2.y - dy * end },
+  ];
 }

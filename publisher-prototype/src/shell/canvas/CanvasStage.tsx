@@ -3,7 +3,13 @@ import { Circle, Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "re
 import { clampCornerRadius, shapeOutline } from "../../core/geometry/shapePaths";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
 import type { LayoutObject, LineObject, Paint, Stroke, Swatch } from "../../core/model";
-import { arrowheadShape, dashPatternIn, headLengthIn } from "../../core/render/lineDecor";
+import {
+  arrowheadShape,
+  dashPatternIn,
+  headInsetIn,
+  headLengthIn,
+  trimmedSegment,
+} from "../../core/render/lineDecor";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
 import { paintToCss } from "../../core/render/paint";
 import { pathToSvg } from "../../core/render/path";
@@ -79,10 +85,20 @@ function renderHead(o: LineObject, end: "start" | "end", color: string): ReactNo
 function renderLine(o: LineObject, swatches: readonly Swatch[]): ReactNode {
   const color = paintToCss(o.stroke.paint, swatches);
   const dash = dashPatternIn(o.dash, o.stroke.width);
+  // The stroke stops at each head's base rather than at the endpoint: a head
+  // narrows to a point there, so a full-width stroke run all the way in spills
+  // out past the point instead of meeting it.
+  const headLength = headLengthIn(o.headSize, o.stroke.width);
+  const [from, to] = trimmedSegment(
+    { x: o.x1, y: o.y1 },
+    { x: o.x2, y: o.y2 },
+    headInsetIn(o.headStart, headLength),
+    headInsetIn(o.headEnd, headLength),
+  );
   return (
     <Group key={o.id}>
       <Line
-        points={[o.x1, o.y1, o.x2, o.y2]}
+        points={[from.x, from.y, to.x, to.y]}
         stroke={color}
         strokeWidth={o.stroke.width / PT_PER_IN}
         {...(dash !== null ? { dash } : {})}
