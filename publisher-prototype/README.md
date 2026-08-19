@@ -5,6 +5,9 @@ every panel, every option, and exactly what each does on the canvas — built so
 team can implement the real product against it. **[`PLAN.md`](PLAN.md) is the plan of
 record**; the requirements it cites live in
 [`docs/microsoft_publisher_feature_requirements.md`](docs/microsoft_publisher_feature_requirements.md).
+[`KEYBOARD_SHORTCUTS.md`](KEYBOARD_SHORTCUTS.md) reads the registry back as the keyboard
+surface — what is bound today, what is specified but unwired, and how both compare with
+Publisher, Photoshop and Illustrator.
 
 ## Standalone posture
 
