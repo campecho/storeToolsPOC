@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LineObject, ShapeObject } from "../model";
-import { objectAabb, selectionAabb, selectionFrame } from "./aabb";
+import { objectAabb, orientedSelectionBox, selectionAabb, selectionFrame } from "./aabb";
+import { boundsOfPoints, rotatePoint, rotatedFrameCorners } from "./geometry";
 
 function shapeRect(id: string, over: Partial<ShapeObject> = {}): ShapeObject {
   return {
@@ -70,6 +71,61 @@ describe("selectionAabb", () => {
 
   it("is null for an empty selection", () => {
     expect(selectionAabb([])).toBeNull();
+  });
+});
+
+describe("orientedSelectionBox", () => {
+  it("is the plain union AABB at zero", () => {
+    const objects = [shapeRect("a"), shapeRect("b", { x: 3, y: 0 })];
+    expect(orientedSelectionBox(objects, 0)).toEqual(selectionAabb(objects));
+  });
+
+  it("keeps a body's own box through a turn of that body", () => {
+    // Two 1×1 squares 3in apart: union (0,0,4,1), centre (2,0.5). Turn the
+    // pair 90° about that centre — each square orbits to x 1.5, y −1.5 / 1.5 —
+    // and measure at 90°: the bounds are the box they had BEFORE the turn,
+    // which is exactly why a group's frame stops resetting.
+    const square1 = { w: 1, h: 1 };
+    const before = [
+      shapeRect("a", { x: 0, y: 0, ...square1 }),
+      shapeRect("b", { x: 3, y: 0, ...square1 }),
+    ];
+    const square = orientedSelectionBox(before, 0);
+    expect(square).toEqual({ x: 0, y: 0, w: 4, h: 1 });
+    const after = [
+      shapeRect("a", { x: 1.5, y: -1.5, rotation: 90, ...square1 }),
+      shapeRect("b", { x: 1.5, y: 1.5, rotation: 90, ...square1 }),
+    ];
+    const turned = orientedSelectionBox(after, 90);
+    expect(turned?.w).toBeCloseTo(square?.w ?? NaN, 9);
+    expect(turned?.h).toBeCloseTo(square?.h ?? NaN, 9);
+    expect(turned?.x).toBeCloseTo(square?.x ?? NaN, 9);
+    expect(turned?.y).toBeCloseTo(square?.y ?? NaN, 9);
+  });
+
+  it("contains every corner it measures, drawn at its own angle", () => {
+    const objects = [shapeRect("a"), shapeRect("b", { x: 2, y: 1 })];
+    const box = orientedSelectionBox(objects, 30);
+    if (box === null) throw new Error("expected a box");
+    // Un-turning the frame's corners and the objects' bounds into the same
+    // space, the frame contains them.
+    const corners = rotatedFrameCorners(box, 30).map((p) => rotatePoint(p, { x: 0, y: 0 }, -30));
+    const bounds = boundsOfPoints(corners);
+    for (const obj of objects) {
+      const aabb = boundsOfPoints(
+        rotatedFrameCorners({ x: obj.x, y: obj.y, w: obj.w, h: obj.h }, 0).map((p) =>
+          rotatePoint(p, { x: 0, y: 0 }, -30),
+        ),
+      );
+      expect(aabb.x).toBeGreaterThanOrEqual(bounds.x - 1e-9);
+      expect(aabb.y).toBeGreaterThanOrEqual(bounds.y - 1e-9);
+      expect(aabb.x + aabb.w).toBeLessThanOrEqual(bounds.x + bounds.w + 1e-9);
+      expect(aabb.y + aabb.h).toBeLessThanOrEqual(bounds.y + bounds.h + 1e-9);
+    }
+  });
+
+  it("is null for an empty selection", () => {
+    expect(orientedSelectionBox([], 30)).toBeNull();
   });
 });
 

@@ -32,6 +32,7 @@ function ctx(over: Partial<RotateContext> = {}): RotateContext {
       b: { x: 1.5, y: 3.5, w: 1, h: 1 },
       l: { x1: 2, y1: 2, x2: 4, y2: 2 },
     },
+    initialGroupRotations: {},
     ...over,
   };
 }
@@ -156,6 +157,15 @@ describe("select.drag-rotate.rotates", () => {
       }),
     );
     expect(rotations["b"]).toBeCloseTo(45, 6);
+  });
+
+  it("advances the group frame's own angle by the same delta", () => {
+    const commit = commitOf(drag(at(90), NONE, { initialGroupRotations: { grp: 30 } }));
+    expect(commit.groupRotations?.["grp"]).toBeCloseTo(120, 6);
+  });
+
+  it("names no group when the selection is not one", () => {
+    expect(commitOf(drag(at(90))).groupRotations).toEqual({});
   });
 
   it("only rotates ids the ctx lists", () => {

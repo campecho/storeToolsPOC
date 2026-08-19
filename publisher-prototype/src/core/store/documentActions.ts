@@ -4,6 +4,7 @@ import type {
   ArrowHeadSize,
   CalloutTailAnchor,
   FlowchartSymbol,
+  Group,
   LayoutObject,
   LineDash,
   Paint,
@@ -65,6 +66,10 @@ export type RotateCommit = {
   pageIndex: number;
   rotations: Record<string, number>;
   boxes?: Record<string, FrameBox | LineEndpoints>;
+  /** Absolute angles per GROUP id. A group stores the angle its frame is
+      drawn at, so turning one advances that too — otherwise the frame would
+      spring back square the moment the gesture ended. */
+  groupRotations?: Record<string, number>;
 };
 
 /** fill commits: replace the identified objects' fill wholesale — a Paint or
@@ -180,6 +185,19 @@ export type GroupCommit = {
  */
 export type UngroupCommit = { groupIds: string[] };
 
+/**
+ * duplicate commits (Alt-drag): the finished COPIES, ids and final geometry
+ * included, appended to the page in the order given — the same
+ * complete-payload rule the draw commits follow. `groups` are the fresh
+ * groups those copies join, mirroring the originals' nesting, so a copy of a
+ * group is itself a group rather than a scattering of loose objects.
+ */
+export type DuplicateCommit = {
+  pageIndex: number;
+  objects: LayoutObject[];
+  groups: Group[];
+};
+
 /** lock commits: set the identified objects' locked flag. The one translate-
     family action that must NOT skip locked objects — unlocking is its point. */
 export type LockCommit = {
@@ -211,6 +229,7 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
 );
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
 export const objectDeleteCommitted = createAction<DeleteCommit>("object/deleteCommitted");
+export const objectDuplicateCommitted = createAction<DuplicateCommit>("object/duplicateCommitted");
 export const objectGroupCommitted = createAction<GroupCommit>("object/groupCommitted");
 export const objectUngroupCommitted = createAction<UngroupCommit>("object/ungroupCommitted");
 export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(

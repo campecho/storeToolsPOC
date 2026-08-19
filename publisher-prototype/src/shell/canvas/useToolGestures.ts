@@ -16,6 +16,7 @@ import {
   finishPenDraft,
   lineEndpointMachine,
   marqueeMachine,
+  duplicateMachine,
   moveMachine,
   penMachine,
   resizeAnchor,
@@ -33,8 +34,10 @@ import {
 } from "../../core/gestures";
 import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
 import {
+  copiedGroups,
   enteredGroup,
   groupingUnits,
+  selectedGroupFrame,
   selectionUnit,
   ungroupingGroupIds,
   type Group,
@@ -274,6 +277,11 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const selectedObjects = (): LayoutObject[] =>
     args.objects.filter((o) => args.selectedIds.includes(o.id));
 
+  /** The selected group's stored frame angle, if the selection IS a group —
+      what the chrome draws at and the transform machines work in. */
+  const groupFrame = () =>
+    selectedGroupFrame(args.objects, args.groups, args.selectedIds, args.enteredGroupId);
+
   /** The objects a click on `id` acts on, and the group context it ends in:
       a grouped object resolves to its whole group until that group is
       entered (core/model/groups.ts). */
@@ -319,12 +327,24 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       return;
     }
     if (modifiers.shift) {
-      // select.shift-click.toggles-membership — modified downs never start
-      // move. A group toggles whole, so the selection never holds part of one.
+      // Two clauses share this press. On an object already in the selection it
+      // is select.shift-drag.constrains-move, with
+      // select.shift-click.toggles-membership as the under-slop release — the
+      // machine's null end IS the click, so both survive on one binding. On an
+      // object outside the selection there is nothing to move yet, so it stays
+      // a toggle. A group toggles whole, so the selection never holds part of
+      // one.
+      const toggle = () => selectionToggleCommitted({ ids: unitFor(top.id).ids });
       begin(
-        clickSession(point, zoom, commit, () =>
-          selectionToggleCommitted({ ids: unitFor(top.id).ids }),
-        ),
+        selectedIds.includes(top.id)
+          ? machineSession(
+              moveMachine,
+              point,
+              { pageIndex, zoom, ids: [...selectedIds] },
+              commit,
+              toggle,
+            )
+          : clickSession(point, zoom, commit, toggle),
         pointerId,
       );
       return;
@@ -336,12 +356,36 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       // by OBJECT and the landing object then resolves to its unit, so
       // cycling still reaches every object under the pointer when groups
       // cover several of them.
+      // …and select.alt-drag.duplicates once the press travels. One binding,
+      // two clauses, split by the same slop threshold everything else uses:
+      // the machine commits copies only on a real drag, and its null end is
+      // the click that cycles.
+      const cycle = () => {
+        const at = hits.findIndex((h) => selectedIds.includes(h.id));
+        const next = at === -1 ? hits[0] : hits[(at + 1) % hits.length];
+        return next === undefined ? null : selectionCycleCommitted(unitFor(next.id));
+      };
+      if (!selectedIds.includes(top.id)) {
+        begin(clickSession(point, zoom, commit, cycle), pointerId);
+        return;
+      }
+      const selection = selectedObjects();
+      setHandleCursor("copy");
       begin(
-        clickSession(point, zoom, commit, () => {
-          const at = hits.findIndex((h) => selectedIds.includes(h.id));
-          const next = at === -1 ? hits[0] : hits[(at + 1) % hits.length];
-          return next === undefined ? null : selectionCycleCommitted(unitFor(next.id));
-        }),
+        machineSession(
+          duplicateMachine,
+          point,
+          {
+            pageIndex,
+            zoom,
+            objects: selection,
+            groups: copiedGroups(selection, objects, groups),
+            idFactory: createObjectId,
+            groupIdFactory: createGroupId,
+          },
+          commit,
+          cycle,
+        ),
         pointerId,
       );
       return;
@@ -501,7 +545,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginResize = (handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const frame = selectionFrame(selection);
+    const frame = selectionFrame(selection, groupFrame()?.rotation ?? 0);
     if (frame === null) return;
     const initial = initialGeometry(selection);
     e.stopPropagation();
@@ -528,7 +572,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginRotate = (e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const frame = selectionFrame(selection);
+    const group = groupFrame();
+    const frame = selectionFrame(selection, group?.rotation ?? 0);
     if (frame === null) return;
     // Lines carry no rotation field — the rotate ctx excludes them from
     // `initialRotations` per the machine's contract. Their endpoints still
@@ -551,6 +596,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           frameRotation: frame.rotation,
           initialRotations,
           initial: initialGeometry(selection),
+          initialGroupRotations: group === null ? {} : { [group.groupId]: group.rotation },
         },
         commit,
       ),

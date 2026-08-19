@@ -8,7 +8,7 @@ import {
   type Size,
   type Viewport,
 } from "../../core/geometry/viewport";
-import { selectedGroupId } from "../../core/model";
+import { selectedGroupFrame } from "../../core/model";
 import { toolRegistry } from "../../core/registry";
 import { effectivePageSetup } from "../../core/render/pageSetup";
 import { panCommitted, selectDocument, zoomStepCommitted, zoomWheelCommitted } from "../../core/store";
@@ -59,15 +59,16 @@ export function CanvasWorkspace({
   const objects = doc.pages[pageIndex]?.objects ?? [];
   const selectedObjects = objects.filter((o) => selectedIds.includes(o.id));
   // A group and an ad-hoc multi-selection draw the same union frame, so the
-  // chrome needs telling which it has (§5.1 indicate grouped status).
-  const groupedSelection =
-    selectedGroupId(objects, doc.groups, selectedIds, enteredGroupId) !== null;
+  // chrome needs telling which it has (§5.1 indicate grouped status) — and a
+  // group's frame carries its own angle, which only the group knows.
+  const groupFrame = selectedGroupFrame(objects, doc.groups, selectedIds, enteredGroupId);
 
   const areaRef = useRef<HTMLDivElement>(null);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
   const [panDrag, setPanDrag] = useState<PanDrag | null>(null);
   const panDragRef = useRef<PanDrag | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
+  const [altHeld, setAltHeld] = useState(false);
   const dragJustEndedRef = useRef(false);
 
   const pageSize: Size = setup.size;
@@ -162,16 +163,25 @@ export function CanvasWorkspace({
     };
   }, [dispatch]);
 
-  // pan.space-drag.temporary-pan: Space pans from within any tool. Losing
-  // window focus while Space is down would eat the keyup, so blur resets.
+  // pan.space-drag.temporary-pan: Space pans from within any tool. Alt is
+  // tracked the same way, for the copy cursor that tells the user an
+  // Alt-drag will duplicate rather than move (select.alt-drag.duplicates) —
+  // the answer has to be on screen BEFORE the drag, so it cannot wait for a
+  // gesture to start. Losing window focus while either is down would eat the
+  // keyup, so blur resets both.
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === "Space" && !e.repeat && !isTextEntryTarget(e.target)) setSpaceHeld(true);
+      if (e.altKey) setAltHeld(true);
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(false);
+      if (!e.altKey) setAltHeld(false);
     };
-    const blur = () => setSpaceHeld(false);
+    const blur = () => {
+      setSpaceHeld(false);
+      setAltHeld(false);
+    };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
@@ -187,11 +197,16 @@ export function CanvasWorkspace({
   // resize/rotate outranks the contract too: its handle is gone from the
   // overlay for the duration, so the area carries that handle's cursor.
   const contractCursor = toolRegistry.find((t) => t.id === activeTool)?.cursor ?? "default";
+  // Alt over a selection promises a copy — below the pan/Space overrides,
+  // above the tool's own contract cursor, and superseded by a running
+  // gesture's handle cursor exactly like the rest of the chain.
+  const duplicating = activeTool === "select" && altHeld && selectedIds.length > 0;
   const cursor = panDrag
     ? "grabbing"
     : panning
       ? "grab"
-      : (gestures.handleCursor ?? (activeTool === "zoom" ? "zoom-in" : contractCursor));
+      : (gestures.handleCursor ??
+        (duplicating ? "copy" : activeTool === "zoom" ? "zoom-in" : contractCursor));
   const origin = pageOriginPx(effective, vpSize, pageSize);
 
   // Ends the drag from pointerup and from the interrupt paths (pointercancel,
@@ -288,7 +303,8 @@ export function CanvasWorkspace({
           showProbe={showProbe}
           preview={gestures.preview}
           selectedObjects={selectedObjects}
-          groupedSelection={groupedSelection}
+          groupedSelection={groupFrame !== null}
+          frameRotation={groupFrame?.rotation ?? 0}
           penDraft={activeTool === "pen" ? penAnchors : []}
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}

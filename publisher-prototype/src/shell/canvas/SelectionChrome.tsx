@@ -154,6 +154,7 @@ function GroupMembers({ objects }: { objects: readonly LayoutObject[] }) {
 export function SelectionChrome({
   objects,
   grouped,
+  frameRotation,
   zoom,
   onResizeStart,
   onRotateStart,
@@ -164,6 +165,9 @@ export function SelectionChrome({
   objects: readonly LayoutObject[];
   /** True when the selection IS exactly one group's membership. */
   grouped: boolean;
+  /** The angle the frame is drawn at when it is not a lone object's own: a
+      group's stored rotation, 0 otherwise. */
+  frameRotation: number;
   zoom: number;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
   onRotateStart: (e: React.PointerEvent<SVGElement>) => void;
@@ -172,7 +176,7 @@ export function SelectionChrome({
   /** Starts the drag of one end of a lone line. */
   onLineEndpointStart: (which: LineEndpointHandle, e: React.PointerEvent<SVGElement>) => void;
 }) {
-  const frame = selectionFrame(objects);
+  const frame = selectionFrame(objects, frameRotation);
   if (frame === null) return null;
   const { box, rotation } = frame;
   const pivot = framePivot(box);

@@ -16,6 +16,7 @@ import {
   flowchartDrawCommitted,
   lineDrawCommitted,
   objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -43,6 +44,7 @@ import {
   type CornerRadiusCommit,
   type DeleteCommit,
   type DrawCommit,
+  type DuplicateCommit,
   type FlowchartSymbolCommit,
   type LineDashCommit,
   type PathClosedCommit,
@@ -135,7 +137,14 @@ function applyResize(state: LayoutDocument, action: PayloadAction<ResizeCommit>)
 function applyRotate(state: LayoutDocument, action: PayloadAction<RotateCommit>): void {
   const page = state.pages[action.payload.pageIndex];
   if (!page) return;
-  const { rotations, boxes } = action.payload;
+  const { rotations, boxes, groupRotations } = action.payload;
+  for (const [groupId, rotation] of Object.entries(groupRotations ?? {})) {
+    const group = state.groups.find((g) => g.id === groupId);
+    if (group === undefined) continue;
+    // Square stores as absence, per the additive rule.
+    if (rotation === 0) delete group.rotation;
+    else group.rotation = rotation;
+  }
   for (const obj of page.objects) {
     if (obj.locked) continue;
     // The two halves are independent: a line has no rotation to set but its
@@ -347,6 +356,13 @@ function applyDelete(state: LayoutDocument, action: PayloadAction<DeleteCommit>)
   pruneEmptyGroups(state);
 }
 
+function applyDuplicate(state: LayoutDocument, action: PayloadAction<DuplicateCommit>): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  page.objects.push(...action.payload.objects);
+  state.groups.push(...action.payload.groups);
+}
+
 function applyGroup(state: LayoutDocument, action: PayloadAction<GroupCommit>): void {
   const { pageIndex, groupId, parentGroupId, ids, groupIds } = action.payload;
   const page = state.pages[pageIndex];
@@ -439,6 +455,7 @@ export const documentSlice = createSlice({
       .addCase(objectStrokeWidthCommitted, applyStrokeWidth)
       .addCase(objectLockCommitted, applyLock)
       .addCase(objectDeleteCommitted, applyDelete)
+      .addCase(objectDuplicateCommitted, applyDuplicate)
       .addCase(objectGroupCommitted, applyGroup)
       .addCase(objectUngroupCommitted, applyUngroup)
       .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius)

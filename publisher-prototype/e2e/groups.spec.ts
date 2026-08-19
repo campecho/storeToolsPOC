@@ -3,6 +3,7 @@ import {
   activate,
   armCounter,
   centerOf,
+  screenPoint,
   clickAt,
   doubleClickAt,
   drag,
@@ -287,6 +288,96 @@ test("the chrome shows grouped status: a group outlines its members, a multi-sel
   await clickAt(page, { x: 4.5, y: 4.5 }, ["Shift"]);
   await expect.poll(() => selectionIds(page)).toHaveLength(2);
   await expect(page.getByTestId("group-members")).toBeHidden();
+});
+
+function groupRotation(page: Page, groupId: string): Promise<number | undefined> {
+  return page.evaluate((id) => {
+    const store = window.__PROTOTYPE_STORE__;
+    if (!store) throw new Error("dev store handle missing");
+    return store.getState().document.present.groups.find((g) => g.id === id)?.rotation;
+  }, groupId);
+}
+
+/** The rotate knob's centre in screen px — where the chrome puts it now. */
+async function rotateKnob(page: Page): Promise<{ x: number; y: number }> {
+  const box = await page.locator('[data-handle="rotate"]').boundingBox();
+  if (!box) throw new Error("rotate handle not visible");
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+test("a group's frame keeps its own angle, so the rotate handle stays put", async ({ page }) => {
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // The frame starts square: union (1,4)–(5,5), knob above its top centre.
+  const before = await rotateKnob(page);
+  await dragHandle(page, "rotate", { x: 5, y: 4.5 });
+  await expect.poll(() => groupRotation(page, "grp-1")).toBeCloseTo(90, 0);
+  // The frame turned WITH the group: the knob rode a quarter turn round to
+  // the pivot's east side rather than snapping back above a fresh
+  // axis-aligned box, which is where it sat before.
+  const after = await rotateKnob(page);
+  const pivot = await screenPoint(page, { x: 3, y: 4.5 });
+  expect(before.y).toBeLessThan(pivot.y - 10);
+  expect(Math.abs(before.x - pivot.x)).toBeLessThan(10);
+  expect(after.x).toBeGreaterThan(pivot.x + 10);
+  expect(Math.abs(after.y - pivot.y)).toBeLessThan(10);
+});
+
+test("a rotated group's frame still hugs it, and turning again compounds", async ({ page }) => {
+  await clickAt(page, LEFT);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await dragHandle(page, "rotate", { x: 5, y: 4.5 });
+  await expect.poll(() => groupRotation(page, "grp-1")).toBeCloseTo(90, 0);
+  // A second quarter turn takes it to a half turn — the angle accumulates on
+  // the group rather than restarting from square each time.
+  await dragHandle(page, "rotate", { x: 3, y: 6.5 });
+  const total = (await groupRotation(page, "grp-1")) ?? 0;
+  expect(Math.abs(total - 180)).toBeLessThanOrEqual(2);
+  // The pair still stands 3in apart about the same midpoint: the frame moved,
+  // the body did not drift.
+  const objects = await pageObjects(page);
+  const a = centerOf(shapeAt(objects, 0));
+  const b = centerOf(shapeAt(objects, 1));
+  expect(Math.abs(Math.abs(b.x - a.x) - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs((a.x + b.x) / 2 - 3)).toBeLessThanOrEqual(0.06);
+});
+
+test("a rotated group resizes in its own space, keeping its angle", async ({ page }) => {
+  // The frame carrying an angle is what lets resize scale along the group's
+  // own axes instead of the page's — the multi-selection shear the earlier
+  // frame could not avoid.
+  await clickAt(page, LEFT);
+  await dragHandle(page, "rotate", { x: 5, y: 4.5 });
+  await expect.poll(() => groupRotation(page, "grp-1")).toBeCloseTo(90, 0);
+  const before = await pageObjects(page);
+  const spanBefore = Math.abs(centerOf(shapeAt(before, 1)).y - centerOf(shapeAt(before, 0)).y);
+  await armCounter(page);
+  await dragHandle(page, "se", { x: 1, y: 8 });
+  expect(await notificationCount(page)).toBe(1);
+  // The turn survived the stretch, and the members moved apart along the
+  // group's own long axis rather than shearing off the page's.
+  await expect.poll(() => groupRotation(page, "grp-1")).toBeCloseTo(90, 0);
+  const after = await pageObjects(page);
+  const spanAfter = Math.abs(centerOf(shapeAt(after, 1)).y - centerOf(shapeAt(after, 0)).y);
+  expect(spanAfter).toBeGreaterThan(spanBefore);
+  // No shear: the pair stays collinear on the axis it stood on, and each
+  // member keeps its own angle rather than being stretched off it.
+  expect(Math.abs(centerOf(shapeAt(after, 1)).x - centerOf(shapeAt(after, 0)).x)).toBeLessThanOrEqual(0.02);
+  for (const i of [0, 1]) {
+    expect(Math.abs(shapeAt(after, i).rotation - 90)).toBeLessThanOrEqual(1);
+  }
+  // The ungrouped object was never in the frame.
+  expect(shapeAt(after, 2)).toMatchObject({ x: 6.5, y: 4, w: 1, h: 1 });
+});
+
+test("ungrouping drops the frame angle with the group", async ({ page }) => {
+  await clickAt(page, LEFT);
+  await dragHandle(page, "rotate", { x: 5, y: 4.5 });
+  await expect.poll(() => groupRotation(page, "grp-1")).toBeCloseTo(90, 0);
+  await page.keyboard.press("Control+Shift+g");
+  await expect.poll(() => groupCount(page)).toBe(0);
+  // Members keep the angles the turn gave them; nothing dangles.
+  expect(Math.abs(shapeAt(await pageObjects(page), 0).rotation - 90)).toBeLessThanOrEqual(1);
 });
 
 test("an empty-canvas click clears the selection and the entered group with it", async ({

@@ -236,6 +236,7 @@ export function SvgOverlay({
   preview,
   selectedObjects,
   groupedSelection,
+  frameRotation,
   penDraft,
   showChrome,
   onResizeStart,
@@ -251,6 +252,8 @@ export function SvgOverlay({
   selectedObjects: readonly LayoutObject[];
   /** The selection IS one group's membership — the chrome says so (§5.1). */
   groupedSelection: boolean;
+  /** The selected group's stored frame angle; 0 for anything else. */
+  frameRotation: number;
   /** The pen draft's anchors while the pen tool is active; empty otherwise. */
   penDraft: readonly PenAnchor[];
   /** Select tool active and no gesture preview showing. */
@@ -314,6 +317,7 @@ export function SvgOverlay({
         <SelectionChrome
           objects={selectedObjects}
           grouped={groupedSelection}
+          frameRotation={frameRotation}
           zoom={viewport.zoom}
           onResizeStart={onResizeStart}
           onRotateStart={onRotateStart}

@@ -210,3 +210,37 @@ export function selectedGroupId(
     ? unit
     : null;
 }
+
+/**
+ * The group a selection's frame belongs to, with the angle that frame is
+ * drawn at — null when the selection is not exactly one group, since an
+ * ad-hoc multi-selection has no stored frame to draw or advance.
+ */
+export function selectedGroupFrame(
+  objects: readonly LayoutObject[],
+  groups: readonly Group[],
+  selectedIds: readonly string[],
+  enteredGroupId: string | null,
+): { groupId: string; rotation: number } | null {
+  const groupId = selectedGroupId(objects, groups, selectedIds, enteredGroupId);
+  if (groupId === null) return null;
+  return { groupId, rotation: groups.find((g) => g.id === groupId)?.rotation ?? 0 };
+}
+
+/**
+ * The groups a duplicate of `selection` should copy: those whose every
+ * member is in it. A group only PARTLY selected is left behind and its copies
+ * join the page instead — half a group is not a group, and inventing one from
+ * a fragment would claim a structure the user never made.
+ */
+export function copiedGroups(
+  selection: readonly LayoutObject[],
+  objects: readonly LayoutObject[],
+  groups: readonly Group[],
+): Group[] {
+  const selected = new Set(selection.map((o) => o.id));
+  return groups.filter((g) => {
+    const members = groupMemberIds(objects, groups, g.id);
+    return members.length > 0 && members.every((id) => selected.has(id));
+  });
+}

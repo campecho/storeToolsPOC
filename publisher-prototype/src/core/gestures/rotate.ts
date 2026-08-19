@@ -28,6 +28,10 @@ import type { GestureContext, GestureMachine, GestureModifiers, GesturePoint } f
  * `rotatePoint` returns that centre bit-for-bit and the emitted box equals
  * the initial one. Rotating one object is still "turn it in place".
  *
+ * A GROUP's frame carries its own angle, which this turn advances alongside
+ * the members' (`initialGroupRotations`) — the frame is what the user aimed
+ * at, and it must still be pointing there when the gesture ends.
+ *
  * Shift snaps the SELECTION FRAME's resulting angle to ROTATE_SNAP_DEG
  * increments and every member takes the delta that produces — snapping each
  * member's own resulting angle independently would hand differently-rotated
@@ -55,6 +59,10 @@ export type RotateContext = GestureContext & {
   /** Initial geometry of EVERY selected object — frames as boxes, lines as
       endpoints — the orbit swings about the pivot. */
   initial: Record<string, FrameBox | LineEndpoints>;
+  /** Absolute starting angle per GROUP whose frame this turn advances —
+      the selected group, empty for an ad-hoc multi-selection. A group stores
+      the angle its frame is drawn at, so the turn has to advance it. */
+  initialGroupRotations: Record<string, number>;
 };
 
 export type RotateState = DragState<RotateContext> & {
@@ -75,9 +83,9 @@ function bodyDelta(state: RotateState, modifiers: GestureModifiers): number {
   return snapped - frameRotation;
 }
 
-function rotations(ctx: RotateContext, delta: number): Record<string, number> {
+function advanced(initial: Record<string, number>, delta: number): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const [id, initial] of Object.entries(ctx.initialRotations)) out[id] = initial + delta;
+  for (const [id, from] of Object.entries(initial)) out[id] = from + delta;
   return out;
 }
 
@@ -117,8 +125,9 @@ export const rotateMachine: GestureMachine<RotateState, RotateContext> = {
     return {
       action: objectRotateCommitted({
         pageIndex: state.ctx.pageIndex,
-        rotations: rotations(state.ctx, delta),
+        rotations: advanced(state.ctx.initialRotations, delta),
         boxes: orbited(state.ctx, delta),
+        groupRotations: advanced(state.ctx.initialGroupRotations, delta),
       }),
     };
   },
@@ -127,7 +136,7 @@ export const rotateMachine: GestureMachine<RotateState, RotateContext> = {
     const delta = bodyDelta(state, state.modifiers);
     return {
       kind: "rotate",
-      rotations: rotations(state.ctx, delta),
+      rotations: advanced(state.ctx.initialRotations, delta),
       boxes: orbited(state.ctx, delta),
     };
   },

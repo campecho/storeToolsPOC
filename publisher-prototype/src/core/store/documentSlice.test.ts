@@ -12,6 +12,7 @@ import {
   ellipseDrawCommitted,
   lineDrawCommitted,
   objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -208,6 +209,33 @@ describe("documentSlice", () => {
         objectRotateCommitted({ pageIndex: 0, rotations: { l: 90, a: 90, ghost: 90 } }),
       );
       expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
+
+    it("advances the group's own frame angle, storing square as absence", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectRotateCommitted({ pageIndex: 0, rotations: {}, groupRotations: { g1: 45 } }),
+      );
+      expect(state.groups).toEqual([{ id: "g1", rotation: 45 }]);
+      state = reducer(
+        state,
+        objectRotateCommitted({ pageIndex: 0, rotations: {}, groupRotations: { g1: 0 } }),
+      );
+      expect(state.groups).toEqual([{ id: "g1" }]);
+    });
+
+    it("ignores a group id the document does not hold", () => {
+      const before = docWith([shape("a")]);
+      expect(
+        reducer(
+          before,
+          objectRotateCommitted({ pageIndex: 0, rotations: {}, groupRotations: { ghost: 45 } }),
+        ),
+      ).toEqual(before);
     });
 
     it("applies the orbited geometry alongside the angles — a selection turns as one body", () => {
@@ -428,6 +456,28 @@ describe("documentSlice", () => {
     it("ignores an unknown pageIndex", () => {
       const before = docWith([shape("a")]);
       expect(reducer(before, objectDeleteCommitted({ pageIndex: 5, ids: ["a"] }))).toEqual(before);
+    });
+  });
+
+  describe("object/duplicateCommitted", () => {
+    it("appends the copies and their fresh groups", () => {
+      const state = reducer(
+        docWith([shape("a")]),
+        objectDuplicateCommitted({
+          pageIndex: 0,
+          objects: [shape("copy", { x: 3, groupId: "g-copy" })],
+          groups: [{ id: "g-copy", rotation: 30 }],
+        }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a", "copy"]);
+      expect(state.groups).toEqual([{ id: "g-copy", rotation: 30 }]);
+    });
+
+    it("ignores an unknown pageIndex", () => {
+      const before = docWith([shape("a")]);
+      expect(
+        reducer(before, objectDuplicateCommitted({ pageIndex: 5, objects: [shape("c")], groups: [] })),
+      ).toEqual(before);
     });
   });
 
