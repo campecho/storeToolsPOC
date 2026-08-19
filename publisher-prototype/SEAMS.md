@@ -26,7 +26,8 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   delta table is silent on grouping; Phase B's group/ungroup (§5.1) needs storage.
   Decision: minimal nested model — `doc.groups: [{ id, parentGroupId? }]`, objects
   carry an optional `groupId`. Geometry stays on member objects; groups have none of
-  their own.
+  their own. **The last clause was superseded 2026-08-19 — a group now stores the one
+  angle its frame is drawn at; see "A group carries its frame angle" below.**
 - **Standalone photo documents (recorded 2026-08-17, user-ratified):** a photo edited
   on its own is a regular schema-v3 document with `kind: "image"` — one format, not
   two, so any future storage/sync layer handles a single document shape. Convention
@@ -320,3 +321,51 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   Worth keeping as a pattern: the first answer here added a control, the second
   removed one, and the second is smaller in every sense — fewer handles on screen,
   one way to do the thing, and one less contract clause to explain.
+- **A group carries its frame angle (recorded 2026-08-19, user decision;
+  supersedes "groups have none of their own [geometry]" from 2026-08-17):**
+  `GroupSchema` gains an optional `rotation`. Additive, so no version bump, and
+  absent means square per the usual rule.
+  It has to be STORED, which is why the earlier decision could not stand. A group's
+  frame was the axis-aligned union of its members, so every turn recomputed it from
+  the rotated result: the box stopped hugging the group, grew, and the rotation knob
+  sprang back to the top-centre of a fresh square box. Rotating turns each member
+  AND orbits it, so the members alone can only ever yield an axis-aligned union —
+  the angle is not recoverable from them at any cost.
+  The BOX stays derived (`orientedSelectionBox`): the smallest box at the stored
+  angle that contains every member. Storing the box too would go stale the moment a
+  member moved inside the group, and deriving it costs one un-rotate.
+  `object/rotateCommitted` gained `groupRotations` to advance the stored angle in
+  the same commit as the members' — one gesture, one action, still.
+  Consequence worth having: `beginResize` now hands the resize machine that rotated
+  frame, so a rotated group scales along its OWN axes. That closes the shear left
+  open in the "Selection frame" entry above, for groups. An ad-hoc multi-selection
+  has no stored angle and still shears — it has nowhere to keep one.
+  Deliberately NOT done: a new group does not adopt a shared member angle, so
+  grouping two objects that both sit at 45° starts square. Predictable beats clever,
+  and the frame is one turn away from wherever the user wants it.
+- **Shift constrains a move (recorded 2026-08-19, user decision):** Shift snaps the
+  move delta to 45° — horizontal, vertical and both diagonals from one rule — chosen
+  live from the drag's current direction, so turning the drag re-picks the axis and
+  releasing Shift frees it mid-gesture. Shared with the line tool's angle snap
+  through `snappedDelta` in `core/gestures/drag.ts`.
+  The binding had to share a press with `select.shift-click.toggles-membership`.
+  It splits on travel, the same slop threshold everything else uses: on an object
+  ALREADY selected, Shift-press starts the constrained move and its null end is the
+  toggle; on an object outside the selection there is nothing to move yet, so it
+  stays a toggle. Both clauses survive on one binding.
+- **Alt-drag duplicates (recorded 2026-08-19, user decision):** Alt-dragging leaves
+  the originals and drops copies where the drag ends — `object/duplicateCommitted`,
+  carrying finished objects with fresh ids, exactly like a draw commit. The copies
+  become the selection, for the same reason a drawn object does.
+  It shares its binding with `select.alt-click.selects-beneath` and splits the same
+  way Shift does: the machine commits only after real travel, and its null end is
+  the click that cycles.
+  Group membership is COPIED, not shared: each group whose every member is in the
+  selection gets a fresh id and the copies join that. Sharing the originals' ids
+  would silently enlarge the source group with objects the user meant to separate,
+  and a group only partly selected is left behind entirely — half a group is not a
+  group.
+  The `copy` cursor appears the moment Alt goes down over a selection, not when the
+  drag starts: the whole point is answering "will this move or copy?" before the
+  user commits to the drag. That needs an Alt-held listener in the workspace beside
+  the existing Space one.
