@@ -369,3 +369,32 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   drag starts: the whole point is answering "will this move or copy?" before the
   user commits to the drag. That needs an Alt-held listener in the workspace beside
   the existing Space one.
+- **The callout tail is a free point (recorded 2026-08-19, user decision):** the
+  yellow adjust handle sets the tail's LENGTH and ANGLE together, PowerPoint's
+  behaviour, instead of snapping the tail to one of four corners. The handle sits
+  ON the tip, so the thing dragged is the thing set.
+  Storage changes to match: `ShapeObject.tailAnchor` (an enum) becomes `tailTip`, a
+  point NORMALIZED to the frame box like every other path coordinate here, so the
+  tail scales with a resize the way PowerPoint's normalized adjustments do. This
+  is a REPLACEMENT, not an additive delta — it is affordable only because nothing
+  stores the old field: no fixture carries `tailAnchor`, and `parseDocument`
+  deliberately has no v1/v2 migration ("v3's documents are its own fixtures"), so
+  there is no lineage to keep reading. A later replacement, once real documents
+  exist, would not be free.
+  The enum SURVIVES as a draw-time preset in the options bar (`tailTipFor` maps
+  each corner to a starting tip), which is exactly what the callout contract's own
+  note always described: "preset anchor positions in the options bar; free
+  repositioning happens through the tail adjust handle." The placed object stores
+  the free point; the preset only seeds it.
+  Consequence of record: the tail reaches OUTSIDE the frame box — that is what
+  gives it length — so the body fills the frame, the selection frame hugs the
+  body, and the tail extends past it, as PowerPoint's does. Point hit-testing
+  follows the drawn outline (`flattenPath(shapeOutline(...))`) and still finds the
+  tail; the AABB the marquee and align/distribute read is the frame box and does
+  NOT cover it. Known gap, flagged for SME review rather than fixed here — closing
+  it means making `objectAabb` outline-aware for every parametric kind.
+  The tip is bounded to one box-length outside each edge (`CALLOUT_TIP_MIN/MAX`)
+  so its handle cannot be dragged off the page and lost.
+  The Transform panel's corner select becomes two numeric fields, since the
+  parameter is continuous now — the same treatment corner radius and inner radius
+  already get there.
