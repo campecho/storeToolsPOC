@@ -1,8 +1,7 @@
 import type { ActionCreatorWithPayload } from "@reduxjs/toolkit";
 import { shapeOutline } from "../geometry/shapePaths";
 import type {
-  CalloutTailAnchor,
-  FlowchartSymbol,
+  NormalizedPoint,
   PathSeg,
   ShapeObject,
 } from "../model";
@@ -84,12 +83,12 @@ export type DrawnShapeGeometry =
   | { shape: "path"; d: PathSeg[] }
   | { shape: "roundedRect"; cornerRadius: number }
   | { shape: "starPolygon"; points: number; innerRadiusRatio: number }
-  | { shape: "callout"; tailAnchor: CalloutTailAnchor }
-  | { shape: "flowchart"; symbol: FlowchartSymbol };
+  | { shape: "callout"; tailTip: NormalizedPoint }
+  | { shape: "banner"; panelInset: number; panelHeight: number };
 
 /**
  * Bounds-drawing machine for the parametric shape tools (rounded rect, star /
- * polygon, callout, banner, flowchart) — the same drag/Shift/Alt/click/Esc
+ * polygon, callout, banner) — the same drag/Shift/Alt/click/Esc
  * clause set as rect and ellipse, committing the shape kind and geometry
  * `geometryForBox` returns for the final box. It receives the box because
  * inch-denominated parameters normalize against the box dimensions; the

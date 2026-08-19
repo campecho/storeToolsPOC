@@ -10,11 +10,15 @@ import {
   drawBoundsMachine,
   drawLineMachine,
   drawLineMachineFor,
+  bannerPanelHeightMachine,
+  bannerPanelInsetMachine,
   calloutTailMachine,
   cornerRadiusMachine,
   drawShapeMachine,
   finishPenDraft,
+  lineEndpointMachine,
   marqueeMachine,
+  duplicateMachine,
   moveMachine,
   penMachine,
   resizeAnchor,
@@ -27,18 +31,32 @@ import {
   type GestureModifiers,
   type GesturePoint,
   type GesturePreview,
+  type LineEndpointHandle,
   type ResizeHandle,
 } from "../../core/gestures";
 import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
-import type { LayoutObject } from "../../core/model";
+import {
+  copiedGroups,
+  enteredGroup,
+  groupingUnits,
+  selectedGroupFrame,
+  selectionUnit,
+  ungroupingGroupIds,
+  type Group,
+  type LayoutObject,
+} from "../../core/model";
 import { selectTool } from "../../core/registry/tools/selection";
 import { resizeCursor, rotateCursor } from "./cursors";
 import {
   arrowDrawCommitted,
   gestureCancelled,
   isDrawCommit,
+  objectDeleteCommitted,
+  objectGroupCommitted,
   objectNudgeCommitted,
+  objectUngroupCommitted,
   selectionCycleCommitted,
+  selectionGroupEnteredCommitted,
   selectionReplaceCommitted,
   selectionToggleCommitted,
   type FrameBox,
@@ -47,7 +65,7 @@ import {
 } from "../../core/store";
 import { useAppDispatch } from "../hooks";
 import { isTextEntryTarget } from "../isTextEntryTarget";
-import { createObjectId } from "../objectId";
+import { createGroupId, createObjectId } from "../objectId";
 import { SHAPE_TOOL_CONFIGS } from "../shapeTools";
 import {
   drawStyleFromOptions,
@@ -154,7 +172,12 @@ export type ToolGestureArgs = {
   pageSize: Size;
   /** The rendered page's objects in z-order. */
   objects: readonly LayoutObject[];
+  /** The document's groups — clicks and marquees select whole groups
+      through them (core/model/groups.ts). */
+  groups: readonly Group[];
   selectedIds: readonly string[];
+  /** The group the selection has descended into; null at the top level. */
+  enteredGroupId: string | null;
   /** The pen draft (penSlice state) — the pen press machine's ctx and the
       Enter/double-click finish paths read it. */
   penAnchors: readonly PenAnchor[];
@@ -181,16 +204,20 @@ export type ToolGestures = {
   onPointerMove(e: React.PointerEvent<HTMLDivElement>): void;
   /** pointerup / pointercancel / lostpointercapture — idempotent. */
   onPointerEnd(e: React.PointerEvent<HTMLDivElement>): void;
-  /** pen.double-click.commits-open-path (the pointer half; Enter is the
-      keyboard half). No-op for every other tool. */
-  onDoubleClick(): void;
+  /** select.double-click-group.enters-group under the select tool, and
+      pen.double-click.commits-open-path under the pen (the pointer half;
+      Enter is the keyboard half). No-op for every other tool. */
+  onDoubleClick(e: React.MouseEvent<HTMLDivElement>): void;
   beginResize(handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void;
   beginRotate(e: React.PointerEvent<SVGElement>): void;
-  /** The adjust-handle clause the selected shape's kind owns — corner
-      radius, star inner radius, or callout tail. No-op unless the selection
-      is exactly one unlocked shape of an adjustable kind, which is also the
-      only case the handle is drawn for. */
-  beginShapeAdjust(e: React.PointerEvent<SVGElement>): void;
+  /** select.drag-endpoint.moves-endpoint — no-op unless the selection is one
+      unlocked line, which is also the only case endpoints are drawn for. */
+  beginLineEndpoint(which: LineEndpointHandle, e: React.PointerEvent<SVGElement>): void;
+  /** The adjust-handle clause the NAMED handle owns — corner radius, star
+      inner radius, callout tail, or either of the banner's two. No-op unless
+      the selection is exactly one unlocked shape of an adjustable kind, which
+      is also the only case a handle is drawn for. */
+  beginShapeAdjust(handleId: string, e: React.PointerEvent<SVGElement>): void;
 };
 
 export function useToolGestures(args: ToolGestureArgs): ToolGestures {
@@ -252,62 +279,129 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const selectedObjects = (): LayoutObject[] =>
     args.objects.filter((o) => args.selectedIds.includes(o.id));
 
+  /** The selected group's stored frame angle, if the selection IS a group —
+      what the chrome draws at and the transform machines work in. */
+  const groupFrame = () =>
+    selectedGroupFrame(args.objects, args.groups, args.selectedIds, args.enteredGroupId);
+
+  /** The objects a click on `id` acts on, and the group context it ends in:
+      a grouped object resolves to its whole group until that group is
+      entered (core/model/groups.ts). */
+  const unitFor = (id: string) =>
+    selectionUnit(args.objects, args.groups, id, args.enteredGroupId);
+
+  /** Same members, in any order — used to leave a redundant re-selection
+      undispatched. */
+  const sameSelection = (ids: readonly string[], selectedIds: readonly string[]): boolean =>
+    ids.length === selectedIds.length && ids.every((id) => selectedIds.includes(id));
+
+  /** The select tool's clauses hit-test through the contract's own rules,
+      not hardcoded values: 4px tolerance converts to inches at the current
+      zoom (PLAN.md §5). */
+  const selectHits = (point: GesturePoint, zoom: number) =>
+    hitTestPoint(args.objects, point, {
+      toleranceIn: pxToIn(selectTool.hitTest.tolerancePx, zoom),
+      unfilledInterior: selectTool.hitTest.unfilledInterior,
+      lockedObjects: selectTool.hitTest.lockedObjects,
+    });
+
   const selectPointerDown = (
     point: GesturePoint,
     modifiers: GestureModifiers,
     pointerId: number,
   ): void => {
-    const { pageIndex, viewport, objects, selectedIds } = args;
+    const { pageIndex, viewport, objects, groups, selectedIds, enteredGroupId } = args;
     const zoom = viewport.zoom;
-    // Hit rules come off the select contract, not hardcoded values: 4px
-    // tolerance converts to inches at the current zoom (PLAN.md §5).
-    const hits = hitTestPoint(objects, point, {
-      toleranceIn: pxToIn(selectTool.hitTest.tolerancePx, zoom),
-      unfilledInterior: selectTool.hitTest.unfilledInterior,
-      lockedObjects: selectTool.hitTest.lockedObjects,
-    });
+    const hits = selectHits(point, zoom);
     const top = hits[0];
     if (top === undefined) {
       // select.drag-empty.marquee-selects; its under-slop end IS
       // select.click-empty.clears — the machine dispatches either itself.
       begin(
-        machineSession(marqueeMachine, point, { pageIndex, zoom, objects: [...objects] }, commit),
+        machineSession(
+          marqueeMachine,
+          point,
+          { pageIndex, zoom, objects: [...objects], groups, enteredGroupId },
+          commit,
+        ),
         pointerId,
       );
       return;
     }
     if (modifiers.shift) {
-      // select.shift-click.toggles-membership — modified downs never start move.
+      // Two clauses share this press. On an object already in the selection it
+      // is select.shift-drag.constrains-move, with
+      // select.shift-click.toggles-membership as the under-slop release — the
+      // machine's null end IS the click, so both survive on one binding. On an
+      // object outside the selection there is nothing to move yet, so it stays
+      // a toggle. A group toggles whole, so the selection never holds part of
+      // one.
+      const toggle = () => selectionToggleCommitted({ ids: unitFor(top.id).ids });
       begin(
-        clickSession(point, zoom, commit, () => selectionToggleCommitted({ id: top.id })),
+        selectedIds.includes(top.id)
+          ? machineSession(
+              moveMachine,
+              point,
+              { pageIndex, zoom, ids: [...selectedIds] },
+              commit,
+              toggle,
+            )
+          : clickSession(point, zoom, commit, toggle),
         pointerId,
       );
       return;
     }
     if (modifiers.alt) {
       // select.alt-click.selects-beneath: the next object BENEATH the current
-      // single selection in the hit stack, wrapping to the top; a selection
-      // that is not in the stack starts over at the topmost hit.
+      // selection in the hit stack, wrapping to the top; a selection that is
+      // not in the stack starts over at the topmost hit. The stack is walked
+      // by OBJECT and the landing object then resolves to its unit, so
+      // cycling still reaches every object under the pointer when groups
+      // cover several of them.
+      // …and select.alt-drag.duplicates once the press travels. One binding,
+      // two clauses, split by the same slop threshold everything else uses:
+      // the machine commits copies only on a real drag, and its null end is
+      // the click that cycles.
+      const cycle = () => {
+        const at = hits.findIndex((h) => selectedIds.includes(h.id));
+        const next = at === -1 ? hits[0] : hits[(at + 1) % hits.length];
+        return next === undefined ? null : selectionCycleCommitted(unitFor(next.id));
+      };
+      if (!selectedIds.includes(top.id)) {
+        begin(clickSession(point, zoom, commit, cycle), pointerId);
+        return;
+      }
+      const selection = selectedObjects();
+      setHandleCursor("copy");
       begin(
-        clickSession(point, zoom, commit, () => {
-          const selectedId = selectedIds.length === 1 ? selectedIds[0] : undefined;
-          const at = selectedId === undefined ? -1 : hits.findIndex((h) => h.id === selectedId);
-          const next = at === -1 ? hits[0] : hits[(at + 1) % hits.length];
-          return next === undefined ? null : selectionCycleCommitted({ id: next.id });
-        }),
+        machineSession(
+          duplicateMachine,
+          point,
+          {
+            pageIndex,
+            zoom,
+            objects: selection,
+            groups: copiedGroups(selection, objects, groups),
+            idFactory: createObjectId,
+            groupIdFactory: createGroupId,
+          },
+          commit,
+          cycle,
+        ),
         pointerId,
       );
       return;
     }
+    const unit = unitFor(top.id);
     if (!selectedIds.includes(top.id)) {
       // ASSUMPTION: select.click.selects-topmost commits EARLY, on
       // pointerdown — so a continuing drag is already "drag on selected
       // object" (select.drag.moves-selection) and moves the new selection.
       // The contract binds the clause to "click" without fixing the moment;
       // down-commit is the Publisher convention, pending SME review.
-      commit(selectionReplaceCommitted({ ids: [top.id] }));
+      commit(selectionReplaceCommitted(unit));
       begin(
-        machineSession(moveMachine, point, { pageIndex, zoom, ids: [top.id] }, commit),
+        machineSession(moveMachine, point, { pageIndex, zoom, ids: unit.ids }, commit),
         pointerId,
       );
       return;
@@ -322,10 +416,13 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
         (endModifiers) => {
           // ASSUMPTION: an under-slop release (machine end returns null) on a
           // member of a MULTI-selection collapses the selection to the clicked
-          // object — the Publisher convention; a single selection stays as-is
-          // with no dispatch. Modifiers pressed mid-hold suppress the collapse.
-          if (endModifiers.shift || endModifiers.alt || selectedIds.length <= 1) return null;
-          return selectionReplaceCommitted({ ids: [top.id] });
+          // object's UNIT — the Publisher convention; collapsing to the bare
+          // object would break a selected group apart on a plain click.
+          // A selection already equal to that unit stays as-is with no
+          // dispatch. Modifiers pressed mid-hold suppress the collapse.
+          if (endModifiers.shift || endModifiers.alt) return null;
+          if (sameSelection(unit.ids, selectedIds)) return null;
+          return selectionReplaceCommitted(unit);
         },
       ),
       pointerId,
@@ -432,11 +529,11 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     endSession({ shift: e.shiftKey, alt: e.altKey });
   };
 
-  const beginResize = (handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void => {
-    if (e.button !== 0 || args.panning || sessionRef.current) return;
-    const selection = selectedObjects();
-    const frame = selectionFrame(selection);
-    if (frame === null) return;
+  /** Every selected object's starting geometry, in the shape the transform
+      machines carry and commit: frames as boxes, lines as endpoints. */
+  const initialGeometry = (
+    selection: readonly LayoutObject[],
+  ): Record<string, FrameBox | LineEndpoints> => {
     const initial: Record<string, FrameBox | LineEndpoints> = {};
     for (const obj of selection) {
       initial[obj.id] =
@@ -444,6 +541,15 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           ? { x1: obj.x1, y1: obj.y1, x2: obj.x2, y2: obj.y2 }
           : { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
     }
+    return initial;
+  };
+
+  const beginResize = (handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void => {
+    if (e.button !== 0 || args.panning || sessionRef.current) return;
+    const selection = selectedObjects();
+    const frame = selectionFrame(selection, groupFrame()?.rotation ?? 0);
+    if (frame === null) return;
+    const initial = initialGeometry(selection);
     e.stopPropagation();
     setHandleCursor(resizeCursor(handle, frame.rotation));
     begin(
@@ -468,15 +574,17 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginRotate = (e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const frame = selectionFrame(selection);
+    const group = groupFrame();
+    const frame = selectionFrame(selection, group?.rotation ?? 0);
     if (frame === null) return;
-    // Lines carry no rotation field — the rotate ctx excludes them per the
-    // machine's contract; an all-line selection starts no rotate at all.
+    // Lines carry no rotation field — the rotate ctx excludes them from
+    // `initialRotations` per the machine's contract. Their endpoints still
+    // orbit the pivot through `initial`, so a line turns with its group and
+    // a lone line turns about its own bounds.
     const initialRotations: Record<string, number> = {};
     for (const obj of selection) {
       if (obj.type !== "line") initialRotations[obj.id] = obj.rotation;
     }
-    if (Object.keys(initialRotations).length === 0) return;
     e.stopPropagation();
     setHandleCursor(rotateCursor(frame.rotation));
     begin(
@@ -487,7 +595,10 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           pageIndex: args.pageIndex,
           zoom: args.viewport.zoom,
           pivot: framePivot(frame.box),
+          frameRotation: frame.rotation,
           initialRotations,
+          initial: initialGeometry(selection),
+          initialGroupRotations: group === null ? {} : { [group.groupId]: group.rotation },
         },
         commit,
       ),
@@ -495,7 +606,36 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     );
   };
 
-  const beginShapeAdjust = (e: React.PointerEvent<SVGElement>): void => {
+  const beginLineEndpoint = (
+    which: LineEndpointHandle,
+    e: React.PointerEvent<SVGElement>,
+  ): void => {
+    if (e.button !== 0 || args.panning || sessionRef.current) return;
+    const selection = selectedObjects();
+    const only = selection.length === 1 ? selection[0] : undefined;
+    // Only a lone line offers endpoints, which is also the only case the
+    // chrome draws them for.
+    if (only === undefined || only.type !== "line" || only.locked) return;
+    e.stopPropagation();
+    setHandleCursor("move");
+    begin(
+      machineSession(
+        lineEndpointMachine,
+        toDoc(e),
+        {
+          pageIndex: args.pageIndex,
+          zoom: args.viewport.zoom,
+          id: only.id,
+          which,
+          initial: { x1: only.x1, y1: only.y1, x2: only.x2, y2: only.y2 },
+        },
+        commit,
+      ),
+      e.pointerId,
+    );
+  };
+
+  const beginShapeAdjust = (handleId: string, e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
     const only = selection.length === 1 ? selection[0] : undefined;
@@ -530,7 +670,13 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
             )
           : only.shape === "callout"
             ? machineSession(calloutTailMachine, toDoc(e), shared, commit)
-            : null;
+            : // The banner's two handles share a ctx and differ only in the
+              // machine, which is what the handle id picks.
+              only.shape === "banner" && handleId === "banner-inset"
+              ? machineSession(bannerPanelInsetMachine, toDoc(e), shared, commit)
+              : only.shape === "banner" && handleId === "banner-height"
+                ? machineSession(bannerPanelHeightMachine, toDoc(e), shared, commit)
+                : null;
     if (session === null) return;
     e.stopPropagation();
     // Adjust handles drag along the shape, so they wear the frame's own
@@ -542,11 +688,41 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
   // discards a pen draft between presses (pen.esc.discards-path); Enter
   // finishes the pen draft (pen.double-click.commits-open-path's keyboard
-  // half); arrows nudge the selection (select.arrow.nudges). Key repeat is
+  // half); arrows nudge the selection (select.arrow.nudges); Delete removes
+  // it; Ctrl/Cmd+G and Ctrl/Cmd+Shift+G group and ungroup it. Key repeat is
   // fine for nudging: each keydown is its own nudge gesture, one history
   // entry each.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        // select.ctrl-g.groups-selection / select.ctrl-shift-g.ungroups-selection.
+        // preventDefault unconditionally once the select tool owns the chord —
+        // the browser's find-again must not fire behind a command that simply
+        // had nothing to combine. Plain G stays the pen tool's shortcut;
+        // App's tool-shortcut handler ignores modified keys.
+        const { activeTool, objects, groups, selectedIds, enteredGroupId, pageIndex } =
+          argsRef.current;
+        if (activeTool !== "select" || sessionRef.current !== null) return;
+        if (isTextEntryTarget(e.target)) return;
+        e.preventDefault();
+        if (e.shiftKey) {
+          const groupIds = ungroupingGroupIds(objects, groups, selectedIds, enteredGroupId);
+          if (groupIds.length > 0) commit(objectUngroupCommitted({ groupIds }));
+          return;
+        }
+        const units = groupingUnits(objects, groups, selectedIds, enteredGroupId);
+        if (units === null) return;
+        commit(
+          objectGroupCommitted({
+            pageIndex,
+            groupId: createGroupId(),
+            // A group formed inside an entered group belongs to it.
+            ...(enteredGroupId === null ? {} : { parentGroupId: enteredGroupId }),
+            ...units,
+          }),
+        );
+        return;
+      }
       if (e.key === "Escape") {
         const session = sessionRef.current;
         if (session) {
@@ -576,6 +752,21 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           createObjectId,
         );
         if (action !== null) commit(action);
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // select.delete.removes-selection. Backspace joins Delete because a
+        // laptop keyboard often has only the one key, and outside a text
+        // field it can mean nothing else here.
+        const { activeTool, selectedIds, pageIndex } = argsRef.current;
+        if (activeTool !== "select" || sessionRef.current !== null) return;
+        if (isTextEntryTarget(e.target)) return;
+        // preventDefault before the empty-selection check, not after: Backspace
+        // still navigates back in some browsers, and "nothing was selected" is
+        // no reason to leave the page.
+        e.preventDefault();
+        if (selectedIds.length === 0) return;
+        commit(objectDeleteCommitted({ pageIndex, ids: [...selectedIds] }));
         return;
       }
       const delta = ARROW_DELTAS[e.key];
@@ -609,8 +800,20 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     }
   }, [args.activeTool, commit]);
 
-  const onDoubleClick = (): void => {
+  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>): void => {
     const { activeTool, penAnchors, pageIndex, toolOptions } = argsRef.current;
+    if (activeTool === "select") {
+      // select.double-click-group.enters-group: descend one level into the
+      // group under the pointer and select what sits at that level. The
+      // double-click's own clicks already selected the group (or the level
+      // above), so this is purely the descent.
+      if (args.panning || sessionRef.current) return;
+      const top = selectHits(toDoc(e), args.viewport.zoom)[0];
+      if (top === undefined) return;
+      const entered = enteredGroup(args.objects, args.groups, top.id, args.enteredGroupId);
+      if (entered !== null) commit(selectionGroupEnteredCommitted(entered));
+      return;
+    }
     if (activeTool !== "pen" || penAnchors.length === 0) return;
     // The double-click's own second click just added a duplicate anchor at
     // the same point — the finish builds from the draft without it, and the
@@ -636,5 +839,6 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     onDoubleClick,
     beginResize,
     beginRotate,
+    beginLineEndpoint,
   };
 }

@@ -3,7 +3,9 @@ import {
   PT_PER_IN,
   arrowheadShape,
   dashPatternIn,
+  headInsetIn,
   headLengthIn,
+  trimmedSegment,
   type ArrowheadShape,
   type DecorPoint,
 } from "./lineDecor";
@@ -116,5 +118,63 @@ describe("arrowheadShape", () => {
     for (const head of ["arrow", "diamond"] as const) {
       expect(polygonPoints(arrowheadShape(head, tip, 0.7, 0.12))[0]).toBe(tip);
     }
+  });
+});
+
+describe("headInsetIn", () => {
+  it("stops the stroke at the arrow's back edge, one whole head length in", () => {
+    expect(headInsetIn("arrow", 0.12)).toBe(0.12);
+  });
+
+  it("stops the stroke at the diamond's waist, not its rear vertex", () => {
+    // The rear vertex is a point like the tip is: ending there would leave a
+    // wedge of gap either side of the stroke's square end. The waist is the
+    // first place going back that is wide enough to cover it.
+    expect(headInsetIn("diamond", 0.12)).toBeCloseTo(0.06, 10);
+    const waist = polygonPoints(arrowheadShape("diamond", { x: 0, y: 0 }, 0, 0.12))[1];
+    expect(headInsetIn("diamond", 0.12)).toBeCloseTo(-(waist as DecorPoint).x, 10);
+  });
+
+  it("asks for nothing where nothing covers the stroke's end", () => {
+    // The circle is centred ON the tip, so it hides the stroke end already.
+    expect(headInsetIn("circle", 0.12)).toBe(0);
+    expect(headInsetIn("none", 0.12)).toBe(0);
+    expect(headInsetIn(undefined, 0.12)).toBe(0);
+  });
+});
+
+describe("trimmedSegment", () => {
+  const p1: DecorPoint = { x: 1, y: 2 };
+  const p2: DecorPoint = { x: 5, y: 2 };
+
+  it("returns the segment untouched when neither end asks for room", () => {
+    expect(trimmedSegment(p1, p2, 0, 0)).toEqual([p1, p2]);
+  });
+
+  it("pulls each end in by its own inset, along the line", () => {
+    expectPointsCloseTo(trimmedSegment(p1, p2, 0.5, 1.5), [
+      { x: 1.5, y: 2 },
+      { x: 3.5, y: 2 },
+    ]);
+  });
+
+  it("measures the inset in inches whatever the line's direction", () => {
+    // A 3-4-5 diagonal: trimming 1 inch off the start moves it 0.6/0.8.
+    const [from] = trimmedSegment({ x: 0, y: 0 }, { x: 3, y: 4 }, 1, 0);
+    expect(Math.hypot(from.x, from.y)).toBeCloseTo(1, 10);
+  });
+
+  it("collapses to one point rather than reversing when the heads are longer than the line", () => {
+    // Both insets scale down together, so the line vanishes under its heads
+    // instead of being drawn backwards through them.
+    const [from, to] = trimmedSegment(p1, p2, 6, 2);
+    expectPointsCloseTo([from, to], [
+      { x: 4, y: 2 },
+      { x: 4, y: 2 },
+    ]);
+  });
+
+  it("leaves a zero-length line alone, having no direction to trim along", () => {
+    expect(trimmedSegment(p1, p1, 0.5, 0.5)).toEqual([p1, p1]);
   });
 });

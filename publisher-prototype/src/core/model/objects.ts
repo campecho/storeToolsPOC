@@ -229,7 +229,16 @@ export const TableFrameSchema = z.object({
 });
 export type TableFrame = z.infer<typeof TableFrameSchema>;
 
-/** Where a callout's pointer tail leaves the balloon (§4.4 callouts). */
+/** A point in the frame's unit box — the coordinate space every normalized
+    path here speaks. Not clamped: a callout's tail tip lives outside it. */
+export const NormalizedPointSchema = z.object({ x: z.number(), y: z.number() });
+export type NormalizedPoint = z.infer<typeof NormalizedPointSchema>;
+
+/**
+ * The four corners a callout's tail can be SEEDED from (§4.4 callouts) — a
+ * draw-time preset in the tool's options bar, not storage. The placed object
+ * keeps a free `tailTip` instead, which the adjust handle moves anywhere.
+ */
 export const CalloutTailAnchorSchema = z.enum([
   "bottom-left",
   "bottom-right",
@@ -238,15 +247,14 @@ export const CalloutTailAnchorSchema = z.enum([
 ]);
 export type CalloutTailAnchor = z.infer<typeof CalloutTailAnchorSchema>;
 
-/** The flowchart vocabulary the tool draws (§4.4 flowchart shapes). */
-export const FlowchartSymbolSchema = z.enum([
-  "process",
-  "decision",
-  "terminator",
-  "data",
-  "document",
-]);
-export type FlowchartSymbol = z.infer<typeof FlowchartSymbolSchema>;
+/** Where each preset puts the tip: just outside that corner, so a freshly
+    drawn callout has a tail of real length pointing the way it was asked to. */
+export function tailTipFor(anchor: CalloutTailAnchor): NormalizedPoint {
+  return {
+    x: anchor.endsWith("right") ? 0.94 : 0.06,
+    y: anchor.startsWith("bottom") ? 1.22 : -0.22,
+  };
+}
 
 /**
  * Shape object — the lineage's non-content frame kinds folded under the
@@ -272,7 +280,7 @@ export const ShapeObjectSchema = z.object({
     "roundedRect",
     "starPolygon",
     "callout",
-    "flowchart",
+    "banner",
     "path",
   ]),
   /** Path shapes only: normalized segments — see PathSegSchema. */
@@ -287,10 +295,17 @@ export const ShapeObjectSchema = z.object({
       a fraction of the outer radius. */
   points: z.number().int().min(3).optional(),
   innerRadiusRatio: z.number().min(0).max(1).optional(),
-  /** Callouts only. */
-  tailAnchor: CalloutTailAnchorSchema.optional(),
-  /** Flowchart shapes only. */
-  symbol: FlowchartSymbolSchema.optional(),
+  /** Callouts only: where the pointer tail's TIP sits, normalized to the
+      frame box like every other path coordinate here. Usually outside 0–1 —
+      that is what gives the tail length — so the tail reaches past the body
+      the way PowerPoint's does. Dragging it changes the tail's length and
+      angle together. */
+  tailTip: NormalizedPointSchema.optional(),
+  /** Banners only: the two ribbon adjustments, each a fraction of the frame —
+      how far the raised panel's sides sit in from the edges, and where its
+      bottom edge falls. The tails, folds and notches follow from them. */
+  panelInset: z.number().optional(),
+  panelHeight: z.number().optional(),
 });
 export type ShapeObject = z.infer<typeof ShapeObjectSchema>;
 
@@ -301,8 +316,8 @@ export const SHAPE_GEOMETRY_FIELDS = {
   ellipse: [],
   roundedRect: ["cornerRadius"],
   starPolygon: ["points", "innerRadiusRatio"],
-  callout: ["tailAnchor"],
-  flowchart: ["symbol"],
+  callout: ["tailTip"],
+  banner: ["panelInset", "panelHeight"],
   path: ["d"],
 } as const satisfies Record<ShapeObject["shape"], readonly (keyof ShapeObject)[]>;
 

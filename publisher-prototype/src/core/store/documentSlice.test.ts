@@ -11,12 +11,16 @@ import {
 import {
   ellipseDrawCommitted,
   lineDrawCommitted,
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectFillCommitted,
+  objectGroupCommitted,
   objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectUngroupCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   roundedRectCornerRadiusCommitted,
@@ -206,6 +210,69 @@ describe("documentSlice", () => {
       );
       expect(objectsOf(state)).toEqual(objectsOf(before));
     });
+
+    it("advances the group's own frame angle, storing square as absence", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectRotateCommitted({ pageIndex: 0, rotations: {}, groupRotations: { g1: 45 } }),
+      );
+      expect(state.groups).toEqual([{ id: "g1", rotation: 45 }]);
+      state = reducer(
+        state,
+        objectRotateCommitted({ pageIndex: 0, rotations: {}, groupRotations: { g1: 0 } }),
+      );
+      expect(state.groups).toEqual([{ id: "g1" }]);
+    });
+
+    it("ignores a group id the document does not hold", () => {
+      const before = docWith([shape("a")]);
+      expect(
+        reducer(
+          before,
+          objectRotateCommitted({ pageIndex: 0, rotations: {}, groupRotations: { ghost: 45 } }),
+        ),
+      ).toEqual(before);
+    });
+
+    it("applies the orbited geometry alongside the angles — a selection turns as one body", () => {
+      const state = reducer(
+        docWith([shape("a"), line("l")]),
+        objectRotateCommitted({
+          pageIndex: 0,
+          rotations: { a: 90 },
+          boxes: { a: { x: 4, y: 4, w: 2, h: 1 }, l: { x1: 3, y1: 0, x2: 3, y2: 2 } },
+        }),
+      );
+      const [a, l] = objectsOf(state);
+      expect(a).toMatchObject({ rotation: 90, x: 4, y: 4, w: 2, h: 1 });
+      // A line takes the whole turn through its endpoints — it has no angle.
+      expect(l).toMatchObject({ x1: 3, y1: 0, x2: 3, y2: 2 });
+    });
+
+    it("leaves geometry alone when the commit carries no boxes", () => {
+      const state = reducer(
+        docWith([shape("a")]),
+        objectRotateCommitted({ pageIndex: 0, rotations: { a: 45 } }),
+      );
+      expect(objectsOf(state)[0]).toMatchObject({ rotation: 45, x: 1, y: 1, w: 2, h: 1 });
+    });
+
+    it("skips locked objects' geometry too", () => {
+      const before = docWith([shape("a", { locked: true })]);
+      const state = reducer(
+        before,
+        objectRotateCommitted({
+          pageIndex: 0,
+          rotations: { a: 90 },
+          boxes: { a: { x: 9, y: 9, w: 9, h: 9 } },
+        }),
+      );
+      expect(objectsOf(state)).toEqual(objectsOf(before));
+    });
   });
 
   describe("object/fillCommitted", () => {
@@ -339,6 +406,216 @@ describe("documentSlice", () => {
         objectLockCommitted({ pageIndex: 0, ids: ["b", "ghost"], locked: true }),
       );
       expect(objectsOf(state).map((o) => o.locked)).toEqual([false, true]);
+    });
+  });
+
+  describe("object/deleteCommitted", () => {
+    it("removes the named objects and leaves the rest in z-order", () => {
+      const state = reducer(
+        docWith([shape("a"), line("l"), shape("b")]),
+        objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b"] }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["l"]);
+    });
+
+    it("keeps locked objects — the lock is what refuses — and ignores unknown ids", () => {
+      const state = reducer(
+        docWith([shape("a", { locked: true }), shape("b")]),
+        objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b", "ghost"] }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a"]);
+    });
+
+    it("drops a group its last member left, at every nesting level", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      // Emptying inner leaves outer standing — c still lives there.
+      state = reducer(state, objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b"] }));
+      expect(state.groups.map((g) => g.id)).toEqual(["outer"]);
+      // Emptying outer takes it too.
+      state = reducer(state, objectDeleteCommitted({ pageIndex: 0, ids: ["c"] }));
+      expect(state.groups).toEqual([]);
+    });
+
+    it("keeps a group a locked member still sits in", () => {
+      let state = reducer(
+        docWith([shape("a", { locked: true }), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(state, objectDeleteCommitted({ pageIndex: 0, ids: ["a", "b"] }));
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a"]);
+      expect(state.groups.map((g) => g.id)).toEqual(["g1"]);
+    });
+
+    it("ignores an unknown pageIndex", () => {
+      const before = docWith([shape("a")]);
+      expect(reducer(before, objectDeleteCommitted({ pageIndex: 5, ids: ["a"] }))).toEqual(before);
+    });
+  });
+
+  describe("object/duplicateCommitted", () => {
+    it("appends the copies and their fresh groups", () => {
+      const state = reducer(
+        docWith([shape("a")]),
+        objectDuplicateCommitted({
+          pageIndex: 0,
+          objects: [shape("copy", { x: 3, groupId: "g-copy" })],
+          groups: [{ id: "g-copy", rotation: 30 }],
+        }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a", "copy"]);
+      expect(state.groups).toEqual([{ id: "g-copy", rotation: 30 }]);
+    });
+
+    it("ignores an unknown pageIndex", () => {
+      const before = docWith([shape("a")]);
+      expect(
+        reducer(before, objectDuplicateCommitted({ pageIndex: 5, objects: [shape("c")], groups: [] })),
+      ).toEqual(before);
+    });
+  });
+
+  describe("object/groupCommitted", () => {
+    const ids = (state: LayoutDocument) => objectsOf(state).map((o) => o.id);
+
+    it("records the group and joins the named objects to it", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "c"], groupIds: [] }),
+      );
+      expect(state.groups).toEqual([{ id: "g1" }]);
+      const grouped = objectsOf(state).filter((o) => o.groupId === "g1");
+      expect(grouped.map((o) => o.id)).toEqual(["a", "c"]);
+    });
+
+    it("nests an existing group instead of flattening it — members keep their groupId", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      expect(state.groups).toEqual([{ id: "inner", parentGroupId: "outer" }, { id: "outer" }]);
+      // a and b still belong to inner; only inner moved.
+      expect(objectsOf(state).map((o) => o.groupId)).toEqual(["inner", "inner", "outer"]);
+    });
+
+    it("carries the entered group as the new group's parent", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({
+          pageIndex: 0,
+          groupId: "g1",
+          parentGroupId: "host",
+          ids: ["a", "b"],
+          groupIds: [],
+        }),
+      );
+      expect(state.groups).toEqual([{ id: "g1", parentGroupId: "host" }]);
+    });
+
+    it("restacks members contiguously, ending where the topmost member stood", () => {
+      const state = reducer(
+        docWith([shape("a"), shape("between"), shape("b"), shape("above")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      // "between" drops below the block; the block ends at "b"'s old depth, so
+      // "above" still sits on top. Members keep their own relative order.
+      expect(ids(state)).toEqual(["between", "a", "b", "above"]);
+    });
+
+    it("restacks a locked member too — it is inside the group whatever selection does", () => {
+      const state = reducer(
+        docWith([shape("a", { locked: true }), shape("between"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      expect(ids(state)).toEqual(["between", "a", "b"]);
+    });
+
+    it("ignores a re-used group id rather than recording it twice", () => {
+      const first = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      const again = reducer(
+        first,
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a"], groupIds: [] }),
+      );
+      expect(again).toEqual(first);
+    });
+  });
+
+  describe("object/ungroupCommitted", () => {
+    it("drops the group and frees its objects to the page", () => {
+      const grouped = reducer(
+        docWith([shape("a"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      const state = reducer(grouped, objectUngroupCommitted({ groupIds: ["g1"] }));
+      expect(state.groups).toEqual([]);
+      expect(objectsOf(state).every((o) => o.groupId === undefined)).toBe(true);
+    });
+
+    it("removes exactly one level: members re-join the enclosing group", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      state = reducer(state, objectUngroupCommitted({ groupIds: ["inner"] }));
+      expect(state.groups).toEqual([{ id: "outer" }]);
+      expect(objectsOf(state).map((o) => o.groupId)).toEqual(["outer", "outer", "outer"]);
+    });
+
+    it("re-parents child groups, not just objects", () => {
+      let state = reducer(
+        docWith([shape("a"), shape("b"), shape("c")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "inner", ids: ["a", "b"], groupIds: [] }),
+      );
+      state = reducer(
+        state,
+        objectGroupCommitted({ pageIndex: 0, groupId: "outer", ids: ["c"], groupIds: ["inner"] }),
+      );
+      state = reducer(state, objectUngroupCommitted({ groupIds: ["outer"] }));
+      // inner survives one level up, at the page's top level.
+      expect(state.groups).toEqual([{ id: "inner" }]);
+      expect(objectsOf(state).map((o) => o.groupId)).toEqual(["inner", "inner", undefined]);
+    });
+
+    it("leaves stacking as grouping left it", () => {
+      const grouped = reducer(
+        docWith([shape("a"), shape("between"), shape("b")]),
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a", "b"], groupIds: [] }),
+      );
+      const state = reducer(grouped, objectUngroupCommitted({ groupIds: ["g1"] }));
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["between", "a", "b"]);
+    });
+
+    it("frees master-page objects too, so no groupId is left pointing at nothing", () => {
+      const doc = docWith([shape("a")]);
+      doc.masters = [{ id: "m1", label: "Master A", objects: [shape("m", { groupId: "g1" })] }];
+      let state = reducer(
+        doc,
+        objectGroupCommitted({ pageIndex: 0, groupId: "g1", ids: ["a"], groupIds: [] }),
+      );
+      state = reducer(state, objectUngroupCommitted({ groupIds: ["g1"] }));
+      expect(state.masters[0]?.objects[0]?.groupId).toBeUndefined();
+    });
+
+    it("ignores an unknown group id", () => {
+      const before = docWith([shape("a")]);
+      expect(reducer(before, objectUngroupCommitted({ groupIds: ["ghost"] }))).toEqual(before);
     });
   });
 

@@ -39,8 +39,17 @@ export async function screenPoint(page: Page, pt: DocPoint): Promise<DocPoint> {
   return { x: box.x + local.x, y: box.y + local.y };
 }
 
+/** A dock button, found by the tool's NAME. Dock buttons read
+    "Label (Shortcut)", so the match anchors on the label and lets the
+    shortcut follow: a spec names the tool it means, not the key it happens
+    to carry, and rebinding a shortcut moves no test. */
+export function dockTool(page: Page, toolLabel: string) {
+  const label = toolLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return page.getByTestId("dock").getByRole("button", { name: new RegExp(`^${label} \\(`) });
+}
+
 export async function activate(page: Page, toolLabel: string): Promise<void> {
-  await page.getByTestId("dock").getByRole("button", { name: toolLabel, exact: true }).click();
+  await dockTool(page, toolLabel).click();
 }
 
 export async function drag(
@@ -146,6 +155,25 @@ export function selectionIds(page: Page): Promise<string[]> {
     if (!store) throw new Error("dev store handle missing");
     return store.getState().selection.ids;
   });
+}
+
+/** The group the selection has descended into; null at the top level. */
+export function enteredGroupId(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const store = window.__PROTOTYPE_STORE__;
+    if (!store) throw new Error("dev store handle missing");
+    return store.getState().selection.enteredGroupId;
+  });
+}
+
+export async function doubleClickAt(page: Page, pt: DocPoint): Promise<void> {
+  const p = await screenPoint(page, pt);
+  await page.mouse.dblclick(p.x, p.y);
+}
+
+/** A frame object's centre — the point a rigid-body rotation orbits. */
+export function centerOf(obj: { x: number; y: number; w: number; h: number }): DocPoint {
+  return { x: obj.x + obj.w / 2, y: obj.y + obj.h / 2 };
 }
 
 export function shapeAt(objects: LayoutObject[], index: number): ShapeObject {

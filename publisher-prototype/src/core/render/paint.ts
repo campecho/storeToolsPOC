@@ -71,6 +71,23 @@ export function paintToCss(paint: Paint, swatches: readonly Swatch[]): string {
   return toCss(resolvePaint(paint, swatches));
 }
 
+/**
+ * A Paint resolved to CSS and scaled toward black — what a shape's SHADED
+ * parts render in (the banner's folds are the only ones today). Scaling every
+ * channel keeps the hue and reads as the same surface in shadow, which mixing
+ * toward a fixed grey would not.
+ *
+ * ASSUMPTION: 0.8 is measured off the reference ribbon, whose shaded fold is
+ * its fill times 0.80 on all three channels — a working guess for SME review
+ * beyond that one sample.
+ */
+export const SHADE_SCALE = 0.8;
+
+export function paintToShadedCss(paint: Paint, swatches: readonly Swatch[]): string {
+  const [r, g, b] = resolvePaint(paint, swatches);
+  return toCss([r * SHADE_SCALE, g * SHADE_SCALE, b * SHADE_SCALE]);
+}
+
 function resolvePaint(paint: Paint, swatches: readonly Swatch[]): Rgb {
   if (paint.kind === "color") {
     return colorValueToRgb(paint.color);

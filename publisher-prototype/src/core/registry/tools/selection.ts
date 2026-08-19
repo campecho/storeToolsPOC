@@ -25,7 +25,7 @@ export const selectTool: ToolContract = {
       id: "select.click.selects-topmost",
       trigger: "click",
       behavior:
-        "Selects the topmost unlocked object under the pointer, showing the selection frame with 8 handles and the rotation handle (§2.1, §5.2).",
+        "Selects the topmost unlocked object under the pointer — or, when it belongs to a group, that whole group (§5.1) — showing the selection frame with 8 handles and the rotation handle (§2.1, §5.2).",
       action: "selection/replaceCommitted",
     },
     {
@@ -62,6 +62,20 @@ export const selectTool: ToolContract = {
       action: "object/moveCommitted",
     },
     {
+      id: "select.shift-drag.constrains-move",
+      trigger: "drag on selected object + Shift",
+      behavior:
+        "Constrains the move to the nearest 45° — horizontal, vertical or either diagonal — chosen live from the drag's current direction, so turning the drag changes the axis and releasing Shift frees it again.",
+      action: "object/moveCommitted",
+    },
+    {
+      id: "select.alt-drag.duplicates",
+      trigger: "drag on selected object + Alt/Option",
+      behavior:
+        "Leaves the originals in place and drops a copy where the drag ends; a copied group is itself a group. The pointer shows the platform copy cursor while Alt is held. Alt WITHOUT travel stays select.alt-click.selects-beneath.",
+      action: "object/duplicateCommitted",
+    },
+    {
       id: "select.drag-handle.resizes",
       trigger: "drag on resize handle",
       behavior:
@@ -69,10 +83,17 @@ export const selectTool: ToolContract = {
       action: "object/resizeCommitted",
     },
     {
+      id: "select.drag-endpoint.moves-endpoint",
+      trigger: "drag on a line's endpoint handle",
+      behavior:
+        "Moves that end of the line, leaving the other where it is; Shift snaps the segment to fixed angles like drawing one does. This is also how a lone line is ROTATED — it offers its two endpoints instead of a frame with resize and rotation handles, being two points rather than a box.",
+      action: "object/resizeCommitted",
+    },
+    {
       id: "select.drag-rotate.rotates",
       trigger: "drag on rotation handle",
       behavior:
-        "Rotates the selection freely; Shift snaps to fixed angles (§5.2 free rotation and fixed-angle options).",
+        "Rotates the selection freely about the selection frame's centre, as one rigid body — members orbit the pivot rather than each spinning in place; Shift snaps to fixed angles (§5.2 free rotation and fixed-angle options).",
       action: "object/rotateCommitted",
     },
     {
@@ -83,10 +104,31 @@ export const selectTool: ToolContract = {
       action: "object/nudgeCommitted",
     },
     {
+      id: "select.delete.removes-selection",
+      trigger: "Delete / Backspace",
+      behavior:
+        "Removes the selected objects from the page; a group left holding nothing goes with them. Locked objects are kept — the lock is what refuses.",
+      action: "object/deleteCommitted",
+    },
+    {
+      id: "select.ctrl-g.groups-selection",
+      trigger: "Ctrl/Cmd+G",
+      behavior:
+        "Combines the selection into one group — a group already among the selected objects becomes a CHILD of the new one rather than being flattened (§5.1 group selected objects, support nested groups) — and restacks the members contiguously so nothing renders between them. Needs at least two units to combine.",
+      action: "object/groupCommitted",
+    },
+    {
+      id: "select.ctrl-shift-g.ungroups-selection",
+      trigger: "Ctrl/Cmd+Shift+G",
+      behavior:
+        "Ungroups the selected group, removing exactly one nesting level: its objects and subgroups re-join the enclosing group, or the page when there is none (§5.1 ungroup grouped objects). Stacking stays as grouping left it.",
+      action: "object/ungroupCommitted",
+    },
+    {
       id: "select.double-click-group.enters-group",
       trigger: "double-click on group member",
       behavior:
-        "Enters the group to select and edit the individual object (§5.1 editing inside a group where feasible).",
+        "Enters the group to select and edit the individual object (§5.1 editing inside a group where feasible); each double-click descends one nesting level, and clicking outside the entered group leaves it.",
       action: "selection/groupEnteredCommitted",
     },
     {
@@ -122,6 +164,9 @@ export const selectTool: ToolContract = {
     "Skipping locked objects follows §5.3's 'based on user settings' — the skip is the default, not absolute; locked state renders visibly and locked objects can still be intentionally unlocked.",
     "Marquee, move, resize, and rotate previews live in the overlay outside the store; each commits exactly one action (PLAN.md §6.3).",
     "select.esc.cancels-drag commits nothing — gesture/cancelled is the gesture pipeline's no-op record, never a document mutation.",
+    "A LONE line's chrome is its two endpoints and nothing else — no frame, no stretch handles, no rotation knob: dragging an end is how a line is both reshaped and turned. Boxing it in eight stretch handles would be chrome for an object it is not, and a rotation knob beside the endpoints would be a second way to do what one of them already does. An arrow is a line carrying head decorations, so it takes the same chrome. Inside a multi-selection a line rejoins the union frame and scales and turns with the rest.",
+    "A group selects as a UNIT: click, Shift-click, Alt-click and marquee all resolve a hit object to the outermost group it belongs to, so a transform never holds part of a group. Locked members stay out, exactly as the hit-test contract keeps them out of a click.",
+    "Rotation is the one transform that moves a selection's members as well as changing them: object rotation pivots at each object's own centre, so a selection turns rigidly only by orbiting every member about the selection frame's centre. object/rotateCommitted therefore carries absolute geometry alongside the absolute angles, and lines — which store no angle — turn entirely through it.",
     "ASSUMPTION: empty-click clear, Shift-toggle, marquee gesture, Esc-cancel, and the Alt modifier for stack cycling are Publisher-parity fillers — §2.1/§2.2 state the capabilities, not the bindings.",
     "ASSUMPTION: 4px hit tolerance and 0.1in default nudge are working guesses for SME review.",
   ],

@@ -224,3 +224,28 @@ test("locked objects are skipped by selection and never move", async ({ page }) 
   expectNear(shapeAt(objects, 0).x, 0);
   expectNear(shapeAt(objects, 1).x, 4);
 });
+
+test("a callout aligns by its visual bounds, tail included", async ({ page }) => {
+  // Draw a callout, then swing its tail well to the left of the body through
+  // the panel — the same free tip the yellow handle sets.
+  await draw(page, "Callout", { x: 3, y: 4 }, { x: 5, y: 5 });
+  await page.getByTestId("transform-panel").getByLabel("Tail X", { exact: true }).fill("-0.5");
+  await page
+    .getByTestId("transform-panel")
+    .getByLabel("Tail X", { exact: true })
+    .press("Enter");
+  await expect
+    .poll(async () => shapeAt(await pageObjects(page), 0).tailTip?.x)
+    .toBeCloseTo(-0.5, 6);
+  await referenceSelect(page).selectOption("margins");
+  await armCounter(page);
+  await alignButton(page, "Align left").click();
+  expect(await notificationCount(page)).toBe(1);
+  // The frame is 2in wide and the tail reaches 0.5 box-lengths — 1in — beyond
+  // its left edge, so aligning to the 0.5in margin puts the TAIL on the
+  // margin and the body an inch inside it. Aligning the frame alone would
+  // have parked the body on 0.5 and hung the tail off the page.
+  const callout = shapeAt(await pageObjects(page), 0);
+  expectNear(callout.x, 1.5);
+  expectNear(callout.w, 2);
+});

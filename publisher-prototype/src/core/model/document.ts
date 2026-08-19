@@ -82,13 +82,24 @@ export const FontResourceSchema = z.object({
 });
 export type FontResource = z.infer<typeof FontResourceSchema>;
 
-/** ASSUMPTION: minimal nested grouping (§5.1 group editing is Phase B; only
-    the model ships now) — a group is an id plus optional parent; objects
-    join via their `groupId`. Geometry stays on the member objects; a group
-    has none of its own. */
+/** Minimal nested grouping (§5.1) — a group is an id plus optional parent;
+    objects join via their `groupId`.
+
+    A group owns ONE piece of geometry: the angle its selection frame is drawn
+    at. Everything else stays on the members. The angle has to be stored
+    because it cannot be recovered from them: rotating a group turns every
+    member AND orbits it, so the members alone only ever yield an axis-aligned
+    union, and the frame would spring back square after each turn. The frame's
+    BOX stays derived from the members in that angle's space — storing it too
+    would go stale the moment one member moved. Absent = 0, per the additive
+    rule (SEAMS: decision of record, superseding "a group has none of its
+    own"). */
 export const GroupSchema = z.object({
   id: z.string(),
   parentGroupId: z.string().optional(),
+  /** Degrees, clockwise, about the frame's centre — same convention as an
+      object's own rotation. */
+  rotation: z.number().optional(),
 });
 export type Group = z.infer<typeof GroupSchema>;
 

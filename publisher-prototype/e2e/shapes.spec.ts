@@ -7,6 +7,7 @@ import {
   clickAt,
   drag,
   dragHandle,
+  draw,
   expectNear,
   notificationCount,
   pageObjects,
@@ -241,26 +242,53 @@ test("callout.drag.creates", async ({ page }) => {
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
   const { shape, d } = outlineAt(await pageObjects(page), 0);
-  expect(shape).toMatchObject({ shape: "callout", tailAnchor: "bottom-left" });
-  // Default tail anchor bottom-left: the tail tip touches the frame bottom
-  // near the left edge; the body's right edge spans the full width.
-  expect(hasVertex(d, 0.06, 1)).toBe(true);
-  expect(hasVertex(d, 1, 0.75)).toBe(true);
+  // The bottom-left preset seeds a free tip just below and left of the body,
+  // which is where the drawn tail points.
+  expect(shape).toMatchObject({ shape: "callout", tailTip: { x: 0.06, y: 1.22 } });
+  expect(hasVertex(d, 0.06, 1.22)).toBe(true);
+  // The body fills the frame, so its corners are the unit box's.
+  expect(hasVertex(d, 1, 0)).toBe(true);
+  expect(hasVertex(d, 1, 1)).toBe(true);
 });
 
-test("callout.drag.creates with tail anchor bottom-right", async ({ page }) => {
+test("callout.drag.creates with the tail seeded bottom-right", async ({ page }) => {
   await activate(page, "Callout");
   await page
     .getByTestId("options-bar")
-    .getByLabel("Tail anchor", { exact: true })
+    .getByLabel("Tail from", { exact: true })
     .selectOption("bottom-right");
   await armCounter(page);
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
   const { shape, d } = outlineAt(await pageObjects(page), 0);
-  expect(shape).toMatchObject({ tailAnchor: "bottom-right" });
-  expect(hasVertex(d, 0.94, 1)).toBe(true);
+  expect(shape).toMatchObject({ tailTip: { x: 0.94, y: 1.22 } });
+  expect(hasVertex(d, 0.94, 1.22)).toBe(true);
+});
+
+test("callout.drag-tail-handle.repositions-tail sets length AND angle", async ({ page }) => {
+  await draw(page, "Callout", { x: 2, y: 4 }, { x: 4, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // The handle sits ON the tip, which the bottom-left preset put below-left
+  // of the body — outside the frame, where a callout points.
+  await expect(page.locator('[data-handle="callout-tail"]')).toBeVisible();
+  await armCounter(page);
+  // Drag it far to the upper right: the tail should now leave by the top edge
+  // and reach further than it did.
+  await dragHandle(page, "callout-tail", { x: 5.5, y: 2.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const tip = shapeAt(await pageObjects(page), 0).tailTip;
+  if (tip === undefined) throw new Error("expected a stored tail tip");
+  // Frame (2,4)–(4,5): the drop point is 1.75 across and −2 up in unit terms.
+  expect(tip.x).toBeGreaterThan(1);
+  expect(tip.y).toBeLessThan(0);
+  // The drawn outline follows it: the tip is a vertex, and the tail now
+  // leaves by the TOP edge rather than the bottom it started on.
+  const { d } = outlineAt(await pageObjects(page), 0);
+  expect(hasVertex(d, tip.x, tip.y)).toBe(true);
+  expect(d.filter((s) => (s.c === "M" || s.c === "L") && s.y === 0)).toHaveLength(4);
 });
 
 test("banner.drag.creates", async ({ page }) => {
@@ -269,61 +297,53 @@ test("banner.drag.creates", async ({ page }) => {
   await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   expect(await notificationCount(page)).toBe(1);
-  const { d } = outlineAt(await pageObjects(page), 0);
-  // Ribbon fold notches sit at mid-height on both sides.
-  expect(hasVertex(d, 0.15, 0.5)).toBe(true);
-  expect(hasVertex(d, 0.85, 0.5)).toBe(true);
-});
-
-test("flowchart.drag.creates", async ({ page }) => {
-  await activate(page, "Flowchart");
-  await armCounter(page);
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
-  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
-  expect(await notificationCount(page)).toBe(1);
   const { shape, d } = outlineAt(await pageObjects(page), 0);
-  expect(shape).toMatchObject({ shape: "flowchart", symbol: "process" });
-  // Default symbol "process": exactly the four frame corners.
-  const pts = vertices(d);
-  expect(pts).toHaveLength(4);
-  expect(hasVertex(d, 0, 0)).toBe(true);
-  expect(hasVertex(d, 1, 0)).toBe(true);
-  expect(hasVertex(d, 1, 1)).toBe(true);
-  expect(hasVertex(d, 0, 1)).toBe(true);
+  // The ribbon stores the two adjustments the tool's options seeded.
+  expect(shape).toMatchObject({ shape: "banner", panelInset: 0.17, panelHeight: 0.65 });
+  // Three rings that tile: the centre plate and two L-shaped tails wrapping
+  // under it. One silhouette could not draw the plate's edges where it
+  // crosses a tail, and overlapping rings would punch a hole even-odd.
+  expect(d.filter((s) => s.c === "M")).toHaveLength(3);
+  // The plate's sides run down the inset and carry PAST its bottom edge, to
+  // the centre of the wrap its folds continue — the turn is one curve, not a
+  // corner, so the bottom edge stops short and the side runs long.
+  const capY = (1 - 0.65) / 4;
+  expect(hasVertex(d, 0.17, 0.65 + capY)).toBe(true);
+  expect(hasVertex(d, 0.83, 0.65 + capY)).toBe(true);
 });
 
-test("flowchart.drag.creates with decision and terminator symbols", async ({ page }) => {
-  const symbol = () => page.getByTestId("options-bar").getByLabel("Symbol", { exact: true });
-  await activate(page, "Flowchart");
-  await symbol().selectOption("decision");
+test("banner.drag-inset-handle and .drag-height-handle adjust the ribbon", async ({ page }) => {
+  await draw(page, "Banner", { x: 2, y: 4 }, { x: 6, y: 6 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 4, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // Two yellow handles, which no other kind has.
+  await expect(page.locator('[data-handle="banner-inset"]')).toBeVisible();
+  await expect(page.locator('[data-handle="banner-height"]')).toBeVisible();
+
+  // Sliding the inset handle right narrows the panel and widens the tails.
   await armCounter(page);
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 4.5 });
-  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  await dragHandle(page, "banner-inset", { x: 3.2, y: 5.5 });
   expect(await notificationCount(page)).toBe(1);
-  const decision = outlineAt(await pageObjects(page), 0);
-  expect(decision.shape).toMatchObject({ symbol: "decision" });
-  // Decision: a diamond on the frame's edge midpoints.
-  expect(vertices(decision.d)).toHaveLength(4);
-  expect(hasVertex(decision.d, 0.5, 0)).toBe(true);
-  expect(hasVertex(decision.d, 1, 0.5)).toBe(true);
-  expect(hasVertex(decision.d, 0.5, 1)).toBe(true);
-  expect(hasVertex(decision.d, 0, 0.5)).toBe(true);
-  // The draw handed the page back to Select — pick the flowchart tool up
-  // again to reach its options bar (its option values are held per tool).
-  await activate(page, "Flowchart");
-  await symbol().selectOption("terminator");
-  await drag(page, { x: 4, y: 3 }, { x: 6, y: 4 });
-  await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
-  const terminator = outlineAt(await pageObjects(page), 1);
-  // Terminator: rounded ends are cubic arcs.
-  expect(terminator.d.filter((seg) => seg.c === "C").length).toBeGreaterThan(0);
+  const wider = shapeAt(await pageObjects(page), 0);
+  expect(wider.panelInset).toBeCloseTo(0.3, 2);
+  expect(wider.panelHeight).toBeCloseTo(0.65, 6);
+
+  // Dragging the height handle down deepens the panel, raising the tails'
+  // band to meet it — between them the two reach the second reference picture
+  // from the first, which is the whole point of having both.
+  await armCounter(page);
+  await dragHandle(page, "banner-height", { x: 4, y: 5.6 });
+  expect(await notificationCount(page)).toBe(1);
+  const deeper = shapeAt(await pageObjects(page), 0);
+  expect(deeper.panelHeight).toBeCloseTo(0.8, 2);
+  expect(deeper.panelInset).toBeCloseTo(0.3, 2);
 });
 
 for (const { label, id } of [
   { label: "Star / polygon", id: "star-polygon" },
   { label: "Callout", id: "callout" },
   { label: "Banner", id: "banner" },
-  { label: "Flowchart", id: "flowchart" },
 ] as const) {
   test(`${id}.click.creates-default-size`, async ({ page }) => {
     await activate(page, label);

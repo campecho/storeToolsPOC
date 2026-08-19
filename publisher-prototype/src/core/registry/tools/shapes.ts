@@ -395,6 +395,7 @@ export const arrowTool: ToolContract = {
     "'Arrows.' (§4.4). Hit testing follows line: no interior, stroke-only within tolerance — the hairline tolerance is the canonical PLAN.md §5 case.",
     "No Alt-from-center and no click-for-default-size — the digest defines neither for arrows.",
     "ASSUMPTION: the entire arrowhead option set (headStart none, headEnd arrow, s|m|l sizes, and the head-shape values beyond 'arrow') is Publisher-parity filler — the digest's list is open-ended.",
+    "A decorated end draws a SHORTER stroke: the segment stops where its head first grows wide enough to cover the stroke's end — the arrow's back edge, the diamond's waist — because a head narrows to a point at the tip and a full-width stroke run to the endpoint spills out past it. A circle head is centred on the endpoint and needs no room. Hit testing and bounds still use the stored endpoints; only the drawn stroke is trimmed.",
     "ASSUMPTION: the 0/45/90° Shift constraint, Esc-cancel, dash values, and stroke default #000000 are working guesses for SME review, as on line.",
   ],
 };
@@ -541,7 +542,7 @@ export const calloutTool: ToolContract = {
       id: "callout.drag-tail-handle.repositions-tail",
       trigger: "drag on tail adjust handle",
       behavior:
-        "Repositions the pointer tail of the placed callout; preview in overlay, one commit on release.",
+        "Drags the pointer tail's TIP, setting its length and angle together — PowerPoint's behaviour, rather than snapping to one of four corners; preview in overlay, one commit on release.",
       action: "callout/tailCommitted",
     },
     {
@@ -573,7 +574,7 @@ export const calloutTool: ToolContract = {
     {
       kind: "enum",
       id: "tailAnchor",
-      label: "Tail anchor",
+      label: "Tail from",
       default: "bottom-left",
       values: ["bottom-left", "bottom-right", "top-left", "top-right"],
     },
@@ -584,7 +585,8 @@ export const calloutTool: ToolContract = {
     "'Callouts.' (§4.4) · 'Use shapes for backgrounds, dividers, badges, callouts, and signage.' (§4.4).",
     "ASSUMPTION: the callout accepts text — Publisher parity; the doc lists only the shape.",
     "ASSUMPTION: the tail counts as part of the path for hit testing, and the tail adjust handle is an overlay target.",
-    "ASSUMPTION: the digest's free tail-anchor point is simplified to preset anchor positions in the options bar; free repositioning happens through the tail adjust handle.",
+    "The digest's free tail-anchor point: the options bar seeds it from four corner presets at draw time, and the adjust handle then moves it anywhere — the placed object stores a free `tailTip`, not the preset.",
+    "The tail reaches OUTSIDE the frame box, as PowerPoint's does, so the selection frame hugs the body and the tail extends past it. Point hit-testing follows the drawn outline and still finds the tail; the AABB the marquee and align read does not — it is the frame box.",
     "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size, Esc-cancel, double-click-to-edit-text, fill #4472c4, and stroke #000000 are Publisher-parity fillers — §4.4 lists the shape, not the bindings.",
   ],
 };
@@ -631,11 +633,18 @@ export const bannerTool: ToolContract = {
       action: "banner/drawCommitted",
     },
     {
-      id: "banner.drag-adjust-handle.sets-fold-depth",
-      trigger: "drag on fold adjust handle",
+      id: "banner.drag-inset-handle.sets-panel-inset",
+      trigger: "drag on the panel-inset adjust handle",
       behavior:
-        "Varies the ribbon fold depth of the placed banner; preview in overlay, one commit on release.",
-      action: "banner/foldDepthCommitted",
+        "Slides the raised panel's sides in or out, widening or narrowing the tails either side of it; preview in overlay, one commit on release.",
+      action: "banner/panelInsetCommitted",
+    },
+    {
+      id: "banner.drag-height-handle.sets-panel-height",
+      trigger: "drag on the panel-height adjust handle",
+      behavior:
+        "Moves the raised panel's bottom edge, taking the folds with it and raising the tails' band to meet it; preview in overlay, one commit on release.",
+      action: "banner/panelHeightCommitted",
     },
     {
       id: "banner.esc.cancels-draw",
@@ -657,93 +666,34 @@ export const bannerTool: ToolContract = {
       step: 0.25,
       unit: "pt",
     },
+    {
+      kind: "number",
+      id: "panelInset",
+      label: "Panel inset",
+      default: 0.17,
+      min: 0.05,
+      max: 0.35,
+      step: 0.01,
+    },
+    {
+      kind: "number",
+      id: "panelHeight",
+      label: "Panel height",
+      default: 0.65,
+      min: 0.55,
+      max: 0.9,
+      step: 0.01,
+    },
   ],
   panels: ["transform", "color-swatches", "effects"],
   undo: "per-gesture",
   notes: [
-    "'Banners.' (§4.4). The doc is silent on the banner's adjust parameters — the fold-depth handle carries no dedicated option until SME review names one.",
+    "'Banners.' (§4.4). The ribbon is three parts: a CENTRE PLATE in the foreground, its top corners curving down so it reads as a curved surface; two SIDE TAILS behind it, each cut by an inward-pointing V (a swallowtail) at its outer end; and two FOLDS, the shaded turns joining the plate's bottom corners to the inner bottoms of the tails, which is what makes the ribbon read as 3D. The banner is the one kind with TWO adjust handles, because it takes two numbers: how far the plate's sides sit in, and where its bottom edge falls. Both are fractions of the frame; tails, folds and notches derive from them.",
+    "The proportions are measured off the reference ribbons supplied at review: the tails' band mirrors the plate (same height, anchored to the bottom), the V and the fold each bite a fixed share of the FRAME rather than of the tail, and the plate's top corners are one radius normalized per axis so a wide frame does not flatten them. The adjustment ranges are still eyeballed — working guesses for SME review, as with every other shape's here.",
+    "The folds render DARKER than the rest — the one kind whose outline needs two tones. They are shading, not silhouette: they lie inside the shape the tails already draw, so bounds and hit testing work from the outline alone and never see them. ASSUMPTION: the shade is the fill scaled 0.8 toward black, measured off the reference's fold; a working guess for SME review beyond that one sample.",
     "ASSUMPTION: hit testing is path-accurate as on star-polygon — concavities in the ribbon must not hit; unfilled interior passes through.",
-    "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size, Esc-cancel, and the fold-depth adjust handle are Publisher-parity fillers — §4.4 lists the shape, not the bindings.",
+    "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size and Esc-cancel are Publisher-parity fillers — §4.4 lists the shape, not the bindings. The two adjust handles sit where the reference ribbon puts them: the inset handle at the foot of the panel's left edge, the height handle at the centre of its bottom edge.",
     "ASSUMPTION: fill default #4472c4 and stroke default #000000 — the doc names no default colors.",
-  ],
-};
-
-export const flowchartTool: ToolContract = {
-  id: "flowchart",
-  label: "Flowchart",
-  mode: "layout",
-  group: "shapes",
-  shortcut: "F",
-  req: ["§4.4"],
-  tier: "LIVE",
-  cursor: "crosshair",
-  creates: "shape",
-  hitTest: {
-    tolerancePx: 4,
-    unfilledInterior: "passesThrough",
-    lockedObjects: "skips",
-  },
-  gestures: [
-    {
-      id: "flowchart.drag.creates",
-      trigger: "drag",
-      behavior:
-        "Creates the selected flowchart symbol in the dragged bounds (§4.4 flowchart shapes); preview renders in the overlay, one action commits on release.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.shift-drag.constrains-square",
-      trigger: "drag + Shift",
-      behavior: "Constrains the drawn symbol bounds to a square.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.alt-drag.draws-from-center",
-      trigger: "drag + Alt",
-      behavior: "Draws the symbol from the center outward instead of corner to corner.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.click.creates-default-size",
-      trigger: "click (no drag)",
-      behavior: "Creates a default 1×1 in flowchart symbol at the click point.",
-      action: "flowchart/drawCommitted",
-    },
-    {
-      id: "flowchart.esc.cancels-draw",
-      trigger: "Esc during drag",
-      behavior: "Cancels the in-flight draw; nothing commits.",
-      action: "gesture/cancelled",
-    },
-  ],
-  options: [
-    {
-      kind: "enum",
-      id: "symbol",
-      label: "Symbol",
-      default: "process",
-      values: ["process", "decision", "terminator", "data", "document"],
-    },
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
-    {
-      kind: "number",
-      id: "strokeWidth",
-      label: "Stroke width",
-      default: 0.75,
-      min: 0,
-      max: 20,
-      step: 0.25,
-      unit: "pt",
-    },
-  ],
-  panels: ["transform", "color-swatches", "effects", "align-distribute"],
-  undo: "per-gesture",
-  notes: [
-    "'Flowchart shapes.' (§4.4) · 'Create simple diagrams and design accents without external illustration tools.' (§4.4).",
-    "ASSUMPTION: the symbol is chosen in the options bar before drawing; the digest's open-ended symbol list is pinned to process|decision|terminator|data|document pending SME review.",
-    "ASSUMPTION: hit testing follows each symbol's geometry (rect-like or ellipse-like per symbol); unfilled interior passes through.",
-    "ASSUMPTION: Shift-square, Alt-from-center, click-for-default-size, Esc-cancel, fill #4472c4, and stroke #000000 are Publisher-parity fillers — §4.4 lists the shape, not the bindings.",
   ],
 };
 
@@ -829,6 +779,5 @@ export const shapeTools: readonly ToolContract[] = [
   starPolygonTool,
   calloutTool,
   bannerTool,
-  flowchartTool,
   penTool,
 ];

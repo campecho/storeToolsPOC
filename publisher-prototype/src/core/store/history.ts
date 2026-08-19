@@ -2,7 +2,10 @@ import { createAction, type Reducer, type UnknownAction } from "@reduxjs/toolkit
 import type { LayoutDocument } from "../model";
 import {
   DRAW_COMMIT_ACTIONS,
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectFillCommitted,
+  objectGroupCommitted,
   objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
@@ -10,8 +13,10 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  objectUngroupCommitted,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   calloutTailCommitted,
-  flowchartSymbolCommitted,
   objectArrowHeadsCommitted,
   objectLineDashCommitted,
   objectPathClosedCommitted,
@@ -82,10 +87,9 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectStrokeWidthCommitted.type,
   objectLockCommitted.type,
   // Shape and outline parameters with no adjust-handle clause behind them:
-  // the star's vertex count, the flowchart symbol, the line's dash and end
-  // decorations, and a path's closed state.
+  // the star's vertex count, the line's dash and end decorations, and a
+  // path's closed state.
   starPolygonPointsCommitted.type,
-  flowchartSymbolCommitted.type,
   objectLineDashCommitted.type,
   objectArrowHeadsCommitted.type,
   objectPathClosedCommitted.type,
@@ -101,9 +105,15 @@ export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectNudgeCommitted.type,
   objectResizeCommitted.type,
   objectRotateCommitted.type,
+  objectGroupCommitted.type,
+  objectUngroupCommitted.type,
+  objectDeleteCommitted.type,
+  objectDuplicateCommitted.type,
   roundedRectCornerRadiusCommitted.type,
   starPolygonInnerRadiusCommitted.type,
   calloutTailCommitted.type,
+  bannerPanelInsetCommitted.type,
+  bannerPanelHeightCommitted.type,
   ...PANEL_COMMIT_ACTION_TYPES,
 ]);
 

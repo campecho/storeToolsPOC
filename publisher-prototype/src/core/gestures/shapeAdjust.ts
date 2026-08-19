@@ -1,7 +1,14 @@
-import { clampCornerRadius } from "../geometry/shapePaths";
-import { framePivot, rotatePoint } from "../hittest";
-import type { CalloutTailAnchor } from "../model";
 import {
+  clampBannerHeight,
+  clampBannerInset,
+  clampCalloutTip,
+  clampCornerRadius,
+} from "../geometry/shapePaths";
+import { framePivot, rotatePoint } from "../hittest";
+import type { NormalizedPoint } from "../model";
+import {
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
   calloutTailCommitted,
   roundedRectCornerRadiusCommitted,
   starPolygonInnerRadiusCommitted,
@@ -149,18 +156,14 @@ export const starInnerRadiusMachine: GestureMachine<
   preview: (state) => ({ kind: "shape-param", params: { innerRadiusRatio: ratioOf(state) } }),
 };
 
-// ── callout: which corner the tail leaves from ─────────────────────────────
+// ── callout: where the tail's tip points ───────────────────────────────────
 
-/** The tail anchor a point asks for: the corner of the frame it sits nearest,
-    which with four anchors is simply its quadrant. */
-export function tailAnchorAt(point: GesturePoint): CalloutTailAnchor {
-  const vertical = point.y > 0.5 ? "bottom" : "top";
-  const horizontal = point.x > 0.5 ? "right" : "left";
-  return `${vertical}-${horizontal}`;
-}
-
-function anchorOf(state: ShapeAdjustState<CalloutTailContext>): CalloutTailAnchor {
-  return tailAnchorAt(toUnitBox(state.ctx, state.current));
+/** The tip the handle is placing: the pointer, in the shape's unit box,
+    bounded so the tail cannot be flung off the page. Both the tail's LENGTH
+    and its ANGLE fall out of this one point — there is no separate control
+    for either, which is what makes the handle behave like PowerPoint's. */
+function tipOf(state: ShapeAdjustState<CalloutTailContext>): NormalizedPoint {
+  return clampCalloutTip(toUnitBox(state.ctx, state.current));
 }
 
 export const calloutTailMachine: GestureMachine<
@@ -175,10 +178,72 @@ export const calloutTailMachine: GestureMachine<
       action: calloutTailCommitted({
         pageIndex: state.ctx.pageIndex,
         ids: [state.ctx.id],
-        tailAnchor: anchorOf(state),
+        tailTip: tipOf(state),
       }),
     };
   },
   cancel: cancelResult,
-  preview: (state) => ({ kind: "shape-param", params: { tailAnchor: anchorOf(state) } }),
+  preview: (state) => ({ kind: "shape-param", params: { tailTip: tipOf(state) } }),
+};
+
+// ── banner: the ribbon's two adjustments ───────────────────────────────────
+
+export type BannerAdjustContext = ShapeAdjustContext;
+
+/**
+ * The banner is the one kind with TWO handles, so it gets two machines rather
+ * than one carrying a mode: each is its own gesture, its own commit and its
+ * own history entry, exactly as the star's two parameters are.
+ *
+ * Both read an absolute position in the shape's unit box rather than travel,
+ * because both handles sit ON the value they set: the inset handle takes its
+ * x from the panel's left edge, the height handle its y from the panel's
+ * bottom edge.
+ */
+export const bannerPanelInsetMachine: GestureMachine<
+  ShapeAdjustState<BannerAdjustContext>,
+  BannerAdjustContext
+> = {
+  begin: (point, ctx) => beginDrag(point, ctx),
+  update: (state, point, modifiers) => updateDrag(state, point, modifiers),
+  end(state) {
+    if (!state.dragged) return { action: null };
+    return {
+      action: bannerPanelInsetCommitted({
+        pageIndex: state.ctx.pageIndex,
+        ids: [state.ctx.id],
+        panelInset: bannerInsetOf(state),
+      }),
+    };
+  },
+  cancel: cancelResult,
+  preview: (state) => ({ kind: "shape-param", params: { panelInset: bannerInsetOf(state) } }),
+};
+
+function bannerInsetOf(state: ShapeAdjustState<BannerAdjustContext>): number {
+  return clampBannerInset(toUnitBox(state.ctx, state.current).x);
+}
+
+function bannerHeightOf(state: ShapeAdjustState<BannerAdjustContext>): number {
+  return clampBannerHeight(toUnitBox(state.ctx, state.current).y);
+}
+
+export const bannerPanelHeightMachine: GestureMachine<
+  ShapeAdjustState<BannerAdjustContext>,
+  BannerAdjustContext
+> = {
+  begin: (point, ctx) => beginDrag(point, ctx),
+  update: (state, point, modifiers) => updateDrag(state, point, modifiers),
+  end(state) {
+    if (!state.dragged) return { action: null };
+    return {
+      action: bannerPanelHeightCommitted({
+        pageIndex: state.ctx.pageIndex,
+        ids: [state.ctx.id],
+        panelHeight: bannerHeightOf(state),
+      }),
+    };
+  },
+  cancel: cancelResult,
+  preview: (state) => ({ kind: "shape-param", params: { panelHeight: bannerHeightOf(state) } }),
 };

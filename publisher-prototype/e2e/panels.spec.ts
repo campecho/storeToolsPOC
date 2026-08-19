@@ -104,6 +104,47 @@ test("transform panel: each commit is one undo step, and undo restores the value
   expectNear(rect.x, 1);
 });
 
+test("transform panel: a lone line shows its two points, not a bounding box", async ({ page }) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const transform = panel(page, "transform");
+  await expect(transform.getByLabel("X1", { exact: true })).toHaveValue("2");
+  await expect(transform.getByLabel("Y1", { exact: true })).toHaveValue("4");
+  await expect(transform.getByLabel("X2", { exact: true })).toHaveValue("4");
+  await expect(transform.getByLabel("Y2", { exact: true })).toHaveValue("5");
+  // A line has no box, so it offers none of a box's fields.
+  for (const label of ["X", "Y", "W", "H"]) {
+    await expect(transform.getByLabel(label, { exact: true })).toHaveCount(0);
+  }
+  // Each field moves its own end, one commit, leaving the other alone.
+  await armCounter(page);
+  await commitField(page, "transform", "X2", "6.5");
+  expect(await notificationCount(page)).toBe(1);
+  const line = lineAt(await pageObjects(page), 0);
+  expectNear(line.x1, 2);
+  expectNear(line.y1, 4);
+  expectNear(line.x2, 6.5);
+  expectNear(line.y2, 5);
+});
+
+test("transform panel: a vertical line stays editable along the axis it has no extent on", async ({
+  page,
+}) => {
+  // The old bounding-box fields disabled W here — a zero extent cannot be
+  // scaled — which left a vertical line unable to move either end sideways.
+  await draw(page, "Line", { x: 3, y: 3 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await expect(panel(page, "transform").getByLabel("X1", { exact: true })).toBeEnabled();
+  await commitField(page, "transform", "X1", "1.5");
+  const line = lineAt(await pageObjects(page), 0);
+  expectNear(line.x1, 1.5);
+  expectNear(line.x2, 3);
+});
+
 test("transform panel: angle entry normalizes into [0, 360); rotate buttons step 90°; reset returns to 0", async ({
   page,
 }) => {
@@ -198,7 +239,8 @@ test("transform panel: the Shape group shows the selected kind's parameters and 
   await expect(shapeGroup.getByLabel("Points", { exact: true })).toBeVisible();
   await expect(shapeGroup.getByLabel("Inner radius", { exact: true })).toBeVisible();
   await draw(page, "Callout", { x: 1, y: 6 }, { x: 3, y: 7 });
-  await expect(shapeGroup.getByLabel("Tail anchor", { exact: true })).toBeVisible();
+  await expect(shapeGroup.getByLabel("Tail X", { exact: true })).toBeVisible();
+  await expect(shapeGroup.getByLabel("Tail Y", { exact: true })).toBeVisible();
   await expect(shapeGroup.getByLabel("Points", { exact: true })).toHaveCount(0);
 });
 
@@ -240,26 +282,17 @@ test("transform panel: points entry refuses values outside the tool's declared r
   expect(shapeAt(await pageObjects(page), 0).points).toBe(12);
 });
 
-test("transform panel: callout tail anchor and flowchart symbol commit one entry per pick", async ({
-  page,
-}) => {
+test("transform panel: the callout tail tip commits one entry per edit", async ({ page }) => {
   await draw(page, "Callout", { x: 1, y: 3 }, { x: 3, y: 4.5 });
-  const tail = panel(page, "transform").getByLabel("Tail anchor", { exact: true });
-  await expect(tail).toHaveValue("bottom-left");
+  const transform = panel(page, "transform");
+  // The tail is a free point now, so the panel gives it two numbers rather
+  // than a corner preset — seeded from the tool's bottom-left default.
+  await expect(transform.getByLabel("Tail X", { exact: true })).toHaveValue("0.06");
+  await expect(transform.getByLabel("Tail Y", { exact: true })).toHaveValue("1.22");
   await armCounter(page);
-  await tail.selectOption("top-right");
+  await commitField(page, "transform", "Tail X", "1.4");
   expect(await notificationCount(page)).toBe(1);
-  expect(shapeAt(await pageObjects(page), 0).tailAnchor).toBe("top-right");
-
-  await draw(page, "Flowchart", { x: 4, y: 3 }, { x: 6, y: 4.5 });
-  const symbol = panel(page, "transform").getByLabel("Symbol", { exact: true });
-  await expect(symbol).toHaveValue("process");
-  const before = await historyDepth(page);
-  await symbol.selectOption("decision");
-  expect(shapeAt(await pageObjects(page), 1).symbol).toBe("decision");
-  expect(await historyDepth(page)).toBe(before + 1);
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
-  expect(shapeAt(await pageObjects(page), 1).symbol).toBe("process");
+  expect(shapeAt(await pageObjects(page), 0).tailTip).toEqual({ x: 1.4, y: 1.22 });
 });
 
 test("transform panel: Closed opens and closes a placed freeform path", async ({ page }) => {
