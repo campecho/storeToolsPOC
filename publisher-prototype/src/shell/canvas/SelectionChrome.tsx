@@ -31,12 +31,15 @@ import { resizeCursor, rotateCursor } from "./cursors";
  * the union AABB drawn unrotated.
  *
  * A LONE LINE is the exception, and the reason is that a line is two points
- * rather than a box: it shows those two points as its handles and no frame at
- * all. Inside a multi-selection it rejoins the union frame and scales with it.
+ * rather than a box: it shows those two points as its handles and NOTHING
+ * else — no frame, no stretch handles, and no rotation knob either, because
+ * dragging an endpoint is how you turn it. (An arrow is a line carrying head
+ * decorations, so it takes the same chrome by the same branch.) Inside a
+ * multi-selection it rejoins the union frame and scales and turns with it.
  *
- * Every selection carries the rotation handle: a rotation turns the frame as
- * a rigid body about its centre, which a line answers by orbiting its
- * endpoints even though it stores no angle of its own.
+ * Every other selection carries the rotation handle: a rotation turns the
+ * frame as a rigid body about its centre, which a line inside one answers by
+ * orbiting its endpoints even though it stores no angle of its own.
  *
  * Each handle carries the cursor of the direction it stretches, which turns
  * with the frame too (canvas/cursors.ts).
@@ -53,12 +56,12 @@ import { resizeCursor, rotateCursor } from "./cursors";
     would flip the frame on pointer-down and back on release. */
 export const CHROME_COLOR = "#cc0000";
 /** Group members read as a hint inside the frame, not as competing chrome:
-    the same blue, dashed and faded, so the frame's own outline still reads as
-    the thing being transformed. */
+    the chrome colour, dashed and faded, so the frame's own outline still reads
+    as the thing being transformed. */
 const GROUP_MEMBER_OPACITY = 0.5;
 /** Adjust handles read as a different KIND of control from the resize
     handles, so they take Publisher's/PowerPoint's amber rather than the
-    chrome blue. */
+    chrome colour. */
 const ADJUST_COLOR = "#f2b705";
 const HANDLE_PX = 8;
 const ROTATE_STEM_PX = 16;
@@ -192,9 +195,10 @@ export function SelectionChrome({
   const adjustId = shape === undefined ? undefined : ADJUST_HANDLE_ID[shape.shape];
   // A LONE line shows its two points and nothing else: a line is two points,
   // so a frame with eight stretch handles would be chrome for an object it is
-  // not (the POC's SelectionOverlay draws exactly these two). The rotation
-  // stem stays — turning the whole segment is a different act from moving one
-  // end. Inside a multi-selection a line rejoins the union frame.
+  // not (the POC's SelectionOverlay draws exactly these two). No rotation knob
+  // either — an endpoint drag already turns the segment, and two ways to do
+  // one thing is one too many. Inside a multi-selection a line rejoins the
+  // union frame, where the knob turns the whole body.
   const loneLine = objects.length === 1 && objects[0]?.type === "line" ? objects[0] : undefined;
   return (
     <g data-testid="selection-chrome">
@@ -209,26 +213,30 @@ export function SelectionChrome({
           vectorEffect="non-scaling-stroke"
         />
       )}
-      <line
-        x1={stemFoot.x}
-        y1={stemFoot.y}
-        x2={knob.x}
-        y2={knob.y}
-        stroke={CHROME_COLOR}
-        vectorEffect="non-scaling-stroke"
-      />
-      <circle
-        className="chrome-handle"
-        data-handle="rotate"
-        cx={knob.x}
-        cy={knob.y}
-        r={handleSize / 2}
-        fill="#ffffff"
-        stroke={CHROME_COLOR}
-        vectorEffect="non-scaling-stroke"
-        style={{ cursor: rotateCursor(rotation) }}
-        onPointerDown={onRotateStart}
-      />
+      {loneLine === undefined && (
+        <>
+          <line
+            x1={stemFoot.x}
+            y1={stemFoot.y}
+            x2={knob.x}
+            y2={knob.y}
+            stroke={CHROME_COLOR}
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            className="chrome-handle"
+            data-handle="rotate"
+            cx={knob.x}
+            cy={knob.y}
+            r={handleSize / 2}
+            fill="#ffffff"
+            stroke={CHROME_COLOR}
+            vectorEffect="non-scaling-stroke"
+            style={{ cursor: rotateCursor(rotation) }}
+            onPointerDown={onRotateStart}
+          />
+        </>
+      )}
       {adjust !== null && adjustId !== undefined && (
         <rect
           className="chrome-handle"

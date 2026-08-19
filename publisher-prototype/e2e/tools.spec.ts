@@ -371,19 +371,25 @@ test("select.drag-rotate.rotates a multi-selection as one rigid body", async ({ 
   expect(Math.abs((a.y + b.y) / 2 - 4.5)).toBeLessThanOrEqual(0.06);
 });
 
-test("select.drag-rotate.rotates a line by its endpoints", async ({ page }) => {
+test("select.drag-rotate.rotates a line inside a body by its endpoints", async ({ page }) => {
+  // A lone line has no rotation handle — its endpoints are how it turns. In a
+  // multi-selection there is no endpoint that turns the PAIR, so the knob is
+  // back, and a line follows it the only way it can: through its endpoints.
   await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await draw(page, "Rectangle", { x: 2, y: 5 }, { x: 4, y: 6 });
   await activate(page, "Select");
   await clickAt(page, { x: 3, y: 4 });
-  await expect.poll(() => selectionIds(page)).toHaveLength(1);
-  // A line stores no rotation field, so its whole turn lives in its
-  // endpoints — about the centre of its own bounds, (3, 4).
+  await clickAt(page, { x: 3, y: 5.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // Union frame (2,4)–(4,6), pivot (3,5); the handle swings a quarter turn.
   await armCounter(page);
-  await dragHandle(page, "rotate", { x: 5, y: 4 });
+  await dragHandle(page, "rotate", { x: 5, y: 5 });
   expect(await notificationCount(page)).toBe(1);
   const line = lineAt(await pageObjects(page), 0);
-  expect(Math.abs(line.x1 - 3)).toBeLessThanOrEqual(0.06);
-  expect(Math.abs(line.x2 - 3)).toBeLessThanOrEqual(0.06);
+  // Horizontal through (3,4) becomes vertical through (4,5), orbiting with
+  // the body rather than turning about its own middle.
+  expect(Math.abs(line.x1 - 4)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(line.x2 - 4)).toBeLessThanOrEqual(0.06);
   expect(Math.abs(Math.abs(line.y2 - line.y1) - 2)).toBeLessThanOrEqual(0.06);
 });
 
@@ -563,8 +569,19 @@ test("a lone line's chrome is its two endpoints, not a box with resize handles",
   for (const handle of ["nw", "n", "ne", "e", "se", "s", "sw", "w"]) {
     await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCount(0);
   }
-  // The rotation handle stays — turning the whole segment is its own act.
-  await expect(page.locator('[data-handle="rotate"]')).toBeVisible();
+  // No rotation knob either: an endpoint drag already turns the segment.
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCount(0);
+});
+
+test("an arrow is a line, and wears a line's chrome", async ({ page }) => {
+  await draw(page, "Arrow", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await expect(page.locator('[data-handle="p1"]')).toBeVisible();
+  await expect(page.locator('[data-handle="p2"]')).toBeVisible();
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCount(0);
+  await expect(page.locator('[data-handle="se"]')).toHaveCount(0);
 });
 
 test("select.drag-endpoint.moves-endpoint", async ({ page }) => {
