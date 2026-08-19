@@ -255,10 +255,11 @@ panel, checklists, and every generated document are *renderings of that one file
 | 23 | Zoom | Navigation | §9.1 |
 | 24 | Pan | Navigation | — |
 
-**Shape presentation (decision closed as "both"):** the dock renders the ten shape tools
-either as a single slot with a flyout *or* as individual slots, switched by a
-registry-driven presentation toggle in the model's debug bar. Both renderings bind to the
-same tool contracts. The prototype review picks the winner; the registry records it.
+**Shape presentation (settled by prototype review, 2026-08-19):** **individual slots.**
+The dock gives each of the ten shape tools its own slot. The alternative rendering — one
+slot with a flyout, offered alongside it behind a debug-bar toggle while the question was
+open — is gone, along with the toggle: the review found the flyout unnecessary, and a
+choice nothing chooses between is only a second thing to keep working.
 
 ### 4.2 The photo-mode tool set (~8)
 

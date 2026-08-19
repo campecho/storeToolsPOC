@@ -15,7 +15,6 @@ import {
   zoomStepCommitted,
 } from "../core/store";
 import type { AppMode } from "./App";
-import type { ShapePresentation } from "./dock/Dock";
 import { buildStressFixture } from "./debug/stressFixture";
 import { useFps } from "./debug/useFps";
 import { useAppDispatch, useAppSelector } from "./hooks";
@@ -24,11 +23,11 @@ import minimalRaw from "../../fixtures/minimal.json?raw";
 import photoSingleImageRaw from "../../fixtures/photo-single-image.json?raw";
 
 /**
- * The debug bar (PLAN.md §6.6, §4.1): model-development controls that are
- * not part of the specified surface — registry-driven presentation toggles,
- * the §6.6 JSON round-trip (export/import/fixtures), undo/redo, page
- * stepping, and the viewport controls, alignment probe, and §6.2 spike-gate
- * stress fixture with its FPS readout. Deliberately plain.
+ * The debug bar (PLAN.md §6.6): model-development controls that are not
+ * part of the specified surface — the mode switch, the §6.6 JSON round-trip
+ * (export/import/fixtures), undo/redo, page stepping, and the viewport
+ * controls, alignment probe, and §6.2 spike-gate stress fixture with its FPS
+ * readout. Deliberately plain.
  *
  * Every load path — import and fixtures alike — goes through
  * deserializeDocument, the model's one migrate-on-read door; parse errors
@@ -37,8 +36,6 @@ import photoSingleImageRaw from "../../fixtures/photo-single-image.json?raw";
 export function DebugBar({
   mode,
   onModeChange,
-  shapePresentation,
-  onShapePresentationChange,
   showProbe,
   onProbeChange,
   vpSize,
@@ -47,8 +44,6 @@ export function DebugBar({
 }: {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
-  shapePresentation: ShapePresentation;
-  onShapePresentationChange: (presentation: ShapePresentation) => void;
   showProbe: boolean;
   onProbeChange: (show: boolean) => void;
   vpSize: Size;
@@ -119,14 +114,6 @@ export function DebugBar({
           Photo
         </button>
       </span>
-      <label className="debug-group">
-        <input
-          type="checkbox"
-          checked={shapePresentation === "flyout"}
-          onChange={(e) => onShapePresentationChange(e.target.checked ? "flyout" : "slots")}
-        />
-        shape flyout
-      </label>
       <span className="debug-group" role="group" aria-label="Zoom">
         <button
           aria-label="Zoom out"

@@ -32,15 +32,6 @@ test("photo mode swaps to the photo dock and panel set", async ({ page }) => {
   await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(24);
 });
 
-test("shape presentation toggles between individual slots and one flyout slot", async ({ page }) => {
-  await expect(page.getByTestId("shape-flyout")).toHaveCount(0);
-  await page.getByLabel("shape flyout").check();
-  await expect(page.getByTestId("shape-flyout")).toBeVisible();
-  await expect(page.getByTestId("dock").locator(".dock-tool")).toHaveCount(24 - 10 + 1);
-  await page.getByRole("button", { name: "More shape tools" }).click();
-  await expect(page.getByTestId("shape-flyout").locator(".dock-flyout-menu .dock-tool")).toHaveCount(10);
-});
-
 test("selecting a contracted tool shows its options and not-wired status", async ({ page }) => {
   await page.getByRole("button", { name: "Text frame", exact: true }).click();
   const bar = page.getByTestId("options-bar");
