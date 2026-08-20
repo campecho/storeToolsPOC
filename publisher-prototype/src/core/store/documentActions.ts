@@ -1,5 +1,15 @@
-import { createAction } from "@reduxjs/toolkit";
-import type { LayoutObject, Orientation, PageSize, Paint } from "../model";
+import { createAction, type UnknownAction } from "@reduxjs/toolkit";
+import type {
+  ArrowHead,
+  ArrowHeadSize,
+  Group,
+  LayoutObject,
+  LineDash,
+  NormalizedPoint,
+  Orientation,
+  PageSize,
+  Paint,
+} from "../model";
 
 /**
  * Tool commit actions on the document (PLAN.md §6.3). These are cross-tool
@@ -42,11 +52,25 @@ export type ResizeCommit = {
   boxes: Record<string, FrameBox | LineEndpoints>;
 };
 
-/** rotate commits: absolute rotations in degrees per object id. Lines carry
-    no rotation field and are skipped by the reducer. */
+/**
+ * rotate commits: absolute rotations in degrees per object id, plus the
+ * absolute geometry the rotation ORBITS each object onto — same shape a
+ * resize commits. A selection turns as a rigid body about one pivot, so its
+ * members' positions move as well as their angles; `boxes` is what carries
+ * that. It is omitted where nothing orbits (the Transform panel's angle
+ * field turns one object about its own centre).
+ *
+ * Lines carry no rotation field and take no entry in `rotations`; their
+ * endpoints orbit through `boxes` like any other member's geometry.
+ */
 export type RotateCommit = {
   pageIndex: number;
   rotations: Record<string, number>;
+  boxes?: Record<string, FrameBox | LineEndpoints>;
+  /** Absolute angles per GROUP id. A group stores the angle its frame is
+      drawn at, so turning one advances that too — otherwise the frame would
+      spring back square the moment the gesture ended. */
+  groupRotations?: Record<string, number>;
 };
 
 /** fill commits: replace the identified objects' fill wholesale — a Paint or
@@ -75,6 +99,105 @@ export type StrokeWidthCommit = {
   pageIndex: number;
   ids: string[];
   width: number;
+};
+
+/** corner-radius commits: set the identified rounded rectangles' radius in
+    inches. Every other shape kind is left alone — it has no corner to round
+    — and the value stores unclamped, per the ShapeObjectSchema note. */
+export type CornerRadiusCommit = {
+  pageIndex: number;
+  ids: string[];
+  radius: number;
+};
+
+/** star/polygon commits: the two parameters that shape it. Split because
+    the registry gives the inner radius its own adjust-handle clause and the
+    vertex count none — one is a gesture type, the other a panel commit. */
+export type StarPointsCommit = { pageIndex: number; ids: string[]; points: number };
+export type StarInnerRadiusCommit = {
+  pageIndex: number;
+  ids: string[];
+  innerRadiusRatio: number;
+};
+
+/** callout tail commits: where the pointer's TIP goes, in the frame's unit
+    box — the tail's length and angle both follow from it. */
+export type CalloutTailCommit = {
+  pageIndex: number;
+  ids: string[];
+  tailTip: NormalizedPoint;
+};
+
+/** banner commits: the two ribbon adjustments, each its own commit so each
+    handle is its own gesture and its own history entry. */
+export type BannerPanelInsetCommit = { pageIndex: number; ids: string[]; panelInset: number };
+export type BannerPanelHeightCommit = { pageIndex: number; ids: string[]; panelHeight: number };
+
+/** line/arrow outline style: the dash pattern, and the end decorations. An
+    omitted head field is left as it stands; "none"/"m" store as absence per
+    the schema's additive rule. */
+export type LineDashCommit = { pageIndex: number; ids: string[]; dash: LineDash };
+export type ArrowHeadsCommit = {
+  pageIndex: number;
+  ids: string[];
+  headStart?: ArrowHead;
+  headEnd?: ArrowHead;
+  headSize?: ArrowHeadSize;
+};
+
+/** path close/open: the placed counterpart of the pen's autoClose option —
+    appends or drops the ring-closing Z on a path shape. */
+export type PathClosedCommit = { pageIndex: number; ids: string[]; closed: boolean };
+
+/**
+ * delete commits: remove the identified objects from the page. Locked objects
+ * are skipped like everywhere else — a lock is exactly the protection that
+ * should stop this. Any group left holding nothing is dropped with them, so
+ * deleting a whole group takes the group itself out rather than leaving an
+ * empty one to round-trip.
+ */
+export type DeleteCommit = { pageIndex: number; ids: string[] };
+
+/**
+ * group commits (§5.1): the new group's id — minted by the caller, like every
+ * other id in this file — plus the two halves it combines. `ids` are objects
+ * joining it directly; `groupIds` are existing groups becoming its CHILDREN,
+ * which is how grouping a group nests rather than flattens it. Absent
+ * `parentGroupId` means the page's top level; present, it is the group
+ * context the new group is created inside.
+ *
+ * Grouping also RESTACKS: the members move to sit contiguously at the
+ * topmost member's z position, so nothing can render between two members of
+ * one group.
+ */
+export type GroupCommit = {
+  pageIndex: number;
+  groupId: string;
+  parentGroupId?: string;
+  ids: string[];
+  groupIds: string[];
+};
+
+/**
+ * ungroup commits (§5.1): remove exactly one nesting level per named group —
+ * its objects and child groups re-join its parent, or the page when it has
+ * none. No pageIndex, unlike every other commit here: `doc.groups` is
+ * document-root state, so a removed group must not leave a dangling `groupId`
+ * behind on some other page.
+ */
+export type UngroupCommit = { groupIds: string[] };
+
+/**
+ * duplicate commits (Alt-drag): the finished COPIES, ids and final geometry
+ * included, appended to the page in the order given — the same
+ * complete-payload rule the draw commits follow. `groups` are the fresh
+ * groups those copies join, mirroring the originals' nesting, so a copy of a
+ * group is itself a group rather than a scattering of loose objects.
+ */
+export type DuplicateCommit = {
+  pageIndex: number;
+  objects: LayoutObject[];
+  groups: Group[];
 };
 
 /** lock commits: set the identified objects' locked flag. The one translate-
@@ -117,7 +240,6 @@ export const roundedRectDrawCommitted = createAction<DrawCommit>("roundedRect/dr
 export const starPolygonDrawCommitted = createAction<DrawCommit>("starPolygon/drawCommitted");
 export const calloutDrawCommitted = createAction<DrawCommit>("callout/drawCommitted");
 export const bannerDrawCommitted = createAction<DrawCommit>("banner/drawCommitted");
-export const flowchartDrawCommitted = createAction<DrawCommit>("flowchart/drawCommitted");
 export const penDrawCommitted = createAction<DrawCommit>("pen/drawCommitted");
 export const objectMoveCommitted = createAction<TranslateCommit>("object/moveCommitted");
 export const objectNudgeCommitted = createAction<TranslateCommit>("object/nudgeCommitted");
@@ -137,6 +259,62 @@ export const documentSetupCommitted = createAction<DocumentSetupCommit>(
 export const pageSizeOverrideCommitted = createAction<PageSizeOverrideCommit>(
   "page/sizeOverrideCommitted",
 );
+export const objectDeleteCommitted = createAction<DeleteCommit>("object/deleteCommitted");
+export const objectDuplicateCommitted = createAction<DuplicateCommit>("object/duplicateCommitted");
+export const objectGroupCommitted = createAction<GroupCommit>("object/groupCommitted");
+export const objectUngroupCommitted = createAction<UngroupCommit>("object/ungroupCommitted");
+export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(
+  "roundedRect/cornerRadiusCommitted",
+);
+export const starPolygonPointsCommitted = createAction<StarPointsCommit>(
+  "starPolygon/pointsCommitted",
+);
+export const starPolygonInnerRadiusCommitted = createAction<StarInnerRadiusCommit>(
+  "starPolygon/innerRadiusCommitted",
+);
+export const calloutTailCommitted = createAction<CalloutTailCommit>("callout/tailCommitted");
+export const bannerPanelInsetCommitted = createAction<BannerPanelInsetCommit>(
+  "banner/panelInsetCommitted",
+);
+export const bannerPanelHeightCommitted = createAction<BannerPanelHeightCommit>(
+  "banner/panelHeightCommitted",
+);
+export const objectLineDashCommitted = createAction<LineDashCommit>("object/lineDashCommitted");
+export const objectArrowHeadsCommitted = createAction<ArrowHeadsCommit>(
+  "object/arrowHeadsCommitted",
+);
+export const objectPathClosedCommitted = createAction<PathClosedCommit>(
+  "object/pathClosedCommitted",
+);
+
+/**
+ * Every action that puts a NEW object on the page. Draw tools all commit the
+ * same DrawCommit payload, so this is the one list the selection slice and
+ * the history set both read rather than each keeping their own.
+ */
+export const DRAW_COMMIT_ACTIONS = [
+  rectDrawCommitted,
+  ellipseDrawCommitted,
+  lineDrawCommitted,
+  arrowDrawCommitted,
+  roundedRectDrawCommitted,
+  starPolygonDrawCommitted,
+  calloutDrawCommitted,
+  bannerDrawCommitted,
+  penDrawCommitted,
+] as const;
+
+const DRAW_COMMIT_TYPES: ReadonlySet<string> = new Set(
+  DRAW_COMMIT_ACTIONS.map((creator) => creator.type),
+);
+
+/** Whether an action just drew an object — the pen's per-anchor commits are
+    deliberately NOT draws; only the finish that produces the shape is. */
+export function isDrawCommit(action: UnknownAction): action is UnknownAction & {
+  payload: DrawCommit;
+} {
+  return DRAW_COMMIT_TYPES.has(action.type);
+}
 
 /** The gesture pipeline's DevTools record for an aborted gesture (Esc during
     drag, discarded pen path). No DOCUMENT reducer handles it — an aborted

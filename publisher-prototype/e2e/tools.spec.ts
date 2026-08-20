@@ -1,10 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { rotatedFrameCorners } from "../src/core/hittest";
 import {
   activate,
   armCounter,
+  centerOf,
   clickAt,
   drag,
   dragHandle,
+  draw,
   expectNear,
   lineAt,
   notificationCount,
@@ -136,12 +139,11 @@ test("line.drag.creates", async ({ page }) => {
 });
 
 test("line.shift-drag.constrains-angle", async ({ page }) => {
-  await activate(page, "Line");
   // Near-horizontal drag snaps to 0°: length is the drag projected onto
   // the snapped direction.
-  await drag(page, { x: 1, y: 3 }, { x: 3.9, y: 3.2 }, ["Shift"]);
+  await draw(page, "Line", { x: 1, y: 3 }, { x: 3.9, y: 3.2 }, ["Shift"]);
   // Near-diagonal drag snaps to 45°.
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 5.2 }, ["Shift"]);
+  await draw(page, "Line", { x: 1, y: 3 }, { x: 3, y: 5.2 }, ["Shift"]);
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
   const objects = await pageObjects(page);
   const horizontal = lineAt(objects, 0);
@@ -154,10 +156,54 @@ test("line.shift-drag.constrains-angle", async ({ page }) => {
   expectNear(diagonal.y2, 5.1);
 });
 
-test("select.click.selects-topmost", async ({ page }) => {
+test("a drawn object lands selected, whichever tool drew it", async ({ page }) => {
+  // Every draw tool commits the same way, so selection follows all of them —
+  // and the panels bind to the selection, which is what puts a new shape's
+  // own parameters in reach the moment it exists.
+  for (const label of ["Rectangle", "Ellipse", "Line", "Star / polygon"] as const) {
+    await activate(page, label);
+    await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
+    const objects = await pageObjects(page);
+    const drawn = objects[objects.length - 1];
+    if (!drawn) throw new Error(`${label} drew nothing`);
+    expect(await selectionIds(page)).toEqual([drawn.id]);
+  }
+});
+
+test("a committed draw hands the page back to the select tool", async ({ page }) => {
+  // The other half of landing selected: the tool that drew steps aside, so
+  // the new object can be moved or resized without a trip to the dock. The
+  // options bar names the active tool, which is where the switch shows.
+  const optionsBar = page.getByTestId("options-bar");
   await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
-  await drag(page, { x: 2, y: 4 }, { x: 4, y: 6 });
+  await expect(optionsBar).toContainText("Rectangle");
+  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
+  await expect(optionsBar).toContainText("Select");
+  // And the object is immediately draggable — no re-arming in between.
+  await drag(page, { x: 1.5, y: 3.5 }, { x: 2.5, y: 4.5 });
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const moved = shapeAt(await pageObjects(page), 0);
+  expectNear(moved.x, 2);
+  expectNear(moved.y, 4);
+});
+
+test("the pen hands back only when the path commits, not on each anchor", async ({ page }) => {
+  // Anchor placements are their own committed gestures but are NOT draws —
+  // switching on one would end the path after a single click.
+  const optionsBar = page.getByTestId("options-bar");
+  await activate(page, "Pen / freeform");
+  await clickAt(page, { x: 1, y: 3 });
+  await clickAt(page, { x: 3, y: 3 });
+  await clickAt(page, { x: 2, y: 5 });
+  await expect(optionsBar).toContainText("Pen / freeform");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  await expect(optionsBar).toContainText("Select");
+});
+
+test("select.click.selects-topmost", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 3, y: 5 });
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 4, y: 6 });
   const [below, above] = await pageObjects(page);
   if (!below || !above) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -176,9 +222,8 @@ test("select.click-empty.clears", async ({ page }) => {
 });
 
 test("select.shift-click.toggles-membership", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 3, y: 3 }, { x: 4, y: 4 });
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 3, y: 3 }, { x: 4, y: 4 });
   const [first, second] = await pageObjects(page);
   if (!first || !second) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -193,9 +238,8 @@ test("select.shift-click.toggles-membership", async ({ page }) => {
 });
 
 test("select.alt-click.selects-beneath", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 3, y: 5 });
-  await drag(page, { x: 2, y: 4 }, { x: 4, y: 6 });
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 3, y: 5 });
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 4, y: 6 });
   const [below, above] = await pageObjects(page);
   if (!below || !above) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -211,9 +255,8 @@ test("select.alt-click.selects-beneath", async ({ page }) => {
 });
 
 test("select.drag-empty.marquee-selects", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 4 }, { x: 2, y: 5 });
-  await drag(page, { x: 3, y: 4 }, { x: 4, y: 5 });
+  await draw(page, "Rectangle", { x: 1, y: 4 }, { x: 2, y: 5 });
+  await draw(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 5 });
   const [first, second] = await pageObjects(page);
   if (!first || !second) throw new Error("expected two drawn rects");
   await activate(page, "Select");
@@ -229,6 +272,10 @@ test("select.drag.moves-selection", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
   await activate(page, "Select");
+  // Drawing leaves its object selected, so clear it first: the clause under
+  // test is the one that starts from an UNSELECTED object.
+  await clickAt(page, { x: 6, y: 6 });
+  expect(await selectionIds(page)).toEqual([]);
   // ASSUMPTION under test (matches the shell's early-commit decision of
   // record): dragging an UNSELECTED object commits selection/replace on
   // pointerdown and object/move on release — exactly 2 notifications.
@@ -295,6 +342,141 @@ test("select.drag-rotate.rotates", async ({ page }) => {
   expect(Math.round(rect.rotation / 15) * 15).toBeCloseTo(rect.rotation, 9);
 });
 
+test("select.drag-rotate.rotates a multi-selection as one rigid body", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 4 }, { x: 2, y: 5 });
+  await draw(page, "Rectangle", { x: 4, y: 4 }, { x: 5, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 4.5 });
+  await clickAt(page, { x: 4.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // The frame is the union AABB (1,4)–(5,5), so the pivot is (3, 4.5) — not
+  // either object's own centre. Dragging the handle east of it turns the
+  // initial −90° pointer angle into 0°.
+  await armCounter(page);
+  await dragHandle(page, "rotate", { x: 5, y: 4.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const objects = await pageObjects(page);
+  const a = centerOf(shapeAt(objects, 0));
+  const b = centerOf(shapeAt(objects, 1));
+  // Both members took the same quarter turn …
+  expect(Math.abs(shapeAt(objects, 0).rotation - 90)).toBeLessThanOrEqual(1);
+  expect(Math.abs(shapeAt(objects, 1).rotation - 90)).toBeLessThanOrEqual(1);
+  // … and orbited the pivot with it: the pair started 3in apart on a
+  // horizontal line and now stands 3in apart on a vertical one about the same
+  // midpoint. Spinning each in place would have left both centres where they
+  // were, which is exactly what a group must not do.
+  expect(Math.abs(b.x - a.x)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(Math.abs(b.y - a.y) - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs((a.x + b.x) / 2 - 3)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs((a.y + b.y) / 2 - 4.5)).toBeLessThanOrEqual(0.06);
+});
+
+test("select.drag-rotate.rotates a line inside a body by its endpoints", async ({ page }) => {
+  // A lone line has no rotation handle — its endpoints are how it turns. In a
+  // multi-selection there is no endpoint that turns the PAIR, so the knob is
+  // back, and a line follows it the only way it can: through its endpoints.
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await draw(page, "Rectangle", { x: 2, y: 5 }, { x: 4, y: 6 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await clickAt(page, { x: 3, y: 5.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // Union frame (2,4)–(4,6), pivot (3,5); the handle swings a quarter turn.
+  await armCounter(page);
+  await dragHandle(page, "rotate", { x: 5, y: 5 });
+  expect(await notificationCount(page)).toBe(1);
+  const line = lineAt(await pageObjects(page), 0);
+  // Horizontal through (3,4) becomes vertical through (4,5), orbiting with
+  // the body rather than turning about its own middle.
+  expect(Math.abs(line.x1 - 4)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(line.x2 - 4)).toBeLessThanOrEqual(0.06);
+  expect(Math.abs(Math.abs(line.y2 - line.y1) - 2)).toBeLessThanOrEqual(0.06);
+});
+
+test("select.drag-handle.resizes a rotated frame in its own space", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // A quarter turn: from here the chrome hugs the object, so its handles sit
+  // on the rotated frame rather than on the box around it.
+  await dragHandle(page, "rotate", { x: 3.8, y: 3.5 });
+  let rect = shapeAt(await pageObjects(page), 0);
+  expect(Math.abs(rect.rotation - 90)).toBeLessThanOrEqual(1);
+  const rotation = rect.rotation;
+  const before = rotatedFrameCorners(rect, rotation);
+  // The se handle now hangs below-left on screen. Dragging it scales the
+  // frame's OWN width and height (1.25× and 2.5×), never the document axes.
+  await armCounter(page);
+  await dragHandle(page, "se", { x: 1, y: 5 });
+  expect(await notificationCount(page)).toBe(1);
+  rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.rotation, rotation);
+  expectNear(rect.w, 2.5);
+  expectNear(rect.h, 2.5);
+  // The nw corner — the anchor opposite the dragged handle — has not moved.
+  const after = rotatedFrameCorners(rect, rotation);
+  expectNear(after[0]?.x ?? NaN, before[0]?.x ?? NaN);
+  expectNear(after[0]?.y ?? NaN, before[0]?.y ?? NaN);
+});
+
+test("selection handles carry the cursor of the direction they stretch", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  for (const [handle, cursor] of [
+    ["n", "ns-resize"],
+    ["s", "ns-resize"],
+    ["e", "ew-resize"],
+    ["w", "ew-resize"],
+    ["nw", "nwse-resize"],
+    ["se", "nwse-resize"],
+    ["ne", "nesw-resize"],
+    ["sw", "nesw-resize"],
+  ] as const) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCSS("cursor", cursor);
+  }
+  // Rotation has no cursor keyword — the knob carries a drawn glyph.
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCSS("cursor", /^url\(.*\) 12 12, grab$/);
+
+  // A quarter turn takes the cursors with it: the handles now stretch along
+  // the frame's own edges, so every axis swaps for its partner.
+  await dragHandle(page, "rotate", { x: 3.8, y: 3.5 });
+  expect(Math.abs(shapeAt(await pageObjects(page), 0).rotation - 90)).toBeLessThanOrEqual(1);
+  for (const [handle, cursor] of [
+    ["n", "ew-resize"],
+    ["e", "ns-resize"],
+    ["nw", "nesw-resize"],
+    ["ne", "nwse-resize"],
+  ] as const) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCSS("cursor", cursor);
+  }
+});
+
+test("the handle's cursor survives the drag that hides the handle", async ({ page }) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 2, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const area = page.getByTestId("canvas-area");
+  await expect(area).toHaveCSS("cursor", "default");
+  // Press the se handle and move without releasing: the preview replaces the
+  // chrome, so the handle is gone — the canvas area holds its cursor instead.
+  const box = await page.locator('[data-handle="se"]').boundingBox();
+  if (!box) throw new Error("se handle not visible");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y + 40, { steps: 4 });
+  await expect(page.locator('[data-handle="se"]')).toHaveCount(0);
+  await expect(area).toHaveCSS("cursor", "nwse-resize");
+  await page.mouse.up();
+  await expect(area).toHaveCSS("cursor", "default");
+});
+
 test("select.arrow.nudges", async ({ page }) => {
   await activate(page, "Rectangle");
   await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
@@ -342,3 +524,174 @@ test("draw, move, then undo twice returns to the empty page — one history entr
   await expect(undo).toBeDisabled();
 });
 
+
+test("select.delete.removes-selection", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 3, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 3.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await armCounter(page);
+  await page.keyboard.press("Delete");
+  expect(await notificationCount(page)).toBe(1);
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  // The deleted id leaves the selection with it, so no chrome outlives it.
+  await expect.poll(() => selectionIds(page)).toEqual([]);
+  await expect(page.getByTestId("selection-chrome")).toHaveCount(0);
+  // One history entry: undo brings it back.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
+});
+
+test("Backspace deletes too, and a multi-selection goes in one step", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 3, y: 3 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 3.5 });
+  await clickAt(page, { x: 3.5, y: 3.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await armCounter(page);
+  await page.keyboard.press("Backspace");
+  expect(await notificationCount(page)).toBe(1);
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(0);
+});
+
+test("a lone line's chrome is its two endpoints, not a box with resize handles", async ({
+  page,
+}) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await expect(page.locator('[data-handle="p1"]')).toBeVisible();
+  await expect(page.locator('[data-handle="p2"]')).toBeVisible();
+  // None of the eight stretch handles: a line is two points, not a box.
+  for (const handle of ["nw", "n", "ne", "e", "se", "s", "sw", "w"]) {
+    await expect(page.locator(`[data-handle="${handle}"]`)).toHaveCount(0);
+  }
+  // No rotation knob either: an endpoint drag already turns the segment.
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCount(0);
+});
+
+test("an arrow is a line, and wears a line's chrome", async ({ page }) => {
+  await draw(page, "Arrow", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await expect(page.locator('[data-handle="p1"]')).toBeVisible();
+  await expect(page.locator('[data-handle="p2"]')).toBeVisible();
+  await expect(page.locator('[data-handle="rotate"]')).toHaveCount(0);
+  await expect(page.locator('[data-handle="se"]')).toHaveCount(0);
+});
+
+test("select.drag-endpoint.moves-endpoint", async ({ page }) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  await armCounter(page);
+  await dragHandle(page, "p2", { x: 5, y: 5.5 });
+  expect(await notificationCount(page)).toBe(1);
+  const line = lineAt(await pageObjects(page), 0);
+  // p1 held still; only the dragged end moved.
+  expectNear(line.x1, 2);
+  expectNear(line.y1, 4);
+  expectNear(line.x2, 5);
+  expectNear(line.y2, 5.5);
+});
+
+test("a line inside a multi-selection rejoins the union frame", async ({ page }) => {
+  await draw(page, "Line", { x: 2, y: 4 }, { x: 4, y: 4 });
+  await draw(page, "Rectangle", { x: 5, y: 4 }, { x: 6, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 4 });
+  await clickAt(page, { x: 5.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  // Endpoints belong to a lone line only; together they scale as a box.
+  await expect(page.locator('[data-handle="p1"]')).toHaveCount(0);
+  await expect(page.locator('[data-handle="se"]')).toBeVisible();
+});
+
+test("select.shift-drag.constrains-move", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 2.5, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  // A drag mostly sideways lands flat: the y travel is dropped, not kept.
+  await armCounter(page);
+  await drag(page, { x: 2.5, y: 4.5 }, { x: 5, y: 5 }, ["Shift"]);
+  expect(await notificationCount(page)).toBe(1);
+  let rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.x, 4.5);
+  expectNear(rect.y, 4);
+  // A drag mostly downward lands vertical.
+  await drag(page, { x: 5, y: 4.5 }, { x: 5.4, y: 6.5 }, ["Shift"]);
+  rect = shapeAt(await pageObjects(page), 0);
+  expectNear(rect.x, 4.5);
+  expectNear(rect.y, 6);
+});
+
+test("select.shift-click.toggles-membership still works on a selected object", async ({ page }) => {
+  // Shift now starts a constrained move on an already-selected object, so the
+  // toggle has to survive as the release that never travelled.
+  await draw(page, "Rectangle", { x: 1, y: 4 }, { x: 2, y: 5 });
+  await draw(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 1.5, y: 4.5 });
+  await clickAt(page, { x: 3.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(2);
+  await clickAt(page, { x: 3.5, y: 4.5 }, ["Shift"]);
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+});
+
+test("select.alt-drag.duplicates", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 2.5, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const original = shapeAt(await pageObjects(page), 0).id;
+  await armCounter(page);
+  await drag(page, { x: 2.5, y: 4.5 }, { x: 5.5, y: 6 }, ["Alt"]);
+  expect(await notificationCount(page)).toBe(1);
+  const objects = await pageObjects(page);
+  expect(objects).toHaveLength(2);
+  // The original stayed exactly where it was; the copy landed at the drag end.
+  const first = shapeAt(objects, 0);
+  expectNear(first.x, 2);
+  expectNear(first.y, 4);
+  const copy = shapeAt(objects, 1);
+  expectNear(copy.x, 5);
+  expectNear(copy.y, 5.5);
+  expect(copy.id).not.toBe(original);
+  // The copy is what you are now holding, like a freshly drawn object.
+  await expect.poll(() => selectionIds(page)).toEqual([copy.id]);
+  // One history entry.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+});
+
+test("select.alt-click.selects-beneath survives beside the duplicate drag", async ({ page }) => {
+  // Alt without travel must still cycle — the two clauses share one binding.
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 4, y: 6 });
+  await draw(page, "Rectangle", { x: 2.5, y: 4.5 }, { x: 3.5, y: 5.5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 3, y: 5 });
+  const top = (await selectionIds(page))[0];
+  await clickAt(page, { x: 3, y: 5 }, ["Alt"]);
+  await expect.poll(async () => (await selectionIds(page))[0]).not.toBe(top);
+  // …and nothing was duplicated by the click.
+  expect(await pageObjects(page)).toHaveLength(2);
+});
+
+test("Alt over a selection shows the copy cursor before the drag starts", async ({ page }) => {
+  await draw(page, "Rectangle", { x: 2, y: 4 }, { x: 3, y: 5 });
+  await activate(page, "Select");
+  await clickAt(page, { x: 2.5, y: 4.5 });
+  await expect.poll(() => selectionIds(page)).toHaveLength(1);
+  const area = page.getByTestId("canvas-area");
+  await expect(area).toHaveCSS("cursor", "default");
+  await page.keyboard.down("Alt");
+  await expect(area).toHaveCSS("cursor", "copy");
+  await page.keyboard.up("Alt");
+  await expect(area).toHaveCSS("cursor", "default");
+});

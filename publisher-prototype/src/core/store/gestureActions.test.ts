@@ -5,16 +5,23 @@ import {
   bannerDrawCommitted,
   calloutDrawCommitted,
   ellipseDrawCommitted,
-  flowchartDrawCommitted,
   gestureCancelled,
   lineDrawCommitted,
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
+  objectGroupCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectUngroupCommitted,
   rectDrawCommitted,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
+  roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
+  starPolygonInnerRadiusCommitted,
 } from "./documentActions";
 import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES } from "./history";
 import { penSlice } from "./penSlice";
@@ -33,24 +40,39 @@ const documentActionCreators = [
   ellipseDrawCommitted,
   lineDrawCommitted,
   arrowDrawCommitted,
+  roundedRectCornerRadiusCommitted,
   roundedRectDrawCommitted,
   starPolygonDrawCommitted,
+  starPolygonInnerRadiusCommitted,
   calloutDrawCommitted,
   bannerDrawCommitted,
-  flowchartDrawCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  objectGroupCommitted,
+  objectUngroupCommitted,
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
+  bannerPanelInsetCommitted,
+  bannerPanelHeightCommitted,
   gestureCancelled,
 ];
 
-/** Prefixes whose registry clauses are ALL wired. The path-shape tools
-    (roundedRect, starPolygon, callout, banner, flowchart) stay out until
-    their adjust-handle clauses land — those need the parametric shape
-    storage SEAMS.md records as deferred; only their draw clauses are wired
-    (and cross-checked through UNDOABLE_ACTION_TYPES below). */
-const WIRED_PREFIXES = /^(selection|object|rect|ellipse|line|arrow)\//;
+/** Prefixes whose registry clauses are ALL wired. Each joined as its last
+    clause landed: roundedRect with its parametric storage and adjust
+    handle, then starPolygon (draw + inner-radius handle) with the
+    parametric generalization.
+
+    Banner joined when the review named its two adjustments, closing the
+    last parametric deferral.
+
+    Still out, and not for want of parametric storage: callout has storage
+    and a wired tail handle but also callout/textEditEnteredCommitted, which
+    waits on the text tranche. Its draw clause is cross-checked through
+    UNDOABLE_ACTION_TYPES below regardless. */
+const WIRED_PREFIXES =
+  /^(selection|object|rect|ellipse|line|arrow|roundedRect|starPolygon|banner)\//;
 
 describe("gesture-clause actions", () => {
   const backedTypes = new Set<string>([
@@ -62,7 +84,7 @@ describe("gesture-clause actions", () => {
     tool.gestures.map((clause) => ({ tool, clause })),
   );
 
-  it("backs every selection/object/rect/ellipse/line gesture clause with an action creator of that type", () => {
+  it("backs every clause of a fully wired tool with an action creator of that type", () => {
     const wired = clauses.filter(({ clause }) => WIRED_PREFIXES.test(clause.action));
     expect(wired.length).toBeGreaterThan(0);
     const missing = wired

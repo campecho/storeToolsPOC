@@ -1,5 +1,5 @@
 import type { UnknownAction } from "@reduxjs/toolkit";
-import type { Paint, PathSeg, Stroke } from "../model";
+import type { Paint, PathSeg, ShapeObject, Stroke } from "../model";
 import type { FrameBox, LineEndpoints } from "../store/documentActions";
 
 /**
@@ -24,6 +24,14 @@ export type GestureModifiers = { shift: boolean; alt: boolean };
     converts screen-px thresholds (slop) into inches. */
 export type GestureContext = { pageIndex: number; zoom: number };
 
+/** The parameters an adjust handle can change on a placed shape. */
+export type ShapeParams = Partial<
+  Pick<
+    ShapeObject,
+    "cornerRadius" | "points" | "innerRadiusRatio" | "tailTip" | "panelInset" | "panelHeight"
+  >
+>;
+
 /** Fill/stroke the active tool's options provide for drawn objects. */
 export type DrawStyle = { fill: Paint | null; stroke: Stroke | null };
 
@@ -44,7 +52,13 @@ export type GesturePreview =
   | { kind: "marquee"; x: number; y: number; w: number; h: number }
   | { kind: "move"; dx: number; dy: number }
   | { kind: "resize"; boxes: Record<string, FrameBox | LineEndpoints> }
-  | { kind: "rotate"; rotations: Record<string, number> };
+  /** A rigid-body turn: each member's resulting angle, and the geometry the
+      orbit about the selection pivot lands it on. */
+  | { kind: "rotate"; rotations: Record<string, number>; boxes: Record<string, FrameBox | LineEndpoints> }
+  /** An adjust handle mid-drag: the shape parameters it is changing, merged
+      over the shape they belong to and resolved through the one outline
+      resolver — so the ghost is exactly what will commit. */
+  | { kind: "shape-param"; params: ShapeParams };
 
 /** `end` yields the gesture's single committed action, or null when nothing
     should commit (under-slop clicks with no click behavior, degenerate

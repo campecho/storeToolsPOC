@@ -3,6 +3,7 @@ import type { Orientation } from "../../core/model";
 import { effectivePageSetup } from "../../core/render/pageSetup";
 import {
   documentSetupCommitted,
+  inEditRun,
   pageSizeOverrideCommitted,
   selectDocument,
 } from "../../core/store";
@@ -17,8 +18,11 @@ import { NumberField } from "./NumberField";
  *
  * Orientation and size stay consistent both ways: committing a dimension
  * recomputes the orientation flag (square keeps the current one), and the
- * orientation toggle swaps the dimensions — each as ONE action, which is why
- * DocumentSetupCommit is a partial.
+ * orientation toggle swaps the dimensions — the flag and size move in ONE
+ * action, which is why DocumentSetupCommit is a partial. Numeric fields
+ * apply live and fold each visit into one history entry through the
+ * NumberField edit run; the orientation radios and the override-clear
+ * button are discrete and pass no run.
  *
  * Not wired in this slice, still specified by the registry card: units
  * beyond inches, size presets and Staples product sizes (seam), page
@@ -43,17 +47,20 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
   const page = doc.pages[pageIndex];
   const hasOverride = page?.sizeOverride !== undefined;
 
-  const commitDocSize = (w: number, h: number): void => {
+  const commitDocSize = (w: number, h: number, editRun?: string): void => {
     dispatch(
-      documentSetupCommitted({
-        size: { w, h },
-        orientation: orientationFor(w, h, doc.orientation),
-      }),
+      inEditRun(
+        documentSetupCommitted({
+          size: { w, h },
+          orientation: orientationFor(w, h, doc.orientation),
+        }),
+        editRun,
+      ),
     );
   };
 
-  const commitOverride = (w: number, h: number): void => {
-    dispatch(pageSizeOverrideCommitted({ pageIndex, sizeOverride: { w, h } }));
+  const commitOverride = (w: number, h: number, editRun?: string): void => {
+    dispatch(inEditRun(pageSizeOverrideCommitted({ pageIndex, sizeOverride: { w, h } }), editRun));
   };
 
   /* §1.4 "warn when resizing may affect existing layout": objects whose
@@ -72,7 +79,7 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={MIN_PAGE_EXTENT_IN}
           step={0.125}
           unit="in"
-          onCommit={(w) => commitDocSize(w, doc.size.h)}
+          onCommit={(w, editRun) => commitDocSize(w, doc.size.h, editRun)}
         />
         <NumberField
           label="Height"
@@ -80,7 +87,7 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={MIN_PAGE_EXTENT_IN}
           step={0.125}
           unit="in"
-          onCommit={(h) => commitDocSize(doc.size.w, h)}
+          onCommit={(h, editRun) => commitDocSize(doc.size.w, h, editRun)}
         />
       </div>
       <div className="field-row" role="radiogroup" aria-label="Orientation">
@@ -112,7 +119,7 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={0}
           step={0.0625}
           unit="in"
-          onCommit={(bleed) => dispatch(documentSetupCommitted({ bleed }))}
+          onCommit={(bleed, editRun) => dispatch(inEditRun(documentSetupCommitted({ bleed }), editRun))}
         />
         <NumberField
           label="Slug"
@@ -120,7 +127,7 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={0}
           step={0.0625}
           unit="in"
-          onCommit={(slug) => dispatch(documentSetupCommitted({ slug }))}
+          onCommit={(slug, editRun) => dispatch(inEditRun(documentSetupCommitted({ slug }), editRun))}
         />
       </div>
       <div className="field-row">
@@ -130,14 +137,18 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={0}
           step={0.0625}
           unit="in"
-          onCommit={(margin) => dispatch(documentSetupCommitted({ margin }))}
+          onCommit={(margin, editRun) =>
+            dispatch(inEditRun(documentSetupCommitted({ margin }), editRun))
+          }
         />
         <NumberField
           label="Columns"
           value={doc.columns}
           min={1}
           step={1}
-          onCommit={(columns) => dispatch(documentSetupCommitted({ columns: Math.round(columns) }))}
+          onCommit={(columns, editRun) =>
+            dispatch(inEditRun(documentSetupCommitted({ columns: Math.round(columns) }), editRun))
+          }
         />
       </div>
 
@@ -151,7 +162,7 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={MIN_PAGE_EXTENT_IN}
           step={0.125}
           unit="in"
-          onCommit={(w) => commitOverride(w, setup.size.h)}
+          onCommit={(w, editRun) => commitOverride(w, setup.size.h, editRun)}
         />
         <NumberField
           label="Page height"
@@ -159,7 +170,7 @@ export function DocumentSetupPanel({ pageIndex }: { pageIndex: number }) {
           min={MIN_PAGE_EXTENT_IN}
           step={0.125}
           unit="in"
-          onCommit={(h) => commitOverride(setup.size.w, h)}
+          onCommit={(h, editRun) => commitOverride(setup.size.w, h, editRun)}
         />
       </div>
       {hasOverride && (

@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
 import { Circle, Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "react-konva";
+import { clampCornerRadius, shapeOutline, shapeShading } from "../../core/geometry/shapePaths";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
 import type { LayoutObject, LineObject, Paint, Stroke, Swatch } from "../../core/model";
-import { arrowheadShape, dashPatternIn, headLengthIn } from "../../core/render/lineDecor";
+import {
+  arrowheadShape,
+  dashPatternIn,
+  headInsetIn,
+  headLengthIn,
+  trimmedSegment,
+} from "../../core/render/lineDecor";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
-import { paintToCss } from "../../core/render/paint";
+import { paintToCss, paintToShadedCss } from "../../core/render/paint";
 import { pathToSvg } from "../../core/render/path";
 
 /**
@@ -78,10 +85,20 @@ function renderHead(o: LineObject, end: "start" | "end", color: string): ReactNo
 function renderLine(o: LineObject, swatches: readonly Swatch[]): ReactNode {
   const color = paintToCss(o.stroke.paint, swatches);
   const dash = dashPatternIn(o.dash, o.stroke.width);
+  // The stroke stops at each head's base rather than at the endpoint: a head
+  // narrows to a point there, so a full-width stroke run all the way in spills
+  // out past the point instead of meeting it.
+  const headLength = headLengthIn(o.headSize, o.stroke.width);
+  const [from, to] = trimmedSegment(
+    { x: o.x1, y: o.y1 },
+    { x: o.x2, y: o.y2 },
+    headInsetIn(o.headStart, headLength),
+    headInsetIn(o.headEnd, headLength),
+  );
   return (
     <Group key={o.id}>
       <Line
-        points={[o.x1, o.y1, o.x2, o.y2]}
+        points={[from.x, from.y, to.x, to.y]}
         stroke={color}
         strokeWidth={o.stroke.width / PT_PER_IN}
         {...(dash !== null ? { dash } : {})}
@@ -113,6 +130,26 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
           />
         );
       }
+      if (o.shape === "roundedRect") {
+        // Parametric, not a baked path: Konva rounds the corners itself from
+        // the inch radius, so they stay circular arcs however the frame is
+        // scaled. The bound is applied here, never to the stored value.
+        return (
+          <Rect
+            key={o.id}
+            x={o.x + o.w / 2}
+            y={o.y + o.h / 2}
+            offsetX={o.w / 2}
+            offsetY={o.h / 2}
+            width={o.w}
+            height={o.h}
+            cornerRadius={clampCornerRadius(o.cornerRadius ?? 0, o.w, o.h)}
+            rotation={o.rotation}
+            {...paint}
+            perfectDrawEnabled={false}
+          />
+        );
+      }
       if (o.shape === "ellipse") {
         // An Ellipse's own origin is its center — positioning at the frame
         // center makes rotation pivot there with no offset needed.
@@ -129,20 +166,43 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
           />
         );
       }
-      // Path data is local to the frame box; center position + matching
-      // offsets put the rotation pivot at the frame center like the others.
+      // Every remaining kind draws its outline: a stored path, or a
+      // parametric shape resolved from its parameters and this frame. Path
+      // data is local to the frame box; center position + matching offsets
+      // put the rotation pivot at the frame center like the others.
+      const box = { x: 0, y: 0, w: o.w, h: o.h };
+      const frame = {
+        x: o.x + o.w / 2,
+        y: o.y + o.h / 2,
+        offsetX: o.w / 2,
+        offsetY: o.h / 2,
+        rotation: o.rotation,
+      };
+      // A kind whose outline needs more than one tone declares the darker
+      // parts separately (the banner's folds). They paint OVER the outline in
+      // the same fill scaled toward black, wearing the object's own stroke,
+      // and sit inside the silhouette — so nothing but this renderer changes.
+      // A HOLLOW shape has no fill to darken but still draws their edges: the
+      // folds are part of how the shape is built, not decoration on the fill.
+      const shading = shapeShading(o, o.w, o.h);
       return (
-        <Path
-          key={o.id}
-          x={o.x + o.w / 2}
-          y={o.y + o.h / 2}
-          offsetX={o.w / 2}
-          offsetY={o.h / 2}
-          rotation={o.rotation}
-          data={pathToSvg(o.d ?? [], { x: 0, y: 0, w: o.w, h: o.h })}
-          {...paint}
-          perfectDrawEnabled={false}
-        />
+        <Group key={o.id}>
+          <Path
+            {...frame}
+            data={pathToSvg(shapeOutline(o, o.w, o.h), box)}
+            {...paint}
+            perfectDrawEnabled={false}
+          />
+          {shading.length > 0 && (
+            <Path
+              {...frame}
+              data={pathToSvg(shading, box)}
+              {...(o.fill === null ? {} : { fill: paintToShadedCss(o.fill, swatches) })}
+              {...strokeProps(o.stroke, swatches)}
+              perfectDrawEnabled={false}
+            />
+          )}
+        </Group>
       );
     }
     case "line":

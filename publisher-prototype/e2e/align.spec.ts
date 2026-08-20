@@ -4,6 +4,7 @@ import {
   armCounter,
   clickAt,
   drag,
+  draw,
   expectNear,
   notificationCount,
   pageObjects,
@@ -49,10 +50,9 @@ test.beforeEach(async ({ page }) => {
 test("align left/right/top and center align selected AABBs — one action, one undo step per press", async ({
   page,
 }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 3, y: 4 }, { x: 4, y: 6 });
-  await drag(page, { x: 5, y: 5 }, { x: 6, y: 5.5 });
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 6 });
+  await draw(page, "Rectangle", { x: 5, y: 5 }, { x: 6, y: 5.5 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(3);
   await activate(page, "Select");
   await drag(page, { x: 0.7, y: 2.7 }, { x: 6.3, y: 6.3 });
@@ -101,10 +101,9 @@ test("align left/right/top and center align selected AABBs — one action, one u
 });
 
 test("distribute horizontally equalizes gaps and preserves sizes", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 2.5, y: 3 }, { x: 3.5, y: 4 });
-  await drag(page, { x: 6, y: 3 }, { x: 8, y: 4 });
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 2.5, y: 3 }, { x: 3.5, y: 4 });
+  await draw(page, "Rectangle", { x: 6, y: 3 }, { x: 8, y: 4 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(3);
   await activate(page, "Select");
   await drag(page, { x: 0.7, y: 2.7 }, { x: 7.5, y: 4.4 });
@@ -191,9 +190,8 @@ test("enablement follows the reference and the selection count", async ({ page }
   await expect(alignButton(page, "Distribute horizontally")).toBeDisabled();
   await expect(alignButton(page, "Distribute vertically")).toBeDisabled();
 
-  await activate(page, "Rectangle");
-  await drag(page, { x: 3, y: 4 }, { x: 4, y: 5 });
-  await drag(page, { x: 5, y: 5 }, { x: 6, y: 6 });
+  await draw(page, "Rectangle", { x: 3, y: 4 }, { x: 4, y: 5 });
+  await draw(page, "Rectangle", { x: 5, y: 5 }, { x: 6, y: 6 });
   await activate(page, "Select");
   await drag(page, { x: 0.7, y: 2.7 }, { x: 6.3, y: 6.3 });
   await expect.poll(() => selectionIds(page)).toHaveLength(3);
@@ -207,9 +205,8 @@ test("enablement follows the reference and the selection count", async ({ page }
 });
 
 test("locked objects are skipped by selection and never move", async ({ page }) => {
-  await activate(page, "Rectangle");
-  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
-  await drag(page, { x: 4, y: 5 }, { x: 5, y: 6 });
+  await draw(page, "Rectangle", { x: 1, y: 3 }, { x: 2, y: 4 });
+  await draw(page, "Rectangle", { x: 4, y: 5 }, { x: 5, y: 6 });
   await expect.poll(async () => (await pageObjects(page)).length).toBe(2);
   await activate(page, "Select");
   await clickAt(page, { x: 4.5, y: 5.5 });
@@ -226,4 +223,29 @@ test("locked objects are skipped by selection and never move", async ({ page }) 
   const objects = await pageObjects(page);
   expectNear(shapeAt(objects, 0).x, 0);
   expectNear(shapeAt(objects, 1).x, 4);
+});
+
+test("a callout aligns by its visual bounds, tail included", async ({ page }) => {
+  // Draw a callout, then swing its tail well to the left of the body through
+  // the panel — the same free tip the yellow handle sets.
+  await draw(page, "Callout", { x: 3, y: 4 }, { x: 5, y: 5 });
+  await page.getByTestId("transform-panel").getByLabel("Tail X", { exact: true }).fill("-0.5");
+  await page
+    .getByTestId("transform-panel")
+    .getByLabel("Tail X", { exact: true })
+    .press("Enter");
+  await expect
+    .poll(async () => shapeAt(await pageObjects(page), 0).tailTip?.x)
+    .toBeCloseTo(-0.5, 6);
+  await referenceSelect(page).selectOption("margins");
+  await armCounter(page);
+  await alignButton(page, "Align left").click();
+  expect(await notificationCount(page)).toBe(1);
+  // The frame is 2in wide and the tail reaches 0.5 box-lengths — 1in — beyond
+  // its left edge, so aligning to the 0.5in margin puts the TAIL on the
+  // margin and the body an inch inside it. Aligning the frame alone would
+  // have parked the body on 0.5 and hung the tail off the page.
+  const callout = shapeAt(await pageObjects(page), 0);
+  expectNear(callout.x, 1.5);
+  expectNear(callout.w, 2);
 });

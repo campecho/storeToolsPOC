@@ -1,14 +1,12 @@
-import { createAction, type Reducer } from "@reduxjs/toolkit";
+import { createAction, type Reducer, type UnknownAction } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import {
-  arrowDrawCommitted,
-  bannerDrawCommitted,
-  calloutDrawCommitted,
+  DRAW_COMMIT_ACTIONS,
   documentSetupCommitted,
-  ellipseDrawCommitted,
-  flowchartDrawCommitted,
-  lineDrawCommitted,
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
   objectFillCommitted,
+  objectGroupCommitted,
   objectLockCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
@@ -16,11 +14,17 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  objectUngroupCommitted,
   pageSizeOverrideCommitted,
-  penDrawCommitted,
-  rectDrawCommitted,
-  roundedRectDrawCommitted,
-  starPolygonDrawCommitted,
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
+  calloutTailCommitted,
+  objectArrowHeadsCommitted,
+  objectLineDashCommitted,
+  objectPathClosedCommitted,
+  roundedRectCornerRadiusCommitted,
+  starPolygonInnerRadiusCommitted,
+  starPolygonPointsCommitted,
 } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
@@ -34,13 +38,40 @@ import { documentSlice } from "./documentSlice";
  * Debug/load actions (JSON import, fixture load, stress fixture) are NOT
  * undoable — they replace `present` and clear both stacks, because the
  * document they replace is not a gesture away from the one they load.
+ *
+ * EDIT RUNS extend "one entry per completed gesture" to controls that commit
+ * continuously. A panel field that applies every keystroke live would
+ * otherwise stack an entry per character; instead it stamps each action with
+ * a run id (`inEditRun`), and actions sharing the newest entry's run fold
+ * into it rather than pushing another. The run is the unit of undo, exactly
+ * as a completed drag is — the field decides where it ends (leaving the
+ * field, or Enter), not a timer.
  */
 
 export type DocumentHistoryState = {
   past: LayoutDocument[];
   present: LayoutDocument;
   future: LayoutDocument[];
+  /** The edit run the NEWEST past entry was pushed by, or null when that
+      entry came from a discrete commit. Only a matching run folds in. */
+  editRun: string | null;
 };
+
+/**
+ * Stamp an action as part of one continuous edit — every action carrying the
+ * same run id collapses into a single history entry. `undefined` passes the
+ * action through untouched, so a control can share one commit helper between
+ * its live field and its discrete buttons.
+ */
+export function inEditRun(action: UnknownAction, editRun: string | undefined): UnknownAction {
+  return editRun === undefined ? action : { ...action, meta: { editRun } };
+}
+
+function editRunOf(action: UnknownAction): string | null {
+  const meta = action.meta;
+  if (typeof meta !== "object" || meta === null || !("editRun" in meta)) return null;
+  return typeof meta.editRun === "string" ? meta.editRun : null;
+}
 
 /** ASSUMPTION: 100 retained gestures is a working depth — deep enough for a
     session's editing, bounded so 100 structurally-shared snapshots stay
@@ -59,6 +90,13 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectLockCommitted.type,
   documentSetupCommitted.type,
   pageSizeOverrideCommitted.type,
+  // Shape and outline parameters with no adjust-handle clause behind them:
+  // the star's vertex count, the line's dash and end decorations, and a
+  // path's closed state.
+  starPolygonPointsCommitted.type,
+  objectLineDashCommitted.type,
+  objectArrowHeadsCommitted.type,
+  objectPathClosedCommitted.type,
 ]);
 
 /** Exactly the commit actions that mutate the document per completed
@@ -66,20 +104,20 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
     deliberately absent (no reducer, no state change), as are the load/debug
     actions (they reset history instead). */
 export const UNDOABLE_ACTION_TYPES: ReadonlySet<string> = new Set([
-  rectDrawCommitted.type,
-  ellipseDrawCommitted.type,
-  lineDrawCommitted.type,
-  arrowDrawCommitted.type,
-  roundedRectDrawCommitted.type,
-  starPolygonDrawCommitted.type,
-  calloutDrawCommitted.type,
-  bannerDrawCommitted.type,
-  flowchartDrawCommitted.type,
-  penDrawCommitted.type,
+  ...DRAW_COMMIT_ACTIONS.map((creator) => creator.type),
   objectMoveCommitted.type,
   objectNudgeCommitted.type,
   objectResizeCommitted.type,
   objectRotateCommitted.type,
+  objectGroupCommitted.type,
+  objectUngroupCommitted.type,
+  objectDeleteCommitted.type,
+  objectDuplicateCommitted.type,
+  roundedRectCornerRadiusCommitted.type,
+  starPolygonInnerRadiusCommitted.type,
+  calloutTailCommitted.type,
+  bannerPanelInsetCommitted.type,
+  bannerPanelHeightCommitted.type,
   ...PANEL_COMMIT_ACTION_TYPES,
 ]);
 
@@ -97,7 +135,7 @@ export const redoCommitted = createAction("history/redoCommitted");
 export function withDocumentHistory(base: Reducer<LayoutDocument>): Reducer<DocumentHistoryState> {
   return (state, action) => {
     if (state === undefined) {
-      return { past: [], present: base(undefined, action), future: [] };
+      return { past: [], present: base(undefined, action), future: [], editRun: null };
     }
     if (undoCommitted.match(action)) {
       const previous = state.past[state.past.length - 1];
@@ -106,6 +144,10 @@ export function withDocumentHistory(base: Reducer<LayoutDocument>): Reducer<Docu
         past: state.past.slice(0, -1),
         present: previous,
         future: [state.present, ...state.future],
+        // Walking the stack closes whatever run the newest entry held: a
+        // later action from that same run must start its own entry, never
+        // reopen one undo just stepped past.
+        editRun: null,
       };
     }
     if (redoCommitted.match(action)) {
@@ -115,18 +157,26 @@ export function withDocumentHistory(base: Reducer<LayoutDocument>): Reducer<Docu
         past: [...state.past, state.present],
         present: next,
         future: state.future.slice(1),
+        editRun: null,
       };
     }
     const present = base(state.present, action);
     if (UNDOABLE_ACTION_TYPES.has(action.type)) {
+      const editRun = editRunOf(action);
+      // A continuation of the run that pushed the newest entry: that entry
+      // already snapshots the document as it stood before the run began, so
+      // this commit only advances present.
+      if (editRun !== null && editRun === state.editRun) {
+        return { ...state, present, future: [] };
+      }
       const past =
         state.past.length >= HISTORY_LIMIT
           ? [...state.past.slice(state.past.length - HISTORY_LIMIT + 1), state.present]
           : [...state.past, state.present];
-      return { past, present, future: [] };
+      return { past, present, future: [], editRun };
     }
     if (HISTORY_RESET_ACTION_TYPES.has(action.type)) {
-      return { past: [], present, future: [] };
+      return { past: [], present, future: [], editRun: null };
     }
     if (present === state.present) return state;
     return { ...state, present };

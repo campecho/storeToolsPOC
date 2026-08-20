@@ -5,7 +5,7 @@ import type { ToolMode } from "../core/registry";
 import { selectDocument } from "../core/store";
 import { CanvasWorkspace } from "./canvas/CanvasWorkspace";
 import { DebugBar } from "./DebugBar";
-import { Dock, type ShapePresentation } from "./dock/Dock";
+import { Dock } from "./dock/Dock";
 import { OptionsBar } from "./dock/OptionsBar";
 import { useAppSelector } from "./hooks";
 import { isTextEntryTarget } from "./isTextEntryTarget";
@@ -31,7 +31,6 @@ export function App() {
   const [mode, setMode] = useState<AppMode>("layout");
   const [activeTool, setActiveTool] = useState("pan");
   const [showProbe, setShowProbe] = useState(false);
-  const [shapePresentation, setShapePresentation] = useState<ShapePresentation>("slots");
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
   // Which page renders is app-local React state, deliberately not store
   // state — the Pages panel (Phase B) owns real page navigation. Loading a
@@ -45,6 +44,12 @@ export function App() {
   const setToolOption = useCallback((toolId: string, optionId: string, value: ToolOptionValue) => {
     setToolOptions((prev) => ({ ...prev, [toolId]: { ...prev[toolId], [optionId]: value } }));
   }, []);
+
+  // A drawn object lands selected (selectionSlice), and the select tool is
+  // what acts on a selection — so the draw tool hands the page back rather
+  // than arming another shape. Reasoned at the commit door in
+  // canvas/useToolGestures.ts, where the ASSUMPTION note lives.
+  const selectDrawnObject = useCallback(() => setActiveTool("select"), []);
 
   const activeContract = toolRegistry.find((t) => t.id === activeTool);
 
@@ -74,8 +79,6 @@ export function App() {
       <DebugBar
         mode={mode}
         onModeChange={switchMode}
-        shapePresentation={shapePresentation}
-        onShapePresentationChange={setShapePresentation}
         showProbe={showProbe}
         onProbeChange={setShowProbe}
         vpSize={vpSize}
@@ -94,7 +97,6 @@ export function App() {
           mode={mode}
           activeTool={activeTool}
           onToolChange={setActiveTool}
-          shapePresentation={shapePresentation}
         />
         <CanvasWorkspace
           activeTool={activeTool}
@@ -102,6 +104,7 @@ export function App() {
           showProbe={showProbe}
           toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
+          onObjectDrawn={selectDrawnObject}
         />
         <ControlPanel
           mode={mode}

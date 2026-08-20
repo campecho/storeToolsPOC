@@ -1,13 +1,37 @@
-import type { LayoutObject, LineObject } from "../../core/model";
+import type { UnknownAction } from "@reduxjs/toolkit";
 import {
+  tailTipFor,
+  type LayoutObject,
+  type LineObject,
+  type ShapeObject,
+} from "../../core/model";
+import {
+  bannerPanelHeightCommitted,
+  bannerPanelInsetCommitted,
+  calloutTailCommitted,
+  inEditRun,
   objectLockCommitted,
+  objectPathClosedCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  roundedRectCornerRadiusCommitted,
   selectDocument,
+  starPolygonInnerRadiusCommitted,
+  starPolygonPointsCommitted,
   type FrameBox,
   type LineEndpoints,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
+import {
+  BANNER_DEFAULT_HEIGHT,
+  BANNER_DEFAULT_INSET,
+  BANNER_HEIGHT_MAX,
+  BANNER_HEIGHT_MIN,
+  BANNER_INSET_MAX,
+  BANNER_INSET_MIN,
+  CALLOUT_TIP_MAX,
+  CALLOUT_TIP_MIN,
+} from "../../core/geometry/shapePaths";
 import { NumberField } from "./NumberField";
 
 /**
@@ -15,44 +39,87 @@ import { NumberField } from "./NumberField";
  * transform group): precise numeric geometry entry over the same commit
  * vocabulary the canvas gestures use — X/Y/W/H through
  * object/resizeCommitted, angle (entry, ±90°, reset) through
- * object/rotateCommitted — so one panel commit is one history entry.
+ * object/rotateCommitted. Fields apply as they are typed and fold into one
+ * history entry per visit (the NumberField edit run); the buttons are
+ * discrete commits, one entry each.
  *
- * Numeric entry binds to a SINGLE selected object: the fields show that
- * object's frame box (a line shows its endpoint bounding box; its W/H
- * scale the endpoints from the box origin). Rotation is about the frame
- * center (decision of record in SEAMS.md); lines carry no rotation and
- * show the angle controls disabled. Locking (§5.3) disables every
- * geometry control except the lock checkbox itself — the door out.
+ * Numeric entry binds to a SINGLE selected object, in that object's OWN
+ * geometry vocabulary: a frame shows X/Y/W/H, a line shows its two points as
+ * X1/Y1/X2/Y2 — the same thing its canvas chrome says. Squeezing a line into
+ * a bounding box made a vertical one un-editable along X, since a degenerate
+ * extent cannot be scaled. Rotation is about the frame center (decision of
+ * record in SEAMS.md); lines carry no rotation and show the angle controls
+ * disabled. Locking (§5.3) disables every geometry control except the lock
+ * checkbox itself — the door out.
+ *
+ * The Shape group is the numeric home for whatever parameter shapes the
+ * selected kind — corner radius, star points and inner radius, callout tail,
+ * the banner's two ribbon adjustments, a path's closed state. Each appears
+ * only for the kind that stores it (SHAPE_GEOMETRY_FIELDS), and where a canvas
+ * adjust handle sets the same parameter, both surfaces dispatch the one
+ * action.
  */
 
 type Box = { x: number; y: number; w: number; h: number };
 
-function objectBox(obj: LayoutObject): Box {
-  if (obj.type === "line") {
-    return {
-      x: Math.min(obj.x1, obj.x2),
-      y: Math.min(obj.y1, obj.y2),
-      w: Math.abs(obj.x2 - obj.x1),
-      h: Math.abs(obj.y2 - obj.y1),
-    };
-  }
-  return { x: obj.x, y: obj.y, w: obj.w, h: obj.h };
-}
+/** Every object that carries a frame box — everything the union holds except
+    a line, which carries two points instead. */
+type FrameLike = Exclude<LayoutObject, LineObject>;
 
-/** Map a line's endpoints into the target box: translate to its origin and
-    scale each axis by the box-size ratio, preserving direction. A degenerate
-    axis (current extent 0) cannot be scaled — its field renders disabled —
-    so the ratio only ever divides by a non-zero extent. */
-function lineEndpointsFor(line: LineObject, next: Box): LineEndpoints {
-  const current = objectBox(line);
-  const sx = current.w === 0 ? 1 : next.w / current.w;
-  const sy = current.h === 0 ? 1 : next.h / current.h;
-  return {
-    x1: next.x + (line.x1 - current.x) * sx,
-    y1: next.y + (line.y1 - current.y) * sy,
-    x2: next.x + (line.x2 - current.x) * sx,
-    y2: next.y + (line.y2 - current.y) * sy,
-  };
+/** A frame object's position and size. Its own four numbers, unlike a line's,
+    which is why the two get different fields rather than one shared bbox. */
+function FrameGeometry({
+  object,
+  locked,
+  onCommit,
+}: {
+  object: FrameLike;
+  locked: boolean;
+  onCommit: (next: Box, editRun?: string) => void;
+}) {
+  const box: Box = { x: object.x, y: object.y, w: object.w, h: object.h };
+  return (
+    <>
+      <div className="field-row">
+        <NumberField
+          label="X"
+          value={box.x}
+          step={0.05}
+          unit="in"
+          disabled={locked}
+          onCommit={(x, editRun) => onCommit({ ...box, x }, editRun)}
+        />
+        <NumberField
+          label="Y"
+          value={box.y}
+          step={0.05}
+          unit="in"
+          disabled={locked}
+          onCommit={(y, editRun) => onCommit({ ...box, y }, editRun)}
+        />
+      </div>
+      <div className="field-row">
+        <NumberField
+          label="W"
+          value={box.w}
+          min={MIN_EXTENT_IN}
+          step={0.05}
+          unit="in"
+          disabled={locked}
+          onCommit={(w, editRun) => onCommit({ ...box, w }, editRun)}
+        />
+        <NumberField
+          label="H"
+          value={box.h}
+          min={MIN_EXTENT_IN}
+          step={0.05}
+          unit="in"
+          disabled={locked}
+          onCommit={(h, editRun) => onCommit({ ...box, h }, editRun)}
+        />
+      </div>
+    </>
+  );
 }
 
 /** Angle entry and buttons normalize into [0, 360) so the field always
@@ -107,64 +174,241 @@ export function TransformPanel({
     );
   }
 
-  const box = objectBox(single);
   const isLine = single.type === "line";
   const rotation = isLine ? 0 : single.rotation;
   const locked = single.locked;
 
-  const commitBox = (next: Box): void => {
-    const boxes: Record<string, FrameBox | LineEndpoints> = {
-      [single.id]: single.type === "line" ? lineEndpointsFor(single, next) : next,
-    };
-    dispatch(objectResizeCommitted({ pageIndex, boxes }));
+  // One commit for both vocabularies — object/resizeCommitted already takes
+  // a frame box or a line's endpoints and applies whichever matches.
+  // `editRun` is the field's continuous-edit group; the ±90° and reset
+  // buttons pass none, so each of those stays its own history entry.
+  const commitGeometry = (next: FrameBox | LineEndpoints, editRun?: string): void => {
+    dispatch(
+      inEditRun(objectResizeCommitted({ pageIndex, boxes: { [single.id]: next } }), editRun),
+    );
   };
 
-  const commitRotation = (deg: number): void => {
+  /** Every shape-parameter commit takes the same shape: this one object's
+      id, optionally inside the field's edit run. */
+  const commitShapeParam = (action: UnknownAction, editRun?: string): void => {
+    dispatch(inEditRun(action, editRun));
+  };
+  const shapeIds = { pageIndex, ids: [single.id] };
+
+  const commitRotation = (deg: number, editRun?: string): void => {
     dispatch(
-      objectRotateCommitted({ pageIndex, rotations: { [single.id]: normalizeDegrees(deg) } }),
+      inEditRun(
+        objectRotateCommitted({ pageIndex, rotations: { [single.id]: normalizeDegrees(deg) } }),
+        editRun,
+      ),
+    );
+  };
+
+  /**
+   * The controls for whatever shapes this kind — the panel face of
+   * SHAPE_GEOMETRY_FIELDS. Each kind's parameters appear only for that kind,
+   * because a kind that stores nothing has nothing to edit here, and the
+   * bounds are the drawing tools' own contract ranges so a placed shape can
+   * be driven exactly as far as it could be drawn.
+   *
+   * Star inner radius, callout tail and corner radius each have a canvas
+   * adjust handle setting the SAME action — one commit vocabulary, two
+   * surfaces, as the roundedRect precedent established.
+   */
+  const shapeFields = (shape: ShapeObject) => {
+    switch (shape.shape) {
+      case "roundedRect":
+        return (
+          <NumberField
+            label="Corner radius"
+            // No upper bound, unlike the tool option's: the stored radius is
+            // deliberately unclamped (ShapeObjectSchema), so a big frame can
+            // carry a big radius and a shrunk one keeps what it had.
+            value={shape.cornerRadius ?? 0}
+            min={0}
+            step={0.05}
+            unit="in"
+            disabled={locked}
+            onCommit={(radius, editRun) =>
+              commitShapeParam(roundedRectCornerRadiusCommitted({ ...shapeIds, radius }), editRun)
+            }
+          />
+        );
+      case "starPolygon":
+        return (
+          <>
+            <NumberField
+              label="Points"
+              value={shape.points ?? 5}
+              min={3}
+              max={24}
+              step={1}
+              disabled={locked}
+              onCommit={(points, editRun) =>
+                commitShapeParam(starPolygonPointsCommitted({ ...shapeIds, points }), editRun)
+              }
+            />
+            <NumberField
+              label="Inner radius"
+              value={shape.innerRadiusRatio ?? 0.5}
+              min={0.1}
+              max={0.9}
+              step={0.05}
+              disabled={locked}
+              onCommit={(innerRadiusRatio, editRun) =>
+                commitShapeParam(
+                  starPolygonInnerRadiusCommitted({ ...shapeIds, innerRadiusRatio }),
+                  editRun,
+                )
+              }
+            />
+          </>
+        );
+      case "callout": {
+        // The tip in unit-box coordinates — the numeric face of the yellow
+        // handle. Outside 0–1 is normal and useful: that is the tail reaching
+        // past the body, which is where a callout usually points.
+        const tip = shape.tailTip ?? tailTipFor("bottom-left");
+        return (
+          <>
+            <NumberField
+              label="Tail X"
+              value={tip.x}
+              min={CALLOUT_TIP_MIN}
+              max={CALLOUT_TIP_MAX}
+              step={0.05}
+              disabled={locked}
+              onCommit={(x, editRun) =>
+                commitShapeParam(calloutTailCommitted({ ...shapeIds, tailTip: { ...tip, x } }), editRun)
+              }
+            />
+            <NumberField
+              label="Tail Y"
+              value={tip.y}
+              min={CALLOUT_TIP_MIN}
+              max={CALLOUT_TIP_MAX}
+              step={0.05}
+              disabled={locked}
+              onCommit={(y, editRun) =>
+                commitShapeParam(calloutTailCommitted({ ...shapeIds, tailTip: { ...tip, y } }), editRun)
+              }
+            />
+          </>
+        );
+      }
+      case "banner":
+        return (
+          <>
+            <NumberField
+              label="Panel inset"
+              value={shape.panelInset ?? BANNER_DEFAULT_INSET}
+              min={BANNER_INSET_MIN}
+              max={BANNER_INSET_MAX}
+              step={0.01}
+              disabled={locked}
+              onCommit={(panelInset, editRun) =>
+                commitShapeParam(bannerPanelInsetCommitted({ ...shapeIds, panelInset }), editRun)
+              }
+            />
+            <NumberField
+              label="Panel height"
+              value={shape.panelHeight ?? BANNER_DEFAULT_HEIGHT}
+              min={BANNER_HEIGHT_MIN}
+              max={BANNER_HEIGHT_MAX}
+              step={0.01}
+              disabled={locked}
+              onCommit={(panelHeight, editRun) =>
+                commitShapeParam(bannerPanelHeightCommitted({ ...shapeIds, panelHeight }), editRun)
+              }
+            />
+          </>
+        );
+      case "path":
+        return (
+          <label className="field">
+            <input
+              type="checkbox"
+              aria-label="Closed"
+              checked={(shape.d ?? []).at(-1)?.c === "Z"}
+              disabled={locked}
+              onChange={(e) =>
+                commitShapeParam(
+                  objectPathClosedCommitted({ ...shapeIds, closed: e.target.checked }),
+                )
+              }
+            />
+            Closed
+          </label>
+        );
+      // rect and ellipse are shaped by their frame box alone.
+      case "rect":
+      case "ellipse":
+        return null;
+    }
+  };
+
+  const shapeGroup = (shape: ShapeObject) => {
+    const fields = shapeFields(shape);
+    if (fields === null) return null;
+    return (
+      <div className="field-row" role="group" aria-label="Shape">
+        {fields}
+      </div>
     );
   };
 
   return (
     <div className="panel-live" data-testid="transform-panel">
-      <div className="field-row">
-        <NumberField
-          label="X"
-          value={box.x}
-          step={0.05}
-          unit="in"
-          disabled={locked}
-          onCommit={(x) => commitBox({ ...box, x })}
-        />
-        <NumberField
-          label="Y"
-          value={box.y}
-          step={0.05}
-          unit="in"
-          disabled={locked}
-          onCommit={(y) => commitBox({ ...box, y })}
-        />
-      </div>
-      <div className="field-row">
-        <NumberField
-          label="W"
-          value={box.w}
-          min={isLine ? 0 : MIN_EXTENT_IN}
-          step={0.05}
-          unit="in"
-          disabled={locked || (isLine && box.w === 0)}
-          onCommit={(w) => commitBox({ ...box, w })}
-        />
-        <NumberField
-          label="H"
-          value={box.h}
-          min={isLine ? 0 : MIN_EXTENT_IN}
-          step={0.05}
-          unit="in"
-          disabled={locked || (isLine && box.h === 0)}
-          onCommit={(h) => commitBox({ ...box, h })}
-        />
-      </div>
+      {single.type === "line" ? (
+        <>
+          <div className="field-row">
+            <NumberField
+              label="X1"
+              value={single.x1}
+              step={0.05}
+              unit="in"
+              disabled={locked}
+              onCommit={(x1, editRun) =>
+                commitGeometry({ x1, y1: single.y1, x2: single.x2, y2: single.y2 }, editRun)
+              }
+            />
+            <NumberField
+              label="Y1"
+              value={single.y1}
+              step={0.05}
+              unit="in"
+              disabled={locked}
+              onCommit={(y1, editRun) =>
+                commitGeometry({ x1: single.x1, y1, x2: single.x2, y2: single.y2 }, editRun)
+              }
+            />
+          </div>
+          <div className="field-row">
+            <NumberField
+              label="X2"
+              value={single.x2}
+              step={0.05}
+              unit="in"
+              disabled={locked}
+              onCommit={(x2, editRun) =>
+                commitGeometry({ x1: single.x1, y1: single.y1, x2, y2: single.y2 }, editRun)
+              }
+            />
+            <NumberField
+              label="Y2"
+              value={single.y2}
+              step={0.05}
+              unit="in"
+              disabled={locked}
+              onCommit={(y2, editRun) =>
+                commitGeometry({ x1: single.x1, y1: single.y1, x2: single.x2, y2 }, editRun)
+              }
+            />
+          </div>
+        </>
+      ) : (
+        <FrameGeometry object={single} locked={locked} onCommit={commitGeometry} />
+      )}
       <div className="field-row">
         <NumberField
           label="Angle"
@@ -198,6 +442,7 @@ export function TransformPanel({
           Reset rotation
         </button>
       </div>
+      {single.type === "shape" && shapeGroup(single)}
       <label className="field">
         <input
           type="checkbox"

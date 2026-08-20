@@ -64,6 +64,15 @@ describe("alignBoxes", () => {
     expect(boxes).toEqual({ a: { x: 6.5, y: 1, w: 2, h: 1 } });
   });
 
+  it("aligns a callout by its VISUAL bounds, tail included", () => {
+    // A 2×1in callout whose tail points 0.5 box-lengths left of the body: its
+    // visual left edge is 1in left of its frame, so aligning left puts the
+    // TAIL on the margin and the body an inch inside it.
+    const callout = shape("c", { shape: "callout", x: 4, tailTip: { x: -0.5, y: 0.5 } });
+    const boxes = alignBoxes([callout], "left", margins);
+    expect(boxes).toEqual({ c: { x: 1.5, y: 1, w: 2, h: 1 } });
+  });
+
   it("centers the AABB horizontally on the target center", () => {
     const boxes = alignBoxes([shape("a")], "centerH", page);
     expect(boxes).toEqual({ a: { x: 3.25, y: 1, w: 2, h: 1 } });

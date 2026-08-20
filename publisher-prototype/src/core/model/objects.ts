@@ -229,17 +229,97 @@ export const TableFrameSchema = z.object({
 });
 export type TableFrame = z.infer<typeof TableFrameSchema>;
 
-/** Rect / ellipse / vector-path shape — the lineage's three non-content
-    frame kinds folded under the registry's single "shape" object type. */
+/** A point in the frame's unit box — the coordinate space every normalized
+    path here speaks. Not clamped: a callout's tail tip lives outside it. */
+export const NormalizedPointSchema = z.object({ x: z.number(), y: z.number() });
+export type NormalizedPoint = z.infer<typeof NormalizedPointSchema>;
+
+/**
+ * The four corners a callout's tail can be SEEDED from (§4.4 callouts) — a
+ * draw-time preset in the tool's options bar, not storage. The placed object
+ * keeps a free `tailTip` instead, which the adjust handle moves anywhere.
+ */
+export const CalloutTailAnchorSchema = z.enum([
+  "bottom-left",
+  "bottom-right",
+  "top-left",
+  "top-right",
+]);
+export type CalloutTailAnchor = z.infer<typeof CalloutTailAnchorSchema>;
+
+/** Where each preset puts the tip: just outside that corner, so a freshly
+    drawn callout has a tail of real length pointing the way it was asked to. */
+export function tailTipFor(anchor: CalloutTailAnchor): NormalizedPoint {
+  return {
+    x: anchor.endsWith("right") ? 0.94 : 0.06,
+    y: anchor.startsWith("bottom") ? 1.22 : -0.22,
+  };
+}
+
+/**
+ * Shape object — the lineage's non-content frame kinds folded under the
+ * registry's single "shape" object type.
+ *
+ * PARAMETRIC KINDS store the parameter that shapes them (the additive v3
+ * delta SEAMS.md deferred, no version bump per the additive rule) instead of
+ * baking it into a path: the outline derives from the parameter and the frame
+ * wherever it is drawn or hit-tested, so the parameter stays editable after
+ * the shape is placed and survives a resize as itself. `path` remains for
+ * shapes with no parameters to speak of — the pen's freeform output, and the
+ * banner, whose only contracted adjustment has no tool option behind it yet.
+ *
+ * Each kind carries EXACTLY its own geometry fields (SHAPE_GEOMETRY_FIELDS),
+ * enforced by the refine on LayoutObjectSchema.
+ */
 export const ShapeObjectSchema = z.object({
   ...frameShared,
   type: z.literal("shape"),
-  shape: z.enum(["rect", "ellipse", "path"]),
-  /** Path shapes only: normalized segments — see PathSegSchema. Presence is
-      enforced by the refine on LayoutObjectSchema. */
+  shape: z.enum([
+    "rect",
+    "ellipse",
+    "roundedRect",
+    "starPolygon",
+    "callout",
+    "banner",
+    "path",
+  ]),
+  /** Path shapes only: normalized segments — see PathSegSchema. */
   d: z.array(PathSegSchema).optional(),
+  /** Rounded rectangles only: corner radius in INCHES. Kept as the user set
+      it: a resize can leave it above the geometric bound of half the shorter
+      side, and the bound is applied where the shape is drawn and hit-tested
+      (clampCornerRadius), so growing the frame back restores the radius
+      rather than losing it. */
+  cornerRadius: z.number().nonnegative().optional(),
+  /** Stars/polygons only: vertex count (3+) and how deep the points cut, as
+      a fraction of the outer radius. */
+  points: z.number().int().min(3).optional(),
+  innerRadiusRatio: z.number().min(0).max(1).optional(),
+  /** Callouts only: where the pointer tail's TIP sits, normalized to the
+      frame box like every other path coordinate here. Usually outside 0–1 —
+      that is what gives the tail length — so the tail reaches past the body
+      the way PowerPoint's does. Dragging it changes the tail's length and
+      angle together. */
+  tailTip: NormalizedPointSchema.optional(),
+  /** Banners only: the two ribbon adjustments, each a fraction of the frame —
+      how far the raised panel's sides sit in from the edges, and where its
+      bottom edge falls. The tails, folds and notches follow from them. */
+  panelInset: z.number().optional(),
+  panelHeight: z.number().optional(),
 });
 export type ShapeObject = z.infer<typeof ShapeObjectSchema>;
+
+/** The geometry field(s) each shape kind owns — the refine's table, and the
+    single place a new parametric kind declares what shapes it. */
+export const SHAPE_GEOMETRY_FIELDS = {
+  rect: [],
+  ellipse: [],
+  roundedRect: ["cornerRadius"],
+  starPolygon: ["points", "innerRadiusRatio"],
+  callout: ["tailTip"],
+  banner: ["panelInset", "panelHeight"],
+  path: ["d"],
+} as const satisfies Record<ShapeObject["shape"], readonly (keyof ShapeObject)[]>;
 
 /** Line-end decoration vocabulary (§4.4 arrows — the arrow tool's contract
     option set, user-ratified 2026-08-18 as an additive v3 delta recorded in
@@ -295,18 +375,36 @@ const LayoutObjectUnionSchema = z.discriminatedUnion("type", [
   MergeFieldObjectSchema,
 ]);
 
-/** The object union plus the one cross-field invariant a discriminated-union
-    member can't express itself (the PhotoOpSchema pattern): a path shape
-    carries non-empty `d`; rect/ellipse carry none. */
+/** Every geometry field any shape kind owns — the domain the refine checks
+    each object against its own kind's row. */
+const ALL_SHAPE_GEOMETRY_FIELDS = [
+  ...new Set(Object.values(SHAPE_GEOMETRY_FIELDS).flat()),
+] as readonly (keyof ShapeObject)[];
+
+/** The object union plus the cross-field invariants a discriminated-union
+    member can't express itself (the PhotoOpSchema pattern): a shape carries
+    exactly the geometry fields its kind owns (SHAPE_GEOMETRY_FIELDS) and
+    none of the others, so a parametric kind can never lose the parameter
+    that shapes it or carry one meant for a different kind. */
 export const LayoutObjectSchema = LayoutObjectUnionSchema.superRefine((obj, ctx) => {
   if (obj.type !== "shape") return;
-  const hasD = obj.d != null && obj.d.length > 0;
-  const ok = obj.shape === "path" ? hasD : obj.d == null;
-  if (!ok) {
+  const owned: readonly (keyof ShapeObject)[] = SHAPE_GEOMETRY_FIELDS[obj.shape];
+  for (const field of ALL_SHAPE_GEOMETRY_FIELDS) {
+    const present = obj[field] != null;
+    if (present !== owned.includes(field)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `shape: kind '${obj.shape}' ${owned.includes(field) ? "requires" : "must not carry"} \`${field}\``,
+      });
+    }
+  }
+  // `d` is the one field an empty value would satisfy vacuously.
+  if (obj.shape === "path" && (obj.d?.length ?? 0) === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message:
-        "shape: kind 'path' requires non-empty `d`; kinds 'rect' and 'ellipse' must not carry `d`",
+      path: ["d"],
+      message: "shape: kind 'path' requires NON-EMPTY `d`",
     });
   }
 });

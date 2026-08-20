@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { framePivot, rotatePoint, rotatedFrameCorners } from "../hittest";
 import { selectTool } from "../registry/tools/selection";
 import {
   gestureCancelled,
@@ -8,7 +9,14 @@ import {
   type ResizeCommit,
 } from "../store/documentActions";
 import { MIN_RESIZE_SIZE_IN } from "./constants";
-import { resizeMachine, type ResizeContext, type ResizeHandle } from "./resize";
+import {
+  resizeAnchor,
+  resizeHandleAxis,
+  resizeHandlePoint,
+  resizeMachine,
+  type ResizeContext,
+  type ResizeHandle,
+} from "./resize";
 import type { GestureModifiers, GesturePoint, GestureResult } from "./types";
 
 const NONE: GestureModifiers = { shift: false, alt: false };
@@ -33,6 +41,8 @@ const HANDLE_POINTS: Record<ResizeHandle, GesturePoint> = {
   w: { x: 1, y: 2 },
 };
 
+const HANDLES: readonly ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
 const OPPOSITE: Record<ResizeHandle, ResizeHandle> = {
   nw: "se",
   n: "s",
@@ -51,6 +61,7 @@ function ctx(handle: ResizeHandle): ResizeContext {
     handle,
     anchor: HANDLE_POINTS[OPPOSITE[handle]],
     bounds: BOUNDS,
+    rotation: 0,
     initial: INITIAL,
   };
 }
@@ -150,6 +161,117 @@ describe("select.drag-handle.resizes", () => {
     const preview = resizeMachine.preview(state);
     if (preview.kind !== "resize") throw new Error("expected a resize preview");
     expect(preview.boxes["a"]).toEqual({ x: 1, y: 1, w: 2, h: 2 });
+  });
+});
+
+/** A lone object rotated a quarter turn: frame (1,1)–(3,2), pivot (2,1.5).
+    Frame space is the unrotated box; document space is that turned 90°. */
+const ROTATED: FrameBox = { x: 1, y: 1, w: 2, h: 1 };
+const ROTATION = 90;
+const PIVOT = framePivot(ROTATED);
+
+/** Frame space → document space, the same step the chrome draws with. */
+function toDoc(p: GesturePoint): GesturePoint {
+  return rotatePoint(p, PIVOT, ROTATION);
+}
+
+function rotatedCtx(handle: ResizeHandle): ResizeContext {
+  return {
+    pageIndex: 0,
+    zoom: 1,
+    handle,
+    anchor: resizeAnchor(handle, ROTATED),
+    bounds: ROTATED,
+    rotation: ROTATION,
+    initial: { r: ROTATED },
+  };
+}
+
+/** Drag a handle on the rotated frame; `to` is a point in FRAME space, so the
+    expectations below read in the same coordinates the anchor lives in. */
+function rotatedDrag(handle: ResizeHandle, to: GesturePoint): FrameBox {
+  const ctxOf = rotatedCtx(handle);
+  let state = resizeMachine.begin(toDoc(resizeHandlePoint(handle, ROTATED)), ctxOf);
+  state = resizeMachine.update(state, toDoc(to), NONE);
+  const box = boxesOf(resizeMachine.end(state, NONE))["r"];
+  if (!box || !("w" in box)) throw new Error("expected a frame box");
+  return box;
+}
+
+function expectBoxNear(box: FrameBox, expected: FrameBox): void {
+  expect(box.x).toBeCloseTo(expected.x, 9);
+  expect(box.y).toBeCloseTo(expected.y, 9);
+  expect(box.w).toBeCloseTo(expected.w, 9);
+  expect(box.h).toBeCloseTo(expected.h, 9);
+}
+
+describe("select.drag-handle.resizes (rotated frame)", () => {
+  it("places handles and anchors on the unrotated frame", () => {
+    expect(resizeHandlePoint("se", ROTATED)).toEqual({ x: 3, y: 2 });
+    expect(resizeHandlePoint("n", ROTATED)).toEqual({ x: 2, y: 1 });
+    expect(resizeAnchor("se", ROTATED)).toEqual({ x: 1, y: 1 });
+    expect(resizeAnchor("n", ROTATED)).toEqual({ x: 2, y: 2 });
+  });
+
+  it("scales in the frame's own space, then offsets so the anchor stays put", () => {
+    // Doubling both axes about the nw anchor: the box grows to 4×2, and the
+    // offset compensates for the frame center the scale moved.
+    expectBoxNear(rotatedDrag("se", { x: 5, y: 3 }), { x: -0.5, y: 1.5, w: 4, h: 2 });
+  });
+
+  it("pins the grabbed anchor's corner in document space", () => {
+    const before = rotatedFrameCorners(ROTATED, ROTATION);
+    const after = rotatedFrameCorners(rotatedDrag("se", { x: 5, y: 3 }), ROTATION);
+    // rotatedFrameCorners rings tl, tr, br, bl — the se drag anchors on tl.
+    expect(after[0]?.x).toBeCloseTo(before[0]?.x ?? NaN, 9);
+    expect(after[0]?.y).toBeCloseTo(before[0]?.y ?? NaN, 9);
+  });
+
+  it("stretches an edge handle along the frame's edge, not the document axis", () => {
+    // The east handle points down the page at 90°; the drag still only
+    // changes the frame's width.
+    expectBoxNear(rotatedDrag("e", { x: 4, y: 1.5 }), { x: 0.5, y: 1.5, w: 3, h: 1 });
+  });
+
+  it("leaves an unrotated frame's boxes untouched by the offset", () => {
+    // The pin is a no-op at rotation 0 — the multi-object cases above are the
+    // regression, this is the seam stated outright.
+    const boxes = boxesOf(drag("se", { x: 5, y: 5 }));
+    expect(boxes["a"]).toEqual({ x: 1, y: 1, w: 2, h: 2 });
+  });
+});
+
+describe("resizeHandleAxis", () => {
+  it("names the axis each handle stretches along on an unrotated frame", () => {
+    expect(resizeHandleAxis("n", 0)).toBe("ns");
+    expect(resizeHandleAxis("s", 0)).toBe("ns");
+    expect(resizeHandleAxis("e", 0)).toBe("ew");
+    expect(resizeHandleAxis("w", 0)).toBe("ew");
+    expect(resizeHandleAxis("nw", 0)).toBe("nwse");
+    expect(resizeHandleAxis("se", 0)).toBe("nwse");
+    expect(resizeHandleAxis("ne", 0)).toBe("nesw");
+    expect(resizeHandleAxis("sw", 0)).toBe("nesw");
+  });
+
+  it("turns with the frame: a quarter turn swaps every axis for its partner", () => {
+    expect(resizeHandleAxis("n", 90)).toBe("ew");
+    expect(resizeHandleAxis("e", 90)).toBe("ns");
+    expect(resizeHandleAxis("nw", 90)).toBe("nesw");
+    expect(resizeHandleAxis("ne", 90)).toBe("nwse");
+  });
+
+  it("is unchanged by a half turn — the two ends are interchangeable", () => {
+    for (const handle of HANDLES) {
+      expect(resizeHandleAxis(handle, 180)).toBe(resizeHandleAxis(handle, 0));
+      expect(resizeHandleAxis(handle, -180)).toBe(resizeHandleAxis(handle, 0));
+    }
+  });
+
+  it("snaps an off-axis rotation to the nearest eighth turn", () => {
+    // 20° still reads as upright; 30° has crossed into the diagonal.
+    expect(resizeHandleAxis("n", 20)).toBe("ns");
+    expect(resizeHandleAxis("n", 30)).toBe("nesw");
+    expect(resizeHandleAxis("n", -30)).toBe("nwse");
   });
 });
 

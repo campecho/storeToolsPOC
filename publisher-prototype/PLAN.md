@@ -226,7 +226,7 @@ user picks up**. Most requirements are not tools:
 
 | Surface | Count | Lives in |
 |---|---|---|
-| **Tool** | ~24 layout + ~8 photo-mode | The dock (per mode) |
+| **Tool** | ~23 layout + ~8 photo-mode | The dock (per mode) |
 | **Panel** | ~26 layout + ~6 photo-mode | The control panel |
 | **Command** | ~30 | Keyboard / context menu (no dock slot) |
 | **Dev-team seam** | ~12 | Named in the capability map, not built |
@@ -235,7 +235,7 @@ user picks up**. Most requirements are not tools:
 requirement with its § citation, tier, and contract. The dock, options bar, control
 panel, checklists, and every generated document are *renderings of that one file*.
 
-### 4.1 The layout tool set (~24)
+### 4.1 The layout tool set (~23)
 
 | # | Tool | Group | Req |
 |---|---|---|---|
@@ -246,19 +246,26 @@ panel, checklists, and every generated document are *renderings of that one file
 | 5 | Picture frame | Content | §4.1 |
 | 6 | Crop | Content | §4.2 |
 | 7 | Table | Content | §8.1 |
-| 8–17 | Rectangle · Rounded rectangle · Ellipse · Line · Arrow · Star/polygon · Callout · Banner · Flowchart · Pen/freeform | Shapes | §4.4 |
-| 18 | Fill / gradient | Style | §4.4, §9.4 |
-| 19 | Eyedropper / format painter | Style | §12.2 |
-| 20 | Guide | Layout aids | §2.4 |
-| 21 | Merge field | Data | §7.1 |
-| 22 | Building block | Data | §6.2 |
-| 23 | Zoom | Navigation | §9.1 |
-| 24 | Pan | Navigation | — |
+| 8–16 | Rectangle · Rounded rectangle · Ellipse · Line · Arrow · Star/polygon · Callout · Banner · Pen/freeform | Shapes | §4.4 |
+| 17 | Fill / gradient | Style | §4.4, §9.4 |
+| 18 | Eyedropper / format painter | Style | §12.2 |
+| 19 | Guide | Layout aids | §2.4 |
+| 20 | Merge field | Data | §7.1 |
+| 21 | Building block | Data | §6.2 |
+| 22 | Zoom | Navigation | §9.1 |
+| 23 | Pan | Navigation | — |
 
-**Shape presentation (decision closed as "both"):** the dock renders the ten shape tools
-either as a single slot with a flyout *or* as individual slots, switched by a
-registry-driven presentation toggle in the model's debug bar. Both renderings bind to the
-same tool contracts. The prototype review picks the winner; the registry records it.
+**Shape presentation (settled by prototype review, 2026-08-19):** **individual slots.**
+The dock gives each of the nine shape tools its own slot. The alternative rendering — one
+slot with a flyout, offered alongside it behind a debug-bar toggle while the question was
+open — is gone, along with the toggle: the review found the flyout unnecessary, and a
+choice nothing chooses between is only a second thing to keep working.
+
+**Flowchart shapes (cut by prototype review, 2026-08-19):** the digest's §4.4 lists them
+and the prototype drew all five, but the review found the tool unwanted and it is gone —
+tool, shape kind, symbol parameter and all. §4.4 is unchanged as a record of what
+Publisher does; this table is the record of what we build, and the two differ here on
+purpose. Nothing else in the digest depends on the kind.
 
 ### 4.2 The photo-mode tool set (~8)
 
@@ -693,7 +700,7 @@ and a complete reviewable picture of the whole tool suite.
 | Group | Delivers | Req |
 |---|---|---|
 | Selection & transform | Select, node select, marquee, move, 8-handle resize, rotate, snapping, smart guides; Transform + Align panels; group, lock, z-order | §2.1, §2.3, §5 |
-| Shapes | Ten shape tools (both presentations), pen and node editing, fill/stroke/gradient, Eyedropper, Effects | §4.3, §4.4 |
+| Shapes | Nine shape tools, pen and node editing, fill/stroke/gradient, Eyedropper, Effects | §4.3, §4.4 |
 | Text surfaces | Frame + Link tools, Character/Paragraph/Styles panels (styles with inheritance + override indicator), overset & autofit, wrap controls — all riding T1–T3 | §3.1–3.6 |
 | Images & photo | Picture tool, Crop tool, **Image adjust panel**, **photo mode** (dock, panels, mask interactions, compare, recipe history), **standalone image documents**, Resource manager *(link status LIVE; relink/package SURFACE)* | §4.1, §4.2, §4.5 |
 | Document structure | Pages, spreads, mixed sizes, page rotation, masters, sections & numbering, trim/bleed/slug, guides & baseline grid | §1, §2.4, §2.5 |
