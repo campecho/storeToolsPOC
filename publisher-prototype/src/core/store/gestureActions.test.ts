@@ -26,6 +26,7 @@ import {
   starPolygonInnerRadiusCommitted,
 } from "./documentActions";
 import { clipboardSlice } from "./clipboardSlice";
+import { fileSlice } from "./fileSlice";
 import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES, redoCommitted, undoCommitted } from "./history";
 import { penSlice } from "./penSlice";
 import { selectionSlice } from "./selectionSlice";
@@ -124,6 +125,9 @@ describe("gesture-clause actions", () => {
       redoCommitted.type,
       ...Object.values(clipboardSlice.actions).map((creator) => creator.type),
       ...Object.values(viewportSlice.actions).map((creator) => creator.type),
+      // The file chords (§6.9): dispatched by the shell after the async IO
+      // completes, never by the keypress itself.
+      ...Object.values(fileSlice.actions).map((creator) => creator.type),
     ]);
     expect(globalKeyClauses.length).toBeGreaterThan(0);
     const missing = globalKeyClauses

@@ -77,6 +77,27 @@ export const globalKeyClauses: readonly GestureClause[] = [
     action: "object/duplicateCommitted",
   },
   {
+    id: "document.ctrl-s.saves-file",
+    trigger: "Ctrl/Cmd+S",
+    behavior:
+      "Writes the document to its .staples file through the retained handle, with no dialog; a document that has no file yet falls through to Save As. The action commits when the write completes — never on the keypress, because the write is the save.",
+    action: "file/savedCommitted",
+  },
+  {
+    id: "document.ctrl-shift-s.saves-file-as",
+    trigger: "Ctrl/Cmd+Shift+S",
+    behavior:
+      "Asks where to write the document — the save picker starts in the default storage folder when one is set — and retains the chosen file so plain Save writes there silently. Cancelling the picker commits nothing.",
+    action: "file/savedCommitted",
+  },
+  {
+    id: "document.ctrl-o.opens-file",
+    trigger: "Ctrl/Cmd+O",
+    behavior:
+      "Opens a .staples file — the picker starts in the default storage folder when one is set — replacing the working document and resetting history, exactly as every load does. Cancelling the picker commits nothing.",
+    action: "file/openedCommitted",
+  },
+  {
     id: "viewport.ctrl-zero.fits-page",
     trigger: "Ctrl/Cmd+0",
     behavior:

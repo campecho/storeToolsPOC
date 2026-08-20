@@ -1,4 +1,5 @@
 import { useLayoutStore, type RibbonTab } from "@/store";
+import { FileMenu } from "./FileMenu";
 
 const INTERACTIVE_TABS: { id: RibbonTab; label: string }[] = [
   { id: "home", label: "Home" },
@@ -10,9 +11,9 @@ const INTERACTIVE_TABS: { id: RibbonTab; label: string }[] = [
 
 /**
  * Ribbon tab strip (wire region 2a). Home/Insert/Layout/Text/Arrange switch
- * the command band (Arrange went live in plan L10).
- * PROTOTYPE-ONLY: File (open/save/export lands with the print-production
- * slice) and View/Help (plan §6) are inert, static-by-design labels.
+ * the command band (Arrange went live in plan L10). File is a real menu now —
+ * `.staples` open/save on local device storage (docs/STORAGE_PLAN.md P1/P2).
+ * PROTOTYPE-ONLY: View/Help (plan §6) stay inert, static-by-design labels.
  */
 export function RibbonTabs() {
   const ribbon = useLayoutStore((s) => s.ribbon);
@@ -20,7 +21,7 @@ export function RibbonTabs() {
 
   return (
     <div className="flex h-8 shrink-0 items-end gap-[2px] border-b border-[#e4e4e4] bg-[#f0f0f0] px-[6px]">
-      <div className="px-[15px] pb-2 pt-[7px] text-[12px] font-semibold text-brand">File</div>
+      <FileMenu />
       {INTERACTIVE_TABS.map(({ id, label }) => (
         <button
           key={id}

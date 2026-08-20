@@ -1,8 +1,8 @@
 # Headless Layout Tool — Functional Model for Dev-Team Handoff
 
 **Document type:** Implementation plan (standalone application)
-**Status:** Draft v2.3 — plan of record
-**Last updated:** 2026-08-18
+**Status:** Draft v2.4 — plan of record
+**Last updated:** 2026-08-20
 **Source of truth:** [`docs/microsoft_publisher_feature_requirements.md`](docs/microsoft_publisher_feature_requirements.md)
 (§1–§14) — **committed in this directory** so every § citation resolves inside the handoff
 **Relationship to `storeToolsPOC`:** **reference implementation only.** The model is a
@@ -11,6 +11,20 @@ code, no shared stores, no cross-app flows. The POC is consulted (and selectivel
 from) as prior art: its schema lineage, its proven edit-recipe architecture, its pure
 geometry/snap/adjust math, and its Konva evaluation. Its home in this repo is temporary
 and mechanical (§0).
+
+**Changes in v2.4 (storage comes inside — user directive, 2026-08-20):**
+
+1. **Local device storage only, and the model builds it.** Documents open from and
+   save to real files on the device — no cloud, no server, no browser-storage stand-in
+   as the primary store. Save, Open, Save As, autosave, and crash recovery move from
+   the dev-team column into the model (§6.9), reversing v2.3's scope line.
+2. **The native format is `.staples`.** §13.2's `.cdoc` working name is renamed; the
+   container format is specified and built here (§6.9). The requirements digest is
+   unchanged — it records requirements, this table records the build — and §13.2's
+   guarantees carry: a locally stored file never needs a network connection to open.
+3. **A default storage folder is in scope**, implemented as a remembered directory
+   grant — chosen once, persisted, and used as the target for every open and save
+   (§6.9). A hard-coded OS path is out of web-platform reach; the limit is named.
 
 **Changes in v2.3 (the break-out requirement wins):**
 
@@ -168,8 +182,8 @@ printer, PDF bytes, model inference — plus the application shell around the to
 |---|---|
 | Tool dock and every tool's canvas behavior | Application header, navigation, suite chrome |
 | Control panels and every option they carry | Backend services, auth, catalog/product API |
-| Canvas: geometry, selection, transform, snapping, guides | Storage — save, open, autosave, recovery |
-| The in-memory document model (schema v3) | Native `.cdoc` format on disk (§13.2) |
+| Canvas: geometry, selection, transform, snapping, guides | Cloud, server, or multi-device storage of any kind — none planned; storage is local-device only (§6.9) |
+| The in-memory document model (schema v3) **and the `.staples` file it saves to — open, save, default folder, autosave, recovery (§6.9)** | Sync and backup services — out entirely under the local-only requirement |
 | **Text engine: shaping, H&J, OpenType — LIVE (§6.4)** | PDF **bytes**: font subsetting/embedding, PDF/X-4 writer |
 | **Image adjust + photo mode + mask interactions (§6.5)** | Model services (inpaint, upscale, bg removal); full-res render; HEIC; ICC/CMYK transforms |
 | Live design-checker analysis over the model | Final file rendering — print output (§11.1) |
@@ -209,7 +223,7 @@ Every capability carries one of three statuses, visible in the app beside the co
 | Tier | Meaning | Example |
 |---|---|---|
 | **LIVE** | Fully interactive. Real behavior on canvas or in the panel. | Rectangle tool, Layers panel, H&J controls, Image adjust |
-| **SURFACE** | The control exists with its full option set, defaults, and a written contract — but the action stops at a declared interface the dev team implements. | Export PDF settings, Save, inpaint execution, HEIC open |
+| **SURFACE** | The control exists with its full option set, defaults, and a written contract — but the action stops at a declared interface the dev team implements. | Export PDF settings, inpaint execution, HEIC open |
 | **OUT** | Not represented. Named in the capability map with its owner. | PDF/X-4 writer, font activation service, `.pub` import |
 
 SURFACE is not a stub — it is a specification with a named seam, declaring the interface
@@ -672,6 +686,85 @@ checker reads it for booklet-incompatible page counts and for objects straddling
 or the page/pasteboard boundary (§10.1). Booklet imposition (§9.5) and export's
 reader-spread option (§11.1) are SURFACE settings that consume the same model.
 
+### 6.9 Storage — local device files (`.staples`)
+
+**Requirement (2026-08-20, user directive; supersedes v2.3's scope line "Storage —
+save, open, autosave, recovery | dev team"):** documents open from and save to **local
+device storage only** — real files the user can see in their OS file manager. No cloud,
+no server. The §13.2 native format's `.cdoc` working name is renamed **`.staples`**, and
+the format is built here, LIVE. A **default storage folder** is the default target for
+every open and save.
+
+**Format.** `.staples` is §13.2's documented container, owned by `core/`:
+
+- A ZIP archive: `manifest.json` (format version, app version, created/modified,
+  document metadata), `document.json` (schema v3 exactly as `serializeDocument` emits —
+  the §6.6 JSON round-trip is the payload, never a parallel format), and `assets/<id>`
+  (raw image bytes, embedded per §13.2; referenced-only assets simply have no entry).
+- The format version lives in the manifest *and* in `document.json` (`version: 3`);
+  `parseDocument` stays the one migrate-on-read door. A wrong version fails loudly,
+  §13.2's newer-version policy included: name the mismatch, never half-load.
+- The debug-bar JSON round-trip survives unchanged — it is the fixture mechanism and
+  the schema-completeness proof, not the user save path.
+
+**The default folder — what the web platform actually supports.** The app cannot
+hard-code an OS path; the folder is *chosen once and remembered*:
+
+1. First save (or a Settings affordance): "Choose your documents folder" →
+   `showDirectoryPicker({ mode: "readwrite" })`.
+2. The returned `FileSystemDirectoryHandle` persists in IndexedDB (handles are
+   structured-cloneable). Chromium ≥122 offers persistent permission ("Allow on every
+   visit"), so later sessions `queryPermission()` and skip the prompt entirely.
+3. Every OS picker passes `startIn:` that handle plus a stable `id`, so Open and
+   Save As dialogs land in the folder — and the in-app Open dialog needs no OS picker
+   at all: it enumerates the granted folder directly and lists its `.staples` files.
+4. Plain Save reuses the open document's retained `FileSystemFileHandle`: Ctrl+S
+   writes silently through `createWritable()`, which is atomic — bytes swap in on
+   `close()`, satisfying §13.2's interrupted-save rule for free.
+
+**Support tier.** Primary target is Chromium — the store hardware profile (§6.2)
+already assumes managed store machines, where Chrome/Edge is a deployment fact worth
+recording, not a gamble. Feature-detected fallback everywhere else:
+`<input type="file">` open + `<a download>` save. The format is identical; what the
+fallback loses is folder control (the browser's download directory wins) and silent
+re-save. The UI says so rather than pretending.
+
+**Honest limits, named:**
+
+- A *mandated fixed path* (provisioning `D:\StaplesDocs` across a fleet with zero
+  setup) is unreachable from a browser: enterprise policy can permit the prompts but
+  cannot pre-grant a directory. If that ever becomes a hard requirement, the answer is
+  a thin desktop shell (Tauri/Electron) over the same core — a seam, not a rewrite.
+- The browser can revoke a persisted grant (site-data clear). The app must degrade to
+  re-requesting, and autosave (below) guarantees revocation never costs work.
+
+**Boundary placement.** `core/storage/` is pure — container pack/unpack (bytes in,
+bytes out), manifest schema (Zod), version gating — no DOM, no picker APIs. All IO
+lives in the shell behind one `StorageProvider` interface (`chooseDefaultFolder`,
+`listDocuments`, `open`, `save`, `saveAs`, `permissionState`) with two implementations:
+File System Access and the download/upload fallback. Playwright cannot drive native
+pickers, so e2e injects a third, in-memory provider; the FSA adapter gets unit tests
+over mocked handles. ZIP in core needs a dependency — see the §9 open decision
+(default: add `fflate`, MIT and dependency-free, to `CORE_ALLOWED_PACKAGES`).
+
+**Autosave & crash recovery — also local device.** A debounced snapshot of the dirty
+working document persists to OPFS; relaunch offers recovery when the snapshot is newer
+than the file. OPFS is origin-private device storage — invisible to the user's folder,
+which is right for crash recovery and would be wrong for documents; the two must never
+be confused.
+
+**Slices:**
+
+| Slice | Delivers |
+|---|---|
+| **S1 — open/save** | `.staples` container (document.json), both providers, retained file handle, Ctrl+S / Save As / Ctrl+O, dirty tracking + `beforeunload` guard, filename + dirty dot in the debug bar pending real chrome |
+| **S2 — default folder** | Setup flow, persisted handle + permission lifecycle, `startIn` everywhere, in-app open-from-folder listing, recents (persisted file handles) |
+| **S3 — assets in the container** | Client blob store (IndexedDB; the POC's `stp-assets-v1` split is the cited prior art), pack/unpack `assets/`, placed images survive save/reopen |
+| **S4 — autosave & recovery** | OPFS snapshotting, relaunch restore, permission-revocation degradation |
+
+Ctrl+S, Ctrl+Shift+S, and Ctrl+O join the global chord registry — chords, so outside
+the single-key WCAG deferral recorded in `SEAMS.md`.
+
 ---
 
 ## 7. Schedule
@@ -707,6 +800,7 @@ and a complete reviewable picture of the whole tool suite.
 | Tables & data | Table tool and panel (flagged: second-hardest item), cell operations, Merge field tool, data merge with record preview + sample sources | §7, §8 |
 | Layers & colour | Layers panel with opacity/blend/lock/hide/non-printing; swatches, spot, CMYK | §2.2, §9.4 |
 | Validation | Live design checker — incremental for cheap rules (overflow, safe zone, bleed shortfall, empty frames) from day one; batch for expensive rules; severity, click-to-navigate, click-to-fix | §10.1 |
+| Storage | `.staples` open/save with retained handles, default folder + recents, assets in the container, autosave & recovery (S1–S4, §6.9) | §13.2, §13.4 |
 | Output surfaces | Print preview, booklet, marks, PDF and image export **settings** — all SURFACE, incl. recipe replay and font-embedding seams | §9, §11 |
 | Productivity | Find & replace incl. style-aware and pattern; spell-check interaction; templates, building blocks, themes; clipboard incl. paste special | §3.7, §6, §12 |
 | Stretch | Footnotes, running headers, text variables, jump lines, cross-references — against the Phase A anchor model | §3.8 |
@@ -764,6 +858,17 @@ other context. Inside it:
    Rejected: deriving inside/outside at render time, which cannot express the wider
    inside margin that is the point of mirrored margins.
 
+**Closed in v2.4 (recorded 2026-08-20, user directive):**
+
+1. **Local device storage only** — no cloud, no server, no sync. Open, save, autosave,
+   and recovery move into the model (§6.9), reversing v2.3's dev-team assignment.
+2. **`.cdoc` → `.staples`** — §13.2's placeholder is named. The requirements digest is
+   unchanged (it records requirements; §4.1's flowchart precedent applies: this plan is
+   the record of what we build).
+3. **Default storage folder — in, as a remembered directory grant** (§6.9). A
+   hard-coded path is out of web-platform reach; if ever mandated, it is a
+   desktop-shell seam, not a browser feature.
+
 **Carried closed from v2.2:** Redux Toolkit · shaping-engine text with the
 `PositionedGlyphRun` contract · shape presentation both ways behind a toggle · JSON
 round-trip · authored seeded fixtures · publisher import out entirely (dev team, after
@@ -783,3 +888,9 @@ toolset implementation).
 4. **Composer ambition** — greedy H&J (Publisher parity) is v1; Knuth-Plass multi-line
    composition is a named later slice. Confirm greedy is the right comparison baseline
    for your evaluation.
+5. **ZIP dependency in core** — default: add `fflate` to `CORE_ALLOWED_PACKAGES` so the
+   `.staples` container logic lives in the ported artifact (§6.9). Alternative — packing
+   in the shell — keeps the allowlist untouched but strands format knowledge in
+   scaffolding the dev team throws away.
+6. **Non-Chromium depth** — default: the download/upload fallback tier only (§6.9).
+   Anything richer waits for evidence a non-Chromium deployment exists.

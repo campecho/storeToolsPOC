@@ -245,6 +245,54 @@ body {
   gap: 4px;
 }
 
+/* The file group (§6.9): name + dirty dot, and the folder/recents menus —
+   positioned off the group so the popover never reflows the bar. */
+.file-controls {
+  position: relative;
+}
+
+.file-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.file-dirty {
+  margin-left: 2px;
+  color: #a4262c;
+}
+
+.file-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 240px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-top: 4px;
+  padding: 4px;
+  gap: 2px;
+  border: 1px solid #bbb;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.file-menu button {
+  text-align: left;
+}
+
+.file-menu-note {
+  padding: 2px 4px;
+  color: #666;
+  font-size: 11px;
+}
+
 .debug-bar button[aria-pressed="true"] {
   outline: 2px solid #333;
 }

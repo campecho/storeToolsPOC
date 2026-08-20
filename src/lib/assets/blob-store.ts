@@ -122,6 +122,20 @@ export function peekAssetUrl(id: string): string | undefined {
   return urlCache.get(id);
 }
 
+/** Raw blob read for the `.staples` save path (docs/STORAGE_PLAN.md P1):
+    packing a document embeds the library's bytes in the file, and this is
+    the one reader that wants the Blob itself rather than an object URL. */
+export async function getAssetBlob(id: string): Promise<Blob | null> {
+  try {
+    const s = await store("readonly");
+    if (!s) return null;
+    return ((await done(s.get(id))) as Blob | undefined) ?? null;
+  } catch (err) {
+    console.warn("[assets] blob read failed", err);
+    return null;
+  }
+}
+
 /** Resolve an asset id to an object URL, or null when the blob is gone. */
 export async function getAssetUrl(id: string): Promise<string | null> {
   const hit = urlCache.get(id);

@@ -42,11 +42,15 @@ export function useGlobalKeys({
   pageIndex,
   vpSize,
   onSelectionSurfaced,
+  file,
 }: {
   pageIndex: number;
   vpSize: Size;
   /** Hands the page to the Select tool — the tool that acts on a selection. */
   onSelectionSurfaced: () => void;
+  /** The file chords' targets (§6.9): async shell IO, so the handlers fire
+      and the corresponding file/ actions commit when the work completes. */
+  file: { open: () => void; save: () => void; saveAs: () => void };
 }): void {
   const dispatch = useAppDispatch();
   const doc = useAppSelector(selectDocument);
@@ -57,8 +61,8 @@ export function useGlobalKeys({
   // The listener registers once and reads current values through the ref, the
   // same shape useToolGestures uses: re-subscribing on every document change
   // would churn a window listener per keystroke's worth of state.
-  const argsRef = useRef({ doc, selectedIds, clipboard, viewport, pageIndex, vpSize, onSelectionSurfaced });
-  argsRef.current = { doc, selectedIds, clipboard, viewport, pageIndex, vpSize, onSelectionSurfaced };
+  const argsRef = useRef({ doc, selectedIds, clipboard, viewport, pageIndex, vpSize, onSelectionSurfaced, file });
+  argsRef.current = { doc, selectedIds, clipboard, viewport, pageIndex, vpSize, onSelectionSurfaced, file };
 
   // A held pointer button stands in for "a gesture may be in flight". The
   // canvas chords can check the gesture session directly (useToolGestures);
@@ -176,6 +180,23 @@ export function useGlobalKeys({
           });
           dispatch(objectDuplicateCommitted({ pageIndex: args.pageIndex, ...copies }));
           args.onSelectionSurfaced();
+          return;
+        }
+        case "s": {
+          // document.ctrl-s.saves-file / document.ctrl-shift-s.saves-file-as.
+          // preventDefault unconditionally: the browser's own save dialog is
+          // never the answer, whatever the save goes on to do — and the
+          // file/ action commits when the async write completes, not here.
+          e.preventDefault();
+          if (e.shiftKey) args.file.saveAs();
+          else args.file.save();
+          return;
+        }
+        case "o": {
+          // document.ctrl-o.opens-file: same posture — suppress the
+          // browser's open dialog, hand the rest to the async open.
+          e.preventDefault();
+          args.file.open();
           return;
         }
         case "0": {

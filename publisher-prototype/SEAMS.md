@@ -568,3 +568,22 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   than as corners either side of a straight edge. That the two land together is
   arithmetic, not tuning — the vertical radius is a quarter of the drop below
   the plate, so four of them is the drop exactly.
+- **Storage is local device files (recorded 2026-08-20, user directive):** documents
+  open from and save to the device's own filesystem as **`.staples`** files — the
+  §13.2 native format, renamed from the `.cdoc` working name — with a **default
+  storage folder** implemented as a one-time directory grant the app persists and
+  reuses. This SUPERSEDES the v2.3 scope line assigning "Storage — save, open,
+  autosave, recovery" to the dev team: the model now builds it (PLAN.md §6.9, plan
+  v2.4). Local-only is a REQUIREMENT, not a stopgap — cloud, server, and sync storage
+  are OUT, so no storage seam remains for the dev team beyond the named desktop-shell
+  contingency: a browser cannot honor a mandated fixed OS path (policy can allow the
+  permission prompts but cannot pre-grant a directory), so if a zero-setup
+  provisioned path ever becomes binding, the same core ships inside a thin desktop
+  shell and the `StorageProvider` interface (§6.9) is the seam it implements.
+  Consequences of record: the container payload is `serializeDocument`'s exact output
+  — one format, so the debug round-trip and the saved file can never disagree; the
+  version-gate posture hardens ("no persisted documents outside this repo", cited by
+  the flowchart-cut entry above, stops being true at S1 — from then on any
+  non-additive schema change bumps the version and ships a migration); and asset
+  BYTES finally get a home (S3's client blob store; the POC's `stp-assets-v1`
+  metadata/bytes split is the cited prior art).

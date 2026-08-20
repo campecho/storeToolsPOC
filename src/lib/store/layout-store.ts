@@ -234,6 +234,20 @@ export function createDefaultDocument(): LayoutDocument {
   };
 }
 
+/** Whether the document holds edits its .staples file does not
+    (docs/STORAGE_PLAN.md P1). Reference identity against the saved baseline;
+    conservative on purpose — this store's undo rebuilds the doc object (the
+    asset library carries forward, line ~1197), so undoing back to the save
+    point still reads dirty, and only a save clears it. A false "unsaved
+    changes" costs one prompt; a false clean costs the work. Meaningful only
+    once a file exists: untitled work never blocks navigation, because
+    localStorage already carries it across reloads. */
+export function selectFileDirty(
+  s: Pick<LayoutEditorState, "doc" | "fileName" | "savedDoc">,
+): boolean {
+  return s.fileName !== null && s.savedDoc !== null && s.doc !== s.savedDoc;
+}
+
 export interface LayoutEditorState {
   // UI toggles (prototype names)
   ribbon: RibbonTab;
@@ -295,6 +309,20 @@ export interface LayoutEditorState {
   /** Last `.pub` import's fidelity report (session, plan §10.4) — the P4
       report panel reads it; P1 keeps it for the status-bar summary. */
   importReport: ImportReport | null;
+
+  // .staples file state (session — docs/STORAGE_PLAN.md P1). The retained
+  // FILE HANDLE lives in the storage provider, never here: it isn't
+  // serializable, and the store carries only what it can honestly own.
+  /** The open .staples file's name; null while the document has none. */
+  fileName: string | null;
+  /** The file manifest's created stamp, carried through re-saves. */
+  fileCreatedAt: string | null;
+  /** The exact doc object the file last held — the dirty baseline. Dirty is
+      reference identity (undo restores exact snapshots), and only meaningful
+      once a file exists: untitled work is already covered by localStorage. */
+  savedDoc: LayoutDocument | null;
+  /** Last file operation's failure, for the File menu to surface. */
+  fileError: string | null;
 
   setRibbon: (ribbon: RibbonTab) => void;
   setTool: (tool: EditorTool) => void;
@@ -441,6 +469,18 @@ export interface LayoutEditorState {
     report: ImportReport,
     blobs?: Record<string, Blob>,
   ) => void;
+
+  /** Open a `.staples` file (docs/STORAGE_PLAN.md P1): replaces the working
+      document wholesale like an import, swaps the asset library to the
+      container's bytes, and records the file as the dirty baseline. */
+  openStaplesDocument: (
+    doc: LayoutDocument,
+    blobs: Record<string, Blob>,
+    file: { name: string; createdAt: string },
+  ) => void;
+  /** A save completed: the baseline becomes the document as packed. */
+  markFileSaved: (file: { name: string; createdAt: string }) => void;
+  setFileError: (fileError: string | null) => void;
   /** Record the imported text frames that overflow their boxes (P4 overset
       check, §10.4). Writes `importReport.overset`; a non-empty result opens
       the import report panel so the associate sees what to review. No-op when
@@ -506,6 +546,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
       fitRequestId: 0,
       focusPageSize: false,
       importReport: null,
+
+      fileName: null,
+      fileCreatedAt: null,
+      savedDoc: null,
+      fileError: null,
 
       setRibbon: (ribbon) => set({ ribbon }),
       // Switching tools ends a text-editing session (the overlay commits on unmount)
@@ -1200,6 +1245,12 @@ export const useLayoutStore = create<LayoutEditorState>()(
             pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
             importReport: null,
+            // A fresh document belongs to no file — the storage layer drops
+            // its retained handle when fileName goes null (useLayoutFile).
+            fileName: null,
+            fileCreatedAt: null,
+            savedDoc: null,
+            fileError: null,
           };
         }),
 
@@ -1233,9 +1284,55 @@ export const useLayoutStore = create<LayoutEditorState>()(
             pasteCount: 0,
             fitRequestId: s.fitRequestId + 1,
             importReport: report,
+            // An import is a different document: whatever file was open, this
+            // isn't it. Saving the conversion is a deliberate Save As.
+            fileName: null,
+            fileCreatedAt: null,
+            savedDoc: null,
+            fileError: null,
             ...(worthReviewing ? { panelTab: "import" as const, panelOpen: true } : {}),
           };
         }),
+
+      openStaplesDocument: (doc, blobs, file) =>
+        set((s) => {
+          // The asset library resets with the document, exactly as an import
+          // does — the container's bytes are the library now.
+          void replaceAssetBlobs(blobs);
+          return {
+            doc,
+            activePageId: doc.pages[0]?.id ?? "page-1",
+            masterEditingId: null,
+            guidesVisible: true,
+            spread: false,
+            pageSizeScope: "document",
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            selectedGuide: null,
+            editingTextId: null,
+            past: [],
+            future: [],
+            clipboard: [],
+            pasteCount: 0,
+            fitRequestId: s.fitRequestId + 1,
+            importReport: null,
+            fileName: file.name,
+            fileCreatedAt: file.createdAt,
+            // The opened doc IS the baseline: clean until the first gesture.
+            savedDoc: doc,
+            fileError: null,
+          };
+        }),
+
+      markFileSaved: (file) =>
+        set((s) => ({
+          fileName: file.name,
+          fileCreatedAt: file.createdAt,
+          savedDoc: s.doc,
+          fileError: null,
+        })),
+
+      setFileError: (fileError) => set({ fileError }),
 
       setImportOverset: (objectIds) =>
         set((s) => {

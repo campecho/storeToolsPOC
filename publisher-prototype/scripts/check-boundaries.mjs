@@ -24,8 +24,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "src");
 const CORE = path.join(ROOT, "src", "core");
 
-/** Framework-free core (§6.1): everything else must live in the shell. */
-const CORE_ALLOWED_PACKAGES = new Set(["@reduxjs/toolkit", "zod", "immer"]);
+/** Framework-free core (§6.1): everything else must live in the shell.
+    fflate joined for the .staples container (§6.9, decision §9): the format
+    logic belongs to the ported artifact, and fflate is MIT and dependency-
+    free — pure bytes-in/bytes-out, no DOM, no platform APIs. */
+const CORE_ALLOWED_PACKAGES = new Set(["@reduxjs/toolkit", "zod", "immer", "fflate"]);
 /** Colocated core tests may additionally import the test runner. */
 const CORE_TEST_ALLOWED_PACKAGES = new Set([...CORE_ALLOWED_PACKAGES, "vitest"]);
 

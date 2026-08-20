@@ -19,7 +19,8 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 |---|---|---|---|
 | Station identity | `src/lib/identity.ts` | Hardcoded `#1284` behind `getCurrentStation()` | Real station/associate resolution (device registration or SSO). Swap touches only this file. |
 | Persistence — tracker | `src/lib/store/feedback-store.ts` | `localStorage` (`stp-feedback-v1`), schema-validated on rehydrate | Backend persists the `PersistedFeedbackSchema` shape per store, keyed by station identity. |
-| Persistence — layout docs | `src/lib/store/layout-store.ts` | `localStorage` (`stp-layout-v1`), schema-validated on rehydrate; **v1→v2 documents migrate on load** (P2, `src/lib/schema/layout-v1.ts`) — the production posture, already practiced | Backend persists `LayoutDocument` per publication with the same migrate-on-read pattern. |
+| Persistence — layout docs | `src/lib/store/layout-store.ts` | `localStorage` (`stp-layout-v1`), schema-validated on rehydrate; **v1→v2 documents migrate on load** (P2, `src/lib/schema/layout-v1.ts`) — the production posture, already practiced. Since the storage plan landed, localStorage is the working-session carry-over; the **document of record is a `.staples` file on the device** (row below). | `docs/STORAGE_PLAN.md` P4 demotes localStorage to crash-recovery snapshots keyed against the open file. |
+| Local device storage — `.staples` files | `src/lib/storage/` (container, providers, handle store), `src/components/layout-editor/ribbon/FileMenu.tsx` | **Built, not stubbed** (docs/STORAGE_PLAN.md P1/P2): File menu + Ctrl+S/Shift+S/O open and save the working document as a `.staples` ZIP (manifest + document.json + asset bytes) via the File System Access API — retained handle for silent re-save, one-time default-folder grant persisted in IndexedDB (`stp-storage-v1`), in-app open-from-folder listing, recents. Non-Chromium falls back to download/upload. The format is the publisher prototype's spec (its PLAN.md §6.9); the POC copies it. | Photo documents adopt the same container (STORAGE_PLAN P3); localStorage demotes to recovery (P4). A mandated fixed OS path, if ever required, is a desktop-shell seam over the same `StorageProvider` interface. |
 | Asset bytes (L8) | `src/lib/assets/blob-store.ts` | IndexedDB blobs keyed by the asset id in `doc.assets` (metadata stays in the document) | Real asset service: upload, dedupe, quotas, orphaned-blob GC. Swap touches only this file — the id → bytes mapping is the seam. |
 | Tracker demo data | `src/lib/data/seed-*.ts` | Seeded items/releases/notifications (authored wire content); "Reset demo data" restores it | Real feedback/release feeds; seeds become test fixtures. |
 | Captured bug context | `src/components/report/CapturedContextPanel.tsx` | Canned capture rows behind a **"Sample data" badge** | Tool surfaces publish live context (file, SKU, recent actions, environment) into the store; the panel reads it. |
@@ -47,7 +48,9 @@ portable contracts (`CONTRACT:` tags); a committed example document lives at
 Visible-but-static chrome, kept so the tool's ceiling reads as reachable (each maps to a
 deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 
-- Editor ribbon: **File** tab (open/save/export), **Arrange/View/Help** tabs, Home band's
+- Editor ribbon: ~~**File** tab~~ **live since the storage plan** — a real menu with
+  `.staples` Open/Save/Save As, default folder, and recents (export/print still land with
+  the print-production slice); **View/Help** tabs, Home band's
   Clipboard/Editing groups + list/¶ controls + Styles "+ New", Insert band's
   Masters/Shapes/Table/Hyperlink tiles, Text band's Space + Link boxes/Wrap.
 - Status bar: two-page **spread** view toggle (facing pages, plan §6).
