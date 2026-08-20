@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 import type { ObjectType } from "../registry/types";
 import { LayoutObjectSchema, type LayoutObject, type PictureFrame, type TableFrame, type TextFrame } from "./objects";
 import { parseDocument } from "./parse";
-import type { LayoutDocument } from "./document";
+import {
+  LayoutDocumentSchema,
+  effectiveMargins,
+  pageSide,
+  spreadOfPage,
+  spreadsOf,
+  type LayoutDocument,
+} from "./document";
 
 function loadFixture(name: string): LayoutDocument {
   const path = fileURLToPath(new URL(`../../../fixtures/${name}`, import.meta.url));
@@ -314,5 +321,133 @@ describe("registry cross-check", () => {
       ],
     });
     expect(parsed.type).toBe("shape");
+  });
+});
+
+describe("spreads and mirrored margins (PLAN.md §6.8)", () => {
+  function docWith(
+    pages: Array<{ keepWithPrevious?: boolean; marginsOverride?: unknown; marginOverride?: number }>,
+    extra: Record<string, unknown> = {},
+  ): LayoutDocument {
+    return LayoutDocumentSchema.parse({
+      version: 3,
+      name: "Spreads",
+      size: { w: 8.5, h: 11 },
+      orientation: "portrait",
+      bleed: 0.125,
+      margin: 0.5,
+      columns: 1,
+      pages: pages.map((p, i) => ({ id: `page-${i + 1}`, masterId: null, objects: [], ...p })),
+      masters: [],
+      ...extra,
+    });
+  }
+
+  const plain = (n: number): Array<Record<string, never>> => Array.from({ length: n }, () => ({}));
+  const members = (doc: LayoutDocument): number[][] => spreadsOf(doc).map((s) => s.pageIndices);
+
+  describe("membership derives from page order", () => {
+    it("defaults to single binding, one page per spread", () => {
+      const doc = docWith(plain(4));
+      expect(doc.binding).toBe("single");
+      expect(members(doc)).toEqual([[0], [1], [2], [3]]);
+    });
+
+    it("pairs facing pages after a solo opening recto", () => {
+      expect(members(docWith(plain(5), { binding: "facing" }))).toEqual([[0], [1, 2], [3, 4]]);
+    });
+
+    it("keepWithPrevious extends a spread past two pages for gatefolds", () => {
+      const doc = docWith([{}, {}, {}, { keepWithPrevious: true }, {}], { binding: "facing" });
+      expect(members(doc)).toEqual([[0], [1, 2, 3], [4]]);
+    });
+
+    it("ignores keepWithPrevious under single binding", () => {
+      expect(members(docWith([{}, { keepWithPrevious: true }]))).toEqual([[0], [1]]);
+    });
+
+    it("re-derives after a reorder with no reconciliation step", () => {
+      const doc = docWith([{}, {}, {}, { keepWithPrevious: true }], { binding: "facing" });
+      expect(members(doc)).toEqual([[0], [1, 2, 3]]);
+      // The flagged page moves to the front, where it has no previous spread
+      // to join. Nothing is stored, so membership simply follows page order.
+      const moved = must(doc.pages[3], "fourth page");
+      const reordered: LayoutDocument = { ...doc, pages: [moved, ...doc.pages.slice(0, 3)] };
+      expect(members(reordered)).toEqual([[0], [1, 2], [3]]);
+    });
+
+    it("finds a page's spread, and misses an out-of-range index", () => {
+      const doc = docWith(plain(3), { binding: "facing" });
+      expect(spreadOfPage(doc, 2)?.pageIndices).toEqual([1, 2]);
+      expect(spreadOfPage(doc, 9)).toBeUndefined();
+    });
+  });
+
+  describe("page sides and margin resolution", () => {
+    const edges = { top: 0.5, bottom: 0.5, inside: 1, outside: 0.25 };
+
+    it("alternates sides from the opening recto under facing binding", () => {
+      const doc = docWith(plain(4), { binding: "facing" });
+      expect([0, 1, 2, 3].map((i) => pageSide(doc, i))).toEqual([
+        "recto",
+        "verso",
+        "recto",
+        "verso",
+      ]);
+    });
+
+    it("reads every page as recto under single binding — no spine", () => {
+      const doc = docWith(plain(2));
+      expect([0, 1].map((i) => pageSide(doc, i))).toEqual(["recto", "recto"]);
+    });
+
+    it("falls back to the uniform scalar when no per-edge margins exist", () => {
+      const doc = docWith(plain(2), { binding: "facing" });
+      expect(effectiveMargins(doc, 0)).toEqual({ top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 });
+    });
+
+    it("mirrors inside/outside by the page's side of the spine", () => {
+      const doc = docWith(plain(2), { binding: "facing", margins: edges });
+      // Recto: spine at the left, so the wide inside margin lands there.
+      expect(effectiveMargins(doc, 0)).toEqual({ top: 0.5, bottom: 0.5, left: 1, right: 0.25 });
+      // Verso: mirrored.
+      expect(effectiveMargins(doc, 1)).toEqual({ top: 0.5, bottom: 0.5, left: 0.25, right: 1 });
+    });
+
+    it("resolves inside to the left edge under single binding", () => {
+      const doc = docWith(plain(1), { margins: edges });
+      expect(effectiveMargins(doc, 0)).toEqual({ top: 0.5, bottom: 0.5, left: 1, right: 0.25 });
+    });
+
+    it("prefers a per-page marginsOverride over the document per-edge value", () => {
+      const override = { top: 0.1, bottom: 0.2, inside: 0.3, outside: 0.4 };
+      const doc = docWith([{}, { marginsOverride: override }], {
+        binding: "facing",
+        margins: edges,
+      });
+      expect(effectiveMargins(doc, 1)).toEqual({ top: 0.1, bottom: 0.2, left: 0.4, right: 0.3 });
+    });
+
+    it("prefers per-edge over the scalar override on the same page", () => {
+      const doc = docWith([{ marginOverride: 2, marginsOverride: edges }]);
+      expect(effectiveMargins(doc, 0)).toEqual({ top: 0.5, bottom: 0.5, left: 1, right: 0.25 });
+    });
+
+    it("lets a page's scalar override beat document-level per-edge margins", () => {
+      // Page level resolves before document level; the page's uniform 2in is
+      // its stated intent and must not be masked by doc.margins.
+      const doc = docWith([{ marginOverride: 2 }], { binding: "facing", margins: edges });
+      expect(effectiveMargins(doc, 0)).toEqual({ top: 2, bottom: 2, left: 2, right: 2 });
+    });
+
+    it("resolves an out-of-range page index to document-level values", () => {
+      const doc = docWith(plain(1), { margin: 0.75 });
+      expect(effectiveMargins(doc, 9)).toEqual({
+        top: 0.75,
+        bottom: 0.75,
+        left: 0.75,
+        right: 0.75,
+      });
+    });
   });
 });

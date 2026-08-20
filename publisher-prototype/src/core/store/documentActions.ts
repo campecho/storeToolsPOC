@@ -6,6 +6,8 @@ import type {
   LayoutObject,
   LineDash,
   NormalizedPoint,
+  Orientation,
+  PageSize,
   Paint,
 } from "../model";
 
@@ -206,6 +208,30 @@ export type LockCommit = {
   locked: boolean;
 };
 
+/** Document setup commits (§1.4, the Document setup panel): a partial of the
+    document-level setup fields; only provided fields apply. One committed
+    panel edit normally carries one field — the partial exists because an
+    orientation toggle must swap `size` and set `orientation` in ONE action
+    (one gesture, one history entry). The caller sends finished values
+    (already-swapped dimensions), per this file's payload rule. */
+export type DocumentSetupCommit = {
+  size?: PageSize;
+  orientation?: Orientation;
+  bleed?: number;
+  margin?: number;
+  slug?: number;
+  columns?: number;
+};
+
+/** Per-page size override commits (§1.2 mixed sizes, §1.4 per-page setup):
+    set the page's sizeOverride, or clear it back to the document size
+    (null). The whole override is the unit — panels edit both dimensions
+    through one committed value. */
+export type PageSizeOverrideCommit = {
+  pageIndex: number;
+  sizeOverride: PageSize | null;
+};
+
 export const rectDrawCommitted = createAction<DrawCommit>("rect/drawCommitted");
 export const ellipseDrawCommitted = createAction<DrawCommit>("ellipse/drawCommitted");
 export const lineDrawCommitted = createAction<DrawCommit>("line/drawCommitted");
@@ -227,6 +253,12 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
   "object/strokeWidthCommitted",
 );
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
+export const documentSetupCommitted = createAction<DocumentSetupCommit>(
+  "document/setupCommitted",
+);
+export const pageSizeOverrideCommitted = createAction<PageSizeOverrideCommit>(
+  "page/sizeOverrideCommitted",
+);
 export const objectDeleteCommitted = createAction<DeleteCommit>("object/deleteCommitted");
 export const objectDuplicateCommitted = createAction<DuplicateCommit>("object/duplicateCommitted");
 export const objectGroupCommitted = createAction<GroupCommit>("object/groupCommitted");

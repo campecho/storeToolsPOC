@@ -76,6 +76,30 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   width; null removes the stroke, ignored for schema-required line strokes) and
   `object/strokeWidthCommitted` (width; only where a stroke exists) so multi-object
   color application never homogenizes widths.
+- **Spread model (recorded 2026-08-18, user-ratified):** PLAN.md §6.6's delta table
+  was silent on facing pages while Phase B ships spreads (§7), and
+  `core/model/document.ts` carried an ASSUMPTION disclaiming any spread structure.
+  Decision: **derived, with an override flag** — `doc.binding: 'single' | 'facing'`,
+  with spread membership computed from page order (first page recto-alone) and
+  **recomputed on every insert, delete, duplicate, and reorder, never stored**;
+  `page.keepWithPrevious?: true` extends the preceding spread, which is how §1.2's
+  "island or multi-page spreads … where feasible" are expressed. Rejected: a stored
+  `doc.spreads[]` array — it introduces a second addressing scheme competing with
+  page index, must be resynchronized on every page operation, and can drift out of
+  agreement with page order. The pairing rules and the display contract they imply
+  are PLAN.md §6.8; the schema delta is §6.6. This entry supersedes the
+  `document.ts` comment, which is now stale.
+- **Mirrored margins (recorded 2026-08-18, user-ratified):** §1.2 requires inside and
+  outside margins that mirror across a spread; the lineage carries a single scalar
+  `margin` plus a per-page `marginOverride`. Decision: **additive per-edge override**
+  — the scalar stays the default, and an optional
+  `margins: { top, bottom, inside, outside }` wins where present, with
+  `inside`/`outside` resolving to left/right by each page's side within its spread.
+  Additive under the object-vocabulary entry's rule above, so no version bump.
+  Rejected: deriving inside/outside at render time from binding and page parity — it
+  cannot express the wider inside margin for gutter allowance, which is the reason
+  mirrored margins exist; and replacing the scalar outright — a breaking change to a
+  required field with existing fixtures and tests.
 - **Edit runs (recorded 2026-08-18, user decision):** panel numeric entry applies to
   the document as it is typed — a value the canvas does not show is a value the user
   cannot judge, and the fields previously held every edit until Enter or blur.

@@ -24,9 +24,11 @@ import {
   objectNudgeCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
+  documentSetupCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   objectUngroupCommitted,
+  pageSizeOverrideCommitted,
   penDrawCommitted,
   rectDrawCommitted,
   bannerPanelHeightCommitted,
@@ -46,6 +48,7 @@ import {
   type CalloutTailCommit,
   type CornerRadiusCommit,
   type DeleteCommit,
+  type DocumentSetupCommit,
   type DrawCommit,
   type DuplicateCommit,
   type LineDashCommit,
@@ -57,6 +60,7 @@ import {
   type GroupCommit,
   type LineEndpoints,
   type LockCommit,
+  type PageSizeOverrideCommit,
   type ResizeCommit,
   type RotateCommit,
   type StrokePaintCommit,
@@ -196,6 +200,40 @@ function applyStrokeWidth(state: LayoutDocument, action: PayloadAction<StrokeWid
   for (const obj of page.objects) {
     if (!ids.has(obj.id) || obj.locked || obj.stroke === null) continue;
     obj.stroke.width = action.payload.width;
+  }
+}
+
+/** A page-size pair the schema would accept: finite and strictly positive. */
+function isValidSize(size: { w: number; h: number }): boolean {
+  return Number.isFinite(size.w) && Number.isFinite(size.h) && size.w > 0 && size.h > 0;
+}
+
+/** Document setup (§1.4): apply exactly the provided fields, each guarded by
+    its schema constraint — an invalid field degrades to a skip (this slice's
+    defensive rule), never a document the round-trip would refuse to parse. */
+function applySetup(state: LayoutDocument, action: PayloadAction<DocumentSetupCommit>): void {
+  const { size, orientation, bleed, margin, slug, columns } = action.payload;
+  if (size !== undefined && isValidSize(size)) state.size = size;
+  if (orientation !== undefined) state.orientation = orientation;
+  if (bleed !== undefined && Number.isFinite(bleed) && bleed >= 0) state.bleed = bleed;
+  if (margin !== undefined && Number.isFinite(margin) && margin >= 0) state.margin = margin;
+  if (slug !== undefined && Number.isFinite(slug) && slug >= 0) state.slug = slug;
+  if (columns !== undefined && Number.isInteger(columns) && columns >= 1) {
+    state.columns = columns;
+  }
+}
+
+function applyPageSizeOverride(
+  state: LayoutDocument,
+  action: PayloadAction<PageSizeOverrideCommit>,
+): void {
+  const page = state.pages[action.payload.pageIndex];
+  if (!page) return;
+  const { sizeOverride } = action.payload;
+  if (sizeOverride === null) {
+    delete page.sizeOverride;
+  } else if (isValidSize(sizeOverride)) {
+    page.sizeOverride = sizeOverride;
   }
 }
 
@@ -474,7 +512,9 @@ export const documentSlice = createSlice({
       .addCase(bannerPanelHeightCommitted, applyBannerPanelHeight)
       .addCase(objectLineDashCommitted, applyLineDash)
       .addCase(objectArrowHeadsCommitted, applyArrowHeads)
-      .addCase(objectPathClosedCommitted, applyPathClosed);
+      .addCase(objectPathClosedCommitted, applyPathClosed)
+      .addCase(documentSetupCommitted, applySetup)
+      .addCase(pageSizeOverrideCommitted, applyPageSizeOverride);
   },
 });
 

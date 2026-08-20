@@ -2,6 +2,7 @@ import { createAction, type Reducer, type UnknownAction } from "@reduxjs/toolkit
 import type { LayoutDocument } from "../model";
 import {
   DRAW_COMMIT_ACTIONS,
+  documentSetupCommitted,
   objectDeleteCommitted,
   objectDuplicateCommitted,
   objectFillCommitted,
@@ -14,6 +15,7 @@ import {
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
   objectUngroupCommitted,
+  pageSizeOverrideCommitted,
   bannerPanelHeightCommitted,
   bannerPanelInsetCommitted,
   calloutTailCommitted,
@@ -86,6 +88,8 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectStrokePaintCommitted.type,
   objectStrokeWidthCommitted.type,
   objectLockCommitted.type,
+  documentSetupCommitted.type,
+  pageSizeOverrideCommitted.type,
   // Shape and outline parameters with no adjust-handle clause behind them:
   // the star's vertex count, the line's dash and end decorations, and a
   // path's closed state.
