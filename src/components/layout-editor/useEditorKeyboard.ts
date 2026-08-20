@@ -1,6 +1,12 @@
 import { useEffect } from "react";
 import { useFeedbackStore, useLayoutStore } from "@/store";
 import { NUDGE_IN } from "@/lib/layout/objects";
+import {
+  openLayoutFile,
+  runFileOp,
+  saveLayoutFile,
+  saveLayoutFileAs,
+} from "@/lib/storage/layout-file";
 
 /**
  * Editor-wide keyboard (plan L4): Delete/Backspace, Cmd/Ctrl+D duplicate,
@@ -30,6 +36,19 @@ export function useEditorKeyboard() {
       const s = useLayoutStore.getState();
       const mod = e.metaKey || e.ctrlKey;
 
+      // .staples file chords (docs/STORAGE_PLAN.md P1). preventDefault
+      // unconditionally — the browser's own save/open dialog is never the
+      // answer — and the async work reports failures through fileError.
+      if (mod && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        runFileOp(e.shiftKey ? saveLayoutFileAs : saveLayoutFile);
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        runFileOp(openLayoutFile);
+        return;
+      }
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) s.redo();

@@ -5,6 +5,7 @@ export {
   useLayoutStore,
   TOOL_LABELS,
   createDefaultDocument,
+  selectFileDirty,
   surfaceObjects,
 } from "./layout-store";
 export type {

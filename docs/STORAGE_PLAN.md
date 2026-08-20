@@ -1,9 +1,13 @@
 # Storage Plan — local device files for the host POC
 
-**Status:** Plan of record for POC storage, 2026-08-20. The POC is paused; this plan
-aligns it with the storage requirement adopted the same day in
-`publisher-prototype/PLAN.md` §6.9 (plan v2.4), and is implemented only when the POC
-resumes or a demo needs it. Nothing here changes the prototype — its plan is its own.
+**Status:** Plan of record for POC storage, 2026-08-20 — **P1 and P2 shipped the same
+day** (user-directed): the layout editor's File menu opens and saves `.staples` files
+with the default-folder grant, recents, and the fallback tier
+(`src/lib/storage/`, `src/components/layout-editor/ribbon/FileMenu.tsx`; registry row
+in `STUBS.md`). P3 (photo documents) and P4 (recovery hardening) remain planned. This
+plan aligns the POC with the storage requirement adopted in
+`publisher-prototype/PLAN.md` §6.9 (plan v2.4). Nothing here changes the prototype —
+its plan is its own.
 
 ## The requirement
 
@@ -58,8 +62,8 @@ section first; this file only records the POC-specific deltas.
 
 | Phase | Delivers |
 |---|---|
-| **P1 — File tab goes live (layout)** | Open / Save / Save As `.staples` in the layout editor; retained file handle for silent Ctrl+S; dirty tracking + `beforeunload`; first save of a legacy localStorage document migrates it into a file |
-| **P2 — Default folder** | Setup flow + persisted grant shared across editors; `startIn` everywhere; in-app open-from-folder listing; recents |
+| **P1 — File tab goes live (layout)** ✅ shipped | Open / Save / Save As `.staples` in the layout editor; retained file handle for silent Ctrl+S; dirty tracking + `beforeunload`; the working localStorage document becomes a file on its first save |
+| **P2 — Default folder** ✅ shipped | Setup flow + persisted grant shared across editors (`stp-storage-v1`); `startIn` everywhere; in-app open-from-folder listing; recents |
 | **P3 — Photo documents** | Photo editor saves/opens `.staples` too (recipe + source assets in the container), matching the prototype's one-format decision for `kind: "image"` documents |
 | **P4 — Recovery hardening** | localStorage reduced to recovery snapshots keyed against the file's saved state; quota/permission failures surfaced in UI (closes the silent-`console.warn` PROD-TODO in `STUBS.md`) |
 
