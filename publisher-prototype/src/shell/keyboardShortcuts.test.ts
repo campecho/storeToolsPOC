@@ -23,8 +23,8 @@ const doc = readFileSync(
 
 type DocRow = { key: string; label: string; id: string; status: string };
 
-/** | `V` | Select | `select` | Wired | */
-const ROW = /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|\s*`([^`]+)`\s*\|\s*(\S+)\s*\|$/;
+/** | `V` | Select | `select` | Wired | — or `—` in the key cell, dock-only. */
+const ROW = /^\|\s*(?:`([^`]+)`|(—))\s*\|\s*(.+?)\s*\|\s*`([^`]+)`\s*\|\s*(\S+)\s*\|$/;
 
 function rowsUnder(heading: string): DocRow[] {
   const lines = doc.split("\n");
@@ -34,7 +34,8 @@ function rowsUnder(heading: string): DocRow[] {
   for (const line of lines.slice(start + 1)) {
     if (line.startsWith("#")) break;
     const m = ROW.exec(line);
-    const [, key, label, id, status] = m ?? [];
+    const [, letter, dash, label, id, status] = m ?? [];
+    const key = letter ?? dash;
     if (key && label && id && status) rows.push({ key, label, id, status });
   }
   return rows;
@@ -44,7 +45,7 @@ function registryRows(mode: Exclude<ToolMode, "both">): DocRow[] {
   return toolRegistry
     .filter((t) => t.mode === mode || t.mode === "both")
     .map((t) => ({
-      key: t.shortcut,
+      key: t.shortcut ?? "—",
       label: t.label,
       id: t.id,
       status: WIRED_TOOLS.has(t.id) ? "Wired" : "Specified",
@@ -60,9 +61,9 @@ describe("KEYBOARD_SHORTCUTS.md", () => {
     expect(rowsUnder("### Photo mode")).toEqual(registryRows("photo"));
   });
 
-  it("documents one bare letter per tool, as section 1 claims", () => {
+  it("documents one bare letter per keyed tool, and a dash for the dock-only ones", () => {
     for (const row of [...rowsUnder("### Layout mode"), ...rowsUnder("### Photo mode")]) {
-      expect(row.key, `${row.id} activates on "${row.key}"`).toMatch(/^[A-Z]$/);
+      expect(row.key, `${row.id} activates on "${row.key}"`).toMatch(/^([A-Z]|—)$/);
     }
   });
 

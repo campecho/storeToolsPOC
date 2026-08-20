@@ -10,15 +10,16 @@ so `src/shell/keyboardShortcuts.test.ts` fails CI when the two disagree.
 
 - **Wired** — the key does the thing today. `src/shell/wiredTools.ts` names the wired
   set; PLAN.md §7 sequences the rest.
-- **Specified** — the registry names the clause and the dev team implements it. The
-  letter still selects the tool; the canvas behavior behind it is not built. Nothing
-  marked Specified is a promise the running app already keeps.
+- **Specified** — the registry names the clause and the dev team implements it. The tool
+  still selects, from the dock and from its letter where it has one; the canvas behavior
+  behind it is not built. Nothing marked Specified is a promise the running app keeps.
 
 ---
 
 ## 1. Tool activation
 
-One bare letter per tool, scoped to the current mode.
+One bare letter per keyed tool, scoped to the current mode. Eight layout tools carry no
+letter and are reached from the dock only — the `—` rows below.
 
 ### Layout mode
 
@@ -27,24 +28,24 @@ One bare letter per tool, scoped to the current mode.
 | `V` | Select | `select` | Wired |
 | `A` | Node select | `node-select` | Specified |
 | `T` | Text frame | `text-frame` | Specified |
-| `K` | Link text | `link-text` | Specified |
+| — | Link text | `link-text` | Specified |
 | `P` | Picture frame | `picture-frame` | Specified |
 | `C` | Crop | `crop` | Specified |
-| `B` | Table | `table` | Specified |
+| — | Table | `table` | Specified |
 | `R` | Rectangle | `rect` | Wired |
 | `U` | Rounded rectangle | `rounded-rect` | Wired |
 | `E` | Ellipse | `ellipse` | Wired |
 | `L` | Line | `line` | Wired |
-| `W` | Arrow | `arrow` | Wired |
-| `S` | Star / polygon | `star-polygon` | Wired |
-| `O` | Callout | `callout` | Wired |
-| `N` | Banner | `banner` | Wired |
+| — | Arrow | `arrow` | Wired |
+| — | Star / polygon | `star-polygon` | Wired |
+| — | Callout | `callout` | Wired |
+| — | Banner | `banner` | Wired |
 | `G` | Pen / freeform | `pen` | Wired |
 | `D` | Fill & gradient | `fill-gradient` | Specified |
 | `I` | Eyedropper | `eyedropper` | Specified |
 | `J` | Guide | `guide` | Specified |
-| `M` | Merge field | `merge-field` | Specified |
-| `Q` | Building block | `building-block` | Specified |
+| — | Merge field | `merge-field` | Specified |
+| — | Building block | `building-block` | Specified |
 | `Z` | Zoom | `zoom` | Wired |
 | `H` | Pan | `pan` | Wired |
 
@@ -62,17 +63,22 @@ One bare letter per tool, scoped to the current mode.
 | `I` | Image overlay | `image-overlay` | Specified |
 | `E` | Eyedropper | `photo-eyedropper` | Specified |
 
-Four rules govern the letters (`src/shell/App.tsx`):
+Five rules govern the letters (`src/shell/App.tsx`):
 
+- **Not every tool has one.** Link text, Table, Arrow, Star / polygon, Callout, Banner,
+  Merge field and Building block are dock-only: their contract carries `shortcut: null`,
+  the dock renders no parenthetical after the label, and no keystroke reaches them. That
+  leaves `B` `K` `M` `N` `O` `Q` `S` and `W` unassigned in layout mode — `B` and `M`
+  still carry the mask tools in photo mode.
 - **Bare letters only.** The handler returns early while Ctrl, Cmd or Alt is held, so
   `Ctrl`+`G` groups a selection without also arming the pen. Shift is *not* checked and
   the compare is case-insensitive, so `Shift`+`R` selects the rectangle exactly as `R`
   does — worth knowing before Shift is given a meaning of its own here.
 - **Never while typing.** Events targeting an input, textarea or select are skipped
   (`src/shell/isTextEntryTarget.ts`) — the same guard Space-pan uses.
-- **Scoped to the mode.** Seven letters name one tool in layout and a different one in
-  photo (`A` `B` `C` `E` `I` `M` `T`); only tools visible in the current mode match.
-  `Z` and `H` mean the same thing in both.
+- **Scoped to the mode.** Five letters name one tool in layout and a different one in
+  photo (`A` `C` `E` `I` `T`); only tools visible in the current mode match. `Z` and `H`
+  mean the same thing in both.
 - **No off switch.** Single-key activation with no way to disable, remap or scope it is
   a known WCAG 2.1.4 (Character Key Shortcuts) failure, deferred deliberately — SEAMS.md
   carries the entry, the reason, and what the conformant fix costs.
@@ -181,8 +187,8 @@ column, `Ctrl`/`Cmd` means the binding accepts either.*
 The prototype models the interaction surface, not the application shell. Document
 JSON round-trips through the debug bar, which is model tooling rather than specified
 surface — binding `Ctrl`+`S` to it would dress up a test harness as a product feature.
-`N`, `O`, `P`, `S` and `W` are all live tool letters here; the chords are free, since
-the tool handler ignores anything modified.
+Of `N`, `O`, `P`, `S` and `W`, only `P` still activates a tool here, and the chords are
+free either way: the tool handler ignores anything modified.
 
 ### Basic editing and clipboard
 

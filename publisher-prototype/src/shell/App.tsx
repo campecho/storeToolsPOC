@@ -60,13 +60,16 @@ export function App() {
     }
   };
 
-  // Registry shortcuts activate tools within the current mode.
+  // Registry shortcuts activate tools within the current mode. A tool whose
+  // contract carries no shortcut is dock-only: no keystroke reaches it.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextEntryTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const tool = toolRegistry.find(
         (t) =>
-          (t.mode === "both" || t.mode === mode) && t.shortcut.toLowerCase() === e.key.toLowerCase(),
+          (t.mode === "both" || t.mode === mode) &&
+          t.shortcut !== null &&
+          t.shortcut.toLowerCase() === e.key.toLowerCase(),
       );
       if (tool) setActiveTool(tool.id);
     };
