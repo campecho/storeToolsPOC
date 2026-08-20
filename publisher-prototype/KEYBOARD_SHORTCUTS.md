@@ -101,6 +101,9 @@ selection to exist first (`src/core/registry/globalKeys.ts`,
 | `Ctrl`/`Cmd` + `X` | Copies it, then deletes it | `document.ctrl-x.cuts-selection` | Wired |
 | `Ctrl`/`Cmd` + `V` | Pastes the clipboard, offset and selected | `document.ctrl-v.pastes-clipboard` | Wired |
 | `Ctrl`/`Cmd` + `D` | Duplicates the selection in place, offset | `document.ctrl-d.duplicates-selection` | Wired |
+| `Ctrl`/`Cmd` + `S` | Saves to the document's `.staples` file, silently; falls through to Save As with no file yet | `document.ctrl-s.saves-file` | Wired |
+| `Ctrl`/`Cmd` + `Shift` + `S` | Saves As — the picker starts in the default storage folder | `document.ctrl-shift-s.saves-file-as` | Wired |
+| `Ctrl`/`Cmd` + `O` | Opens a `.staples` file, replacing the working document | `document.ctrl-o.opens-file` | Wired |
 | `Ctrl`/`Cmd` + `0` | Fits the whole page, bleed included | `viewport.ctrl-zero.fits-page` | Wired |
 | `Ctrl`/`Cmd` + `=` (or `+`) | Zooms in one preset step | `viewport.ctrl-plus.steps-in` | Wired |
 | `Ctrl`/`Cmd` + `-` | Zooms out one preset step | `viewport.ctrl-minus.steps-out` | Wired |
@@ -129,6 +132,11 @@ What the table can't say:
 - **Every chord here is preventDefault-ed** when it fires — these are the browser's
   chords too, and a duplicate that also opens a bookmark dialog is worse than no
   binding. Like the tool letters, none of them fires while a form field has focus.
+- **The file chords finish asynchronously.** Save, Save As and Open run through the
+  StorageProvider seam (PLAN.md §6.9) — a picker may appear, a permission may need
+  re-affirming — and the `file/` action commits when the IO completes, never on the
+  keypress. Cancelling a picker commits nothing. On the download/upload fallback tier
+  there is no retained handle, so `Ctrl`+`S` behaves as Save As every time.
 
 ---
 
@@ -225,18 +233,19 @@ column, `Ctrl`/`Cmd` means the binding accepts either.*
 
 | Action | Microsoft Publisher | Adobe Photoshop | Adobe Illustrator | This prototype |
 | :--- | :--- | :--- | :--- | :--- |
-| **New Document** | `Ctrl` + `N` | `Ctrl` + `N` | `Ctrl` + `N` | Out of scope — no file layer |
-| **Open Document** | `Ctrl` + `O` | `Ctrl` + `O` | `Ctrl` + `O` | Out of scope — debug-bar Import only |
-| **Save** | `Ctrl` + `S` | `Ctrl` + `S` | `Ctrl` + `S` | Out of scope — debug-bar Export only |
-| **Save As...** | `F12` | `Ctrl` + `Shift` + `S` | `Ctrl` + `Shift` + `S` | Out of scope |
+| **New Document** | `Ctrl` + `N` | `Ctrl` + `N` | `Ctrl` + `N` | Out of scope — the Minimal fixture stands in |
+| **Open Document** | `Ctrl` + `O` | `Ctrl` + `O` | `Ctrl` + `O` | `Ctrl`/`Cmd` + `O` — Wired (`document.ctrl-o.opens-file`) |
+| **Save** | `Ctrl` + `S` | `Ctrl` + `S` | `Ctrl` + `S` | `Ctrl`/`Cmd` + `S` — Wired (`document.ctrl-s.saves-file`) |
+| **Save As...** | `F12` | `Ctrl` + `Shift` + `S` | `Ctrl` + `Shift` + `S` | `Ctrl`/`Cmd` + `Shift` + `S` — Wired (`document.ctrl-shift-s.saves-file-as`) |
 | **Print** | `Ctrl` + `P` | `Ctrl` + `P` | `Ctrl` + `P` | Out of scope — export is a SURFACE seam |
 | **Close Document** | `Ctrl` + `W` or `Ctrl` + `F4` | `Ctrl` + `W` | `Ctrl` + `W` | Out of scope |
 
-The prototype models the interaction surface, not the application shell. Document
-JSON round-trips through the debug bar, which is model tooling rather than specified
-surface — binding `Ctrl`+`S` to it would dress up a test harness as a product feature.
-Of `N`, `O`, `P`, `S` and `W`, only `P` still activates a tool here, and the chords are
-free either way: the tool handler ignores anything modified.
+Since PLAN.md §6.9 brought local device storage into the model, Open, Save and Save As
+are real product surface: `.staples` files on the device through the StorageProvider
+seam, with the debug bar's JSON round-trip surviving separately as the fixture
+mechanism it always was. Of `N`, `O`, `P`, `S` and `W`, only `P` still activates a
+tool here, and the chords are free either way: the tool handler ignores anything
+modified.
 
 ### Basic editing and clipboard
 

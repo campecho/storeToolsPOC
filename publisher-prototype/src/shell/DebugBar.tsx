@@ -16,6 +16,8 @@ import {
 } from "../core/store";
 import type { AppMode } from "./App";
 import { buildStressFixture } from "./debug/stressFixture";
+import { FileControls } from "./storage/FileControls";
+import type { DocumentFileApi } from "./storage/useDocumentFile";
 import { useFps } from "./debug/useFps";
 import { useAppDispatch, useAppSelector } from "./hooks";
 import kitchenSinkRaw from "../../fixtures/kitchen-sink.json?raw";
@@ -41,6 +43,7 @@ export function DebugBar({
   vpSize,
   pageIndex,
   onPageIndexChange,
+  file,
 }: {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
@@ -49,6 +52,7 @@ export function DebugBar({
   vpSize: Size;
   pageIndex: number;
   onPageIndexChange: (pageIndex: number) => void;
+  file: DocumentFileApi;
 }) {
   const dispatch = useAppDispatch();
   const viewport = useAppSelector((s) => s.viewport);
@@ -106,6 +110,7 @@ export function DebugBar({
 
   return (
     <div className="debug-bar">
+      <FileControls api={file} />
       <span className="debug-group" role="group" aria-label="Mode">
         <button aria-pressed={mode === "layout"} onClick={() => onModeChange("layout")}>
           Layout

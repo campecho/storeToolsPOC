@@ -2,6 +2,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import type { LayoutDocument } from "../model";
 import { viewportSlice } from "./viewportSlice";
 import { documentSlice } from "./documentSlice";
+import { fileSlice } from "./fileSlice";
 import { penSlice } from "./penSlice";
 import { selectionSlice } from "./selectionSlice";
 import { clipboardSlice } from "./clipboardSlice";
@@ -18,6 +19,7 @@ export function createAppStore() {
     reducer: {
       viewport: viewportSlice.reducer,
       document: withDocumentHistory(documentSlice.reducer),
+      file: fileSlice.reducer,
       selection: selectionSlice.reducer,
       clipboard: clipboardSlice.reducer,
       pen: penSlice.reducer,
@@ -38,6 +40,7 @@ export function selectDocument(state: RootState): LayoutDocument {
 export * from "./viewportSlice";
 export * from "./documentSlice";
 export * from "./documentActions";
+export * from "./fileSlice";
 export * from "./selectionSlice";
 export * from "./clipboardSlice";
 export * from "./penSlice";

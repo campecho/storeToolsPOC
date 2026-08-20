@@ -10,6 +10,7 @@ import { OptionsBar } from "./dock/OptionsBar";
 import { useAppSelector } from "./hooks";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { ControlPanel } from "./panels/ControlPanel";
+import { useDocumentFile } from "./storage/useDocumentFile";
 import {
   defaultToolOptions,
   optionNumber,
@@ -56,6 +57,11 @@ export function App() {
   // nothing happened.
   const activateSelectTool = useCallback(() => setActiveTool("select"), []);
 
+  // The document's file lifecycle (§6.9): one hook owns the provider and the
+  // retained handle; the debug bar renders its controls and the global
+  // chords call its handlers.
+  const file = useDocumentFile();
+
   const activeContract = toolRegistry.find((t) => t.id === activeTool);
 
   const switchMode = (next: AppMode) => {
@@ -90,6 +96,7 @@ export function App() {
     pageIndex: boundedPageIndex,
     vpSize,
     onSelectionSurfaced: activateSelectTool,
+    file: { open: file.open, save: file.save, saveAs: file.saveAs },
   });
 
   return (
@@ -102,6 +109,7 @@ export function App() {
         vpSize={vpSize}
         pageIndex={boundedPageIndex}
         onPageIndexChange={setPageIndex}
+        file={file}
       />
       <OptionsBar
         tool={activeContract}
