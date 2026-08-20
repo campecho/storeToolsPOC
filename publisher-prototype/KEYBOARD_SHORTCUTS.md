@@ -85,7 +85,54 @@ Five rules govern the letters (`src/shell/App.tsx`):
 
 ---
 
-## 2. Editing keys
+## 2. Document and view chords
+
+Chords that belong to no tool: they work whatever is armed, and none of them needs a
+selection to exist first (`src/core/registry/globalKeys.ts`,
+`src/shell/useGlobalKeys.ts`).
+
+| Keys | Effect | Clause | Status |
+| :--- | :----- | :----- | :----- |
+| `Ctrl`/`Cmd` + `Z` | Undoes one committed gesture or panel edit | `document.ctrl-z.undoes` | Wired |
+| `Ctrl`/`Cmd` + `Shift` + `Z`, or `Ctrl`/`Cmd` + `Y` | Redoes it | `document.ctrl-shift-z.redoes` | Wired |
+| `Ctrl`/`Cmd` + `A` | Selects every unlocked object on the page | `document.ctrl-a.selects-all` | Wired |
+| `Ctrl`/`Cmd` + `Shift` + `A` | Clears the selection | `document.ctrl-shift-a.deselects` | Wired |
+| `Ctrl`/`Cmd` + `C` | Copies the selection | `document.ctrl-c.copies-selection` | Wired |
+| `Ctrl`/`Cmd` + `X` | Copies it, then deletes it | `document.ctrl-x.cuts-selection` | Wired |
+| `Ctrl`/`Cmd` + `V` | Pastes the clipboard, offset and selected | `document.ctrl-v.pastes-clipboard` | Wired |
+| `Ctrl`/`Cmd` + `D` | Duplicates the selection in place, offset | `document.ctrl-d.duplicates-selection` | Wired |
+| `Ctrl`/`Cmd` + `0` | Fits the whole page, bleed included | `viewport.ctrl-zero.fits-page` | Wired |
+| `Ctrl`/`Cmd` + `=` (or `+`) | Zooms in one preset step | `viewport.ctrl-plus.steps-in` | Wired |
+| `Ctrl`/`Cmd` + `-` | Zooms out one preset step | `viewport.ctrl-minus.steps-out` | Wired |
+
+What the table can't say:
+
+- **The clipboard is the app's own, not the system's.** Copying here puts nothing on the
+  operating system's clipboard and pasting reads nothing from it, so objects do not
+  travel to or from another application. Image paste from outside is a separate,
+  unbuilt clause on the picture frame (`picture-frame.paste.inserts-from-clipboard`).
+- **A cut is a copy plus a delete**, and only the delete is a history entry: undoing a
+  cut restores the objects and leaves the clipboard still holding them.
+- **Pasting mints fresh ids every time**, so pasting twice gives two independent sets,
+  and each paste of the same contents steps further down and right than the last —
+  otherwise the second would hide under the first. A group copied whole pastes as a
+  group; a group only partly selected does not (`copiedGroups`).
+- **Select all, paste and duplicate hand the page to the Select tool**, exactly as
+  finishing a drawing does. Selection chrome draws under Select only, so without the
+  switch a selection made from the keyboard would look like nothing had happened.
+- **Undo covers the document, never the view.** Zoom and pan never entered history
+  (PLAN.md §6.3), so `Ctrl`+`Z` after a zoom steps back over whatever edit preceded it.
+- **No chord fires mid-drag.** While a pointer button is down a gesture may be in
+  flight, and its preview lives outside the store — a chord that edited the document
+  under it would leave the gesture to commit against a page that had moved. Release
+  first and the chord works normally.
+- **Every chord here is preventDefault-ed** when it fires — these are the browser's
+  chords too, and a duplicate that also opens a bookmark dialog is worse than no
+  binding. Like the tool letters, none of them fires while a form field has focus.
+
+---
+
+## 3. Editing keys
 
 Canvas focus, no text field involved.
 
@@ -96,6 +143,7 @@ Canvas focus, no text field involved.
 | `Enter` | Finishes the open pen path | Pen | `pen.double-click.commits-open-path` | Wired |
 | `Delete` / `Backspace` | Removes the selected objects; locked ones stay | Select | `select.delete.removes-selection` | Wired |
 | Arrow keys | Nudges the selection by the options-bar increment (default 0.1 in) | Select | `select.arrow.nudges` | Wired |
+| `Shift` + arrow keys | Nudges by ten times that increment | Select | `select.shift-arrow.nudges-coarse` | Wired |
 | `Ctrl`/`Cmd` + `G` | Groups the selection; an existing group becomes a child, not a flattening | Select | `select.ctrl-g.groups-selection` | Wired |
 | `Ctrl`/`Cmd` + `Shift` + `G` | Ungroups one nesting level | Select | `select.ctrl-shift-g.ungroups-selection` | Wired |
 | `Esc` | Exits text editing | Text frame | `text-frame.esc.exits-text-edit` | Specified |
@@ -116,7 +164,7 @@ Two details the table can't carry:
 
 ---
 
-## 3. Modifiers held during a gesture
+## 4. Modifiers held during a gesture
 
 | Held | During | Effect | Status |
 | :--- | :----- | :----- | :----- |
@@ -140,7 +188,7 @@ rotate. The rotate value is an `ASSUMPTION` flagged for SME review, not a settle
 
 ---
 
-## 4. Wheel and trackpad
+## 5. Wheel and trackpad
 
 | Input | Effect | Clause | Status |
 | :---- | :----- | :----- | :----- |
@@ -152,7 +200,7 @@ Zoom is delta-proportional, so a trackpad's micro-events don't compound a full s
 
 ---
 
-## 5. Fields and panels
+## 6. Fields and panels
 
 `Enter` commits a number field's edit run and `Escape` reverts it — a run is one history
 entry however many keystrokes it took (`src/shell/panels/NumberField.tsx`). The debug
@@ -161,7 +209,7 @@ Space-pan stay silent.
 
 ---
 
-## 6. Parity with Publisher, Photoshop and Illustrator
+## 7. Parity with Publisher, Photoshop and Illustrator
 
 The comparison supplied for review is reproduced below with a fourth column: what this
 prototype does. It is worth reading the verdicts against one fact — the list describes
@@ -194,18 +242,26 @@ free either way: the tool handler ignores anything modified.
 
 | Action | Microsoft Publisher | Adobe Photoshop | Adobe Illustrator | This prototype |
 | :--- | :--- | :--- | :--- | :--- |
-| **Undo** | `Ctrl` + `Z` | `Ctrl` + `Z` | `Ctrl` + `Z` | **Gap** — undo exists, no binding |
-| **Redo** | `Ctrl` + `Y` | `Ctrl` + `Shift` + `Z` | `Ctrl` + `Shift` + `Z` | **Gap** — redo exists, no binding |
-| **Cut** | `Ctrl` + `X` | `Ctrl` + `X` | `Ctrl` + `X` | Not modeled — no clipboard |
-| **Copy** | `Ctrl` + `C` | `Ctrl` + `C` | `Ctrl` + `C` | Not modeled — no clipboard |
-| **Paste** | `Ctrl` + `V` | `Ctrl` + `V` | `Ctrl` + `V` | Specified for images only (`picture-frame.paste.inserts-from-clipboard`) |
-| **Select All** | `Ctrl` + `A` | `Ctrl` + `A` | `Ctrl` + `A` | **Gap** — no binding |
-| **Deselect All** | `Esc` | `Ctrl` + `D` | `Ctrl` + `Shift` + `A` | **Divergence** — `Esc` cancels the gesture in flight; clicking empty canvas clears the selection (`select.click-empty.clears`) |
+| **Undo** | `Ctrl` + `Z` | `Ctrl` + `Z` | `Ctrl` + `Z` | `Ctrl`/`Cmd` + `Z` — Wired |
+| **Redo** | `Ctrl` + `Y` | `Ctrl` + `Shift` + `Z` | `Ctrl` + `Shift` + `Z` | Both chords — Wired |
+| **Cut** | `Ctrl` + `X` | `Ctrl` + `X` | `Ctrl` + `X` | `Ctrl`/`Cmd` + `X` — Wired, in-app clipboard |
+| **Copy** | `Ctrl` + `C` | `Ctrl` + `C` | `Ctrl` + `C` | `Ctrl`/`Cmd` + `C` — Wired, in-app clipboard |
+| **Paste** | `Ctrl` + `V` | `Ctrl` + `V` | `Ctrl` + `V` | `Ctrl`/`Cmd` + `V` — Wired for objects; image paste from outside stays Specified (`picture-frame.paste.inserts-from-clipboard`) |
+| **Select All** | `Ctrl` + `A` | `Ctrl` + `A` | `Ctrl` + `A` | `Ctrl`/`Cmd` + `A` — Wired |
+| **Deselect All** | `Esc` | `Ctrl` + `D` | `Ctrl` + `Shift` + `A` | `Ctrl`/`Cmd` + `Shift` + `A` — Wired. **Divergence:** `Esc` cancels the gesture in flight instead |
 
-Undo and redo are the conspicuous gap: `documentSlice` keeps per-gesture history and the
-debug bar drives it with buttons, so the behavior is built and only the binding is
-absent. `Esc` differs from Publisher on purpose — it is the universal cancel here, and
-overloading it to also mean deselect would make a mid-drag `Esc` ambiguous.
+Redo answers to both conventions — Adobe's `Ctrl`+`Shift`+`Z` and Publisher's
+`Ctrl`+`Y` — because there is no cost to accepting both and no way to guess which a
+reviewer's hands already know.
+
+The clipboard is the app's own (§2): objects copied here do not reach another
+application, and nothing arrives from one. That is a real limit rather than a stub —
+crossing to the system clipboard means serializing objects to a public format and
+deciding what a foreign paste means, which is dev-team work, not a binding.
+
+`Esc` differs from Publisher on purpose — it is the universal cancel here, and
+overloading it to also mean deselect would make a mid-drag `Esc` ambiguous. Deselect
+takes Illustrator's `Ctrl`+`Shift`+`A` instead, which nothing else wanted.
 
 ### Object manipulation and layout
 
@@ -213,11 +269,11 @@ overloading it to also mean deselect would make a mid-drag `Esc` ambiguous.
 | :--- | :--- | :--- | :--- | :--- |
 | **Group Objects** | `Ctrl` + `Shift` + `G` | `Ctrl` + `G` (Groups Layers) | `Ctrl` + `G` | `Ctrl`/`Cmd` + `G` — Wired |
 | **Ungroup Objects** | `Ctrl` + `Shift` + `G` | `Ctrl` + `Shift` + `G` | `Ctrl` + `Shift` + `G` | `Ctrl`/`Cmd` + `Shift` + `G` — Wired |
-| **Duplicate** | `Ctrl` + `D` (or `Ctrl` + Drag) | `Ctrl` + `J` (Duplicates Layer) | `Alt` + Drag (or `Ctrl` + `C` then `Ctrl` + `F`) | `Alt` + drag — Wired; no `Ctrl` + `D` |
+| **Duplicate** | `Ctrl` + `D` (or `Ctrl` + Drag) | `Ctrl` + `J` (Duplicates Layer) | `Alt` + Drag (or `Ctrl` + `C` then `Ctrl` + `F`) | `Ctrl`/`Cmd` + `D` and `Alt` + drag — both Wired |
 | **Bring to Front** | `Alt` + `F6` | `Ctrl` + `Shift` + `]` | `Ctrl` + `Shift` + `]` | Not bound — waits on the Layers panel |
 | **Send to Back** | `Alt` + `Shift` + `F6` | `Ctrl` + `Shift` + `[` | `Ctrl` + `Shift` + `[` | Not bound — waits on the Layers panel |
 | **Nudge Object** | Arrow Keys | Arrow Keys (`V` tool active) | Arrow Keys | Arrow keys — Wired |
-| **Nudge (Larger Increment)** | `Shift` + Arrow Keys | `Shift` + Arrow Keys | `Shift` + Arrow Keys | **Gap** — Shift is ignored; the nudge is the same size |
+| **Nudge (Larger Increment)** | `Shift` + Arrow Keys | `Shift` + Arrow Keys | `Shift` + Arrow Keys | `Shift` + arrows — Wired, ten times the increment |
 
 Grouping is a deliberate divergence: Publisher toggles both operations onto
 `Ctrl`+`Shift`+`G`, and the prototype splits them the Adobe way — `Ctrl`+`G` groups,
@@ -226,20 +282,31 @@ holds both a group and a loose object; two chords never guess. The clause ids
 (`select.ctrl-g.groups-selection`, `select.ctrl-shift-g.ungroups-selection`) record the
 choice, and reversing it means changing them.
 
-Duplicate lands on `Alt`+drag, which both Publisher and Illustrator support; `Ctrl`+`D`
-is free and worth adding when a keyboard-only duplicate is wanted (Publisher's meaning,
-duplicate-in-place, not Illustrator's transform-again).
+Duplicate reads Publisher's `Ctrl`+`D` as duplicate-in-place, not Illustrator's
+transform-again: the copy lands a quarter-inch down and right of its source and takes
+the selection. It shares the copying with `Alt`+drag and with paste, and leaves the
+clipboard untouched — duplicating something does not discard what you had copied.
+
+The coarse nudge multiplies the options-bar increment by ten. None of the three
+applications publishes its multiple, so 10× is an `ASSUMPTION` for SME review, sitting
+beside the 0.1 in default nudge it multiplies.
 
 ### View and navigation
 
 | Action | Microsoft Publisher | Adobe Photoshop | Adobe Illustrator | This prototype |
 | :--- | :--- | :--- | :--- | :--- |
-| **Zoom In** | `F9` (Toggles 100%) or `Ctrl` + Scroll | `Ctrl` + `+` (Plus) | `Ctrl` + `+` (Plus) | `Ctrl`/`Cmd` + wheel, or `Z` then click — Wired; no `Ctrl` + `+` |
-| **Zoom Out** | `F9` (Toggles 100%) or `Ctrl` + Scroll | `Ctrl` + `-` (Minus) | `Ctrl` + `-` (Minus) | `Ctrl`/`Cmd` + wheel, or `Z` then `Alt` + click — Wired; no `Ctrl` + `-` |
-| **Fit to Screen** | `Ctrl` + `Shift` + `L` (Whole Page) | `Ctrl` + `0` (Zero) | `Ctrl` + `0` (Zero) | **Gap** — zoom presets live in the debug bar only |
+| **Zoom In** | `F9` (Toggles 100%) or `Ctrl` + Scroll | `Ctrl` + `+` (Plus) | `Ctrl` + `+` (Plus) | `Ctrl`/`Cmd` + `=`, `Ctrl`/`Cmd` + wheel, or `Z` then click — Wired |
+| **Zoom Out** | `F9` (Toggles 100%) or `Ctrl` + Scroll | `Ctrl` + `-` (Minus) | `Ctrl` + `-` (Minus) | `Ctrl`/`Cmd` + `-`, `Ctrl`/`Cmd` + wheel, or `Z` then `Alt` + click — Wired |
+| **Fit to Screen** | `Ctrl` + `Shift` + `L` (Whole Page) | `Ctrl` + `0` (Zero) | `Ctrl` + `0` (Zero) | `Ctrl`/`Cmd` + `0` — Wired |
 | **Pan / Hand Tool** | Scroll Bars | Spacebar + Click & Drag | Spacebar + Click & Drag | `Space` + drag from any tool, or `H` — Wired |
 | **Show/Hide Guides** | `Ctrl` + `Shift` + `O` (Boundaries) | `Ctrl` + `;` | `Ctrl` + `;` | Options-bar toggle on the Guide tool (`showGuides`); no key |
 | **Show/Hide Rulers** | `Alt` + `V`, `R` (Ribbon shortcut) | `Ctrl` + `R` | `Ctrl` + `R` | Rulers are always on; no toggle to bind |
+
+The zoom keys take Adobe's chords rather than Publisher's `F9` toggle: `F9` flips
+between two zoom levels, which is a different feature from stepping a ladder, and the
+prototype's ladder is what the Zoom tool already climbs. `Ctrl`+`+` is accepted
+alongside `Ctrl`+`=` because they are one key apart on the keyboard and nobody
+remembers which the application wanted.
 
 Publisher's `Alt`+`V`,`R` is a ribbon accelerator — a menu walk, not a binding — and has
 no counterpart in a frame with no menus.
@@ -272,34 +339,36 @@ SME opinion before the letters harden.
 
 ---
 
-## 7. Recommended additions, ranked
+## 8. What is still unbound
 
-Each of these has to land as a **registry clause first**: the dock, the generated
-handoff documents and the tests all read the registry, so a binding that exists only in
-a shell handler is invisible to every one of them.
+Every recommendation this file carried in its first revision is now built, except one.
 
-1. **Undo and redo** — `Ctrl`/`Cmd`+`Z`, `Ctrl`/`Cmd`+`Shift`+`Z`, and `Ctrl`+`Y` for
-   the Publisher habit. The behavior is already built and CI-tested; only the binding is
-   missing. It needs a decision first: PLAN.md §5's contract vocabulary is per-tool, and
-   undo belongs to no tool — so it wants either a document-level clause list or an
-   explicit ruling that global chords sit outside the registry.
-2. **`Shift` + arrow coarse nudge** — Publisher, Photoshop and Illustrator all agree,
-   the Select tool already carries a `nudgeIncrement` option, and the multiplier (10× is
-   the common choice) is exactly the kind of number this prototype exists to put in
-   front of an SME.
-3. **`Ctrl`/`Cmd` + `A` select all**, with `Ctrl`/`Cmd`+`Shift`+`A` to deselect —
-   Illustrator's pairing, and it leaves `Esc` meaning cancel.
-4. **Zoom-to-fit and stepped zoom keys** — `Ctrl`/`Cmd`+`0`, `Ctrl`/`Cmd`+`+`/`-`. The
-   viewport math exists — `zoomInStep`, `zoomOutStep`, `fitZoom` — and the debug bar is
-   its only caller.
-5. **Arrange keys** — bring to front / send to back on the Adobe chords. Blocked on the
-   Layers panel (§4.3), which owns stacking order; there is no clause to bind yet.
+1. **Arrange keys** — bring to front / send to back on the Adobe chords
+   (`Ctrl`+`Shift`+`]` / `[`). Blocked, not deferred by preference: stacking order
+   belongs to the Layers panel (§4.3 of the requirements), which is unwired, and there
+   is no action to dispatch and no clause to bind. It should arrive with that panel's
+   Phase B group rather than in front of it.
+2. **Text formatting** — the `Ctrl`+`B`/`I`/`U` and alignment chords wait on the text
+   engine (PLAN.md §6.4), as the parity table says.
+3. **The system clipboard** — see §7. Crossing that boundary is a document-format
+   decision, not a keyboard one.
+
+Anything added later has to land as a **registry clause first** — a tool's `gestures`
+if a tool owns it, `globalKeyClauses` if none does. The dock, the generated handoff
+documents and the tests all read the registry, so a binding that exists only in a shell
+handler is invisible to every one of them.
 
 ---
 
-## 8. Status of this document
+## 9. Status of this document
 
 Not yet part of the PLAN.md §8 handoff bundle list. It reads well beside `SEAMS.md`
 there — recommended, not assumed. The test that keeps it honest checks the tool tables
-against the registry in both directions, verifies every clause id it cites exists, and
-fails when the registry names a key this file never mentions.
+against the registry in both directions, verifies every clause id it cites exists,
+fails when a declared global chord goes undocumented, and fails when the registry names
+a key this file never mentions.
+
+One thing here outruns the plan: PLAN.md §5 describes the contract vocabulary as
+per-tool, and `globalKeyClauses` adds a second list for the chords no tool owns. The
+shape is unchanged — same `GestureClause`, same ids, same cross-validation against the
+store — but §5 should say the list exists.

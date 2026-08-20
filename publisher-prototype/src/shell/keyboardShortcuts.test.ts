@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { toolRegistry } from "../core/registry";
+import { globalKeyClauses, toolRegistry } from "../core/registry";
 import type { ToolMode } from "../core/registry";
 import { WIRED_TOOLS } from "./wiredTools";
 
@@ -68,7 +68,10 @@ describe("KEYBOARD_SHORTCUTS.md", () => {
   });
 
   it("cites only gesture-clause ids that exist", () => {
-    const clauseIds = new Set(toolRegistry.flatMap((t) => t.gestures.map((g) => g.id)));
+    const clauseIds = new Set([
+      ...toolRegistry.flatMap((t) => t.gestures.map((g) => g.id)),
+      ...globalKeyClauses.map((c) => c.id),
+    ]);
     // A clause id is three kebab-case segments (registry/tools.test.ts holds
     // the shape); file names match it too, so they are excluded by suffix.
     const clauseShape = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){2}$/;
@@ -79,10 +82,16 @@ describe("KEYBOARD_SHORTCUTS.md", () => {
     }
   });
 
+  it("documents every global chord the registry declares", () => {
+    for (const clause of globalKeyClauses) {
+      expect(doc.includes(clause.id), `${clause.id} is declared but undocumented`).toBe(true);
+    }
+  });
+
   it("mentions every key the registry's triggers name", () => {
     const tokens = ["Esc", "Enter", "Tab", "Shift", "Alt", "Ctrl", "Cmd", "Space", "Delete", "Backspace", "arrow", "wheel", "[", "]"];
-    const triggers = toolRegistry
-      .flatMap((t) => t.gestures.map((g) => g.trigger))
+    const triggers = [...toolRegistry.flatMap((t) => t.gestures), ...globalKeyClauses]
+      .map((clause) => clause.trigger)
       .join(" | ")
       .toLowerCase();
     const text = doc.toLowerCase();

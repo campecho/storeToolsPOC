@@ -198,6 +198,15 @@ export type DuplicateCommit = {
   groups: Group[];
 };
 
+/**
+ * paste commits (document.ctrl-v.pastes-clipboard) carry the same finished
+ * copies a duplicate does and land through the same reducer — what differs is
+ * where they came from, and that difference is worth its own action type:
+ * the DevTools timeline is documentation (PLAN.md §8), and a paste reading as
+ * a duplicate would misreport what the user did.
+ */
+export type PasteCommit = DuplicateCommit;
+
 /** lock commits: set the identified objects' locked flag. The one translate-
     family action that must NOT skip locked objects — unlocking is its point. */
 export type LockCommit = {
@@ -229,6 +238,7 @@ export const objectStrokeWidthCommitted = createAction<StrokeWidthCommit>(
 export const objectLockCommitted = createAction<LockCommit>("object/lockCommitted");
 export const objectDeleteCommitted = createAction<DeleteCommit>("object/deleteCommitted");
 export const objectDuplicateCommitted = createAction<DuplicateCommit>("object/duplicateCommitted");
+export const objectPasteCommitted = createAction<PasteCommit>("object/pasteCommitted");
 export const objectGroupCommitted = createAction<GroupCommit>("object/groupCommitted");
 export const objectUngroupCommitted = createAction<UngroupCommit>("object/ungroupCommitted");
 export const roundedRectCornerRadiusCommitted = createAction<CornerRadiusCommit>(

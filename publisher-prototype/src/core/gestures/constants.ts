@@ -45,6 +45,24 @@ export function slopInInches(zoom: number): number {
 }
 
 /**
+ * ASSUMPTION: Shift + arrow nudges ten times the configured increment
+ * (select.shift-arrow.nudges-coarse). Publisher, Photoshop and Illustrator
+ * all offer a coarse nudge on Shift and none of them publishes the same
+ * multiple; 10× is the common reading and a working guess for SME review.
+ */
+export const COARSE_NUDGE_MULTIPLIER = 10;
+
+/**
+ * ASSUMPTION: a keyboard duplicate or paste lands 0.25 in down and right of
+ * its source, each further paste of the same clipboard contents stepping
+ * again by that much (document.ctrl-d.duplicates-selection,
+ * document.ctrl-v.pastes-clipboard). The requirements name neither gesture's
+ * offset; the copy has to be visibly its own object without wandering far
+ * from what it came from. Working guess for SME review.
+ */
+export const COPY_OFFSET_IN = 0.25;
+
+/**
  * ASSUMPTION: a pen press within 8 screen px of the draft's first anchor is
  * the close-the-path click (pen.click-start.closes-path) — the contract
  * names the gesture, not the radius; working guess for SME review.

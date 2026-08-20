@@ -104,6 +104,13 @@ export const selectTool: ToolContract = {
       action: "object/nudgeCommitted",
     },
     {
+      id: "select.shift-arrow.nudges-coarse",
+      trigger: "arrow key + Shift",
+      behavior:
+        "Nudges by a multiple of the configured increment, for crossing a page rather than settling a position — the coarse step Publisher, Photoshop and Illustrator all put on Shift.",
+      action: "object/nudgeCommitted",
+    },
+    {
       id: "select.delete.removes-selection",
       trigger: "Delete / Backspace",
       behavior:
@@ -168,7 +175,7 @@ export const selectTool: ToolContract = {
     "A group selects as a UNIT: click, Shift-click, Alt-click and marquee all resolve a hit object to the outermost group it belongs to, so a transform never holds part of a group. Locked members stay out, exactly as the hit-test contract keeps them out of a click.",
     "Rotation is the one transform that moves a selection's members as well as changing them: object rotation pivots at each object's own centre, so a selection turns rigidly only by orbiting every member about the selection frame's centre. object/rotateCommitted therefore carries absolute geometry alongside the absolute angles, and lines — which store no angle — turn entirely through it.",
     "ASSUMPTION: empty-click clear, Shift-toggle, marquee gesture, Esc-cancel, and the Alt modifier for stack cycling are Publisher-parity fillers — §2.1/§2.2 state the capabilities, not the bindings.",
-    "ASSUMPTION: 4px hit tolerance and 0.1in default nudge are working guesses for SME review.",
+    "ASSUMPTION: 4px hit tolerance, the 0.1in default nudge, and the 10× multiplier Shift puts on it are working guesses for SME review.",
   ],
 };
 

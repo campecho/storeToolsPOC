@@ -26,11 +26,12 @@ export const viewportSlice = createSlice({
   name: "viewport",
   initialState,
   reducers: {
-    /** zoom.click.steps-in · zoom.alt-click.steps-out */
+    /** zoom.click.steps-in · zoom.alt-click.steps-out ·
+        viewport.ctrl-plus.steps-in · viewport.ctrl-minus.steps-out */
     zoomStepCommitted: applyViewport,
     /** zoom.wheel.ctrl-zooms-at-cursor */
     zoomWheelCommitted: applyViewport,
-    /** Debug-bar fit control. */
+    /** viewport.ctrl-zero.fits-page, and the debug bar's Fit control. */
     zoomFitCommitted: applyViewport,
     /** Debug-bar direct zoom entry. */
     zoomSetCommitted: applyViewport,

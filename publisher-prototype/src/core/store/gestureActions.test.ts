@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { globalKeyClauses } from "../registry/globalKeys";
 import { toolRegistry } from "../registry/tools";
 import {
   arrowDrawCommitted,
@@ -12,6 +13,7 @@ import {
   objectGroupCommitted,
   objectMoveCommitted,
   objectNudgeCommitted,
+  objectPasteCommitted,
   objectResizeCommitted,
   objectRotateCommitted,
   objectUngroupCommitted,
@@ -23,9 +25,11 @@ import {
   starPolygonDrawCommitted,
   starPolygonInnerRadiusCommitted,
 } from "./documentActions";
-import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES } from "./history";
+import { clipboardSlice } from "./clipboardSlice";
+import { PANEL_COMMIT_ACTION_TYPES, UNDOABLE_ACTION_TYPES, redoCommitted, undoCommitted } from "./history";
 import { penSlice } from "./penSlice";
 import { selectionSlice } from "./selectionSlice";
+import { viewportSlice } from "./viewportSlice";
 
 /**
  * Registry ↔ store cross-validation (the viewportSlice.test.ts pattern):
@@ -54,6 +58,7 @@ const documentActionCreators = [
   objectUngroupCommitted,
   objectDeleteCommitted,
   objectDuplicateCommitted,
+  objectPasteCommitted,
   bannerPanelInsetCommitted,
   bannerPanelHeightCommitted,
   gestureCancelled,
@@ -98,15 +103,33 @@ describe("gesture-clause actions", () => {
     expect(cancelled.length).toBeGreaterThan(0);
   });
 
-  it("lists in UNDOABLE_ACTION_TYPES only clause-backed gestures (all per-gesture undo) or declared panel commits", () => {
+  it("lists in UNDOABLE_ACTION_TYPES only clause-backed commits — tool gestures (all per-gesture undo), global chords, or declared panel commits", () => {
     for (const type of UNDOABLE_ACTION_TYPES) {
       if (PANEL_COMMIT_ACTION_TYPES.has(type)) continue;
       const backing = clauses.filter(({ clause }) => clause.action === type);
-      expect(backing.length, type).toBeGreaterThan(0);
+      // A global chord backs a type just as a tool clause does; it simply has
+      // no tool whose undo granularity to check (registry/globalKeys.ts).
+      const global = globalKeyClauses.filter((clause) => clause.action === type);
+      expect(backing.length + global.length, type).toBeGreaterThan(0);
       for (const { tool } of backing) {
         expect(tool.undo, `${tool.id} dispatches ${type}`).toBe("per-gesture");
       }
     }
+  });
+
+  it("backs every global chord with an action creator of that type", () => {
+    const chordBackedTypes = new Set<string>([
+      ...backedTypes,
+      undoCommitted.type,
+      redoCommitted.type,
+      ...Object.values(clipboardSlice.actions).map((creator) => creator.type),
+      ...Object.values(viewportSlice.actions).map((creator) => creator.type),
+    ]);
+    expect(globalKeyClauses.length).toBeGreaterThan(0);
+    const missing = globalKeyClauses
+      .filter((clause) => !chordBackedTypes.has(clause.action))
+      .map((clause) => `${clause.id} → ${clause.action}`);
+    expect(missing).toEqual([]);
   });
 
   it("keeps panel commits disjoint from clause-backed gestures — a type is one or the other", () => {

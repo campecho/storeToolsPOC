@@ -13,6 +13,7 @@ import {
   lineDrawCommitted,
   objectDeleteCommitted,
   objectDuplicateCommitted,
+  objectPasteCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -477,6 +478,28 @@ describe("documentSlice", () => {
       const before = docWith([shape("a")]);
       expect(
         reducer(before, objectDuplicateCommitted({ pageIndex: 5, objects: [shape("c")], groups: [] })),
+      ).toEqual(before);
+    });
+  });
+
+  describe("object/pasteCommitted", () => {
+    it("appends the pasted copies exactly as a duplicate does", () => {
+      const state = reducer(
+        docWith([shape("a")]),
+        objectPasteCommitted({
+          pageIndex: 0,
+          objects: [shape("pasted", { x: 3, groupId: "g-pasted" })],
+          groups: [{ id: "g-pasted" }],
+        }),
+      );
+      expect(objectsOf(state).map((o) => o.id)).toEqual(["a", "pasted"]);
+      expect(state.groups).toEqual([{ id: "g-pasted" }]);
+    });
+
+    it("ignores an unknown pageIndex", () => {
+      const before = docWith([shape("a")]);
+      expect(
+        reducer(before, objectPasteCommitted({ pageIndex: 5, objects: [shape("c")], groups: [] })),
       ).toEqual(before);
     });
   });

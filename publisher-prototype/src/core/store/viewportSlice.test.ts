@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { globalKeyClauses } from "../registry/globalKeys";
 import { toolRegistry } from "../registry/tools";
 import type { Viewport } from "../geometry/viewport";
 import {
@@ -60,8 +61,7 @@ describe("viewportSlice", () => {
     const actionTypes = new Set<string>(
       Object.values(viewportSlice.actions).map((creator) => creator.type),
     );
-    const viewportClauses = toolRegistry
-      .flatMap((tool) => tool.gestures)
+    const viewportClauses = [...toolRegistry.flatMap((tool) => tool.gestures), ...globalKeyClauses]
       .filter((clause) => clause.action.startsWith("viewport/"));
     expect(viewportClauses.length).toBeGreaterThan(0);
     for (const clause of viewportClauses) {

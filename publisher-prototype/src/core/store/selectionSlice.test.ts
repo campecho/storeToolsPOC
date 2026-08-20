@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument } from "../model";
-import { objectDeleteCommitted, objectDuplicateCommitted } from "./documentActions";
+import {
+  objectDeleteCommitted,
+  objectDuplicateCommitted,
+  objectPasteCommitted,
+} from "./documentActions";
 import {
   documentLoadedCommitted,
   stressFixtureCleared,
@@ -119,6 +123,20 @@ describe("selectionSlice", () => {
       }),
     );
     expect(next.ids).toEqual(["c1", "c2"]);
+  });
+
+  it("selects what a paste put on the page, at the page's top level", () => {
+    const next = reducer(
+      selected(["a"], "grp-1"),
+      objectPasteCommitted({
+        pageIndex: 0,
+        objects: [
+          { id: "p1", type: "shape", shape: "rect", x: 0, y: 0, w: 1, h: 1, rotation: 0, locked: false, fill: null, stroke: null },
+        ],
+        groups: [],
+      }),
+    );
+    expect(next).toEqual({ ids: ["p1"], enteredGroupId: null });
   });
 
   it("prunes deleted ids, and leaves the group context when nothing is left", () => {
