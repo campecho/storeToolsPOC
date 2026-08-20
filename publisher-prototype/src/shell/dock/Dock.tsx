@@ -29,8 +29,12 @@ function ToolButton({
     >
       {/* The shortcut is real text in the button, not a decoration hidden
           from assistive tech: the accessible name then matches the visible
-          label exactly, which is what WCAG 2.5.3 (Label in Name) asks for. */}
-      <span className="dock-tool-label">{`${tool.label} (${tool.shortcut})`}</span>
+          label exactly, which is what WCAG 2.5.3 (Label in Name) asks for.
+          A dock-only tool carries no shortcut, so it shows no parenthetical —
+          an empty pair of brackets would advertise a key that isn't there. */}
+      <span className="dock-tool-label">
+        {tool.shortcut === null ? tool.label : `${tool.label} (${tool.shortcut})`}
+      </span>
       {tool.tier === "SURFACE" && <sup className="tier-badge">S</sup>}
     </button>
   );

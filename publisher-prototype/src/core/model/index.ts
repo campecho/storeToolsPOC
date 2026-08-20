@@ -10,4 +10,5 @@ export * from "./photo";
 export * from "./objects";
 export * from "./document";
 export * from "./groups";
+export * from "./copy";
 export * from "./parse";

@@ -53,11 +53,17 @@ describe("toolRegistry", () => {
     }
   });
 
-  it("gives every tool a non-empty label, shortcut, and cursor", () => {
+  it("gives every tool a non-empty label and cursor", () => {
     for (const tool of toolRegistry) {
       expect(tool.label.length).toBeGreaterThan(0);
-      expect(tool.shortcut.length).toBeGreaterThan(0);
       expect(tool.cursor.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("carries one letter or no shortcut at all — never an empty one", () => {
+    for (const tool of toolRegistry) {
+      if (tool.shortcut === null) continue;
+      expect(tool.shortcut, `${tool.id} activates on "${tool.shortcut}"`).toMatch(/^[A-Z]$/);
     }
   });
 
@@ -84,7 +90,10 @@ describe("toolRegistry", () => {
   it("keeps shortcuts unique within each mode's visible tool set", () => {
     for (const mode of ["layout", "photo"] as const) {
       const visible = toolRegistry.filter((t) => t.mode === mode || t.mode === "both");
-      const shortcuts = visible.map((t) => t.shortcut.toUpperCase());
+      const shortcuts = visible
+        .map((t) => t.shortcut)
+        .filter((s): s is string => s !== null)
+        .map((s) => s.toUpperCase());
       expect(new Set(shortcuts).size, `${mode} dock shortcuts collide`).toBe(shortcuts.length);
     }
   });

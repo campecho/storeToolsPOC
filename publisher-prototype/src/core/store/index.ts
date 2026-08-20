@@ -4,6 +4,7 @@ import { viewportSlice } from "./viewportSlice";
 import { documentSlice } from "./documentSlice";
 import { penSlice } from "./penSlice";
 import { selectionSlice } from "./selectionSlice";
+import { clipboardSlice } from "./clipboardSlice";
 import { withDocumentHistory } from "./history";
 
 /**
@@ -18,6 +19,7 @@ export function createAppStore() {
       viewport: viewportSlice.reducer,
       document: withDocumentHistory(documentSlice.reducer),
       selection: selectionSlice.reducer,
+      clipboard: clipboardSlice.reducer,
       pen: penSlice.reducer,
     },
   });
@@ -37,5 +39,6 @@ export * from "./viewportSlice";
 export * from "./documentSlice";
 export * from "./documentActions";
 export * from "./selectionSlice";
+export * from "./clipboardSlice";
 export * from "./penSlice";
 export * from "./history";

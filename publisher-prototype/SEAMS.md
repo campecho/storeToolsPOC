@@ -507,7 +507,8 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   not what we build; PLAN.md §4.1 is the record of what we build, and it now says
   in as many words that the two differ here on purpose.
 - **Single-key shortcuts keep no escape hatch, deliberately (recorded 2026-08-19,
-  user decision):** every tool activates on a bare letter (`V`, `R`, `E`…), which
+  user decision):** most tools activate on a bare letter (`V`, `R`, `E`…; eight
+  layout tools are dock-only and carry no shortcut at all), which
   WCAG 2.1.4 (Character Key Shortcuts, Level A) allows only alongside one of
   three mechanisms — turn the shortcuts off, remap them behind a modifier, or
   scope them to a focused component. The prototype offers none. The handler
@@ -521,7 +522,8 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   dev team should assume this is unbuilt, not solved: the cheapest conformant fix
   is an off switch in a real preferences surface. Remapping is the fuller answer
   and carries a design consequence — `shortcut` is registry data today, one
-  string per tool, and remapping makes it user state that overrides the registry.
+  string (or null) per tool, and remapping makes it user state that overrides the
+  registry.
 - **The banner is three tiling rings plus shading (recorded 2026-08-19, user
   decision, SUPERSEDING the fold half of "The banner is a parametric ribbon"):**
   the review supplied a written construction and a captured rendering, and two

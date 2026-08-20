@@ -178,7 +178,13 @@ export type ToolContract = {
   label: string;
   mode: ToolMode;
   group: ToolGroup;
-  shortcut: string;
+  /**
+   * The single letter that activates the tool, or null for a dock-only tool
+   * that no keystroke reaches. Null rather than an omitted field: every tool
+   * carries identical fields, so a reviewer reads "no shortcut" as a decision
+   * rather than wondering whether the entry is unfinished.
+   */
+  shortcut: string | null;
   /** Requirement citations, e.g. ["§4.4", "§2.1"] — resolve in docs/. */
   req: string[];
   tier: Tier;

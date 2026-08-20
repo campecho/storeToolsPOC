@@ -3,6 +3,7 @@ import {
   isDrawCommit,
   objectDeleteCommitted,
   objectDuplicateCommitted,
+  objectPasteCommitted,
 } from "./documentActions";
 import { documentSlice } from "./documentSlice";
 
@@ -100,9 +101,18 @@ export const selectionSlice = createSlice({
     });
     // The copies an Alt-drag drops become the selection, for the same reason
     // a drawn object does: they are what the gesture just made, and they are
-    // what the next drag or panel edit should reach.
+    // what the next drag or panel edit should reach. A keyboard duplicate
+    // (document.ctrl-d.duplicates-selection) commits the same action and
+    // inherits this.
     builder.addMatcher(objectDuplicateCommitted.match, (state, action) => {
       state.ids = action.payload.objects.map((o) => o.id);
+    });
+    // Pasted copies land selected too, and at the page's top level: the
+    // clipboard's contents came from some other context — another page, or a
+    // group since left — so no entered group can still apply to them.
+    builder.addMatcher(objectPasteCommitted.match, (state, action) => {
+      state.ids = action.payload.objects.map((o) => o.id);
+      state.enteredGroupId = null;
     });
     // Deleted objects leave the selection with them. Locked ids the reducer
     // refused to delete are filtered out too, but they could never have been

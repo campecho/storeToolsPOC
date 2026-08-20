@@ -11,6 +11,7 @@ import {
   drawLineMachine,
   drawLineMachineFor,
   bannerPanelHeightMachine,
+  COARSE_NUDGE_MULTIPLIER,
   bannerPanelInsetMachine,
   calloutTailMachine,
   cornerRadiusMachine,
@@ -688,10 +689,12 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
   // discards a pen draft between presses (pen.esc.discards-path); Enter
   // finishes the pen draft (pen.double-click.commits-open-path's keyboard
-  // half); arrows nudge the selection (select.arrow.nudges); Delete removes
-  // it; Ctrl/Cmd+G and Ctrl/Cmd+Shift+G group and ungroup it. Key repeat is
+  // half); arrows nudge the selection (select.arrow.nudges, coarsened by
+  // Shift per select.shift-arrow.nudges-coarse); Delete removes it;
+  // Ctrl/Cmd+G and Ctrl/Cmd+Shift+G group and ungroup it. Key repeat is
   // fine for nudging: each keydown is its own nudge gesture, one history
-  // entry each.
+  // entry each. Chords that belong to no tool — undo, the clipboard, zoom —
+  // are shell/useGlobalKeys.ts instead.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
@@ -775,7 +778,11 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       if (activeTool !== "select" || sessionRef.current !== null) return;
       if (selectedIds.length === 0 || isTextEntryTarget(e.target)) return;
       e.preventDefault();
-      const nudge = optionNumber(toolOptions, "select", "nudgeIncrement", 0.1);
+      // select.arrow.nudges, and select.shift-arrow.nudges-coarse when Shift
+      // is down: one binding, two clauses, the modifier choosing the step.
+      const nudge =
+        optionNumber(toolOptions, "select", "nudgeIncrement", 0.1) *
+        (e.shiftKey ? COARSE_NUDGE_MULTIPLIER : 1);
       commit(
         objectNudgeCommitted({
           pageIndex,

@@ -16,6 +16,7 @@ import {
   type ToolOptionValue,
   type ToolOptionValues,
 } from "./toolOptions";
+import { useGlobalKeys } from "./useGlobalKeys";
 
 export type AppMode = Exclude<ToolMode, "both">;
 
@@ -48,8 +49,12 @@ export function App() {
   // A drawn object lands selected (selectionSlice), and the select tool is
   // what acts on a selection — so the draw tool hands the page back rather
   // than arming another shape. Reasoned at the commit door in
-  // canvas/useToolGestures.ts, where the ASSUMPTION note lives.
-  const selectDrawnObject = useCallback(() => setActiveTool("select"), []);
+  // canvas/useToolGestures.ts, where the ASSUMPTION note lives. The chords
+  // that produce a selection out of nowhere — select all, paste, duplicate —
+  // hand it over for the same reason, and because selection chrome draws
+  // under the select tool only: without the switch they would look like
+  // nothing happened.
+  const activateSelectTool = useCallback(() => setActiveTool("select"), []);
 
   const activeContract = toolRegistry.find((t) => t.id === activeTool);
 
@@ -60,19 +65,32 @@ export function App() {
     }
   };
 
-  // Registry shortcuts activate tools within the current mode.
+  // Registry shortcuts activate tools within the current mode. A tool whose
+  // contract carries no shortcut is dock-only: no keystroke reaches it.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextEntryTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const tool = toolRegistry.find(
         (t) =>
-          (t.mode === "both" || t.mode === mode) && t.shortcut.toLowerCase() === e.key.toLowerCase(),
+          (t.mode === "both" || t.mode === mode) &&
+          t.shortcut !== null &&
+          t.shortcut.toLowerCase() === e.key.toLowerCase(),
       );
       if (tool) setActiveTool(tool.id);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mode]);
+
+  // The global chords (registry globalKeys.ts) — undo/redo, select all,
+  // clipboard, duplicate, zoom keys. App owns them because they are not
+  // gestures and because two of the three things they need — the page index
+  // and the viewport size — are app state.
+  useGlobalKeys({
+    pageIndex: boundedPageIndex,
+    vpSize,
+    onSelectionSurfaced: activateSelectTool,
+  });
 
   return (
     <div className="app">
@@ -104,7 +122,7 @@ export function App() {
           showProbe={showProbe}
           toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
-          onObjectDrawn={selectDrawnObject}
+          onObjectDrawn={activateSelectTool}
         />
         <ControlPanel
           mode={mode}

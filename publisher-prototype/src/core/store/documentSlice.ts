@@ -17,6 +17,7 @@ import {
   lineDrawCommitted,
   objectDeleteCommitted,
   objectDuplicateCommitted,
+  objectPasteCommitted,
   objectFillCommitted,
   objectGroupCommitted,
   objectLockCommitted,
@@ -502,6 +503,9 @@ export const documentSlice = createSlice({
       .addCase(objectLockCommitted, applyLock)
       .addCase(objectDeleteCommitted, applyDelete)
       .addCase(objectDuplicateCommitted, applyDuplicate)
+      // A paste appends finished copies exactly as a duplicate does; only the
+      // action type differs, so the DevTools timeline reads back honestly.
+      .addCase(objectPasteCommitted, applyDuplicate)
       .addCase(objectGroupCommitted, applyGroup)
       .addCase(objectUngroupCommitted, applyUngroup)
       .addCase(roundedRectCornerRadiusCommitted, applyCornerRadius)
