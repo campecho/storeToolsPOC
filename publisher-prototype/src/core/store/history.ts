@@ -4,6 +4,7 @@ import {
   arrowDrawCommitted,
   bannerDrawCommitted,
   calloutDrawCommitted,
+  documentSetupCommitted,
   ellipseDrawCommitted,
   flowchartDrawCommitted,
   lineDrawCommitted,
@@ -15,6 +16,7 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  pageSizeOverrideCommitted,
   penDrawCommitted,
   rectDrawCommitted,
   roundedRectDrawCommitted,
@@ -55,6 +57,8 @@ export const PANEL_COMMIT_ACTION_TYPES: ReadonlySet<string> = new Set([
   objectStrokePaintCommitted.type,
   objectStrokeWidthCommitted.type,
   objectLockCommitted.type,
+  documentSetupCommitted.type,
+  pageSizeOverrideCommitted.type,
 ]);
 
 /** Exactly the commit actions that mutate the document per completed

@@ -29,6 +29,7 @@ export const WIRED_PANELS: ReadonlySet<string> = new Set([
   "transform",
   "color-swatches",
   "align-distribute",
+  "document-setup",
 ]);
 
 /**

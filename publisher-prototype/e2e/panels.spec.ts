@@ -11,14 +11,15 @@ import {
 } from "./helpers";
 
 /**
- * Live control panels (PLAN.md §4.3 "transform" and "color-swatches"): the
- * panels edit the real document through the store — numeric entry commits on
- * Enter as EXACTLY ONE action (the §6.3 one-entry-per-gesture rule applied
- * to panel commits), verified by the store-notification counter and the
- * history depth, with undo restoring the pre-commit document.
+ * Live control panels (PLAN.md §4.3 "transform", "color-swatches",
+ * "document-setup"): the panels edit the real document through the store —
+ * numeric entry commits on Enter as EXACTLY ONE action (the §6.3
+ * one-entry-per-gesture rule applied to panel commits), verified by the
+ * store-notification counter and the history depth, with undo restoring the
+ * pre-commit document.
  */
 
-function panel(page: Page, id: "transform" | "color-swatches") {
+function panel(page: Page, id: "transform" | "color-swatches" | "document-setup") {
   return page.getByTestId(`${id}-panel`);
 }
 
@@ -31,7 +32,7 @@ async function drawAndSelectRect(page: Page): Promise<void> {
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
 }
 
-async function commitField(page: Page, panelId: "transform" | "color-swatches", label: string, value: string): Promise<void> {
+async function commitField(page: Page, panelId: "transform" | "color-swatches" | "document-setup", label: string, value: string): Promise<void> {
   const field = panel(page, panelId).getByLabel(label, { exact: true });
   await field.fill(value);
   await field.press("Enter");
@@ -226,4 +227,102 @@ test("color panel: a document swatch applies as a swatch REFERENCE, and undo res
   await expect(panel(page, "color-swatches").getByLabel("Color", { exact: true })).toHaveValue(
     "#4472c4",
   );
+});
+
+/** Document setup readback: the setup fields of the present document. */
+function docSetup(page: Page): Promise<{
+  size: { w: number; h: number };
+  orientation: string;
+  bleed: number;
+  slug: number;
+  margin: number;
+  columns: number;
+  pageOverride: { w: number; h: number } | undefined;
+}> {
+  return page.evaluate(() => {
+    const store = window.__PROTOTYPE_STORE__;
+    if (!store) throw new Error("dev store handle missing");
+    const doc = store.getState().document.present;
+    return {
+      size: doc.size,
+      orientation: doc.orientation,
+      bleed: doc.bleed,
+      slug: doc.slug,
+      margin: doc.margin,
+      columns: doc.columns,
+      pageOverride: doc.pages[0]?.sizeOverride,
+    };
+  });
+}
+
+test("document setup panel: width entry commits once and recomputes orientation", async ({
+  page,
+}) => {
+  await armCounter(page);
+  await commitField(page, "document-setup", "Width", "14");
+  expect(await notificationCount(page)).toBe(1);
+  const setup = await docSetup(page);
+  expect(setup.size).toEqual({ w: 14, h: 11 });
+  // 14 × 11 is wider than tall: the orientation flag follows the dimensions.
+  expect(setup.orientation).toBe("landscape");
+  expect(await historyDepth(page)).toBe(1);
+});
+
+test("document setup panel: orientation toggle swaps dimensions as one undoable action", async ({
+  page,
+}) => {
+  await panel(page, "document-setup").getByLabel("landscape", { exact: true }).check();
+  let setup = await docSetup(page);
+  expect(setup.size).toEqual({ w: 11, h: 8.5 });
+  expect(setup.orientation).toBe("landscape");
+  expect(await historyDepth(page)).toBe(1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  setup = await docSetup(page);
+  expect(setup.size).toEqual({ w: 8.5, h: 11 });
+  expect(setup.orientation).toBe("portrait");
+});
+
+test("document setup panel: bleed, slug, margin, and columns commit to the document", async ({
+  page,
+}) => {
+  await commitField(page, "document-setup", "Bleed", "0.25");
+  await commitField(page, "document-setup", "Slug", "0.5");
+  await commitField(page, "document-setup", "Margin", "0.75");
+  await commitField(page, "document-setup", "Columns", "3");
+  const setup = await docSetup(page);
+  expect(setup.bleed).toBe(0.25);
+  expect(setup.slug).toBe(0.5);
+  expect(setup.margin).toBe(0.75);
+  expect(setup.columns).toBe(3);
+  expect(await historyDepth(page)).toBe(4);
+});
+
+test("document setup panel: page size override sets, clears, and undoes", async ({ page }) => {
+  await commitField(page, "document-setup", "Page width", "5");
+  let setup = await docSetup(page);
+  // The override captures the full pair: entered width, document height.
+  expect(setup.pageOverride).toEqual({ w: 5, h: 11 });
+  expect(setup.size).toEqual({ w: 8.5, h: 11 });
+  await expect(panel(page, "document-setup").getByText("(size overridden)")).toBeVisible();
+  await panel(page, "document-setup")
+    .getByRole("button", { name: "Use document size" })
+    .click();
+  setup = await docSetup(page);
+  expect(setup.pageOverride).toBeUndefined();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  setup = await docSetup(page);
+  expect(setup.pageOverride).toEqual({ w: 5, h: 11 });
+});
+
+test("document setup panel: warns when a resize leaves objects beyond the page", async ({
+  page,
+}) => {
+  await activate(page, "Rectangle");
+  await drag(page, { x: 6, y: 3 }, { x: 8, y: 4 });
+  const warning = panel(page, "document-setup").getByRole("status");
+  await expect(warning).toBeHidden();
+  await commitField(page, "document-setup", "Width", "7");
+  await expect(warning).toContainText("1 object extends beyond the page");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(warning).toBeHidden();
 });

@@ -14,11 +14,13 @@ describe("effectivePageSetup", () => {
     expect(effectivePageSetup(doc, 0)).toEqual({
       size: { w: 8.5, h: 11 },
       bleed: 0.125,
+      slug: 0,
       margin: 0.5,
+      columns: 1,
     });
   });
 
-  it("applies per-page size/bleed/margin overrides", () => {
+  it("applies per-page size/bleed/slug/margin/columns overrides", () => {
     const doc = createEmptyDocument();
     doc.pages[0] = {
       id: "page-1",
@@ -26,12 +28,16 @@ describe("effectivePageSetup", () => {
       objects: [],
       sizeOverride: { w: 11, h: 17 },
       bleedOverride: 0.25,
+      slugOverride: 0.5,
       marginOverride: 1,
+      columnsOverride: 3,
     };
     expect(effectivePageSetup(doc, 0)).toEqual({
       size: { w: 11, h: 17 },
       bleed: 0.25,
+      slug: 0.5,
       margin: 1,
+      columns: 3,
     });
   });
 
@@ -40,7 +46,9 @@ describe("effectivePageSetup", () => {
     expect(effectivePageSetup(doc, 9)).toEqual({
       size: { w: 8.5, h: 11 },
       bleed: 0.125,
+      slug: 0,
       margin: 0.5,
+      columns: 1,
     });
   });
 });

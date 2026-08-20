@@ -9,6 +9,7 @@ import {
   type Stroke,
 } from "../model";
 import {
+  documentSetupCommitted,
   ellipseDrawCommitted,
   lineDrawCommitted,
   objectFillCommitted,
@@ -19,6 +20,7 @@ import {
   objectRotateCommitted,
   objectStrokePaintCommitted,
   objectStrokeWidthCommitted,
+  pageSizeOverrideCommitted,
   rectDrawCommitted,
 } from "./documentActions";
 import {
@@ -297,6 +299,68 @@ describe("documentSlice", () => {
         objectLockCommitted({ pageIndex: 0, ids: ["b", "ghost"], locked: true }),
       );
       expect(objectsOf(state).map((o) => o.locked)).toEqual([false, true]);
+    });
+  });
+
+  describe("document/setupCommitted and page/sizeOverrideCommitted", () => {
+    it("applies exactly the provided setup fields, leaving the rest untouched", () => {
+      const state = reducer(
+        documentSlice.getInitialState(),
+        documentSetupCommitted({ bleed: 0.25, columns: 3 }),
+      );
+      expect(state.bleed).toBe(0.25);
+      expect(state.columns).toBe(3);
+      expect(state.size).toEqual({ w: 8.5, h: 11 });
+      expect(state.margin).toBe(0.5);
+      expect(state.slug).toBe(0);
+    });
+
+    it("applies an orientation toggle's swapped size and flag as one action", () => {
+      const state = reducer(
+        documentSlice.getInitialState(),
+        documentSetupCommitted({ orientation: "landscape", size: { w: 11, h: 8.5 } }),
+      );
+      expect(state.orientation).toBe("landscape");
+      expect(state.size).toEqual({ w: 11, h: 8.5 });
+    });
+
+    it("skips invalid fields while applying valid ones — never an unparseable document", () => {
+      const state = reducer(
+        documentSlice.getInitialState(),
+        documentSetupCommitted({ size: { w: -2, h: 11 }, margin: 0.75, columns: 2.5 }),
+      );
+      expect(state.size).toEqual({ w: 8.5, h: 11 });
+      expect(state.columns).toBe(1);
+      expect(state.margin).toBe(0.75);
+    });
+
+    it("sets, replaces, and clears a page's size override", () => {
+      const initial = documentSlice.getInitialState();
+      const set = reducer(
+        initial,
+        pageSizeOverrideCommitted({ pageIndex: 0, sizeOverride: { w: 5, h: 7 } }),
+      );
+      expect(set.pages[0]?.sizeOverride).toEqual({ w: 5, h: 7 });
+      const cleared = reducer(
+        set,
+        pageSizeOverrideCommitted({ pageIndex: 0, sizeOverride: null }),
+      );
+      expect(cleared.pages[0]?.sizeOverride).toBeUndefined();
+      expect("sizeOverride" in (cleared.pages[0] ?? {})).toBe(false);
+    });
+
+    it("ignores an invalid override and an out-of-range page index", () => {
+      const initial = documentSlice.getInitialState();
+      const invalid = reducer(
+        initial,
+        pageSizeOverrideCommitted({ pageIndex: 0, sizeOverride: { w: 0, h: 7 } }),
+      );
+      expect(invalid.pages[0]?.sizeOverride).toBeUndefined();
+      const outOfRange = reducer(
+        initial,
+        pageSizeOverrideCommitted({ pageIndex: 9, sizeOverride: { w: 5, h: 7 } }),
+      );
+      expect(outOfRange).toEqual(initial);
     });
   });
 

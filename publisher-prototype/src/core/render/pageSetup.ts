@@ -10,7 +10,10 @@ import type { LayoutDocument, PageSize } from "../model";
 export type EffectivePageSetup = {
   size: PageSize;
   bleed: number;
+  /** Distance from bleed to the slug boundary; 0 = no slug area (§1.4). */
+  slug: number;
   margin: number;
+  columns: number;
 };
 
 /** An out-of-range pageIndex resolves to the document-level values — the
@@ -20,6 +23,8 @@ export function effectivePageSetup(doc: LayoutDocument, pageIndex: number): Effe
   return {
     size: page?.sizeOverride ?? doc.size,
     bleed: page?.bleedOverride ?? doc.bleed,
+    slug: page?.slugOverride ?? doc.slug,
     margin: page?.marginOverride ?? doc.margin,
+    columns: page?.columnsOverride ?? doc.columns,
   };
 }

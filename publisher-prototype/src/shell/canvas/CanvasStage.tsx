@@ -192,7 +192,12 @@ export function CanvasStage({
   swatches: readonly Swatch[];
 }) {
   if (vpSize.w <= 0 || vpSize.h <= 0) return null;
-  const { size, bleed, margin } = setup;
+  const { size, bleed, slug, margin, columns } = setup;
+  /* Column guides divide the margin box; drawn at interior boundaries only. */
+  const columnXs = Array.from({ length: Math.max(0, columns - 1) }, (_, i) => {
+    const boxW = size.w - 2 * margin;
+    return margin + (boxW * (i + 1)) / columns;
+  });
   const origin = pageOriginPx(viewport, vpSize, size);
   const scale = DPI * viewport.zoom;
   return (
@@ -206,10 +211,24 @@ export function CanvasStage({
       listening={false}
     >
       {/* Furniture: pasteboard is the container background; page fill, shadow,
-          bleed and margin guides redraw only on page-setup or zoom change. */}
+          slug, bleed, margin and column guides redraw only on page-setup or
+          zoom change. Trim/bleed/slug read as visually distinct indicators
+          (§1.4): black page edge, red bleed, grey slug. */}
       <Layer listening={false}>
         <Rect x={0.06} y={0.06} width={size.w} height={size.h} fill="rgba(0,0,0,0.18)" />
         <Rect x={0} y={0} width={size.w} height={size.h} fill="#ffffff" />
+        {slug > 0 && (
+          <Rect
+            x={-bleed - slug}
+            y={-bleed - slug}
+            width={size.w + 2 * (bleed + slug)}
+            height={size.h + 2 * (bleed + slug)}
+            stroke="#999"
+            strokeWidth={1}
+            strokeScaleEnabled={false}
+            dash={[2, 3]}
+          />
+        )}
         <Rect
           x={-bleed}
           y={-bleed}
@@ -230,6 +249,16 @@ export function CanvasStage({
           strokeScaleEnabled={false}
           dash={[6, 3]}
         />
+        {columnXs.map((x) => (
+          <Line
+            key={x}
+            points={[x, margin, x, size.h - margin]}
+            stroke="#9bc"
+            strokeWidth={1}
+            strokeScaleEnabled={false}
+            dash={[3, 3]}
+          />
+        ))}
       </Layer>
       {/* Content: document mutation cadence; z-order is array order. */}
       <Layer listening={false}>{objects.map((o) => renderObject(o, swatches))}</Layer>
