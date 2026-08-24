@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { Bell, MessageSquare, Search } from "lucide-react";
 import { useFeedbackStore, selectUnreadCount } from "@/store";
@@ -11,7 +12,7 @@ import { useFeedbackStore, selectUnreadCount } from "@/store";
  * without surfaces stay disabled. Feedback + notifications keep their
  * functions (no-dropped-functions rule) restyled for the red bar.
  */
-const SUITE_TABS: { label: string; href: string | null; testId: string }[] = [
+const SUITE_TABS: { label: string; href: Route | null; testId: string }[] = [
   { label: "Publisher", href: "/layout", testId: "suite-publisher" },
   { label: "Bench", href: null, testId: "suite-bench" },
   { label: "Photo Editor", href: "/photo", testId: "suite-photo" },
