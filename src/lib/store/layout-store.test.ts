@@ -44,13 +44,13 @@ describe("layout editor UI state", () => {
     const s = useLayoutStore.getState();
     s.setRibbon("insert");
     s.setTool("rect");
-    s.setInsp("props");
+    s.setInsp("layers");
     s.setPages("masters");
 
     const after = useLayoutStore.getState();
     expect(after.ribbon).toBe("insert");
     expect(after.tool).toBe("rect");
-    expect(after.insp).toBe("props");
+    expect(after.insp).toBe("layers");
     expect(after.pages).toBe("masters");
   });
 
@@ -723,17 +723,6 @@ describe("side panel, assets & layers (L8)", () => {
     mime: "application/pdf",
     bytes: 193,
   };
-
-  it("togglePanelTab opens, switches, and collapses on the active tab", () => {
-    const s = useLayoutStore.getState();
-    expect(useLayoutStore.getState()).toMatchObject({ panelOpen: true, panelTab: "pages" });
-    s.togglePanelTab("assets");
-    expect(useLayoutStore.getState()).toMatchObject({ panelOpen: true, panelTab: "assets" });
-    s.togglePanelTab("assets"); // the active tab collapses the panel
-    expect(useLayoutStore.getState().panelOpen).toBe(false);
-    s.togglePanelTab("layers"); // any tab reopens to it
-    expect(useLayoutStore.getState()).toMatchObject({ panelOpen: true, panelTab: "layers" });
-  });
 
   it("addAsset joins the library without an undo step", () => {
     const s = useLayoutStore.getState();

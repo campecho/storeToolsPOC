@@ -14,7 +14,6 @@ export type {
   EditorTool,
   InspectorTab,
   PagesPaneView,
-  PanelTab,
   ExperienceLevel,
   TransformPatch,
   ObjectPropsPatch,

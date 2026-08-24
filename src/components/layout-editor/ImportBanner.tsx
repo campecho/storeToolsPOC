@@ -17,7 +17,7 @@ import { useLayoutStore } from "@/store";
  */
 export function ImportBanner() {
   const report = useLayoutStore((s) => s.importReport);
-  const togglePanelTab = useLayoutStore((s) => s.togglePanelTab);
+  const setInsp = useLayoutStore((s) => s.setInsp);
   const [dismissed, setDismissed] = useState(false);
 
   if (!report || dismissed) return null;
@@ -100,7 +100,7 @@ export function ImportBanner() {
       <button
         type="button"
         data-testid="import-view-report"
-        onClick={() => togglePanelTab("import")}
+        onClick={() => setInsp("import")}
         className="shrink-0 cursor-pointer rounded-[5px] border border-[#b7d2f0] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#1c4e80] hover:bg-[#eaf2fc]"
       >
         View report

@@ -1824,7 +1824,8 @@ test.describe("Placed-picture round-trip (PE8)", () => {
   /** Import photo.png into the layout assets and place it (the L8 pattern). */
   async function placePicture(page: Page) {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
     await page.getByTestId("asset-tile-0").click();
@@ -1842,7 +1843,7 @@ test.describe("Placed-picture round-trip (PE8)", () => {
 
   /** Select the placed picture and enter the round-trip via the inspector. */
   async function enterRoundTrip(page: Page) {
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-picture").click();
     await page.getByTestId("layout-edit-in-photo").click();
     await expect(page.getByTestId("photo-return-banner")).toBeVisible({ timeout: 30_000 });
@@ -1881,7 +1882,7 @@ test.describe("Placed-picture round-trip (PE8)", () => {
 
     // One revertable step: the inspector offers Revert photo edits; using it
     // restores the original asset and clears the offer.
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-picture").click();
     await expect(page.getByTestId("layout-revert-photo-edits")).toBeVisible();
     await page.getByTestId("layout-revert-photo-edits").click();
@@ -1908,7 +1909,7 @@ test.describe("Placed-picture round-trip (PE8)", () => {
     const after = await pictureLuma(page);
     expect(Math.abs(after - before)).toBeLessThan(3);
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-picture").click();
     await expect(page.getByTestId("layout-revert-photo-edits")).toHaveCount(0);
 
@@ -1996,7 +1997,8 @@ test.describe("Conversion & handoffs (PE7)", () => {
   }) => {
     // Give the layout document content first (the L8 asset-placement flow).
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
     await page.getByTestId("asset-tile-0").click();

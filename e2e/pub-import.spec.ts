@@ -71,9 +71,9 @@ test.describe(".pub import (P1)", () => {
     // Geometry accuracy (the Milestone-1 bar): the banner rect is exactly
     // 0.5,0.5 7.5×1.75 in. Select it from the Layers list (bottom of the
     // z-order = last row) and read the Properties transform.
-    await page.getByTestId("panel-tab-layers").click();
+    await page.getByTestId("insp-layers").click();
     await page.getByTestId("layer-row-8").click();
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-x")).toHaveValue("0.5");
     await expect(page.getByTestId("prop-y")).toHaveValue("0.5");
     await expect(page.getByTestId("prop-w")).toHaveValue("7.5");
@@ -82,7 +82,10 @@ test.describe(".pub import (P1)", () => {
 
     // Rotation carries through unchanged (verified vs the pub2xhtml reference
     // render); z-order: the rotated accent is the 4th object → layers row 5.
+    // Layers and properties now share the inspector, so switch back first.
+    await page.getByTestId("insp-layers").click();
     await page.getByTestId("layer-row-5").click();
+    await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-rotation")).toHaveValue("15");
 
     // Page 2 renders its own content
@@ -135,7 +138,7 @@ test.describe(".pub import — report panel (P4)", () => {
     await importDemoPub(page);
 
     // The 4th tab appears only after an import, and the store opens straight to it.
-    await expect(page.getByTestId("panel-tab-import")).toBeVisible();
+    await expect(page.getByTestId("insp-import")).toBeVisible();
     const pane = page.getByTestId("import-report-pane");
     await expect(pane).toBeVisible();
     await expect(pane).toContainText("demo.pub"); // the source filename
@@ -158,7 +161,7 @@ test.describe(".pub import — report panel (P4)", () => {
 
     // Properties read back the rounded-rect's exact geometry — proof it's the
     // one now selected (0.75, 6.0, 7.0 × 2.0 in).
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-x")).toHaveValue("0.75");
     await expect(page.getByTestId("prop-w")).toHaveValue("7");
   });

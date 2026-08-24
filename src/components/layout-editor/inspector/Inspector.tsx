@@ -1,50 +1,56 @@
 import { useLayoutStore, type InspectorTab } from "@/store";
-import { AlignTab } from "./AlignTab";
+import { TabStrip, type TabStripItem } from "@/components/ui/TabStrip";
+import { ImportReportPane } from "../panel/ImportReportPane";
+import { LayersPane } from "../panel/LayersPane";
 import { PageTab } from "./PageTab";
+import { PreflightTab } from "./PreflightTab";
 import { PropertiesTab } from "./PropertiesTab";
 import { TextTab } from "./TextTab";
 
-const TABS: { id: InspectorTab; label: string }[] = [
-  { id: "props", label: "Properties" },
-  { id: "text", label: "Text" },
-  { id: "align", label: "Align" },
-  { id: "page", label: "Page" },
-];
-
 /**
- * Affinity-style inspector (wire region 7): 4 equal tabs, body swaps per tab.
- * All four bodies are static chrome through L2; they go live against the
- * document model / a selection in L3 (Page), L4 (Properties), L5 (Text),
- * and L7 (Align).
+ * Right inspector (redesign plan §2.5, 288px): Page · Text · Layers ·
+ * Preflight on the shared TabStrip (decision of record #7), plus a
+ * conditional Review tab while a .pub import report is open (interim home
+ * until the Phase 9 full-screen report). The Page tab is the properties
+ * surface — page setup at rest, object properties with a selection — so the
+ * old Properties tab's functions live on without a fifth permanent tab. The
+ * old Align tab's actions moved to the Home band's Align group in Phase 3.
+ * The Preflight badge counts live issues from Phase 6 — until then it stays
+ * hidden at zero.
  */
 export function Inspector() {
   const insp = useLayoutStore((s) => s.insp);
   const setInsp = useLayoutStore((s) => s.setInsp);
+  const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
+  const hasReport = useLayoutStore((s) => s.importReport !== null);
+
+  const tabs: TabStripItem<InspectorTab>[] = [
+    { id: "page", label: "Page" },
+    { id: "text", label: "Text" },
+    { id: "layers", label: "Layers" },
+    { id: "preflight", label: "Preflight", badge: 0 },
+    ...(hasReport ? [{ id: "import" as const, label: "Review" }] : []),
+  ];
+
+  // the conditional Review tab can be active when the report clears mid-session
+  const active = insp === "import" && !hasReport ? "page" : insp;
 
   return (
-    <div className="flex w-[268px] shrink-0 flex-col border-l border-[#ececec]">
-      <div className="flex h-[38px] shrink-0 items-stretch border-b border-[#ececec] text-[11.5px]">
-        {TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setInsp(id)}
-            aria-pressed={insp === id}
-            data-testid={`insp-${id}`}
-            className="relative flex flex-1 cursor-pointer items-center justify-center text-[#555]"
-          >
-            {label}
-            {insp === id && (
-              <div className="absolute bottom-0 left-[14px] right-[14px] h-[2px] bg-brand" />
-            )}
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 overflow-hidden p-4">
-        {insp === "props" && <PropertiesTab />}
-        {insp === "text" && <TextTab />}
-        {insp === "align" && <AlignTab />}
-        {insp === "page" && <PageTab />}
+    <div className="flex w-[288px] shrink-0 flex-col border-l border-[#ececec] bg-white">
+      <TabStrip
+        tabs={tabs}
+        active={active}
+        onSelect={setInsp}
+        testIdPrefix="insp"
+        stretch
+        className="h-[42px] shrink-0 border-b border-[#ececec]"
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {active === "page" && (hasSelection ? <PropertiesTab /> : <PageTab />)}
+        {active === "text" && <TextTab />}
+        {active === "layers" && <LayersPane />}
+        {active === "preflight" && <PreflightTab />}
+        {active === "import" && hasReport && <ImportReportPane />}
       </div>
     </div>
   );

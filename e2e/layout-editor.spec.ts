@@ -97,21 +97,18 @@ test.describe("Layout editor shell (L2)", () => {
 
   test("inspector tabs swap their bodies", async ({ page }) => {
     await page.goto("/layout");
-    // Page is the default tab
+    // Page is the default tab — page setup at rest (no selection)
     await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
-
-    await page.getByTestId("insp-props").click();
-    await expect(page.getByTestId("insp-props")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText("Nothing selected")).toBeVisible();
-    await expect(page.getByText("Transform")).toBeVisible();
+    await expect(page.getByTestId("insp-page")).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("insp-text").click();
     await expect(page.getByText("Line spacing 1.2")).toBeVisible();
-    await expect(page.getByText("Nothing selected")).toBeHidden();
 
-    await page.getByTestId("insp-align").click();
-    await expect(page.getByText("Distribute")).toBeVisible();
-    await expect(page.getByText("Relative to")).toBeVisible();
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layers-empty")).toBeVisible();
+
+    await page.getByTestId("insp-preflight").click();
+    await expect(page.getByTestId("preflight-tab")).toBeVisible();
 
     await page.getByTestId("insp-page").click();
     await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
@@ -326,7 +323,7 @@ test.describe("Objects: draw, select, transform (L4)", () => {
 
     // Properties round-trip: W is the drawn width; set it numerically
     // (the inspector stays on its own tab — auto-follow is L8's Simple mode)
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     const w0 = Number(await page.getByTestId("prop-w").inputValue());
     expect(w0).toBeGreaterThan(0);
     await page.getByTestId("prop-w").fill("2");
@@ -402,7 +399,7 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     await page.getByTestId("tool-rect").click();
     await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("fill-CC0000").click();
     await expect(page.getByTestId("object-rect")).toHaveCSS(
       "background-color",
@@ -534,7 +531,7 @@ test.describe("Text frames & typography (L5)", () => {
       "The quick brown fox jumps over the lazy dog. ".repeat(4).trim(),
     );
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("prop-h").fill("0.2");
     await page.getByTestId("prop-h").press("Enter");
     await expect(page.getByTestId("overflow-badge")).toBeVisible();
@@ -794,11 +791,9 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 2 objects");
     await expect(page.getByTestId("multi-select-frame")).toHaveCount(2);
 
-    await page.getByTestId("insp-align").click();
-    await page.getByTestId("obj-align-top").click();
+    await page.getByTestId("arrange-align-top").click();
 
     // a dragless click on a member collapses the group to it — inspect each
-    await page.getByTestId("insp-props").click();
     await page.getByTestId("object-rect").first().click();
     await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
     await expect(page.getByTestId("prop-y")).toHaveValue("0");
@@ -821,7 +816,7 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     ];
     for (const [from, to] of spots) await drawRect(page, from, to);
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     const geoms = [
       { x: "0", w: "1" },
       { x: "2", w: "1" },
@@ -839,11 +834,10 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await page.getByTestId("object-rect").first().click();
     await page.getByTestId("object-rect").nth(1).click({ modifiers: ["Shift"] });
     await page.getByTestId("object-rect").nth(2).click({ modifiers: ["Shift"] });
-    await page.getByTestId("insp-align").click();
     await page.getByTestId("align-rel").selectOption("selection");
     await page.getByTestId("distribute-h").click();
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-rect").nth(1).click();
     await expect(page.getByTestId("prop-x")).toHaveValue("3.5");
     // the anchors stayed put
@@ -888,7 +882,7 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await expect(page.getByTestId("smart-guide")).toHaveCount(0);
 
     // left edges now agree exactly
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-rect").first().click();
     const ax = await page.getByTestId("prop-x").inputValue();
     await page.getByTestId("object-rect").nth(1).click();
@@ -906,7 +900,7 @@ test.describe("Multi-select, align & snapping (L7)", () => {
 
     // a rect whose right edge sits well short of the bleed line; it stays selected
     await drawRect(page, { x: 40, y: 260 }, { x: 200, y: 340 });
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
 
     // drag the east handle to ~4px shy of the right bleed line → it snaps onto it
     const e = (await page.getByTestId("handle-e").boundingBox())!;
@@ -941,33 +935,30 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await page.mouse.up();
   }
 
-  test("the side panel collapses to its tab strip and switches tabs", async ({ page }) => {
+  test("the work row: fixed Pages panel, floating tools, inspector homes", async ({ page }) => {
     await page.goto("/layout");
-    // Pages tab open by default — the L6 navigator is intact inside it
+    // the left panel is the pages navigator, always present (redesign Phase 3)
     await expect(page.getByTestId("side-panel")).toBeVisible();
     await expect(page.getByTestId("pane-pages")).toBeVisible();
-    await expect(page.getByTestId("panel-tab-pages")).toHaveAttribute("aria-pressed", "true");
 
-    // clicking the active tab collapses the panel; the strip stays
-    await page.getByTestId("panel-tab-pages").click();
-    await expect(page.getByTestId("side-panel")).toHaveCount(0);
-    await expect(page.getByTestId("panel-tabs")).toBeVisible();
+    // the tool strip floats over the canvas
+    await expect(page.getByTestId("tool-strip")).toBeVisible();
+    await expect(page.getByTestId("tool-select")).toBeVisible();
 
-    // clicking any tab reopens to it; switching while open keeps it open
-    await page.getByTestId("panel-tab-assets").click();
+    // assets rehomed behind Insert; layers rehomed into the inspector
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await expect(page.getByTestId("asset-import")).toBeVisible();
-    await page.getByTestId("panel-tab-layers").click();
+    await page.getByTestId("insp-layers").click();
     await expect(page.getByTestId("layers-empty")).toBeVisible();
-
-    // the wire's name/size/zoom caption above the page came out in L8
-    await expect(page.getByText(/Untitled publication · Letter/)).toHaveCount(0);
   });
 
   test("an imported image places at natural size, renders, and survives reload", async ({
     page,
   }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
     await expect(page.getByTestId("asset-tile-0")).toContainText("48 × 24 px");
@@ -978,7 +969,7 @@ test.describe("Side panel, assets & layers (L8)", () => {
 
     // 48×24 px at 96 DPI is 0.5×0.25 in → scaled to the 2 in working minimum,
     // centered on Letter: x (8.5−2)/2, y (11−1)/2 — verified numerically
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-picture").click();
     await expect(page.getByTestId("prop-w")).toHaveValue("2");
     await expect(page.getByTestId("prop-h")).toHaveValue("1");
@@ -988,13 +979,15 @@ test.describe("Side panel, assets & layers (L8)", () => {
     // document metadata (localStorage) + bytes (IndexedDB) both persist
     await page.reload();
     await expect(page.getByTestId("picture-image")).toBeVisible();
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
   });
 
   test("a PDF joins the library but stays honestly un-placeable", async ({ page }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/flyer.pdf");
     await expect(page.getByTestId("asset-tile-0")).toContainText("flyer.pdf");
     await expect(page.getByTestId("asset-tile-0")).toContainText("library only");
@@ -1009,7 +1002,8 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
 
     // the freshly drawn frame is still selected — the click binds, not places
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await page.getByTestId("asset-tile-0").click();
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
@@ -1018,7 +1012,8 @@ test.describe("Side panel, assets & layers (L8)", () => {
 
   test("removing an asset leaves placed pictures in a visible missing state", async ({ page }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await page.getByTestId("asset-tile-0").click();
     await expect(page.getByTestId("picture-image")).toBeVisible();
@@ -1041,7 +1036,7 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await page.getByTestId("tool-rect").click();
     await dragOnPage(page, { x: 280, y: 60 }, { x: 360, y: 120 }); // top
 
-    await page.getByTestId("panel-tab-layers").click();
+    await page.getByTestId("insp-layers").click();
     await expect(page.getByTestId("layers-surface")).toContainText("Page 1");
     // topmost first — the reverse of draw order
     await expect(page.getByTestId("layer-row-0")).toContainText("Rectangle");
@@ -1107,7 +1102,8 @@ test.describe("Pictures: fill-on-click & drag-in (L9)", () => {
 
     await expect(page.getByTestId("picture-image")).toBeVisible();
     // the picked file also joined the Assets library
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
 
     // metadata + bytes both persist through reload
@@ -1132,17 +1128,17 @@ test.describe("Pictures: fill-on-click & drag-in (L9)", () => {
     page,
   }) => {
     await page.goto("/layout");
-    // import an asset via the panel, then draw an empty frame
-    await page.getByTestId("panel-tab-assets").click();
-    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
-    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    // draw an empty frame first — canvas clicks dismiss the assets popover,
+    // so the import happens after the frame exists (redesign Phase 3)
     await drawPicture(page, { x: 60, y: 240 }, { x: 240, y: 360 });
     await expect(page.getByTestId("picture-image")).toHaveCount(0);
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
 
     // native HTML drag-drop: dragstart on the tile, dragover + drop on the
     // pasteboard at the frame's screen center (DataTransfer shared via a handle).
-    // The Assets panel is still open from the import above — re-clicking its
-    // tab would collapse it (L8), so we don't.
     const frame = (await page.getByTestId("object-picture").boundingBox())!;
     const cx = frame.x + frame.width / 2;
     const cy = frame.y + frame.height / 2;
@@ -1202,7 +1198,7 @@ test.describe("Rotation & Arrange (L10)", () => {
 
     // the status bar reads the live angle, and the Properties field round-trips
     await expect(page.getByTestId("status-tool")).toContainText("90°");
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-rotation")).toHaveValue("90");
 
     // typing a rotation commits too
@@ -1249,10 +1245,9 @@ test.describe("Rotation & Arrange (L10)", () => {
     page,
   }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
-    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
 
-    // a wide picture frame (≈160×60 on screen), then rotate it 90° so it stands tall
+    // a wide picture frame (≈160×60 on screen), then rotate it 90° so it stands
+    // tall — drawn before the assets popover opens (canvas clicks dismiss it)
     await page.getByTestId("tool-pic").click();
     const box = (await page.getByTestId("publication-page").boundingBox())!;
     await page.mouse.move(box.x + 60, box.y + 110);
@@ -1260,6 +1255,9 @@ test.describe("Rotation & Arrange (L10)", () => {
     await page.mouse.move(box.x + 220, box.y + 170, { steps: 8 });
     await page.mouse.up();
     await page.getByTestId("arrange-rotate-right").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
 
     // the element's box is now the rotated AABB (≈60 wide × 160 tall); a point
     // 55px above center is INSIDE the tall visual but OUTSIDE the old 60px-tall

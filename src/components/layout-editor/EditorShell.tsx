@@ -11,7 +11,7 @@ import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
 import { InsertBand } from "./ribbon/InsertBand";
-import { ToolPalette } from "./palette/ToolPalette";
+import { FloatingToolStrip } from "./palette/FloatingToolStrip";
 import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
@@ -133,9 +133,12 @@ export function EditorShell() {
           {ribbon === "insert" && <InsertBand />}
         </div>
         <div className="flex min-h-0 flex-1">
-          <ToolPalette />
           <SidePanel />
-          <CanvasViewport />
+          {/* relative so the floating tool strip overlays the canvas region */}
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            <CanvasViewport />
+            <FloatingToolStrip />
+          </div>
           <Inspector />
         </div>
         <StatusBar />

@@ -145,14 +145,18 @@ export function HomeBand() {
   const cutSelection = useLayoutStore((s) => s.cutSelection);
   const pasteClipboard = useLayoutStore((s) => s.pasteClipboard);
 
-  // Align/Arrange (rehomed from the retired Arrange tab, plan L7/L10)
+  // Align/Arrange (rehomed from the retired Arrange tab + Align inspector
+  // tab, plan L7/L10 — decision of record #1: functions move, never drop)
   const selectedCount = useLayoutStore((s) => s.selectedIds.length);
   const alignRel = useLayoutStore((s) => s.alignRel);
+  const setAlignRel = useLayoutStore((s) => s.setAlignRel);
   const reorder = useLayoutStore((s) => s.reorder);
   const rotateSelection = useLayoutStore((s) => s.rotateSelection);
   const alignSelection = useLayoutStore((s) => s.alignSelection);
+  const distributeSelection = useLayoutStore((s) => s.distributeSelection);
   const none = selectedCount === 0;
   const alignDisabled = selectedCount < (alignRel === "selection" ? 2 : 1);
+  const distributeDisabled = selectedCount < 3;
 
   return (
     <>
@@ -321,6 +325,34 @@ export function HomeBand() {
             <Icon size={15} strokeWidth={1.6} className="text-[#666]" />
           </IconBtn>
         ))}
+        <CmdBtn
+          onClick={() => distributeSelection("h")}
+          disabled={distributeDisabled}
+          testId="distribute-h"
+          label="Distribute horizontally"
+        >
+          Dist H
+        </CmdBtn>
+        <CmdBtn
+          onClick={() => distributeSelection("v")}
+          disabled={distributeDisabled}
+          testId="distribute-v"
+          label="Distribute vertically"
+        >
+          Dist V
+        </CmdBtn>
+        <FaceSelect
+          face={alignRel === "page" ? "To page" : "To selection"}
+          value={alignRel}
+          options={[
+            { value: "page", label: "Page" },
+            { value: "selection", label: "Selection" },
+          ]}
+          onChange={(v) => setAlignRel(v as "page" | "selection")}
+          testId="align-rel"
+          label="Align relative to"
+          className="flex h-6 items-center justify-between gap-1 rounded-[5px] border border-[#d6d6d6] bg-white px-[7px] text-[10.5px] text-[#555]"
+        />
       </RibbonGroup>
 
       <RibbonGroup label="Arrange">

@@ -66,13 +66,14 @@ export type EditorTool =
   | "table"
   | "zoom"
   | "move";
-export type InspectorTab = "props" | "text" | "align" | "page";
+/** Inspector tabs (redesign Phase 4 — decision of record #7). "page" is the
+    properties surface: page setup at rest, object properties with a selection.
+    "import" is the fidelity-report reader, shown only after a .pub import
+    (interim home until the plan's Phase 9 full-screen report). */
+export type InspectorTab = "page" | "text" | "layers" | "preflight" | "import";
 export type PagesPaneView = "pages" | "masters";
 /** Page-tab "Apply to" target for size edits (plan L12). */
 export type PageSizeScope = "document" | "page";
-/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip; the
-    "import" tab (P4) is the fidelity-report reader, shown only after an import. */
-export type PanelTab = "pages" | "assets" | "layers" | "import";
 /** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
 export type ExperienceLevel = "simple" | "standard";
 
@@ -255,10 +256,6 @@ export interface LayoutEditorState {
   insp: InspectorTab;
   pages: PagesPaneView;
 
-  // side panel (session, plan L8)
-  panelTab: PanelTab;
-  panelOpen: boolean;
-
   // document (persisted) + session pointers
   doc: LayoutDocument;
   activePageId: string;
@@ -328,8 +325,6 @@ export interface LayoutEditorState {
   setTool: (tool: EditorTool) => void;
   setInsp: (insp: InspectorTab) => void;
   setPages: (pages: PagesPaneView) => void;
-  /** Open the side panel to a tab; clicking the open tab collapses it (L8). */
-  togglePanelTab: (tab: PanelTab) => void;
 
   // page setup
   setName: (name: string) => void;
@@ -519,8 +514,6 @@ export const useLayoutStore = create<LayoutEditorState>()(
       tool: "select",
       insp: "page",
       pages: "pages",
-      panelTab: "pages",
-      panelOpen: true,
 
       doc: createDefaultDocument(),
       activePageId: "page-1",
@@ -557,13 +550,6 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setTool: (tool) => set({ tool, editingTextId: null }),
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
-
-      togglePanelTab: (tab) =>
-        set((s) =>
-          s.panelOpen && s.panelTab === tab
-            ? { panelOpen: false }
-            : { panelOpen: true, panelTab: tab },
-        ),
 
       // Name typing is per-keystroke — kept out of the undo history so it
       // doesn't flood the gesture-grained stack.
@@ -1290,7 +1276,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
             fileCreatedAt: null,
             savedDoc: null,
             fileError: null,
-            ...(worthReviewing ? { panelTab: "import" as const, panelOpen: true } : {}),
+            ...(worthReviewing ? { insp: "import" as const } : {}),
           };
         }),
 
@@ -1339,7 +1325,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           if (!s.importReport) return s;
           return {
             importReport: { ...s.importReport, overset: objectIds },
-            ...(objectIds.length ? { panelTab: "import" as const, panelOpen: true } : {}),
+            ...(objectIds.length ? { insp: "import" as const } : {}),
           };
         }),
 
@@ -1378,9 +1364,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             doc: { ...s.doc, pages },
             importReport: { ...s.importReport, notes, overset: oversetIds },
-            ...(applied.length || oversetIds.length
-              ? { panelTab: "import" as const, panelOpen: true }
-              : {}),
+            ...(applied.length || oversetIds.length ? { insp: "import" as const } : {}),
           };
         }),
     }),

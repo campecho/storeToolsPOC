@@ -41,7 +41,7 @@
   --color-status-declined: #bcbcbc;
 
   /* layout-editor canvas (handoff token table: docs/handoff/layout-editor/README.md) */
-  --color-pasteboard: #d3d3d3;
+  --color-pasteboard: #ededed;
   --color-guide: #9fb6df;
 
   /* redesign palette (docs/UI_LAYOUT_REDESIGN_PLAN.md §2 — fills observed in
