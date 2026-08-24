@@ -258,28 +258,31 @@ chrome honest (every visible affordance functional or explicitly disabled).
 - Existing import/photo/storage suites must stay green — no behavior change
   intended outside the UI layer except where phases say so.
 
-## 6. Open questions (stop-and-ask before the affected phase)
+## 6. Decisions of record (confirmed 2026-08-24)
 
-1. **Menu set.** Frames disagree: File/Home/Insert/View/Help (Home screens)
-   vs +Layout/Text/Arrange (mail-merge/suite frames), and Masters shows
-   File/Home/Insert/Arrange/View/Help. Plan assumes the five-item canonical
-   set. Confirm.
-2. **File menu rows.** The popover's five row labels are icon instances, not
-   text, in the file. Plan assumes New / Open / Save / Save As / Recent (
-   current capabilities). Confirm labels/order.
-3. **Assets & import-review panes.** The design has no Assets tab. Plan
-   parks assets behind Insert → Image (drawer) and retires the Review pane
-   in favor of the full-screen import report. Confirm.
-4. **Suite tabs.** "Bench", "Layouts", "Recent Jobs" targets don't exist.
-   Plan renders them disabled. Confirm (or drop them from v1).
-5. **Layer model.** Real named layers (with Non-Print/Locked semantics and
-   Merge Down) change the `.staples` document schema — explicit approval
-   needed per working rules. v1 ships the mapped z-order list without schema
-   change.
-6. **Find & Replace GREP toggle** — include as `RegExp` mode or defer?
-7. **Right-panel tab labels.** Only "Preflight" is a text label in the file;
-   the other three tabs are icon instances. Plan assumes Page / Text /
-   Layers / Preflight. Confirm.
-8. **Host-POC pause.** `CLAUDE.md` marks the host POC paused; this work
-   un-pauses it. Confirm that's intended before Phase 0, and whether
-   `CLAUDE.md` should be updated to record it.
+Governing rule: **where the POC and the Figma disagree, follow the Figma —
+unless doing so would drop a feature or function, in which case stop and
+ask.**
+
+1. **Menu set** — the five-item canonical set: File / Home / Insert / View /
+   Help. Layout/Text/Arrange content rehomes into ribbon groups and the
+   right panel; the eight-item variants in the mail-merge/suite frames are
+   design drift.
+2. **File menu rows** — New / Open / Save / Save As / Recent. All current
+   file capabilities (folder support, Recents, dirty guard) are kept per the
+   no-dropped-functions rule.
+3. **Assets & import-review panes** — both retire. Asset placement rehomes
+   to Insert → Image; import review rehomes to the full-screen import
+   report screen.
+4. **Suite tabs** — render all five; Bench / Layouts / Recent Jobs are
+   disabled until surfaces exist.
+5. **Layer model** — target is the Figma's real named layers (Non-Print,
+   Locked, Merge Down). Because that changes the `.staples` schema, the
+   concrete schema + migration design still gets a stop-and-ask sign-off at
+   Phase 5; until then the panel UI may render over per-page z-order.
+6. **Find & Replace** — build the GREP toggle, backed by `RegExp` with
+   invalid-pattern handling.
+7. **Right-panel tab labels** — Page / Text / Layers / Preflight.
+8. **Host-POC pause** — un-paused. `CLAUDE.md` updated: both apps active,
+   every task clearly directed at one app or the other unless and until
+   they are merged.
