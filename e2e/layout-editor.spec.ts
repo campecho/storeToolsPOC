@@ -68,7 +68,7 @@ test.describe("Layout editor shell (L1)", () => {
  * at-rest parity with the offline handoff.
  */
 test.describe("Layout editor shell (L2)", () => {
-  test("every ribbon tab renders its command band", async ({ page }) => {
+  test("both menu tabs render their command band; retired tab content rehomed", async ({ page }) => {
     await page.goto("/layout");
 
     await page.getByTestId("ribbon-insert").click();
@@ -77,20 +77,22 @@ test.describe("Layout editor shell (L2)", () => {
     await expect(insert.getByText("Picture")).toBeVisible();
     await expect(insert.getByText("Hyperlink")).toBeVisible();
 
-    await page.getByTestId("ribbon-layout").click();
-    const layout = page.getByTestId("band-layout");
-    // .first(): the pill face — the text also appears in the picker's option list
-    await expect(layout.getByText("Letter · 8.5 × 11 in").first()).toBeVisible();
-    await expect(layout.getByText("Bleed 0.125")).toBeVisible();
-    await expect(layout.getByText("Guides", { exact: true })).toBeVisible();
-
-    await page.getByTestId("ribbon-text").click();
-    const text = page.getByTestId("band-text");
-    await expect(text.getByText("Paragraph · Normal")).toBeVisible();
-    await expect(text.getByText("Link boxes")).toBeVisible();
-
+    // Home band carries the regrouped figma sections, incl. the old Arrange
+    // tab's object actions (redesign Phase 2)
     await page.getByTestId("ribbon-home").click();
-    await expect(page.getByTestId("band-home").getByText("Paste")).toBeVisible();
+    const home = page.getByTestId("band-home");
+    await expect(home.getByText("Paste", { exact: true })).toBeVisible();
+    await expect(home.getByTestId("arrange-front")).toBeVisible();
+    await expect(home.getByTestId("arrange-align-left")).toBeVisible();
+    await expect(home.getByText("Replace…")).toBeVisible();
+
+    // the old Layout tab's remaining controls live in the Page inspector tab
+    await expect(page.getByTestId("page-columns")).toBeAttached();
+    await expect(page.getByTestId("page-guides")).toBeVisible();
+
+    // the old Text tab's line-spacing control lives in the Text inspector tab
+    await page.getByTestId("insp-text").click();
+    await expect(page.getByTestId("tab-line-spacing")).toBeAttached();
   });
 
   test("inspector tabs swap their bodies", async ({ page }) => {
@@ -181,27 +183,30 @@ test.describe("Document model & true-scale page (L3)", () => {
     await page.getByTestId("page-margin").press("Enter");
     await expect(page.getByText("Margin 1 in")).toBeVisible();
 
-    // the Layout band edits the same model
-    await page.getByTestId("ribbon-layout").click();
-    await page.getByTestId("band-bleed").selectOption("0.125");
+    // edits round-trip: setting them back restores the defaults in the legend
+    await page.getByTestId("page-bleed").fill("0.125");
+    await page.getByTestId("page-bleed").press("Enter");
     await expect(page.getByText("Bleed 0.125 in")).toBeVisible();
-    await page.getByTestId("band-margins").selectOption("0.5");
+    await page.getByTestId("page-margin").fill("0.5");
+    await page.getByTestId("page-margin").press("Enter");
     await expect(page.getByText("Margin 0.5 in")).toBeVisible();
   });
 
   test("columns render gutter guides; the Guides toggle governs them", async ({ page }) => {
     await page.goto("/layout");
-    await page.getByTestId("ribbon-layout").click();
+    // wait out the post-mount rehydrate before mutating persisted state
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
 
-    await page.getByTestId("band-columns").selectOption("3");
+    // Columns & guides live in the inspector's Page tab (redesign Phase 2)
+    await page.getByTestId("page-columns").selectOption("3");
     await expect(page.getByTestId("column-guide")).toHaveCount(4); // 2 gutters × 2 edges
     await expect(page.getByTestId("center-guide-v")).toBeHidden(); // yields to gutters
 
-    await page.getByTestId("band-guides").click();
+    await page.getByTestId("page-guides").click();
     await expect(page.getByTestId("column-guide")).toHaveCount(0);
     await expect(page.getByTestId("center-guide-h")).toBeHidden();
 
-    await page.getByTestId("band-guides").click();
+    await page.getByTestId("page-guides").click();
     await expect(page.getByTestId("column-guide")).toHaveCount(4);
   });
 
@@ -214,7 +219,7 @@ test.describe("Document model & true-scale page (L3)", () => {
     // the pinned 1440×900 viewport under the redesign chrome heights). Setting
     // the slider before that measurement lets the late fit clobber it back —
     // the race this guard removes.
-    await expect(page.getByTestId("zoom-percent")).toHaveText("51%");
+    await expect(page.getByTestId("zoom-percent")).toHaveText("50%");
 
     // slider → exactly 100%: Letter renders at 8.5in × 96dpi = 816px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {
@@ -569,8 +574,8 @@ test.describe("Text frames & typography (L5)", () => {
     }, "100");
     await page.getByTestId("font-size").selectOption("24");
     await expect(ink).toHaveCSS("font-size", "32px");
-    await page.getByTestId("ribbon-text").click();
-    await page.getByTestId("text-band-line").selectOption("1.5");
+    await page.getByTestId("insp-text").click();
+    await page.getByTestId("tab-line-spacing").selectOption("1.5");
     await expect(para).toHaveCSS("line-height", "48px");
 
     // undo unwinds the styling clicks one at a time — back to the 1.2 default
@@ -1205,8 +1210,7 @@ test.describe("Rotation & Arrange (L10)", () => {
     await page.getByTestId("prop-rotation").press("Enter");
     await expect(page.getByTestId("prop-rotation")).toHaveValue("45");
 
-    // Arrange tab's reset zeroes it
-    await page.getByTestId("ribbon-arrange").click();
+    // the Home band's Arrange group reset zeroes it
     await page.getByTestId("arrange-rotate-reset").click();
     await expect(page.getByTestId("prop-rotation")).toHaveValue("0");
 
@@ -1232,7 +1236,6 @@ test.describe("Rotation & Arrange (L10)", () => {
 
     // bring the ellipse to the front
     await page.getByTestId("object-ellipse").click();
-    await page.getByTestId("ribbon-arrange").click();
     await page.getByTestId("arrange-front").click();
     await expect(inked.last()).toHaveAttribute("data-testid", "object-ellipse"); // now top
     await expect(inked.first()).toHaveAttribute("data-testid", "object-rect");
@@ -1256,7 +1259,6 @@ test.describe("Rotation & Arrange (L10)", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + 220, box.y + 170, { steps: 8 });
     await page.mouse.up();
-    await page.getByTestId("ribbon-arrange").click();
     await page.getByTestId("arrange-rotate-right").click();
 
     // the element's box is now the rotated AABB (≈60 wide × 160 tall); a point

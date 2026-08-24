@@ -32,6 +32,9 @@ export function PageTab() {
   const setMargin = useLayoutStore((s) => s.setMargin);
   const focusPageSize = useLayoutStore((s) => s.focusPageSize);
   const setFocusPageSize = useLayoutStore((s) => s.setFocusPageSize);
+  const setColumns = useLayoutStore((s) => s.setColumns);
+  const toggleGuides = useLayoutStore((s) => s.toggleGuides);
+  const guidesVisible = useLayoutStore((s) => s.guidesVisible);
 
   const activePage = doc.pages.find((p) => p.id === activePageId) ?? doc.pages[0];
   const overridden = activePage.sizeOverride !== undefined;
@@ -224,6 +227,54 @@ export function PageTab() {
             onCommit={setMargin}
             testId="page-margin"
           />
+        </div>
+      </div>
+
+      {/* Columns & guides — rehomed from the retired Layout ribbon tab
+          (redesign decision of record #1: functions move, never drop). */}
+      <div>
+        <SectionLabel>Columns & guides</SectionLabel>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="flex h-[26px] w-[60px] items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-2 text-[11px] text-[#555]">
+              {doc.columns} <span className="text-[#b0b0b0]">▾</span>
+            </div>
+            <select
+              value={doc.columns}
+              onChange={(e) => setColumns(Number(e.target.value))}
+              data-testid="page-columns"
+              aria-label="Columns"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            >
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={toggleGuides}
+            role="switch"
+            aria-checked={guidesVisible}
+            aria-label="Guides"
+            data-testid="page-guides"
+            className="flex cursor-pointer items-center gap-[6px]"
+          >
+            <span
+              className={`relative h-4 w-7 rounded-[8px] border ${
+                guidesVisible ? "border-brand bg-brand-tint" : "border-[#cfcfcf] bg-white"
+              }`}
+            >
+              <span
+                className={`absolute top-[2px] h-3 w-3 rounded-full ${
+                  guidesVisible ? "right-[2px] bg-brand" : "left-[2px] bg-[#b0b0b0]"
+                }`}
+              />
+            </span>
+            <span className="text-[11px] text-[#777]">Guides</span>
+          </button>
         </div>
       </div>
     </div>

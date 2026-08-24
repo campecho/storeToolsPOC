@@ -2,33 +2,54 @@
 
 import {
   AlignCenter,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
   AlignJustify,
   AlignLeft,
   AlignRight,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  ArrowDown,
+  ArrowUp,
+  BringToFront,
   Clipboard,
   Copy,
   List,
+  RotateCcw,
+  RotateCw,
   Scissors,
   Search,
+  SendToBack,
 } from "lucide-react";
 import { useLayoutStore } from "@/store";
+import type { AlignKind } from "@/lib/layout/align";
 import { FONT_FAMILIES, FONT_SIZES, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
 import { FaceSelect } from "../FaceSelect";
 import { useTextTarget } from "../useTextTarget";
 import { RibbonGroup } from "./RibbonGroup";
 
 /**
- * Home command band (wire 2b · Home): Clipboard · Font · Paragraph · Styles ·
- * Editing. Clipboard is live (plan L13) — Paste/Cut/Copy act on the selection
- * and the session clipboard, with real enabled/disabled states. Font/
- * Paragraph/Styles are live against the text target (plan L5) — the frame
- * being edited or the selected text frame — and fall back to the wire's
- * at-rest faces, disabled, when there is none. Controls sit in one row per
- * group and wrap within it (plan §2, deviation #5) — the wire's big Paste
- * tile and stacked columns flatten to uniform pills.
- * PROTOTYPE-ONLY: the Editing group, the list/¶ controls, and Styles'
- * "+ New" are inert chrome for later slices (plan §6).
+ * Home command band (redesign plan §2.4 — figma Home ribbon): Clipboard ·
+ * Font · Paragraph · Styles · Align · Arrange · Editing. Clipboard is live
+ * (plan L13); Font/Paragraph/Styles are live against the text target (plan
+ * L5) and fall back to at-rest faces, disabled, when there is none. Align
+ * and Arrange carry the object actions from the retired Arrange tab (plan
+ * L7/L10) — selection alignment, z-order, and rotation — per decision of
+ * record #1: the old tab's functions rehome rather than drop.
+ * PROTOTYPE-ONLY: the Editing group (Find/Replace… wire in plan Phase 7),
+ * the list/¶ controls, and Styles' "+ New" are inert chrome.
  */
+
+const OBJECT_ALIGNS: { kind: AlignKind; label: string; testId: string; Icon: typeof AlignStartVertical }[] = [
+  { kind: "left", label: "Align left edges", testId: "arrange-align-left", Icon: AlignStartVertical },
+  { kind: "centerH", label: "Align horizontal centers", testId: "arrange-align-centerh", Icon: AlignCenterVertical },
+  { kind: "right", label: "Align right edges", testId: "arrange-align-right", Icon: AlignEndVertical },
+  { kind: "top", label: "Align top edges", testId: "arrange-align-top", Icon: AlignStartHorizontal },
+  { kind: "centerV", label: "Align vertical centers", testId: "arrange-align-centerv", Icon: AlignCenterHorizontal },
+  { kind: "bottom", label: "Align bottom edges", testId: "arrange-align-bottom", Icon: AlignEndHorizontal },
+];
 
 /** Static command pill — icon + label chrome (the Editing group). */
 function Cmd({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
@@ -123,6 +144,15 @@ export function HomeBand() {
   const copySelection = useLayoutStore((s) => s.copySelection);
   const cutSelection = useLayoutStore((s) => s.cutSelection);
   const pasteClipboard = useLayoutStore((s) => s.pasteClipboard);
+
+  // Align/Arrange (rehomed from the retired Arrange tab, plan L7/L10)
+  const selectedCount = useLayoutStore((s) => s.selectedIds.length);
+  const alignRel = useLayoutStore((s) => s.alignRel);
+  const reorder = useLayoutStore((s) => s.reorder);
+  const rotateSelection = useLayoutStore((s) => s.rotateSelection);
+  const alignSelection = useLayoutStore((s) => s.alignSelection);
+  const none = selectedCount === 0;
+  const alignDisabled = selectedCount < (alignRel === "selection" ? 2 : 1);
 
   return (
     <>
@@ -276,6 +306,45 @@ export function HomeBand() {
         <div className="flex h-6 items-center whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-2 text-[10px] text-[#888]">
           + New
         </div>
+      </RibbonGroup>
+
+      <RibbonGroup label="Align">
+        {OBJECT_ALIGNS.map(({ kind, label, testId, Icon }) => (
+          <IconBtn
+            key={kind}
+            wide
+            onClick={() => alignSelection(kind)}
+            disabled={alignDisabled}
+            testId={testId}
+            label={label}
+          >
+            <Icon size={15} strokeWidth={1.6} className="text-[#666]" />
+          </IconBtn>
+        ))}
+      </RibbonGroup>
+
+      <RibbonGroup label="Arrange">
+        <IconBtn wide onClick={() => reorder("front")} disabled={none} testId="arrange-front" label="Bring to front">
+          <BringToFront size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => reorder("forward")} disabled={none} testId="arrange-forward" label="Bring forward">
+          <ArrowUp size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => reorder("backward")} disabled={none} testId="arrange-backward" label="Send backward">
+          <ArrowDown size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => reorder("back")} disabled={none} testId="arrange-back" label="Send to back">
+          <SendToBack size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => rotateSelection("left")} disabled={none} testId="arrange-rotate-left" label="Rotate 90° left">
+          <RotateCcw size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => rotateSelection("right")} disabled={none} testId="arrange-rotate-right" label="Rotate 90° right">
+          <RotateCw size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <CmdBtn onClick={() => rotateSelection("reset")} disabled={none} testId="arrange-rotate-reset" label="Reset rotation">
+          0°
+        </CmdBtn>
       </RibbonGroup>
 
       <RibbonGroup label="Editing" last>

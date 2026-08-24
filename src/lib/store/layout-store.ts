@@ -55,7 +55,7 @@ import type { ImportReport } from "@/lib/import/report";
  * both, so every L4/L5 gesture works inside a master unchanged.
  */
 
-export type RibbonTab = "home" | "insert" | "layout" | "text" | "arrange";
+export type RibbonTab = "home" | "insert";
 export type EditorTool =
   | "select"
   | "text"

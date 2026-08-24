@@ -11,9 +11,6 @@ import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
 import { InsertBand } from "./ribbon/InsertBand";
-import { LayoutBand } from "./ribbon/LayoutBand";
-import { TextBand } from "./ribbon/TextBand";
-import { ArrangeBand } from "./ribbon/ArrangeBand";
 import { ToolPalette } from "./palette/ToolPalette";
 import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
@@ -125,18 +122,15 @@ export function EditorShell() {
         {/* Headless (§10.4): measures imported text frames for overset after fonts settle */}
         <OversetCheck />
         <RibbonTabs />
-        {/* Command band (wire 2b) — content swaps with the active ribbon tab.
-            Single-row sections (plan §2, deviation #5): auto height, controls
+        {/* Command band (redesign plan §2.4) — content swaps with the active
+            menu tab (Home/Insert). Auto height with captioned groups; controls
             wrap within their group on narrow viewports. */}
         <div
           data-testid={`band-${ribbon}`}
-          className="flex min-h-[64px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-[#f7f7f7]"
+          className="flex min-h-[78px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-chrome-ribbon"
         >
           {ribbon === "home" && <HomeBand />}
           {ribbon === "insert" && <InsertBand />}
-          {ribbon === "layout" && <LayoutBand />}
-          {ribbon === "text" && <TextBand />}
-          {ribbon === "arrange" && <ArrangeBand />}
         </div>
         <div className="flex min-h-0 flex-1">
           <ToolPalette />
