@@ -16,9 +16,9 @@ test.describe("Layout editor shell (L1)", () => {
     await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
     await expect(page.getByTestId("give-feedback")).toBeVisible();
 
-    // experience switch shows Standard active (Simple disabled until L14; two levels since v1.3)
-    await expect(page.getByTestId("experience-switch")).toContainText("Standard");
-    await expect(page.getByTestId("experience-switch")).not.toContainText("Pro");
+    // document header autosave face + suite nav (redesign plan Phase 1)
+    await expect(page.getByTestId("autosave-indicator")).toContainText("Saved");
+    await expect(page.getByTestId("suite-publisher")).toHaveAttribute("aria-current", "page");
 
     // true-scale page + guide legend (the wire's pasteboard caption came out in L8)
     await expect(page.getByTestId("publication-page")).toBeVisible();
@@ -45,14 +45,14 @@ test.describe("Layout editor shell (L1)", () => {
 
   test("ribbon tabs switch the command band", async ({ page }) => {
     await page.goto("/layout");
-    await expect(page.getByText("Paste")).toBeVisible();
+    await expect(page.getByText("Paste", { exact: true })).toBeVisible();
 
     await page.getByTestId("ribbon-insert").click();
     await expect(page.getByTestId("ribbon-insert")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText("Paste")).toBeHidden();
+    await expect(page.getByText("Paste", { exact: true })).toBeHidden();
 
     await page.getByTestId("ribbon-home").click();
-    await expect(page.getByText("Paste")).toBeVisible();
+    await expect(page.getByText("Paste", { exact: true })).toBeVisible();
   });
 
   test("back link returns to Print Studio home", async ({ page }) => {
@@ -210,10 +210,11 @@ test.describe("Document model & true-scale page (L3)", () => {
 
     // Wait for fit-on-mount to settle before driving the slider: the page opens
     // at the store default (100%), then CanvasViewport's fit effect fires once
-    // the pasteboard is measured and lands at the fit zoom (52% for Letter in
-    // the pinned 1440×900 viewport). Setting the slider before that measurement
-    // lets the late fit clobber it back — the race this guard removes.
-    await expect(page.getByTestId("zoom-percent")).toHaveText("52%");
+    // the pasteboard is measured and lands at the fit zoom (51% for Letter in
+    // the pinned 1440×900 viewport under the redesign chrome heights). Setting
+    // the slider before that measurement lets the late fit clobber it back —
+    // the race this guard removes.
+    await expect(page.getByTestId("zoom-percent")).toHaveText("51%");
 
     // slider → exactly 100%: Letter renders at 8.5in × 96dpi = 816px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {
@@ -1308,18 +1309,25 @@ test.describe("Ruler guides & units (L11)", () => {
     await page.mouse.up();
     await expect(page.getByTestId("guide-h")).toHaveCount(1);
 
-    // draw a rect whose left edge is ~50px right of the vertical guide
+    // draw a rect whose left edge is ~50px right of the vertical guide.
+    // Positions are measured from the guide's rendered center so the scenario
+    // holds at any fit zoom, and the rect is kept narrow (40px) so its right
+    // edge stays clear of the page-center snap line — at some zooms a wider
+    // rect's right edge lands nearer the 4.25in center than the left edge is
+    // to the guide, and the center target wins the snap.
+    const gv = (await page.getByTestId("guide-v").boundingBox())!;
+    const gx = gv.x + gv.width / 2;
     await page.getByTestId("tool-rect").click();
-    await page.mouse.move(box.x + 180, box.y + 80);
+    await page.mouse.move(gx + 50, box.y + 80);
     await page.mouse.down();
-    await page.mouse.move(box.x + 250, box.y + 150, { steps: 8 });
+    await page.mouse.move(gx + 90, box.y + 150, { steps: 8 });
     await page.mouse.up();
 
-    // drag it left so its left edge lands ~5px off the guide → inside the 6px
+    // drag it left so its left edge lands ~4px off the guide → inside the 6px
     // snap radius, it locks onto the guide (a smart guide shows during the drag)
-    await page.mouse.move(box.x + 215, box.y + 115);
+    await page.mouse.move(gx + 70, box.y + 115);
     await page.mouse.down();
-    await page.mouse.move(box.x + 170, box.y + 115, { steps: 10 });
+    await page.mouse.move(gx + 24, box.y + 115, { steps: 10 });
     await expect(page.getByTestId("smart-guide").first()).toBeVisible();
     await page.mouse.up();
 

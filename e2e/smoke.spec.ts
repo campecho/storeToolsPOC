@@ -15,7 +15,7 @@ test.describe("Home & file intake", () => {
     await page.goto("/");
 
     // persistent header
-    await expect(page.getByText("Print Studio", { exact: true })).toBeVisible();
+    await expect(page.getByText("PrintStudio", { exact: true })).toBeVisible();
     await expect(page.getByText("Store #1284")).toBeVisible();
     await expect(page.getByTestId("give-feedback")).toBeVisible();
 
