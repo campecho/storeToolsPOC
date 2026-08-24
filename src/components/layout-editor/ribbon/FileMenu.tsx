@@ -87,7 +87,9 @@ export function FileMenu() {
         data-testid="ribbon-file"
         aria-expanded={open}
         onClick={() => (open ? setOpen(false) : openMenu())}
-        className="cursor-pointer px-[15px] pb-2 pt-[7px] text-[12px] font-semibold text-brand"
+        className={`cursor-pointer rounded-[8px] px-[15px] pb-2 pt-[7px] text-[12px] ${
+          open ? "bg-[#d3d3d3] text-[#111]" : "text-[#3d3d3d] hover:bg-[#e4e4e4]"
+        }`}
       >
         File
         {dirty && (
