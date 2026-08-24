@@ -2,7 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { surfaceObjects, useLayoutStore } from "@/store";
+import { interactiveSurfaceObjects, surfaceObjects, visibleSurfaceObjects, useLayoutStore } from "@/store";
+import { visibleLayerIds } from "@/lib/layout/layers";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
 import {
@@ -378,8 +379,17 @@ export function CanvasViewport() {
   const editingMaster = masterEditingId
     ? doc.masters.find((m) => m.id === masterEditingId)
     : undefined;
-  /** What the tools edit: the master's objects in master mode, else the page's (L6). */
-  const surface = editingMaster ? editingMaster.objects : page.objects;
+  /** What renders: the master's objects in master mode, else the page's
+      visible layers flattened bottom-to-top (schema v3 — hidden layers
+      vanish). Objects on locked layers render but reject interaction. */
+  const surface = editingMaster
+    ? editingMaster.objects
+    : page.layers
+        .filter((l) => visibleLayerIds(doc).has(l.layerId))
+        .flatMap((l) => l.objects);
+  const editableIds = new Set(
+    interactiveSurfaceObjects({ doc, activePageId, masterEditingId }).map((o) => o.id),
+  );
   /** Master furniture rendered beneath a page — non-selectable from the page. */
   const appliedMaster =
     !editingMaster && page.masterId
@@ -430,7 +440,7 @@ export function CanvasViewport() {
     const pg = s.doc.pages.find((p) => p.id === s.activePageId);
     const size = s.masterEditingId ? s.doc.size : effectivePageSize(s.doc, pg);
     return {
-      targets: snapTargets(s.doc, surfaceObjects(s), {
+      targets: snapTargets(s.doc, visibleSurfaceObjects(s), {
         exclude,
         columnGuidesOn: s.guidesVisible && s.doc.columns >= 2,
         guidesOn: s.guidesVisible, // objects snap to ruler-dragged guides (L11)
@@ -442,7 +452,7 @@ export function CanvasViewport() {
 
   /** Topmost picture frame on the editing surface containing a page-space point (L9). */
   const pictureAt = (pt: { x: number; y: number }) => {
-    const objs = surfaceObjects(useLayoutStore.getState());
+    const objs = interactiveSurfaceObjects(useLayoutStore.getState());
     for (let i = objs.length - 1; i >= 0; i--) {
       const o = objs[i];
       if (o.type !== "picture") continue;
@@ -896,7 +906,7 @@ export function CanvasViewport() {
       const ry = Math.min(g.startY, g.curY);
       const rw = Math.abs(g.curX - g.startX);
       const rh = Math.abs(g.curY - g.startY);
-      const hit = surfaceObjects(s)
+      const hit = interactiveSurfaceObjects(s)
         .filter((o) => {
           // marquee tests each object's visual footprint (AABB when rotated, L10)
           const b = rotatedBBox(o);
@@ -1040,7 +1050,10 @@ export function CanvasViewport() {
                     {pMaster?.objects.map((o) => (
                       <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} withTestId={false} />
                     ))}
-                    {spreadPartner.page.objects.map((o) => (
+                    {spreadPartner.page.layers
+                      .filter((l) => visibleLayerIds(doc).has(l.layerId))
+                      .flatMap((l) => l.objects)
+                      .map((o) => (
                       <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} withTestId={false} />
                     ))}
                   </PageSurface>
@@ -1065,7 +1078,7 @@ export function CanvasViewport() {
                   key={o.id}
                   obj={o}
                   zoom={zoom}
-                  interactive={tool === "select"}
+                  interactive={tool === "select" && editableIds.has(o.id)}
                   editing={o.id === editingTextId}
                   onPointerDown={startMove(o)}
                   onDoubleClick={onObjectDoubleClick(o)}

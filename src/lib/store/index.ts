@@ -7,6 +7,8 @@ export {
   createDefaultDocument,
   selectFileDirty,
   surfaceObjects,
+  interactiveSurfaceObjects,
+  visibleSurfaceObjects,
 } from "./layout-store";
 export type {
   LayoutEditorState,

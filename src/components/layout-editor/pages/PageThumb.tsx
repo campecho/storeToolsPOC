@@ -1,5 +1,6 @@
 import type { LayoutDocument, LayoutObject, LayoutPage } from "@/schema";
 import { effectivePageSize, inToPx } from "@/lib/layout/geometry";
+import { flattenPage } from "@/lib/layout/layers";
 import { ObjectNode } from "../canvas/ObjectNode";
 
 /**
@@ -72,7 +73,7 @@ export function PageThumb({
 }) {
   const master = page.masterId ? doc.masters.find((m) => m.id === page.masterId) : undefined;
   // master furniture beneath page objects — the same stacking as the canvas
-  const objects = [...(master?.objects ?? []), ...page.objects];
+  const objects = [...(master?.objects ?? []), ...flattenPage(page)];
   const size = effectivePageSize(doc, page);
 
   return (

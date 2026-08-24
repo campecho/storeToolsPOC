@@ -2,14 +2,15 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { z } from "zod";
 import { LayoutDocumentSchema, type LayoutDocument } from "@/schema";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
 
 /**
  * The .staples container for the host POC (docs/STORAGE_PLAN.md): a ZIP of
  * manifest.json + document.json + assets/<id>, byte-compatible with the
  * format the publisher prototype specifies in its PLAN.md §6.9 — the
  * prototype owns the spec; the POC copies it and names its own payload in
- * the manifest (schema v2 layout documents, migrating v1 on read exactly as
- * the localStorage merge does).
+ * the manifest (schema v3 layout documents, migrating v1/v2 on read exactly
+ * as the localStorage merge does).
  */
 
 export const STAPLES_EXTENSION = ".staples";
@@ -46,7 +47,7 @@ function zodIssues(error: z.ZodError): string {
     .join("; ");
 }
 
-/** Validate an unknown document payload: v2 parses, v1 migrates on read
+/** Validate an unknown document payload: v3 parses, v1/v2 migrate on read
     (the persist merge's rule, applied to files), anything else fails whole
     with the version named. */
 export function parseLayoutPayload(data: unknown): LayoutDocument {
@@ -54,19 +55,24 @@ export function parseLayoutPayload(data: unknown): LayoutDocument {
     throw new Error("Not a layout document: expected a JSON object with a `version` field.");
   }
   const version = (data as { version?: unknown }).version;
-  if (version === 2) {
+  if (version === 3) {
     const result = LayoutDocumentSchema.safeParse(data);
-    if (!result.success) throw new Error(`Invalid v2 layout document: ${zodIssues(result.error)}`);
+    if (!result.success) throw new Error(`Invalid v3 layout document: ${zodIssues(result.error)}`);
     return result.data;
+  }
+  if (version === 2) {
+    const result = V2LayoutDocumentSchema.safeParse(data);
+    if (!result.success) throw new Error(`Invalid v2 layout document: ${zodIssues(result.error)}`);
+    return migrateV2Document(result.data);
   }
   if (version === 1) {
     const result = V1LayoutDocumentSchema.safeParse(data);
     if (!result.success) throw new Error(`Invalid v1 layout document: ${zodIssues(result.error)}`);
-    return migrateLegacyDocument(result.data);
+    return migrateV2Document(migrateLegacyDocument(result.data));
   }
   throw new Error(
-    `Unsupported document version ${String(version)}: this build reads layout schema v2 ` +
-      "(and migrates v1 on read). The file may come from a newer build — open it there.",
+    `Unsupported document version ${String(version)}: this build reads layout schema v3 ` +
+      "(and migrates v1/v2 on read). The file may come from a newer build — open it there.",
   );
 }
 

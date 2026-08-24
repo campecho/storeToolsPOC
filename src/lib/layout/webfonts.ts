@@ -1,4 +1,4 @@
-import type { LayoutDocument } from "@/schema";
+import type { LayoutDocument, LayoutObject } from "@/schema";
 import { FONT_CATALOG } from "./font-catalog";
 
 /**
@@ -16,13 +16,13 @@ const requested = new Set<string>();
 /** Every font family any run in the document references (pages + masters). */
 export function collectDocFontFamilies(doc: LayoutDocument): string[] {
   const names = new Set<string>();
-  for (const holder of [...doc.pages, ...doc.masters]) {
-    for (const obj of holder.objects) {
-      if (obj.type === "text" && obj.text) {
-        for (const p of obj.text.paragraphs) for (const r of p.runs) names.add(r.font.family);
-      }
+  const collect = (obj: LayoutObject) => {
+    if (obj.type === "text" && obj.text) {
+      for (const p of obj.text.paragraphs) for (const r of p.runs) names.add(r.font.family);
     }
-  }
+  };
+  for (const page of doc.pages) for (const layer of page.layers) layer.objects.forEach(collect);
+  for (const master of doc.masters) master.objects.forEach(collect);
   return [...names];
 }
 

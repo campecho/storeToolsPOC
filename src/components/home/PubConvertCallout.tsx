@@ -20,7 +20,10 @@ type Phase =
 
 function docHasContent(): boolean {
   const doc = useLayoutStore.getState().doc;
-  return doc.pages.some((p) => p.objects.length > 0) || doc.masters.some((m) => m.objects.length > 0);
+  return (
+    doc.pages.some((p) => p.layers.some((l) => l.objects.length > 0)) ||
+    doc.masters.some((m) => m.objects.length > 0)
+  );
 }
 
 export function PubConvertCallout() {

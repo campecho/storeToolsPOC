@@ -97,7 +97,7 @@ describe("corpus fidelity: business_card_template_10up (master-page-only)", () =
 
   it("our import agrees: one empty page, flagged tier 3 — not a silent win", () => {
     expect(doc.pages).toHaveLength(1);
-    expect(doc.pages[0].objects).toHaveLength(0);
+    expect(doc.pages[0].layers.every((l) => l.objects.length === 0)).toBe(true);
     const flag = notes.find((n) => n.tier === 3 && n.message.includes("master pages"));
     expect(flag).toBeDefined();
   });

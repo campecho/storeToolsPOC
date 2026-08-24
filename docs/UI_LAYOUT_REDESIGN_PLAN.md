@@ -181,7 +181,7 @@ Each phase lands independently; gate for every phase: `npm run typecheck`,
 as chrome changes), plus a review pass. Store changes stay in
 `layout-store.ts` unless a schema change is agreed (§6).
 
-**Status (2026-08-24): Phases 0–4 are implemented and green** (typecheck,
+**Status (2026-08-24): Phases 0–5 are implemented and green** (typecheck,
 lint, 1080 unit tests, 132 e2e — the one red e2e is a pre-existing
 environment failure: the jailed HEIC conversion needs a codec this container
 lacks; it fails identically on the pre-redesign baseline). Notes of record
@@ -288,10 +288,15 @@ ask.**
    report screen.
 4. **Suite tabs** — render all five; Bench / Layouts / Recent Jobs are
    disabled until surfaces exist.
-5. **Layer model** — target is the Figma's real named layers (Non-Print,
-   Locked, Merge Down). Because that changes the `.staples` schema, the
-   concrete schema + migration design still gets a stop-and-ask sign-off at
-   Phase 5; until then the panel UI may render over per-page z-order.
+5. **Layer model** — real named layers, implemented as **schema v3 nested
+   containers** (chosen over the additive tag model at the Phase 5 schema
+   sign-off): document-level `layers` definitions (name, color, visible,
+   locked, nonPrint) with per-page `{layerId, objects}` containers aligned to
+   the definition order. `version: 3`; v1/v2 documents migrate on read
+   (localStorage, `.staples` files, imports) with all content landing on the
+   base layer, z-order intact. Masters stay flat. Z-reorder actions clamp to
+   the object's layer band; hidden layers neither render nor hit-test;
+   locked layers render but reject selection.
 6. **Find & Replace** — build the GREP toggle, backed by `RegExp` with
    invalid-pattern handling.
 7. **Right-panel tab labels** — Page / Text / Layers / Preflight.

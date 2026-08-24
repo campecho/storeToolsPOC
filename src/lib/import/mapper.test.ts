@@ -65,10 +65,10 @@ describe("buildModel (plan §10.2 intermediate model)", () => {
 });
 
 describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
-  it("produces a schema-valid v2 document", () => {
+  it("produces a schema-valid v3 document", () => {
     const parsed = LayoutDocumentSchema.safeParse(doc);
     expect(parsed.success).toBe(true);
-    expect(doc.version).toBe(2);
+    expect(doc.version).toBe(3);
   });
 
   it("sets document size, orientation, and name from the source", () => {
@@ -80,7 +80,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("places the banner exactly (the Milestone-1 accuracy bar)", () => {
-    const banner = doc.pages[0].objects[0];
+    const banner = doc.pages[0].layers[0].objects[0];
     expect(banner).toMatchObject({
       type: "rect",
       x: 0.5,
@@ -93,7 +93,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("maps text frames with per-run family, size, ink color, and line spacing", () => {
-    const headline = doc.pages[0].objects[1];
+    const headline = doc.pages[0].layers[0].objects[1];
     if (headline.type !== "text" || !headline.text) throw new Error("expected text frame");
     const para = headline.text.paragraphs[0];
     expect(para.runs).toHaveLength(1);
@@ -107,7 +107,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("keeps multi-style paragraphs as real runs (P2) — merging same-style neighbors", () => {
-    const body = doc.pages[0].objects[2];
+    const body = doc.pages[0].layers[0].objects[2];
     if (body.type !== "text" || !body.text) throw new Error("expected text frame");
     expect(textContent(body.text)).toBe(
       "Join us Saturday for our grand opening celebration with door prizes and demos.\nDoors open at 9 AM."
@@ -127,7 +127,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   it("passes rotation through unchanged (both conventions are CW about the center)", () => {
     // Verified against pub2xhtml's reference render of the corpus (3up_tabs):
     // librevenge:rotate θ → SVG rotate(θ, cx, cy) with no negation.
-    const rotated = doc.pages[0].objects[3];
+    const rotated = doc.pages[0].layers[0].objects[3];
     expect(rotated.type).toBe("rect");
     if (rotated.type === "line") throw new Error("unexpected line");
     expect(rotated.rotation).toBe(15);
@@ -135,12 +135,12 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
 
   it("still degrades rounded corners with a note — never silently", () => {
     const ids = new Set(notes.filter((n) => n.tier === 2).map((n) => n.objectId));
-    const rounded = doc.pages[0].objects[4];
+    const rounded = doc.pages[0].layers[0].objects[4];
     expect(ids.has(rounded.id)).toBe(true);
   });
 
   it("extracts the drawGraphicObject image to a stretched picture frame (P3) — no note", () => {
-    const picture = doc.pages[0].objects[8];
+    const picture = doc.pages[0].layers[0].objects[8];
     if (picture.type !== "picture") throw new Error("expected picture frame");
     expect(picture.assetId).toBeDefined();
     expect(picture.fit).toBe("stretch");
@@ -157,11 +157,11 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("converts a page-2 bitmap-fill rect to a picture sharing the deduped asset", () => {
-    const picture = doc.pages[1].objects[2];
+    const picture = doc.pages[1].layers[0].objects[2];
     if (picture.type !== "picture") throw new Error("expected picture frame");
     expect(picture.fit).toBe("stretch");
     // same PNG payload as the page-1 graphic → one shared asset, not two
-    const graphic = doc.pages[0].objects[8];
+    const graphic = doc.pages[0].layers[0].objects[8];
     if (graphic.type !== "picture") throw new Error("expected picture frame");
     expect(picture.assetId).toBe(graphic.assetId);
     expect(Object.keys(doc.assets)).toHaveLength(1);
@@ -170,7 +170,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("converts polygons to real closed paths with normalized (0–1) points (P2)", () => {
-    const polygon = doc.pages[0].objects[6];
+    const polygon = doc.pages[0].layers[0].objects[6];
     if (polygon.type !== "path" || !polygon.d) throw new Error("expected path");
     // bbox exact, as before
     expect(polygon.x).toBe(4.6);
@@ -191,7 +191,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("converts bezier paths to real paths, keeping cubic control points (P2)", () => {
-    const path = doc.pages[0].objects[7];
+    const path = doc.pages[0].layers[0].objects[7];
     if (path.type !== "path" || !path.d) throw new Error("expected path");
     expect(path.d[0]).toEqual({ c: "M", x: 0, y: 0.5 });
     const c = path.d[1];
@@ -202,7 +202,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("maps the divider polyline to a line object with px stroke width", () => {
-    const line = doc.pages[0].objects[5];
+    const line = doc.pages[0].layers[0].objects[5];
     if (line.type !== "line") throw new Error("expected line");
     expect(line.x1).toBe(0.75);
     expect(line.x2).toBe(7.75);
@@ -210,7 +210,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("defaults unspecified line spacing to Publisher single (1.19)", () => {
-    const addr = doc.pages[1].objects[1];
+    const addr = doc.pages[1].layers[0].objects[1];
     if (addr.type !== "text" || !addr.text) throw new Error("expected text frame");
     expect(addr.text.paragraphs[0].lineSpacing).toBe(PUBLISHER_DEFAULT_LINE_SPACING);
   });
@@ -223,7 +223,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("carries vertical alignment and text insets faithfully (P2) — no notes needed", () => {
-    const headline = doc.pages[0].objects[1];
+    const headline = doc.pages[0].layers[0].objects[1];
     if (headline.type !== "text" || !headline.text) throw new Error("expected text frame");
     expect(headline.text.vAlign).toBe("middle");
     expect(headline.text.inset).toEqual({ l: 0.04, r: 0.04, t: 0.04, b: 0.04 });
@@ -291,7 +291,7 @@ describe("mapper edge cases", () => {
     // tier 2: Goudy Old Style keeps its name via the Sorts Mill Goudy revival
     expect(by("Goudy Old Style")?.mappedTo).toBe("Goudy Old Style");
     const runs = (() => {
-      const o = result.doc.pages[0].objects[0];
+      const o = result.doc.pages[0].layers[0].objects[0];
       return o.type === "text" && o.text ? o.text.paragraphs[0].runs : [];
     })();
     expect(runs.map((r) => r.font.family)).toEqual(["Calibri", "Libre Franklin", "Goudy Old Style"]);
@@ -312,7 +312,7 @@ describe("mapper edge cases", () => {
       "endDocument()",
     ].join("\n");
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     if (o.type !== "text" || !o.text) throw new Error("expected text frame");
     const run = o.text.paragraphs[0].runs[0];
     expect(run.text).toBe("✔"); // 0xFC — the corpus checkpoint checkmark
@@ -336,7 +336,7 @@ describe("mapper edge cases", () => {
       "endDocument()",
     ].join("\n");
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     if (o.type !== "text" || !o.text) throw new Error("expected text frame");
     expect(o.text.paragraphs[0].indent).toBe(0.5);
     expect(o.text.paragraphs[0].firstLineIndent).toBe(-0.25);
@@ -390,7 +390,7 @@ describe("mapper edge cases", () => {
       "endDocument()",
     ].join("\n");
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     expect(o.type).toBe("path"); // geometry kept — fidelity over a wrong rectangle
     if (o.type === "line") throw new Error("unexpected line");
     expect(o.fill).toBeNull();
@@ -412,7 +412,7 @@ describe("mapper edge cases", () => {
       "endDocument()",
     ].join("\n");
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     expect(o.type).toBe("picture");
     if (o.type !== "picture") throw new Error("expected picture");
     expect(o.assetId).toBeUndefined();
@@ -444,7 +444,7 @@ describe("gradient fill flattening", () => {
       "endDocument()",
     ].join("\n");
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     if (o.type === "line") throw new Error("unexpected line");
     expect(o.fill).toBe("#5d7087"); // per-channel midpoint of the two stops
     expect(result.notes.some((n) => n.tier === 2 && n.message === "gradient fill flattened to the nearest flat color")).toBe(true);
@@ -461,7 +461,7 @@ describe("gradient fill flattening", () => {
       "endDocument()",
     ].join("\n");
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     if (o.type === "line") throw new Error("unexpected line");
     expect(o.fill).toBeNull();
     expect(result.notes.some((n) => n.message === "pattern fill dropped — the source carried no color to flatten to")).toBe(true);
@@ -501,7 +501,7 @@ describe("arc paths: A → cubics at the model boundary", () => {
       "(librevenge:path-action: Z)",
     ].join(", ");
     const result = mapToLayoutDocument(buildModel(parseTrace(pathTrace(groups))), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     if (o.type !== "path" || !o.d) throw new Error("expected path");
     // both endpoints share y=8.3869 — endpoint-only bbox would be h=0
     expect(o.x).toBeCloseTo(1.1832, 4);
@@ -527,7 +527,7 @@ describe("arc paths: A → cubics at the model boundary", () => {
     const arc = (flags: string) => [M(1, 1), A(1, 1, 2, 2, flags)].join(", ");
     // default (absent ⇒ true,true — pub2xhtml's reading): the 270° sweep,
     // center (2,1), covering x ∈ [1,3], y ∈ [0,2]
-    const big = mapToLayoutDocument(buildModel(parseTrace(pathTrace(arc("")))), "x").doc.pages[0].objects[0];
+    const big = mapToLayoutDocument(buildModel(parseTrace(pathTrace(arc("")))), "x").doc.pages[0].layers[0].objects[0];
     if (big.type !== "path") throw new Error("expected path");
     expect(big.w).toBeCloseTo(2, 3);
     expect(big.h).toBeCloseTo(2, 3);
@@ -535,7 +535,7 @@ describe("arc paths: A → cubics at the model boundary", () => {
     const small = mapToLayoutDocument(
       buildModel(parseTrace(pathTrace(arc(", librevenge:large-arc: false, librevenge:sweep: false")))),
       "x",
-    ).doc.pages[0].objects[0];
+    ).doc.pages[0].layers[0].objects[0];
     if (small.type !== "path") throw new Error("expected path");
     expect(small.x).toBeCloseTo(1, 3);
     expect(small.y).toBeCloseTo(1, 3);
@@ -549,7 +549,7 @@ describe("arc paths: A → cubics at the model boundary", () => {
       "(librevenge:path-action: X, svg:x: 2.0000in, svg:y: 2.0000in)",
     ].join(", ");
     const result = mapToLayoutDocument(buildModel(parseTrace(pathTrace(groups))), "x");
-    const o = result.doc.pages[0].objects[0];
+    const o = result.doc.pages[0].layers[0].objects[0];
     expect(o.type).toBe("rect"); // bbox fallback
     expect(result.fidelity.degraded).toBe(1);
     expect(result.notes.some((n) => n.message.includes("converted to its bounding box"))).toBe(true);
@@ -610,7 +610,7 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number substitutio
     const { doc: d, notes } = convert(
       doc(page(textFrame(1, 1, 4, 4, "body copy that a screenshot lands on top of"), picture(1, 1, 2, 2))),
     );
-    const text = d.pages[0].objects[0];
+    const text = d.pages[0].layers[0].objects[0];
     const flagged = overlapNotes(notes);
     expect(flagged).toHaveLength(1);
     expect(flagged[0].objectId).toBe(text.id);
@@ -637,7 +637,7 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number substitutio
     );
     const flagged = overlapNotes(notes);
     expect(flagged).toHaveLength(1);
-    expect(flagged[0].objectId).toBe(d.pages[1].objects[0].id); // the page-2 frame
+    expect(flagged[0].objectId).toBe(d.pages[1].layers[0].objects[0].id); // the page-2 frame
   });
 
   it("emits exactly ONE note per text frame however many pictures cover it", () => {
@@ -667,10 +667,10 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number substitutio
         page(textFrame(0.5, 10.5, 7.5, 0.4, "V. May-12   Page | #")),
       ),
     );
-    expect(textOf(d.pages[0].objects[0])).toBe("V. May-12   Page | 1");
-    expect(textOf(d.pages[1].objects[0])).toBe("V. May-12   Page | 2");
+    expect(textOf(d.pages[0].layers[0].objects[0])).toBe("V. May-12   Page | 1");
+    expect(textOf(d.pages[1].layers[0].objects[0])).toBe("V. May-12   Page | 2");
     // no literal '#' survives in the substituted footers
-    expect(textOf(d.pages[0].objects[0])).not.toContain("#");
+    expect(textOf(d.pages[0].layers[0].objects[0])).not.toContain("#");
 
     const flagged = pageNumberNotes(notes);
     expect(flagged).toHaveLength(1);
@@ -678,7 +678,7 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number substitutio
     expect(flagged[0]).toMatchObject({
       kind: "corrected", // renders in the report panel's "Corrected" group
       tier: 2,
-      objectId: d.pages[0].objects[0].id, // anchored to the first such frame
+      objectId: d.pages[0].layers[0].objects[0].id, // anchored to the first such frame
       pageId: "imp-p1",
     });
     // the old "aren't imported" wording is gone
@@ -689,7 +689,7 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number substitutio
     // "#1" is a store number, not a page-number field — the '#' isn't a
     // standalone token, so it imports verbatim and yields no corrected note.
     const { doc: d, notes } = convert(doc(page(textFrame(0.5, 10.5, 7.5, 0.4, "Store #1 — Main St"))));
-    expect(textOf(d.pages[0].objects[0])).toBe("Store #1 — Main St");
+    expect(textOf(d.pages[0].layers[0].objects[0])).toBe("Store #1 — Main St");
     expect(pageNumberNotes(notes)).toHaveLength(0);
   });
 
@@ -697,13 +697,13 @@ describe("mapper honest-reporting passes: wrap-overlap + page-number substitutio
     // center at 5.5in of 11in — squarely body copy. The '#' is a standalone
     // token but the frame is out of band, so it stays literal, no note.
     const { doc: d, notes } = convert(doc(page(textFrame(1, 5, 4, 1, "Total # of Cuts per Order"))));
-    expect(textOf(d.pages[0].objects[0])).toBe("Total # of Cuts per Order");
+    expect(textOf(d.pages[0].layers[0].objects[0])).toBe("Total # of Cuts per Order");
     expect(pageNumberNotes(notes)).toHaveLength(0);
   });
 
   it("emits no page-number note when a banded frame has no '#'", () => {
     const { doc: d, notes } = convert(doc(page(textFrame(0.5, 10.5, 7.5, 0.4, "Confidential — do not copy"))));
-    expect(textOf(d.pages[0].objects[0])).toBe("Confidential — do not copy");
+    expect(textOf(d.pages[0].layers[0].objects[0])).toBe("Confidential — do not copy");
     expect(pageNumberNotes(notes)).toHaveLength(0);
   });
 });

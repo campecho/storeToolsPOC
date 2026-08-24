@@ -73,7 +73,8 @@ export function applyFlipCorrections(result: MapResult, shapes: EscherShapeTrans
   const newNotes: ImportNote[] = [];
   const pages = result.doc.pages.map((page) => {
     let pageChanged = false;
-    const objects = page.objects.map((obj) => {
+    const layers = page.layers.map((layer) => {
+      const objects = layer.objects.map((obj) => {
       if (obj.type !== "text") return obj; // lines + non-text frames never fold
       if (Math.abs(obj.rotation - FOLD_ROTATION) >= FOLD_EPSILON) return obj;
       const shape = correlate(obj.x, obj.y, obj.w, obj.h);
@@ -86,9 +87,11 @@ export function applyFlipCorrections(result: MapResult, shapes: EscherShapeTrans
         pageId: page.id,
         message: CORRECTION_MESSAGE,
       });
-      return { ...obj, rotation: normalizeDeg(shape.rotationDeg) };
+        return { ...obj, rotation: normalizeDeg(shape.rotationDeg) };
+      });
+      return { ...layer, objects };
     });
-    return pageChanged ? { ...page, objects } : page;
+    return pageChanged ? { ...page, layers } : page;
   });
 
   if (newNotes.length === 0) return result;

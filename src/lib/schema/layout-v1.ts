@@ -6,10 +6,10 @@ import {
   ProductBindingSchema,
   StrokeSchema,
   TextAlignSchema,
-  type LayoutDocument,
   type LayoutObject,
   type Paragraph,
 } from "./layout";
+import type { V2LayoutDocument } from "./layout-v2";
 
 /**
  * FROZEN schema v1 (plan §9) — the shape this POC persisted before the P2
@@ -110,8 +110,9 @@ function migrateObject(o: V1LayoutObject): LayoutObject {
   return text ? { ...rest, text: migrateText(text) } : rest;
 }
 
-/** A parsed v1 document lifted to v2 — pure, total, unit-tested. */
-export function migrateLegacyDocument(v1: V1LayoutDocument): LayoutDocument {
+/** A parsed v1 document lifted to v2 — chain migrateV2Document (layout-v2.ts)
+    after it to reach the current v3 shape. Pure, total, unit-tested. */
+export function migrateLegacyDocument(v1: V1LayoutDocument): V2LayoutDocument {
   return {
     ...v1,
     version: 2,

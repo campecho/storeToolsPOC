@@ -1603,3 +1603,96 @@ test.describe("Clipboard: copy, cut & paste (L13)", () => {
     await expect(page.getByTestId("object-rect")).toHaveCount(0);
   });
 });
+
+/**
+ * Named layers (redesign Phase 5, schema v3): the Layers tab's layer rows —
+ * create, target, hide, lock, merge — and the layer-band z-order clamp.
+ */
+test.describe("Named layers (Phase 5)", () => {
+  async function drawRectAt(page: import("@playwright/test").Page, x1: number, y1: number, x2: number, y2: number) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.getByTestId("tool-rect").click();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x2, box.y + y2, { steps: 6 });
+    await page.mouse.up();
+  }
+
+  test("new layers receive new objects; hide and lock gate the canvas", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await drawRectAt(page, 40, 60, 120, 120);
+
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Layer 1");
+
+    // a new layer lands on top and becomes the draw target
+    await page.getByTestId("layer-add").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Layer 2");
+    await expect(page.getByTestId("layer-def-row-0")).toHaveAttribute("data-active", "true");
+    await drawRectAt(page, 160, 60, 240, 120);
+    await expect(page.getByTestId("object-rect")).toHaveCount(2);
+
+    // hiding the new layer removes its object from the canvas
+    await page.getByTestId("layer-eye-0").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await page.getByTestId("layer-eye-0").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(2);
+
+    // a locked layer renders but rejects selection clicks — the object stops
+    // accepting pointer events, so a click at its location selects nothing
+    await page.getByTestId("layer-lock-0").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Locked");
+    const pageBox = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.click(pageBox.x + 200, pageBox.y + 90);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
+    await page.getByTestId("layer-lock-0").click();
+  });
+
+  test("bring-to-front clamps to the layer band", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await drawRectAt(page, 40, 60, 120, 120); // base layer
+    await page.getByTestId("insp-layers").click();
+    await page.getByTestId("layer-add").click();
+    await drawRectAt(page, 80, 90, 200, 170); // upper layer, overlapping
+
+    // select the base rect (click its non-overlapped corner — the upper
+    // layer's rect intercepts the overlap region, as it should) and bring it
+    // to front — it stays beneath the upper layer's rect
+    const inked = page.locator('[data-testid="publication-page"] [data-testid="object-rect"]');
+    const pageBox = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.click(pageBox.x + 50, pageBox.y + 70);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+    await page.getByTestId("arrange-front").click();
+    await expect(inked).toHaveCount(2);
+    // the upper-layer rect is still the last painted object
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("1");
+
+    // merge down folds both onto one layer, upper content on top
+    await page.getByTestId("layer-merge").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Layer 1");
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("2");
+    await expect(page.getByTestId("layer-delete-0")).toBeDisabled();
+  });
+
+  test("layers persist: rename + non-print survive a reload", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("insp-layers").click();
+    await page.getByTestId("layer-add").click();
+    await page.getByTestId("layer-def-row-0").locator("span[title='Double-click to rename']").dblclick();
+    await page.getByTestId("layer-name-input").fill("Dieline");
+    await page.getByTestId("layer-name-input").press("Enter");
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Dieline");
+    await page.getByTestId("layer-np-0").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Non-Print");
+
+    await page.reload();
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Dieline");
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Non-Print");
+  });
+});

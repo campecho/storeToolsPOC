@@ -8,9 +8,10 @@ import {
   surfaceObjects,
   type EditorTool,
 } from "./layout-store";
-import { LayoutDocumentSchema } from "@/schema";
+import { LayoutDocumentSchema, BASE_LAYER_ID, baseLayerDef } from "@/schema";
 import type { ImportReport } from "@/lib/import/report";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
 import { plainToParagraphs, textContent, textSummary } from "@/lib/layout/text";
 import { MAX_PAGE_IN } from "@/lib/layout/geometry";
 import {
@@ -20,11 +21,12 @@ import {
   createTextFrame,
 } from "@/lib/layout/objects";
 import { placedPictureRect } from "@/lib/assets/placement";
+import { flattenPage } from "@/lib/layout/layers";
 
-/** Objects on the active page, straight from the store. */
+/** Objects on the active page, straight from the store (whole-page z-order). */
 function pageObjects() {
   const s = useLayoutStore.getState();
-  return s.doc.pages.find((p) => p.id === s.activePageId)!.objects;
+  return flattenPage(s.doc.pages.find((p) => p.id === s.activePageId)!);
 }
 
 beforeEach(() => {
@@ -472,7 +474,7 @@ describe("pages & masters (L6)", () => {
     expect(st.doc.pages).toHaveLength(2);
     expect(st.activePageId).toBe(st.doc.pages[1].id);
     expect(st.doc.pages[1].masterId).toBe("master-a");
-    expect(st.doc.pages[1].objects).toEqual([]);
+    expect(st.doc.pages[1].layers[0].objects).toEqual([]);
 
     // from the first page, a new page lands in the middle — not at the end
     s.setActivePage(st.doc.pages[0].id);
@@ -555,7 +557,7 @@ describe("pages & masters (L6)", () => {
     const r = createFrame("rect", 0.5, 10, 7.5, 0.4);
     s.addObject(r);
     expect(masterA().objects).toHaveLength(1);
-    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(0);
+    expect(useLayoutStore.getState().doc.pages[0].layers[0].objects).toHaveLength(0);
 
     s.transformObject(r.id, { x: 1 });
     s.duplicateSelection();
@@ -563,13 +565,14 @@ describe("pages & masters (L6)", () => {
     s.deleteSelection(); // the duplicate became the selection
     expect(masterA().objects).toHaveLength(1);
     expect(masterA().objects[0]).toMatchObject({ x: 1 });
-    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(0);
+    expect(useLayoutStore.getState().doc.pages[0].layers[0].objects).toHaveLength(0);
   });
 
   it("surfaceObjects resolves the editing surface", () => {
     const s = useLayoutStore.getState();
-    expect(surfaceObjects(useLayoutStore.getState())).toBe(
-      useLayoutStore.getState().doc.pages[0].objects,
+    // pages flatten their layer containers (schema v3) — content-equal, not the same array
+    expect(surfaceObjects(useLayoutStore.getState())).toEqual(
+      useLayoutStore.getState().doc.pages[0].layers[0].objects,
     );
     s.setMasterEditing("master-b");
     expect(surfaceObjects(useLayoutStore.getState())).toBe(
@@ -859,7 +862,7 @@ describe("side panel, assets & layers (L8)", () => {
     s.reorderObject(b.id, 0);
     const master = useLayoutStore.getState().doc.masters.find((m) => m.id === "master-a")!;
     expect(master.objects.map((o) => o.id)).toEqual([b.id, a.id]);
-    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(0);
+    expect(useLayoutStore.getState().doc.pages[0].layers[0].objects).toHaveLength(0);
   });
 
   it("undo/redo carry the current asset library forward", () => {
@@ -1193,7 +1196,7 @@ describe("clipboard: copy, cut & paste (L13)", () => {
     expect(pageObjects()).toHaveLength(0);
     s.pasteClipboard();
     expect(pageObjects()).toHaveLength(1); // landed on page 2
-    expect(useLayoutStore.getState().doc.pages[0].objects).toHaveLength(1); // page 1 intact
+    expect(useLayoutStore.getState().doc.pages[0].layers[0].objects).toHaveLength(1); // page 1 intact
   });
 
   it("a copied picture keeps its assetId so the image travels with it", () => {
@@ -1258,14 +1261,14 @@ describe("imported documents (P3 image extraction)", () => {
     expect(st.doc).toEqual(doc);
   });
 
-  it("a v2 imported doc with a stretch-fit picture frame round-trips the schema", () => {
+  it("an imported doc with a stretch-fit picture frame round-trips the schema", () => {
     const doc = createDefaultDocument();
     const pic = { ...createFrame("picture", 1, 1, 2, 2), assetId: "asset-1", fit: "stretch" as const };
-    doc.pages[0].objects.push(pic);
+    doc.pages[0].layers[0].objects.push(pic);
     const parsed = LayoutDocumentSchema.safeParse(doc);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      const frame = parsed.data.pages[0].objects[0];
+      const frame = parsed.data.pages[0].layers[0].objects[0];
       expect(frame.type === "picture" && frame.fit).toBe("stretch");
     }
   });
@@ -1278,8 +1281,8 @@ describe("persisted-state validation (the merge guard)", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
   });
 
-  it("the committed contract fixture parses (fixtures/layout-document.v2.json)", () => {
-    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v2.json"), "utf8");
+  it("the committed contract fixture parses (fixtures/layout-document.v3.json)", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v3.json"), "utf8");
     const parsed = LayoutDocumentSchema.safeParse(JSON.parse(raw));
     expect(parsed.success).toBe(true);
     if (parsed.success) {
@@ -1293,28 +1296,44 @@ describe("persisted-state validation (the merge guard)", () => {
     }
   });
 
-  it("a persisted v1 document (fixtures/layout-document.v1.json) migrates to v2 — never dropped", () => {
+  it("a v2 document (fixtures/layout-document.v2.json) migrates to v3 — every page object preserved on the base layer", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v2.json"), "utf8");
+    const v2 = V2LayoutDocumentSchema.safeParse(JSON.parse(raw));
+    expect(v2.success).toBe(true);
+    if (!v2.success) return;
+    const migrated = migrateV2Document(v2.data);
+    expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
+    expect(migrated.version).toBe(3);
+    expect(migrated.layers).toEqual([baseLayerDef()]);
+    migrated.pages.forEach((p, i) => {
+      expect(p.layers).toHaveLength(1);
+      expect(p.layers[0].layerId).toBe(BASE_LAYER_ID);
+      expect(p.layers[0].objects).toEqual(v2.data.pages[i].objects);
+    });
+  });
+
+  it("a persisted v1 document (fixtures/layout-document.v1.json) migrates to v3 — never dropped", () => {
     const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v1.json"), "utf8");
     const v1 = V1LayoutDocumentSchema.safeParse(JSON.parse(raw));
     expect(v1.success).toBe(true);
     if (!v1.success) return;
-    const migrated = migrateLegacyDocument(v1.data);
-    // the migrated document is a fully valid v2 document…
+    const migrated = migrateV2Document(migrateLegacyDocument(v1.data));
+    // the migrated document is a fully valid v3 document…
     expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(3);
     // …with the v1 text carried into runs (content, style, fixed v1 ink)
-    const headline = migrated.pages[0].objects.find((o) => o.id === "obj-headline");
+    const headline = migrated.pages[0].layers[0].objects.find((o) => o.id === "obj-headline");
     expect(headline?.type === "text" && headline.text && textContent(headline.text)).toBe("GRAND OPENING");
     const para = headline?.type === "text" ? headline.text?.paragraphs[0] : undefined;
     expect(para?.align).toBe("center");
     expect(para?.runs[0].font).toMatchObject({ family: "Motiva Sans", size: 48, bold: true });
     expect(para?.runs[0].color).toBe("#111111");
-    // non-text objects pass through untouched
-    expect(migrated.pages[1].objects[0]).toEqual(v1.data.pages[1].objects[0]);
+    // non-text objects pass through untouched, landed on the base layer
+    expect(migrated.pages[1].layers[0].objects[0]).toEqual(v1.data.pages[1].objects[0]);
   });
 
   it("rejects corrupt shapes so the editor falls back to pristine", () => {
-    expect(LayoutDocumentSchema.safeParse({ version: 2, name: "broken" }).success).toBe(false);
+    expect(LayoutDocumentSchema.safeParse({ version: 3, name: "broken" }).success).toBe(false);
     expect(LayoutDocumentSchema.safeParse(null).success).toBe(false);
     const noPages = { ...createDefaultDocument(), pages: [] };
     expect(LayoutDocumentSchema.safeParse(noPages).success).toBe(false);
@@ -1350,16 +1369,16 @@ describe("photo-editor round-trip (F2, PE8)", () => {
   it("the optional photoEdit field round-trips the layout schema — additive/migrate-free", () => {
     // a pre-PE8 picture (no photoEdit) still parses, field absent…
     const plain = createDefaultDocument();
-    plain.pages[0].objects.push({ ...createFrame("picture", 1, 1, 2, 2), assetId: "orig" });
+    plain.pages[0].layers[0].objects.push({ ...createFrame("picture", 1, 1, 2, 2), assetId: "orig" });
     const plainParsed = LayoutDocumentSchema.safeParse(plain);
     expect(plainParsed.success).toBe(true);
     if (plainParsed.success) {
-      const f = plainParsed.data.pages[0].objects[0];
+      const f = plainParsed.data.pages[0].layers[0].objects[0];
       expect(f.type === "picture" && f.photoEdit).toBeUndefined();
     }
     // …and one carrying a photoEdit parses with the recipe + true original id
     const edited = createDefaultDocument();
-    edited.pages[0].objects.push({
+    edited.pages[0].layers[0].objects.push({
       ...createFrame("picture", 1, 1, 2, 2),
       assetId: "edited",
       photoEdit: { recipe, originalAssetId: "orig" },
@@ -1367,7 +1386,7 @@ describe("photo-editor round-trip (F2, PE8)", () => {
     const parsed = LayoutDocumentSchema.safeParse(edited);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      const f = parsed.data.pages[0].objects[0];
+      const f = parsed.data.pages[0].layers[0].objects[0];
       expect(f.type === "picture" && f.photoEdit).toMatchObject({ originalAssetId: "orig" });
     }
   });

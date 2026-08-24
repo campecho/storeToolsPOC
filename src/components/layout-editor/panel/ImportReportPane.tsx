@@ -3,6 +3,7 @@
 import { ArrowRight, ChevronRight, FileText } from "lucide-react";
 import { useLayoutStore } from "@/store";
 import { textContent } from "@/lib/layout/text";
+import { flattenPage } from "@/lib/layout/layers";
 import type { LayoutDocument } from "@/schema";
 
 /**
@@ -18,13 +19,13 @@ import type { LayoutDocument } from "@/schema";
 /** The page an imported object sits on — the deep-link resolver (notes prefer
     their own `pageId`, overset ids always resolve through here). */
 function pageOf(doc: LayoutDocument, objectId: string): string | undefined {
-  return doc.pages.find((p) => p.objects.some((o) => o.id === objectId))?.id;
+  return doc.pages.find((p) => flattenPage(p).some((o) => o.id === objectId))?.id;
 }
 
 /** A readable label for a reported frame — its text, else the generic name. */
 function frameLabel(doc: LayoutDocument, objectId: string): string {
   for (const p of doc.pages) {
-    const o = p.objects.find((x) => x.id === objectId);
+    const o = flattenPage(p).find((x) => x.id === objectId);
     if (!o) continue;
     if (o.type === "text" && o.text) {
       const t = textContent(o.text).trim();
@@ -37,7 +38,7 @@ function frameLabel(doc: LayoutDocument, objectId: string): string {
 
 /** 1-based page number for a frame, or 0 when it can't be found. */
 function pageNumberOf(doc: LayoutDocument, objectId: string): number {
-  return doc.pages.findIndex((p) => p.objects.some((o) => o.id === objectId)) + 1;
+  return doc.pages.findIndex((p) => flattenPage(p).some((o) => o.id === objectId)) + 1;
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
