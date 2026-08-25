@@ -23,7 +23,9 @@ import {
   Search,
   SendToBack,
 } from "lucide-react";
+import { useState } from "react";
 import { useLayoutStore } from "@/store";
+import { FindReplaceDialog } from "../FindReplaceDialog";
 import type { AlignKind } from "@/lib/layout/align";
 import { FONT_FAMILIES, FONT_SIZES, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
 import { FaceSelect } from "../FaceSelect";
@@ -38,8 +40,8 @@ import { RibbonGroup } from "./RibbonGroup";
  * and Arrange carry the object actions from the retired Arrange tab (plan
  * L7/L10) — selection alignment, z-order, and rotation — per decision of
  * record #1: the old tab's functions rehome rather than drop.
- * PROTOTYPE-ONLY: the Editing group (Find/Replace… wire in plan Phase 7),
- * the list/¶ controls, and Styles' "+ New" are inert chrome.
+ * The Editing group opens Find & Replace (Phase 7).
+ * PROTOTYPE-ONLY: the list/¶ controls and Styles' "+ New" are inert chrome.
  */
 
 const OBJECT_ALIGNS: { kind: AlignKind; label: string; testId: string; Icon: typeof AlignStartVertical }[] = [
@@ -50,16 +52,6 @@ const OBJECT_ALIGNS: { kind: AlignKind; label: string; testId: string; Icon: typ
   { kind: "centerV", label: "Align vertical centers", testId: "arrange-align-centerv", Icon: AlignCenterHorizontal },
   { kind: "bottom", label: "Align bottom edges", testId: "arrange-align-bottom", Icon: AlignEndHorizontal },
 ];
-
-/** Static command pill — icon + label chrome (the Editing group). */
-function Cmd({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="flex h-6 items-center gap-[5px] whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-[7px] text-[10.5px] text-[#666]">
-      {icon}
-      {children}
-    </div>
-  );
-}
 
 /** Clickable command pill with a disabled state (the live Clipboard group, L13). */
 function CmdBtn({
@@ -134,6 +126,7 @@ function IconBtn({
 }
 
 export function HomeBand() {
+  const [findOpen, setFindOpen] = useState(false);
   const { target, summary, apply, applyStyle } = useTextTarget();
   const font = summary?.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
@@ -380,9 +373,19 @@ export function HomeBand() {
       </RibbonGroup>
 
       <RibbonGroup label="Editing" last>
-        <Cmd icon={<Search size={12} strokeWidth={1.8} className="text-[#777]" />}>Find</Cmd>
-        <Cmd>Replace…</Cmd>
+        <CmdBtn
+          icon={<Search size={12} strokeWidth={1.8} className="text-[#777]" />}
+          onClick={() => setFindOpen(true)}
+          testId="editing-find"
+          label="Find"
+        >
+          Find
+        </CmdBtn>
+        <CmdBtn onClick={() => setFindOpen(true)} testId="editing-replace" label="Replace">
+          Replace…
+        </CmdBtn>
       </RibbonGroup>
+      {findOpen && <FindReplaceDialog onClose={() => setFindOpen(false)} />}
     </>
   );
 }

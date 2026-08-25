@@ -1744,3 +1744,64 @@ test.describe("Preflight (Phase 6)", () => {
     await expect(page.getByTestId("preflight-pin")).toHaveCount(0);
   });
 });
+
+/**
+ * Find & Replace (redesign Phase 7): live results, GREP mode, replace-all as
+ * one undo step, and the figma File-menu popover's New row.
+ */
+test.describe("Find & Replace (Phase 7)", () => {
+  test("finds live, replaces all in one undo step, GREP validates", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    // a text frame with two hits
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.getByTestId("tool-text").click();
+    await page.mouse.move(box.x + 60, box.y + 60);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 320, box.y + 140, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.getByTestId("text-edit-overlay")).toBeVisible();
+    await page.keyboard.type("John met John");
+    await page.keyboard.press("Escape");
+
+    await page.getByTestId("editing-replace").click();
+    await expect(page.getByTestId("find-replace")).toBeVisible();
+    await page.getByTestId("find-input").fill("john");
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Results (2 instances found)");
+    await expect(page.getByTestId("find-result-row")).toHaveCount(1);
+
+    // match case narrows to zero (typed text is "John")
+    await page.getByTestId("find-match-case").check();
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Results (0 instances found)");
+    await page.getByTestId("find-match-case").uncheck();
+
+    // invalid GREP reports instead of matching
+    await page.getByTestId("find-grep").check();
+    await page.getByTestId("find-input").fill("jo(hn");
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Invalid pattern");
+    await page.getByTestId("find-grep").uncheck();
+    await page.getByTestId("find-input").fill("john");
+
+    await page.getByTestId("replace-input").fill("Doe");
+    await page.getByTestId("replace-all").click();
+    await expect(page.getByTestId("replace-done")).toContainText("Replaced 2 instances");
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Results (0 instances found)");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("find-replace")).toBeHidden();
+    await expect(page.getByTestId("text-content").first()).toContainText("Doe met Doe");
+
+    // one undo restores both
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("text-content").first()).toContainText("John met John");
+  });
+
+  test("the File menu's New row starts a fresh document", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("doc-name").fill("Old name");
+    await page.getByTestId("ribbon-file").click();
+    await page.getByTestId("file-new").click();
+    await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
+  });
+});

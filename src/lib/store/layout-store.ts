@@ -53,6 +53,7 @@ import {
 } from "@/lib/layout/align";
 import type { ImportReport } from "@/lib/import/report";
 import type { PreflightIssue } from "@/lib/layout/preflight";
+import { replaceInDoc, type FindOptions } from "@/lib/layout/find-replace";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -389,6 +390,10 @@ export interface LayoutEditorState {
   preflightIssues: PreflightIssue[];
   setPreflightIssues: (issues: PreflightIssue[]) => void;
 
+  /** Replace every hit across pages and masters (Phase 7) — one undo step;
+      a no-hit run leaves the document untouched. */
+  replaceAllText: (query: string, replacement: string, opts?: FindOptions) => void;
+
   // layers (schema v3, redesign Phase 5)
   /** Target for fresh draws/pastes on a page surface; clamped on doc swaps. */
   activeLayerId: string;
@@ -635,6 +640,12 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setPages: (pages) => set({ pages }),
 
       setPreflightIssues: (issues) => set({ preflightIssues: issues }),
+
+      replaceAllText: (query, replacement, opts) =>
+        set((s) => {
+          const { doc, replaced } = replaceInDoc(s.doc, query, replacement, opts);
+          return replaced ? { ...pushed(s, s.doc), doc } : s;
+        }),
 
       setActiveLayer: (layerId) =>
         set((s) => (s.doc.layers.some((l) => l.id === layerId) ? { activeLayerId: layerId } : s)),
