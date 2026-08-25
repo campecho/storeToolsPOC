@@ -1007,27 +1007,8 @@ export function CanvasViewport() {
             data-testid="canvas-file-input"
             onChange={onPickFile}
           />
-          {/* master-editing mode banner (plan L6). The wire's name/size/zoom
-              caption that sat here came out in L8 — the title bar and status
-              bar already carry all three. */}
-          {editingMaster && (
-            <div
-              data-testid="master-banner"
-              className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
-            >
-              <span>
-                Editing master {editingMaster.label} — changes apply to every page that uses it
-              </span>
-              <button
-                type="button"
-                data-testid="master-done"
-                onClick={() => useLayoutStore.getState().setMasterEditing(null)}
-                className="cursor-pointer rounded-full border border-brand bg-white px-[9px] py-px text-[10px] font-semibold hover:bg-[#fff5f5]"
-              >
-                Done
-              </button>
-            </div>
-          )}
+          {/* the master-editing banner (Phase 8) renders in the shell —
+              MasterBanner, the figma's amber bar — not here */}
 
           {/* two-page spread partner (plan L12) — a static, click-to-activate
               page beside the active one, positioned in board space so it tracks

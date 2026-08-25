@@ -2,6 +2,7 @@ import { useLayoutStore, type InspectorTab } from "@/store";
 import { TabStrip, type TabStripItem } from "@/components/ui/TabStrip";
 import { ImportReportPane } from "../panel/ImportReportPane";
 import { LayersPane } from "../panel/LayersPane";
+import { MasterPropertiesTab } from "./MasterPropertiesTab";
 import { PageTab } from "./PageTab";
 import { PreflightTab } from "./PreflightTab";
 import { PropertiesTab } from "./PropertiesTab";
@@ -21,6 +22,7 @@ export function Inspector() {
   const insp = useLayoutStore((s) => s.insp);
   const setInsp = useLayoutStore((s) => s.setInsp);
   const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
+  const masterEditing = useLayoutStore((s) => s.masterEditingId !== null);
   const hasReport = useLayoutStore((s) => s.importReport !== null);
   const issueCount = useLayoutStore((s) => s.preflightIssues.length);
 
@@ -46,7 +48,14 @@ export function Inspector() {
         className="h-[42px] shrink-0 border-b border-[#ececec]"
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {active === "page" && (hasSelection ? <PropertiesTab /> : <PageTab />)}
+        {active === "page" &&
+          (hasSelection ? (
+            <PropertiesTab />
+          ) : masterEditing ? (
+            <MasterPropertiesTab />
+          ) : (
+            <PageTab />
+          ))}
         {active === "text" && <TextTab />}
         {active === "layers" && <LayersPane />}
         {active === "preflight" && <PreflightTab />}

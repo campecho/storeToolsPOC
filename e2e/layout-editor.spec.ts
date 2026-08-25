@@ -677,7 +677,7 @@ test.describe("Multi-page & masters (L6)", () => {
     // enter master editing from the Masters segment
     await page.getByTestId("pane-masters").click();
     await page.getByTestId("master-thumb-a").click();
-    await expect(page.getByTestId("master-banner")).toContainText("Editing master A");
+    await expect(page.getByTestId("master-banner")).toContainText("Editing Master Page Mode: Master A");
     await expect(page.getByTestId("page-indicator")).toHaveText("Master A");
 
     // draw the shared furniture — a footer bar on the master
@@ -686,7 +686,7 @@ test.describe("Multi-page & masters (L6)", () => {
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
 
     // done: back on page 2, the furniture renders but can't be selected
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
     await expect(page.getByTestId("master-banner")).toHaveCount(0);
     await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
@@ -708,7 +708,7 @@ test.describe("Multi-page & masters (L6)", () => {
     await page.getByTestId("master-thumb-a").click();
     await page.getByTestId("tool-ellipse").click();
     await dragOnPage(page, { x: 100, y: 100 }, { x: 220, y: 200 });
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
     await expect(page.getByTestId("object-ellipse")).toHaveCount(1);
     await expect(page.getByText("A · applied")).toBeVisible();
 
@@ -727,10 +727,10 @@ test.describe("Multi-page & masters (L6)", () => {
     await page.goto("/layout");
     await page.getByTestId("pane-masters").click();
     await page.getByTestId("master-new").click();
-    await expect(page.getByTestId("master-banner")).toContainText("Editing master C");
+    await expect(page.getByTestId("master-banner")).toContainText("Editing Master Page Mode: Master C");
     await expect(page.getByTestId("page-indicator")).toHaveText("Master C");
     await expect(page.getByText("C · blank")).toBeVisible();
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
     await expect(page.getByTestId("master-banner")).toHaveCount(0);
     await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 1");
   });
@@ -742,7 +742,7 @@ test.describe("Multi-page & masters (L6)", () => {
     await page.getByTestId("master-thumb-a").click();
     await page.getByTestId("tool-rect").click();
     await dragOnPage(page, { x: 60, y: 300 }, { x: 280, y: 330 });
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
 
     await page.reload();
     // rehydration lands on the first page of the restored two-page file
@@ -1803,5 +1803,34 @@ test.describe("Find & Replace (Phase 7)", () => {
     await page.getByTestId("ribbon-file").click();
     await page.getByTestId("file-new").click();
     await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
+  });
+});
+
+/**
+ * Masters UX (redesign Phase 8): the amber editing banner, the contextual
+ * Master Properties panel, rename, and duplicate.
+ */
+test.describe("Masters UX (Phase 8)", () => {
+  test("editing a master shows the banner and contextual properties", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    await page.getByTestId("pane-masters").click();
+    await page.getByTestId("master-thumb-a").click();
+    await expect(page.getByTestId("master-banner")).toContainText("Editing Master Page Mode: Master A");
+    await expect(page.getByTestId("master-banner")).toContainText("1 document page");
+
+    // the Page tab is contextual: master properties while editing a master
+    await expect(page.getByTestId("master-properties")).toBeVisible();
+    await page.getByTestId("master-name").fill("Letterhead");
+    await expect(page.getByTestId("master-banner")).toContainText("Master Letterhead");
+
+    // duplicate opens the copy for editing
+    await page.getByTestId("master-duplicate").click();
+    await expect(page.getByTestId("master-banner")).toContainText("Letterhead copy");
+
+    await page.getByTestId("master-return").click();
+    await expect(page.getByTestId("master-banner")).toHaveCount(0);
+    await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
   });
 });

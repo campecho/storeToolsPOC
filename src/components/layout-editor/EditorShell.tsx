@@ -17,6 +17,7 @@ import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
 import { ImportBanner } from "./ImportBanner";
+import { MasterBanner } from "./MasterBanner";
 import { OversetCheck } from "./OversetCheck";
 import { PreflightBanner } from "./PreflightBanner";
 import { PreflightCheck } from "./PreflightCheck";
@@ -143,6 +144,7 @@ export function EditorShell() {
             <CanvasViewport />
             <FloatingToolStrip />
             <PreflightBanner />
+            <MasterBanner />
           </div>
           <Inspector />
         </div>

@@ -449,6 +449,11 @@ export interface LayoutEditorState {
   applyMaster: (pageId: string, masterId: string | null) => void;
   /** Blank master with the next free letter, opened for editing (Publisher behavior). */
   addMaster: () => void;
+  /** Rename a master's label (Phase 8). Per-keystroke like setName — kept
+      out of the undo history so it doesn't flood the gesture-grained stack. */
+  renameMaster: (id: string, label: string) => void;
+  /** Copy a master (furniture included) and open it for editing (Phase 8). */
+  duplicateMaster: (id: string) => void;
   /** Session-only: the canvas edits this master instead of the active page. */
   setMasterEditing: (id: string | null) => void;
 
@@ -939,6 +944,32 @@ export const useLayoutStore = create<LayoutEditorState>()(
             ...pushed(s, s.doc),
             doc: { ...s.doc, masters: [...s.doc.masters, master] },
             masterEditingId: master.id,
+            selectedIds: [],
+            editingTextId: null,
+          };
+        }),
+
+      renameMaster: (id, label) =>
+        set((s) => ({
+          doc: {
+            ...s.doc,
+            masters: s.doc.masters.map((m) => (m.id === id ? { ...m, label } : m)),
+          },
+        })),
+
+      duplicateMaster: (id) =>
+        set((s) => {
+          const source = s.doc.masters.find((m) => m.id === id);
+          if (!source) return s;
+          const copy: MasterPage = {
+            id: crypto.randomUUID(),
+            label: `${source.label} copy`,
+            objects: source.objects.map((o) => ({ ...o, id: crypto.randomUUID() })),
+          };
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, masters: [...s.doc.masters, copy] },
+            masterEditingId: copy.id,
             selectedIds: [],
             editingTextId: null,
           };
