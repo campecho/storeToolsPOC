@@ -17,7 +17,7 @@ import { useLayoutStore } from "@/store";
  */
 export function ImportBanner() {
   const report = useLayoutStore((s) => s.importReport);
-  const togglePanelTab = useLayoutStore((s) => s.togglePanelTab);
+  const setInsp = useLayoutStore((s) => s.setInsp);
   const [dismissed, setDismissed] = useState(false);
 
   if (!report || dismissed) return null;
@@ -36,6 +36,14 @@ export function ImportBanner() {
           bundles the converter), or install <code className="rounded bg-[#f2e6c4] px-1">libmspub-tools</code> where
           the app runs. Check <code className="rounded bg-[#f2e6c4] px-1">GET /api/import</code> for the exact reason.
         </div>
+        <button
+          type="button"
+          data-testid="import-view-report"
+          onClick={() => setInsp("import")}
+          className="shrink-0 cursor-pointer rounded-[5px] border border-[#d9c489] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#7a5b00] hover:bg-[#f8f0da]"
+        >
+          View report
+        </button>
         <button
           type="button"
           aria-label="Dismiss"
@@ -100,7 +108,7 @@ export function ImportBanner() {
       <button
         type="button"
         data-testid="import-view-report"
-        onClick={() => togglePanelTab("import")}
+        onClick={() => setInsp("import")}
         className="shrink-0 cursor-pointer rounded-[5px] border border-[#b7d2f0] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#1c4e80] hover:bg-[#eaf2fc]"
       >
         View report

@@ -11,7 +11,21 @@ import {
   type Stroke,
 } from "@/schema";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
+import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
+import { BASE_LAYER_ID, baseLayerDef } from "@/lib/schema";
 import type { PhotoOp } from "@/lib/schema/photo";
+import {
+  addLayer as addLayerToDoc,
+  distributeToLayers,
+  editableLayerIds,
+  ensurePageLayers,
+  flattenPage,
+  mergeLayer as mergeLayerInDoc,
+  moveObjectsToLayer,
+  patchLayer,
+  reorderLayer as reorderLayerInDoc,
+  visibleLayerIds,
+} from "@/lib/layout/layers";
 import { applyToAllRuns, type TextPatch } from "@/lib/layout/text";
 import { clearAssetBlobs, deleteAssetBlob, replaceAssetBlobs } from "@/lib/assets/blob-store";
 import { createPlacedPicture, placedPictureRect } from "@/lib/assets/placement";
@@ -38,6 +52,8 @@ import {
   type DistributeAxis,
 } from "@/lib/layout/align";
 import type { ImportReport } from "@/lib/import/report";
+import type { PreflightIssue } from "@/lib/layout/preflight";
+import { replaceInDoc, type FindOptions } from "@/lib/layout/find-replace";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -55,7 +71,7 @@ import type { ImportReport } from "@/lib/import/report";
  * both, so every L4/L5 gesture works inside a master unchanged.
  */
 
-export type RibbonTab = "home" | "insert" | "layout" | "text" | "arrange";
+export type RibbonTab = "home" | "insert";
 export type EditorTool =
   | "select"
   | "text"
@@ -66,13 +82,14 @@ export type EditorTool =
   | "table"
   | "zoom"
   | "move";
-export type InspectorTab = "props" | "text" | "align" | "page";
+/** Inspector tabs (redesign Phase 4 — decision of record #7). "page" is the
+    properties surface: page setup at rest, object properties with a selection.
+    "import" is the fidelity-report reader, shown only after a .pub import
+    (interim home until the plan's Phase 9 full-screen report). */
+export type InspectorTab = "page" | "text" | "layers" | "preflight" | "import";
 export type PagesPaneView = "pages" | "masters";
 /** Page-tab "Apply to" target for size edits (plan L12). */
 export type PageSizeScope = "document" | "page";
-/** Side-panel tabs (plan L8) — vertical Pages / Assets / Layers strip; the
-    "import" tab (P4) is the fidelity-report reader, shown only after an import. */
-export type PanelTab = "pages" | "assets" | "layers" | "import";
 /** Two levels since plan v1.3 — persisted legacy "pro" coerces to "standard". */
 export type ExperienceLevel = "simple" | "standard";
 
@@ -118,16 +135,53 @@ function pushed(s: Pick<LayoutEditorState, "past">, snapshot: LayoutDocument) {
   return { past: [...s.past, snapshot].slice(-HISTORY_CAP), future: [] as LayoutDocument[] };
 }
 
-type EditSurface = { doc: LayoutDocument; activePageId: string; masterEditingId: string | null };
+type EditSurface = {
+  doc: LayoutDocument;
+  activePageId: string;
+  masterEditingId: string | null;
+  /** Layer that receives new objects on a page surface (schema v3); absent
+      or unknown falls back to the base (first) layer. */
+  activeLayerId?: string;
+};
 
-/** Objects on the editing surface — the master being edited, else the active page (L6). */
+/** Objects on the editing surface — the master being edited, else the active
+    page (L6). Pages flatten their layer containers bottom-to-top (schema v3),
+    so consumers keep reading one z-ordered array; masters stay flat. */
 export function surfaceObjects(s: EditSurface): LayoutObject[] {
   if (s.masterEditingId) {
     return s.doc.masters.find((m) => m.id === s.masterEditingId)?.objects ?? [];
   }
-  return s.doc.pages.find((p) => p.id === s.activePageId)?.objects ?? [];
+  const page = s.doc.pages.find((p) => p.id === s.activePageId);
+  return page ? flattenPage(page) : [];
 }
 
+/** Surface objects on visible layers — the render/snap view: locked layers
+    still render and snap, hidden ones vanish (masters have no layers). */
+export function visibleSurfaceObjects(s: EditSurface): LayoutObject[] {
+  if (s.masterEditingId) return surfaceObjects(s);
+  const page = s.doc.pages.find((p) => p.id === s.activePageId);
+  if (!page) return [];
+  const visible = visibleLayerIds(s.doc);
+  return page.layers.filter((l) => visible.has(l.layerId)).flatMap((l) => l.objects);
+}
+
+/** Editing surface objects that accept selection/editing — objects on hidden
+    or locked layers are excluded (masters have no layers, nothing filters). */
+export function interactiveSurfaceObjects(s: EditSurface): LayoutObject[] {
+  if (s.masterEditingId) return surfaceObjects(s);
+  const page = s.doc.pages.find((p) => p.id === s.activePageId);
+  if (!page) return [];
+  const editable = editableLayerIds(s.doc);
+  return page.layers.filter((l) => editable.has(l.layerId)).flatMap((l) => l.objects);
+}
+
+/**
+ * Apply an edit to the surface's FLAT object array. On a page, the result is
+ * redistributed into the layer containers: survivors stay on their layer
+ * (ordered by flat position — so z-reorder actions clamp to their layer
+ * band), and fresh ids land on the active layer. Every object mutation in
+ * this store funnels through here, which is what enforces the v3 invariants.
+ */
 function mapSurfaceObjects(
   s: EditSurface,
   fn: (objects: LayoutObject[]) => LayoutObject[],
@@ -144,7 +198,9 @@ function mapSurfaceObjects(
   return {
     ...doc,
     pages: doc.pages.map((p) =>
-      p.id === s.activePageId ? { ...p, objects: fn(p.objects) } : p,
+      p.id === s.activePageId
+        ? { ...p, layers: distributeToLayers(p, fn(flattenPage(p)), s.activeLayerId ?? p.layers[0].layerId) }
+        : p,
     ),
   };
 }
@@ -216,7 +272,7 @@ function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
 export function createDefaultDocument(): LayoutDocument {
   return {
-    version: 2,
+    version: 3,
     name: "Untitled publication",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -224,7 +280,10 @@ export function createDefaultDocument(): LayoutDocument {
     bleed: 0.125,
     margin: 0.5,
     columns: 1,
-    pages: [{ id: "page-1", masterId: "master-a", objects: [] }],
+    layers: [baseLayerDef()],
+    pages: [
+      { id: "page-1", masterId: "master-a", layers: [{ layerId: BASE_LAYER_ID, objects: [] }] },
+    ],
     masters: [
       { id: "master-a", label: "A", objects: [] },
       { id: "master-b", label: "B", objects: [] },
@@ -254,10 +313,6 @@ export interface LayoutEditorState {
   tool: EditorTool;
   insp: InspectorTab;
   pages: PagesPaneView;
-
-  // side panel (session, plan L8)
-  panelTab: PanelTab;
-  panelOpen: boolean;
 
   // document (persisted) + session pointers
   doc: LayoutDocument;
@@ -328,8 +383,45 @@ export interface LayoutEditorState {
   setTool: (tool: EditorTool) => void;
   setInsp: (insp: InspectorTab) => void;
   setPages: (pages: PagesPaneView) => void;
-  /** Open the side panel to a tab; clicking the open tab collapses it (L8). */
-  togglePanelTab: (tab: PanelTab) => void;
+
+  // preflight (redesign Phase 6) — session results from the live check;
+  // written by the headless PreflightCheck component, read by the inspector
+  // badge/panel and the canvas pins. Not a history step.
+  preflightIssues: PreflightIssue[];
+  setPreflightIssues: (issues: PreflightIssue[]) => void;
+
+  /** Fresh document from a template configuration (Phase 9) — resets the
+      session exactly like resetDoc, then applies the chosen setup. */
+  startFromTemplate: (config: {
+    name: string;
+    w: number;
+    h: number;
+    orientation: Orientation;
+    margin: number;
+    bleed: number;
+  }) => void;
+
+  /** Replace every hit across pages and masters (Phase 7) — one undo step;
+      a no-hit run leaves the document untouched. */
+  replaceAllText: (query: string, replacement: string, opts?: FindOptions) => void;
+
+  // layers (schema v3, redesign Phase 5)
+  /** Target for fresh draws/pastes on a page surface; clamped on doc swaps. */
+  activeLayerId: string;
+  setActiveLayer: (layerId: string) => void;
+  /** New empty layer on top; it becomes the active layer. One undo step. */
+  addLayer: () => void;
+  /** Figma "Merge Down": contents join the layer below (bottom merges up);
+      refused for the last layer. One undo step. */
+  mergeLayerDown: (layerId: string) => void;
+  renameLayer: (layerId: string, name: string) => void;
+  setLayerVisible: (layerId: string, visible: boolean) => void;
+  setLayerLocked: (layerId: string, locked: boolean) => void;
+  setLayerNonPrint: (layerId: string, nonPrint: boolean) => void;
+  /** Reorder the stack (bottom-to-top indexes). One undo step. */
+  moveLayer: (from: number, to: number) => void;
+  /** Move the selection onto a layer (stacks above its content). */
+  moveSelectionToLayer: (layerId: string) => void;
 
   // page setup
   setName: (name: string) => void;
@@ -368,6 +460,11 @@ export interface LayoutEditorState {
   applyMaster: (pageId: string, masterId: string | null) => void;
   /** Blank master with the next free letter, opened for editing (Publisher behavior). */
   addMaster: () => void;
+  /** Rename a master's label (Phase 8). Per-keystroke like setName — kept
+      out of the undo history so it doesn't flood the gesture-grained stack. */
+  renameMaster: (id: string, label: string) => void;
+  /** Copy a master (furniture included) and open it for editing (Phase 8). */
+  duplicateMaster: (id: string) => void;
   /** Session-only: the canvas edits this master instead of the active page. */
   setMasterEditing: (id: string | null) => void;
 
@@ -519,8 +616,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       tool: "select",
       insp: "page",
       pages: "pages",
-      panelTab: "pages",
-      panelOpen: true,
+      activeLayerId: BASE_LAYER_ID,
+      preflightIssues: [],
 
       doc: createDefaultDocument(),
       activePageId: "page-1",
@@ -558,12 +655,121 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
 
-      togglePanelTab: (tab) =>
-        set((s) =>
-          s.panelOpen && s.panelTab === tab
-            ? { panelOpen: false }
-            : { panelOpen: true, panelTab: tab },
-        ),
+      setPreflightIssues: (issues) => set({ preflightIssues: issues }),
+
+      startFromTemplate: (config) =>
+        set((s) => {
+          void clearAssetBlobs(); // the library resets with the document
+          const base = createDefaultDocument();
+          const landscape = config.orientation === "landscape";
+          const doc: LayoutDocument = {
+            ...base,
+            name: config.name,
+            size: landscape
+              ? { w: Math.max(config.w, config.h), h: Math.min(config.w, config.h) }
+              : { w: Math.min(config.w, config.h), h: Math.max(config.w, config.h) },
+            orientation: config.orientation,
+            margin: config.margin,
+            bleed: config.bleed,
+          };
+          return {
+            doc,
+            activePageId: "page-1",
+            activeLayerId: BASE_LAYER_ID,
+            masterEditingId: null,
+            guidesVisible: true,
+            spread: false,
+            pageSizeScope: "document",
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            editingTextId: null,
+            past: [],
+            future: [],
+            clipboard: [],
+            pasteCount: 0,
+            fitRequestId: s.fitRequestId + 1,
+            importReport: null,
+            fileName: null,
+            fileCreatedAt: null,
+            savedDoc: null,
+            fileError: null,
+            insp: "page" as const,
+          };
+        }),
+
+      replaceAllText: (query, replacement, opts) =>
+        set((s) => {
+          const { doc, replaced } = replaceInDoc(s.doc, query, replacement, opts);
+          return replaced ? { ...pushed(s, s.doc), doc } : s;
+        }),
+
+      setActiveLayer: (layerId) =>
+        set((s) => (s.doc.layers.some((l) => l.id === layerId) ? { activeLayerId: layerId } : s)),
+
+      addLayer: () =>
+        set((s) => {
+          const { doc, id } = addLayerToDoc(s.doc);
+          return { ...pushed(s, s.doc), doc, activeLayerId: id };
+        }),
+
+      mergeLayerDown: (layerId) =>
+        set((s) => {
+          const doc = mergeLayerInDoc(s.doc, layerId);
+          if (!doc) return s;
+          const activeLayerId = doc.layers.some((l) => l.id === s.activeLayerId)
+            ? s.activeLayerId
+            : doc.layers[0].id;
+          return { ...pushed(s, s.doc), doc, activeLayerId };
+        }),
+
+      renameLayer: (layerId, name) =>
+        set((s) => ({ ...pushed(s, s.doc), doc: patchLayer(s.doc, layerId, { name }) })),
+
+      // Hiding or locking a layer sheds any selection/editing it carried —
+      // pruned against what remains interactive, mirroring undo's pruning.
+      setLayerVisible: (layerId, visible) =>
+        set((s) => {
+          const doc = patchLayer(s.doc, layerId, { visible });
+          const alive = new Set(
+            interactiveSurfaceObjects({ ...s, doc }).map((o) => o.id),
+          );
+          return {
+            ...pushed(s, s.doc),
+            doc,
+            selectedIds: s.selectedIds.filter((id) => alive.has(id)),
+            editingTextId: s.editingTextId && alive.has(s.editingTextId) ? s.editingTextId : null,
+          };
+        }),
+
+      setLayerLocked: (layerId, locked) =>
+        set((s) => {
+          const doc = patchLayer(s.doc, layerId, { locked });
+          const alive = new Set(
+            interactiveSurfaceObjects({ ...s, doc }).map((o) => o.id),
+          );
+          return {
+            ...pushed(s, s.doc),
+            doc,
+            selectedIds: s.selectedIds.filter((id) => alive.has(id)),
+            editingTextId: s.editingTextId && alive.has(s.editingTextId) ? s.editingTextId : null,
+          };
+        }),
+
+      setLayerNonPrint: (layerId, nonPrint) =>
+        set((s) => ({ ...pushed(s, s.doc), doc: patchLayer(s.doc, layerId, { nonPrint }) })),
+
+      moveLayer: (from, to) =>
+        set((s) => {
+          const doc = reorderLayerInDoc(s.doc, from, to);
+          return doc === s.doc ? s : { ...pushed(s, s.doc), doc };
+        }),
+
+      moveSelectionToLayer: (layerId) =>
+        set((s) => {
+          if (s.masterEditingId || !s.selectedIds.length) return s;
+          const doc = moveObjectsToLayer(s.doc, s.activePageId, s.selectedIds, layerId);
+          return doc === s.doc ? s : { ...pushed(s, s.doc), doc };
+        }),
 
       // Name typing is per-keystroke — kept out of the undo history so it
       // doesn't flood the gesture-grained stack.
@@ -718,7 +924,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
           const page = {
             id: crypto.randomUUID(),
             masterId: s.doc.pages[at]?.masterId ?? null,
-            objects: [],
+            // one empty container per document layer, same order (v3 invariant)
+            layers: s.doc.layers.map((l) => ({ layerId: l.id, objects: [] })),
           };
           return {
             ...pushed(s, s.doc),
@@ -788,6 +995,32 @@ export const useLayoutStore = create<LayoutEditorState>()(
             ...pushed(s, s.doc),
             doc: { ...s.doc, masters: [...s.doc.masters, master] },
             masterEditingId: master.id,
+            selectedIds: [],
+            editingTextId: null,
+          };
+        }),
+
+      renameMaster: (id, label) =>
+        set((s) => ({
+          doc: {
+            ...s.doc,
+            masters: s.doc.masters.map((m) => (m.id === id ? { ...m, label } : m)),
+          },
+        })),
+
+      duplicateMaster: (id) =>
+        set((s) => {
+          const source = s.doc.masters.find((m) => m.id === id);
+          if (!source) return s;
+          const copy: MasterPage = {
+            id: crypto.randomUUID(),
+            label: `${source.label} copy`,
+            objects: source.objects.map((o) => ({ ...o, id: crypto.randomUUID() })),
+          };
+          return {
+            ...pushed(s, s.doc),
+            doc: { ...s.doc, masters: [...s.doc.masters, copy] },
+            masterEditingId: copy.id,
             selectedIds: [],
             editingTextId: null,
           };
@@ -1198,6 +1431,9 @@ export const useLayoutStore = create<LayoutEditorState>()(
             future: [s.doc, ...s.future].slice(0, HISTORY_CAP),
             // the asset library is not an undo step — the current one carries forward
             doc: { ...prev, assets: s.doc.assets },
+            activeLayerId: prev.layers.some((l) => l.id === s.activeLayerId)
+              ? s.activeLayerId
+              : prev.layers[0].id,
             ...surface,
             selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
@@ -1213,10 +1449,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
           if (!next) return s;
           const surface = resolveSurface(s, next);
           const target = { doc: next, ...surface };
+          const activeLayerId = next.layers.some((l) => l.id === s.activeLayerId)
+            ? s.activeLayerId
+            : next.layers[0].id;
           return {
             past: [...s.past, s.doc].slice(-HISTORY_CAP),
             future: s.future.slice(1),
             doc: { ...next, assets: s.doc.assets },
+            activeLayerId,
             ...surface,
             selectedIds: pruneSelection(s.selectedIds, target),
             editingTextId:
@@ -1232,6 +1472,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             doc: createDefaultDocument(),
             activePageId: "page-1",
+            activeLayerId: BASE_LAYER_ID,
             masterEditingId: null,
             guidesVisible: true,
             spread: false,
@@ -1267,9 +1508,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
             report.fonts.length > 0 ||
             report.notes.length > 0 ||
             report.fidelity.degraded + report.fidelity.flagged > 0;
+          const normalized = ensurePageLayers(doc);
           return {
-            doc,
-            activePageId: doc.pages[0]?.id ?? "page-1",
+            doc: normalized,
+            activePageId: normalized.pages[0]?.id ?? "page-1",
+            activeLayerId: normalized.layers[0].id,
             masterEditingId: null,
             guidesVisible: true,
             spread: false,
@@ -1290,7 +1533,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
             fileCreatedAt: null,
             savedDoc: null,
             fileError: null,
-            ...(worthReviewing ? { panelTab: "import" as const, panelOpen: true } : {}),
+            ...(worthReviewing ? { insp: "import" as const } : {}),
           };
         }),
 
@@ -1299,9 +1542,11 @@ export const useLayoutStore = create<LayoutEditorState>()(
           // The asset library resets with the document, exactly as an import
           // does — the container's bytes are the library now.
           void replaceAssetBlobs(blobs);
+          const normalized = ensurePageLayers(doc);
           return {
-            doc,
-            activePageId: doc.pages[0]?.id ?? "page-1",
+            doc: normalized,
+            activePageId: normalized.pages[0]?.id ?? "page-1",
+            activeLayerId: normalized.layers[0].id,
             masterEditingId: null,
             guidesVisible: true,
             spread: false,
@@ -1339,7 +1584,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           if (!s.importReport) return s;
           return {
             importReport: { ...s.importReport, overset: objectIds },
-            ...(objectIds.length ? { panelTab: "import" as const, panelOpen: true } : {}),
+            ...(objectIds.length ? { insp: "import" as const } : {}),
           };
         }),
 
@@ -1350,17 +1595,20 @@ export const useLayoutStore = create<LayoutEditorState>()(
           const pageOf = new Map<string, string>();
           const pages = s.doc.pages.map((page) => {
             let changed = false;
-            const objects = page.objects.map((o) => {
-              const scale = scaleById.get(o.id);
-              if (scale === undefined || o.type !== "text" || !o.text) return o;
-              pageOf.set(o.id, page.id);
-              const { fontScale: prev, ...rest } = o.text;
-              const next = scale < 1 ? { ...rest, fontScale: scale } : rest;
-              if ((prev ?? 1) === (scale < 1 ? scale : 1)) return o;
-              changed = true;
-              return { ...o, text: next };
-            });
-            return changed ? { ...page, objects } : page;
+            const layers = page.layers.map((layer) => ({
+              ...layer,
+              objects: layer.objects.map((o) => {
+                const scale = scaleById.get(o.id);
+                if (scale === undefined || o.type !== "text" || !o.text) return o;
+                pageOf.set(o.id, page.id);
+                const { fontScale: prev, ...rest } = o.text;
+                const next = scale < 1 ? { ...rest, fontScale: scale } : rest;
+                if ((prev ?? 1) === (scale < 1 ? scale : 1)) return o;
+                changed = true;
+                return { ...o, text: next };
+              }),
+            }));
+            return changed ? { ...page, layers } : page;
           });
           // Silent-but-REPORTED: every applied scale is a deep-linkable note;
           // re-measures replace prior autofit notes rather than stacking them.
@@ -1378,9 +1626,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             doc: { ...s.doc, pages },
             importReport: { ...s.importReport, notes, overset: oversetIds },
-            ...(applied.length || oversetIds.length
-              ? { panelTab: "import" as const, panelOpen: true }
-              : {}),
+            ...(applied.length || oversetIds.length ? { insp: "import" as const } : {}),
           };
         }),
     }),
@@ -1411,10 +1657,19 @@ export const useLayoutStore = create<LayoutEditorState>()(
         const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
         let parsed = LayoutDocumentSchema.safeParse(p?.doc);
         if (!parsed.success) {
-          const legacy = V1LayoutDocumentSchema.safeParse(p?.doc);
-          if (legacy.success) {
-            parsed = { success: true, data: migrateLegacyDocument(legacy.data) };
+          const v2 = V2LayoutDocumentSchema.safeParse(p?.doc);
+          if (v2.success) {
+            parsed = { success: true, data: migrateV2Document(v2.data) };
+          } else {
+            const legacy = V1LayoutDocumentSchema.safeParse(p?.doc);
+            if (legacy.success) {
+              parsed = { success: true, data: migrateV2Document(migrateLegacyDocument(legacy.data)) };
+            }
           }
+        }
+        if (parsed.success) {
+          // heal any layer-container drift before the doc reaches the session
+          parsed = { success: true, data: ensurePageLayers(parsed.data) };
         }
         // Only override from a *present, valid* persisted value; otherwise keep
         // `current`. Rehydration runs after mount, so forcing a default here

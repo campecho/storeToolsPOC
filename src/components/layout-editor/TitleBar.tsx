@@ -1,18 +1,22 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { useLayoutStore } from "@/store";
+import { Badge } from "@/components/ui/Badge";
+import { useLayoutStore, selectFileDirty } from "@/store";
 import { effectivePageSize } from "@/lib/layout/geometry";
 import { sizeLabel } from "@/lib/layout/presets";
 import { formatLen } from "@/lib/layout/units";
 
 /**
- * Editor title bar (wire region 1). Deviation #1 (plan §2): the persistent
- * suite header above already carries the Staples badge, store label, and the
- * global actions — so this bar swaps the wire's duplicated chrome and window
- * controls for a back link, keeping the doc name, size hint, experience
- * switch, and help glyph. Name and hint are live against the document (L3).
+ * Document header (redesign plan §2.2 — figma "Secondary navigation", 54px
+ * white bar): back link, centered doc identity, autosave status. The figma
+ * shows the name as static text; it stays an input so rename keeps working
+ * (no-dropped-functions rule). The autosave face is live (Phase 7): the
+ * persist layer writes localStorage with every change, so the stamp follows
+ * document edits; a file-backed document additionally reads Saved/Unsaved
+ * from the file baseline (selectFileDirty).
  */
 export function TitleBar() {
   const name = useLayoutStore((s) => s.doc.name);
@@ -28,8 +32,23 @@ export function TitleBar() {
     ? doc.size
     : effectivePageSize(doc, doc.pages.find((p) => p.id === activePageId));
 
+  // Autosave stamp: the persist middleware writes localStorage synchronously
+  // with every doc change, so a debounced clock after the last edit is the
+  // honest "Autosaved HH:MM". File-backed docs also surface dirty-vs-file.
+  const fileName = useLayoutStore((s) => s.fileName);
+  const fileDirty = useLayoutStore(selectFileDirty);
+  const [stamp, setStamp] = useState<string | null>(null);
+  useEffect(() => {
+    const t = setTimeout(
+      () =>
+        setStamp(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })),
+      400,
+    );
+    return () => clearTimeout(t);
+  }, [doc]);
+
   return (
-    <div className="flex h-10 shrink-0 items-center gap-3 border-b border-[#e0e0e0] bg-[#f0f0f0] px-[14px]">
+    <div className="flex h-[54px] shrink-0 items-center gap-3 border-b border-[#dddddd] bg-white px-[14px]">
       <Link
         href="/"
         data-testid="editor-back"
@@ -38,40 +57,30 @@ export function TitleBar() {
         <ChevronLeft size={15} strokeWidth={2} />
         Back
       </Link>
-      <div className="h-5 w-px shrink-0 bg-[#dcdcdc]" />
 
-      <div className="flex min-w-0 items-center gap-[9px]">
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-[9px]">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           data-testid="doc-name"
           aria-label="Publication name"
-          className="w-[190px] truncate rounded-[3px] bg-transparent px-1 text-[13px] font-semibold text-[#333] outline-none hover:bg-[#e9e9e9] focus:bg-white focus:ring-1 focus:ring-[#d0d0d0]"
+          className="w-[190px] truncate rounded-[3px] bg-transparent px-1 text-center text-[13.5px] font-semibold text-[#111] outline-none hover:bg-[#f4f4f4] focus:bg-white focus:ring-1 focus:ring-[#d0d0d0]"
         />
         <span className="shrink-0 text-[12px] text-[#9a9a9a]" data-testid="size-hint">
           · {sizeLabel(size.w, size.h)} · {formatLen(size.w, unit)} × {formatLen(size.h, unit)} {unit}
         </span>
       </div>
 
-      <div className="flex-1" />
-
-      {/* Experience levels (design doc §3.3) — surface-only, never the file.
-          Two levels since plan v1.3 (Pro dropped); Simple renders disabled
-          until switching lands in plan step L14. */}
       <div
-        data-testid="experience-switch"
-        className="flex shrink-0 items-center rounded-[6px] bg-[#e7e7e7] p-[2px] text-[11px] text-[#777]"
+        data-testid="autosave-indicator"
+        className="flex shrink-0 items-center gap-[9px] text-[12px] text-[#757575]"
       >
-        <span className="cursor-not-allowed rounded-[4px] px-[11px] py-[3px] opacity-60" title="Coming later in the beta">
-          Simple
-        </span>
-        <span className="rounded-[4px] bg-white px-[11px] py-[3px] text-[#333] shadow-[0_1px_2px_rgba(0,0,0,.12)]">
-          Standard
-        </span>
-      </div>
-
-      <div className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#b6b6b6] text-[11px] text-[#9a9a9a]">
-        ?
+        <span className="hidden sm:inline">{stamp ? `Autosaved ${stamp}` : "Autosaved"}</span>
+        {fileName && fileDirty ? (
+          <Badge variant="warn">Unsaved</Badge>
+        ) : (
+          <Badge variant="ok">Saved</Badge>
+        )}
       </div>
     </div>
   );

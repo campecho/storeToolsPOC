@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LayoutDocument, LayoutObject, TextRun } from "@/schema";
+import { BASE_LAYER_ID, baseLayerDef } from "@/schema";
 import {
   categoryRatio,
   computeFidelity,
@@ -103,7 +104,7 @@ const picture = (id: string, x: number, y: number, w: number, h: number, assetId
 });
 
 const doc = (objects: LayoutObject[], size = { w: 8.5, h: 11 }): LayoutDocument => ({
-  version: 2,
+  version: 3,
   name: "synthetic",
   product: null,
   size,
@@ -111,7 +112,8 @@ const doc = (objects: LayoutObject[], size = { w: 8.5, h: 11 }): LayoutDocument 
   bleed: 0,
   margin: 0.5,
   columns: 1,
-  pages: [{ id: "p1", masterId: null, objects }],
+  pages: [{ id: "p1", masterId: null, layers: [{ layerId: BASE_LAYER_ID, objects }] }],
+  layers: [baseLayerDef()],
   masters: [],
   assets: {},
   guides: { v: [], h: [] },
@@ -330,7 +332,7 @@ describe("scoring: arc paths (both sides through the same arc lowering)", () => 
   const { doc: converted, blobs } = mapToLayoutDocument(buildModel(parseTrace(trace)), "arc-circle");
 
   it("imports the circle with the full ellipse bbox — the h=0 regression", () => {
-    const [path] = converted.pages[0].objects;
+    const [path] = converted.pages[0].layers[0].objects;
     if (path.type !== "path") throw new Error("expected path");
     expect(path.w).toBeCloseTo(0.466, 4);
     expect(path.h).toBeCloseTo(0.4, 4); // was 0 when only endpoints hulled

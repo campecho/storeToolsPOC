@@ -23,6 +23,7 @@ export function PagesPane() {
   const removePage = useLayoutStore((s) => s.removePage);
   const setMasterEditing = useLayoutStore((s) => s.setMasterEditing);
   const addMaster = useLayoutStore((s) => s.addMaster);
+  const duplicateMaster = useLayoutStore((s) => s.duplicateMaster);
   const applyMaster = useLayoutStore((s) => s.applyMaster);
 
   const activePage = doc.pages.find((p) => p.id === activePageId) ?? doc.pages[0];
@@ -97,14 +98,26 @@ export function PagesPane() {
                 onApply={() => applyMaster(activePage.id, m.id)}
               />
             ))}
-            <button
-              type="button"
-              data-testid="master-new"
-              onClick={addMaster}
-              className="cursor-pointer text-[10px] text-[#a0a0a0] hover:text-brand"
-            >
-              + New master
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                data-testid="master-new"
+                onClick={addMaster}
+                className="cursor-pointer text-[10px] text-[#a0a0a0] hover:text-brand"
+              >
+                + New master
+              </button>
+              {masterEditingId && (
+                <button
+                  type="button"
+                  data-testid="master-duplicate-list"
+                  onClick={() => duplicateMaster(masterEditingId)}
+                  className="cursor-pointer text-[10px] text-[#a0a0a0] hover:text-brand"
+                >
+                  Duplicate
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

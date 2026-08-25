@@ -23,8 +23,8 @@ import type { FolderEntry, RecentEntry } from "@/lib/storage/types";
  * The File menu (docs/STORAGE_PLAN.md P1/P2) — the ribbon's File tab, live:
  * Open/Save/Save As against `.staples` files on the device, plus the
  * default-folder surfaces (set the folder once, open from its listing,
- * recents) on the File System Access tier. This replaces the inert label
- * STUBS.md carried since the wire build.
+ * recents) on the File System Access tier, restyled to the figma popover
+ * (redesign Phase 7) with a New row — same reset the status bar offers.
  */
 export function FileMenu() {
   const fileName = useLayoutStore((s) => s.fileName);
@@ -77,7 +77,7 @@ export function FileMenu() {
   };
 
   const itemClass =
-    "block w-full cursor-pointer px-3 py-[6px] text-left text-[12px] text-[#3d3d3d] hover:bg-[#f0f0f0]";
+    "block w-full cursor-pointer rounded-[5px] px-3 py-[7px] text-left text-[12px] text-[#3d3d3d] hover:bg-[#ecf4fd]";
   const headingClass = "px-3 pb-1 pt-2 text-[10px] font-semibold uppercase text-[#8f8f8f]";
 
   return (
@@ -87,7 +87,9 @@ export function FileMenu() {
         data-testid="ribbon-file"
         aria-expanded={open}
         onClick={() => (open ? setOpen(false) : openMenu())}
-        className="cursor-pointer px-[15px] pb-2 pt-[7px] text-[12px] font-semibold text-brand"
+        className={`cursor-pointer rounded-[8px] px-[15px] pb-2 pt-[7px] text-[12px] ${
+          open ? "bg-[#d3d3d3] text-[#111]" : "text-[#3d3d3d] hover:bg-[#e4e4e4]"
+        }`}
       >
         File
         {dirty && (
@@ -101,7 +103,7 @@ export function FileMenu() {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
             data-testid="file-menu"
-            className="absolute left-0 top-full z-50 w-72 border border-[#d4d4d4] bg-white py-1 shadow-lg"
+            className="absolute left-0 top-full z-50 w-72 rounded-[8px] border border-[#dddddd] bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,.16)]"
           >
             <div
               className="truncate px-3 pb-1 pt-1 text-[11px] text-[#8f8f8f]"
@@ -109,6 +111,17 @@ export function FileMenu() {
             >
               {fileName ?? "Untitled — not saved to a file yet"}
             </div>
+            <button
+              type="button"
+              className={itemClass}
+              data-testid="file-new"
+              onClick={() => {
+                setOpen(false);
+                useLayoutStore.getState().resetDoc();
+              }}
+            >
+              New
+            </button>
             <button type="button" className={itemClass} onClick={() => act(openLayoutFile)}>
               Open… <span className="float-right text-[#8f8f8f]">Ctrl+O</span>
             </button>

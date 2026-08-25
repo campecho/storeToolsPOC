@@ -16,9 +16,9 @@ test.describe("Layout editor shell (L1)", () => {
     await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
     await expect(page.getByTestId("give-feedback")).toBeVisible();
 
-    // experience switch shows Standard active (Simple disabled until L14; two levels since v1.3)
-    await expect(page.getByTestId("experience-switch")).toContainText("Standard");
-    await expect(page.getByTestId("experience-switch")).not.toContainText("Pro");
+    // document header autosave face + suite nav (redesign plan Phase 1)
+    await expect(page.getByTestId("autosave-indicator")).toContainText("Saved");
+    await expect(page.getByTestId("suite-publisher")).toHaveAttribute("aria-current", "page");
 
     // true-scale page + guide legend (the wire's pasteboard caption came out in L8)
     await expect(page.getByTestId("publication-page")).toBeVisible();
@@ -45,14 +45,14 @@ test.describe("Layout editor shell (L1)", () => {
 
   test("ribbon tabs switch the command band", async ({ page }) => {
     await page.goto("/layout");
-    await expect(page.getByText("Paste")).toBeVisible();
+    await expect(page.getByText("Paste", { exact: true })).toBeVisible();
 
     await page.getByTestId("ribbon-insert").click();
     await expect(page.getByTestId("ribbon-insert")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText("Paste")).toBeHidden();
+    await expect(page.getByText("Paste", { exact: true })).toBeHidden();
 
     await page.getByTestId("ribbon-home").click();
-    await expect(page.getByText("Paste")).toBeVisible();
+    await expect(page.getByText("Paste", { exact: true })).toBeVisible();
   });
 
   test("back link returns to Print Studio home", async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe("Layout editor shell (L1)", () => {
  * at-rest parity with the offline handoff.
  */
 test.describe("Layout editor shell (L2)", () => {
-  test("every ribbon tab renders its command band", async ({ page }) => {
+  test("both menu tabs render their command band; retired tab content rehomed", async ({ page }) => {
     await page.goto("/layout");
 
     await page.getByTestId("ribbon-insert").click();
@@ -77,39 +77,38 @@ test.describe("Layout editor shell (L2)", () => {
     await expect(insert.getByText("Picture")).toBeVisible();
     await expect(insert.getByText("Hyperlink")).toBeVisible();
 
-    await page.getByTestId("ribbon-layout").click();
-    const layout = page.getByTestId("band-layout");
-    // .first(): the pill face — the text also appears in the picker's option list
-    await expect(layout.getByText("Letter · 8.5 × 11 in").first()).toBeVisible();
-    await expect(layout.getByText("Bleed 0.125")).toBeVisible();
-    await expect(layout.getByText("Guides", { exact: true })).toBeVisible();
-
-    await page.getByTestId("ribbon-text").click();
-    const text = page.getByTestId("band-text");
-    await expect(text.getByText("Paragraph · Normal")).toBeVisible();
-    await expect(text.getByText("Link boxes")).toBeVisible();
-
+    // Home band carries the regrouped figma sections, incl. the old Arrange
+    // tab's object actions (redesign Phase 2)
     await page.getByTestId("ribbon-home").click();
-    await expect(page.getByTestId("band-home").getByText("Paste")).toBeVisible();
+    const home = page.getByTestId("band-home");
+    await expect(home.getByText("Paste", { exact: true })).toBeVisible();
+    await expect(home.getByTestId("arrange-front")).toBeVisible();
+    await expect(home.getByTestId("arrange-align-left")).toBeVisible();
+    await expect(home.getByText("Replace…")).toBeVisible();
+
+    // the old Layout tab's remaining controls live in the Page inspector tab
+    await expect(page.getByTestId("page-columns")).toBeAttached();
+    await expect(page.getByTestId("page-guides")).toBeVisible();
+
+    // the old Text tab's line-spacing control lives in the Text inspector tab
+    await page.getByTestId("insp-text").click();
+    await expect(page.getByTestId("tab-line-spacing")).toBeAttached();
   });
 
   test("inspector tabs swap their bodies", async ({ page }) => {
     await page.goto("/layout");
-    // Page is the default tab
+    // Page is the default tab — page setup at rest (no selection)
     await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
-
-    await page.getByTestId("insp-props").click();
-    await expect(page.getByTestId("insp-props")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByText("Nothing selected")).toBeVisible();
-    await expect(page.getByText("Transform")).toBeVisible();
+    await expect(page.getByTestId("insp-page")).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("insp-text").click();
     await expect(page.getByText("Line spacing 1.2")).toBeVisible();
-    await expect(page.getByText("Nothing selected")).toBeHidden();
 
-    await page.getByTestId("insp-align").click();
-    await expect(page.getByText("Distribute")).toBeVisible();
-    await expect(page.getByText("Relative to")).toBeVisible();
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layers-empty")).toBeVisible();
+
+    await page.getByTestId("insp-preflight").click();
+    await expect(page.getByTestId("preflight-tab")).toBeVisible();
 
     await page.getByTestId("insp-page").click();
     await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
@@ -181,27 +180,30 @@ test.describe("Document model & true-scale page (L3)", () => {
     await page.getByTestId("page-margin").press("Enter");
     await expect(page.getByText("Margin 1 in")).toBeVisible();
 
-    // the Layout band edits the same model
-    await page.getByTestId("ribbon-layout").click();
-    await page.getByTestId("band-bleed").selectOption("0.125");
+    // edits round-trip: setting them back restores the defaults in the legend
+    await page.getByTestId("page-bleed").fill("0.125");
+    await page.getByTestId("page-bleed").press("Enter");
     await expect(page.getByText("Bleed 0.125 in")).toBeVisible();
-    await page.getByTestId("band-margins").selectOption("0.5");
+    await page.getByTestId("page-margin").fill("0.5");
+    await page.getByTestId("page-margin").press("Enter");
     await expect(page.getByText("Margin 0.5 in")).toBeVisible();
   });
 
   test("columns render gutter guides; the Guides toggle governs them", async ({ page }) => {
     await page.goto("/layout");
-    await page.getByTestId("ribbon-layout").click();
+    // wait out the post-mount rehydrate before mutating persisted state
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
 
-    await page.getByTestId("band-columns").selectOption("3");
+    // Columns & guides live in the inspector's Page tab (redesign Phase 2)
+    await page.getByTestId("page-columns").selectOption("3");
     await expect(page.getByTestId("column-guide")).toHaveCount(4); // 2 gutters × 2 edges
     await expect(page.getByTestId("center-guide-v")).toBeHidden(); // yields to gutters
 
-    await page.getByTestId("band-guides").click();
+    await page.getByTestId("page-guides").click();
     await expect(page.getByTestId("column-guide")).toHaveCount(0);
     await expect(page.getByTestId("center-guide-h")).toBeHidden();
 
-    await page.getByTestId("band-guides").click();
+    await page.getByTestId("page-guides").click();
     await expect(page.getByTestId("column-guide")).toHaveCount(4);
   });
 
@@ -210,10 +212,11 @@ test.describe("Document model & true-scale page (L3)", () => {
 
     // Wait for fit-on-mount to settle before driving the slider: the page opens
     // at the store default (100%), then CanvasViewport's fit effect fires once
-    // the pasteboard is measured and lands at the fit zoom (52% for Letter in
-    // the pinned 1440×900 viewport). Setting the slider before that measurement
-    // lets the late fit clobber it back — the race this guard removes.
-    await expect(page.getByTestId("zoom-percent")).toHaveText("52%");
+    // the pasteboard is measured and lands at the fit zoom (51% for Letter in
+    // the pinned 1440×900 viewport under the redesign chrome heights). Setting
+    // the slider before that measurement lets the late fit clobber it back —
+    // the race this guard removes.
+    await expect(page.getByTestId("zoom-percent")).toHaveText("50%");
 
     // slider → exactly 100%: Letter renders at 8.5in × 96dpi = 816px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {
@@ -320,7 +323,7 @@ test.describe("Objects: draw, select, transform (L4)", () => {
 
     // Properties round-trip: W is the drawn width; set it numerically
     // (the inspector stays on its own tab — auto-follow is L8's Simple mode)
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     const w0 = Number(await page.getByTestId("prop-w").inputValue());
     expect(w0).toBeGreaterThan(0);
     await page.getByTestId("prop-w").fill("2");
@@ -396,7 +399,7 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     await page.getByTestId("tool-rect").click();
     await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("fill-CC0000").click();
     await expect(page.getByTestId("object-rect")).toHaveCSS(
       "background-color",
@@ -528,7 +531,7 @@ test.describe("Text frames & typography (L5)", () => {
       "The quick brown fox jumps over the lazy dog. ".repeat(4).trim(),
     );
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("prop-h").fill("0.2");
     await page.getByTestId("prop-h").press("Enter");
     await expect(page.getByTestId("overflow-badge")).toBeVisible();
@@ -568,8 +571,8 @@ test.describe("Text frames & typography (L5)", () => {
     }, "100");
     await page.getByTestId("font-size").selectOption("24");
     await expect(ink).toHaveCSS("font-size", "32px");
-    await page.getByTestId("ribbon-text").click();
-    await page.getByTestId("text-band-line").selectOption("1.5");
+    await page.getByTestId("insp-text").click();
+    await page.getByTestId("tab-line-spacing").selectOption("1.5");
     await expect(para).toHaveCSS("line-height", "48px");
 
     // undo unwinds the styling clicks one at a time — back to the 1.2 default
@@ -674,7 +677,7 @@ test.describe("Multi-page & masters (L6)", () => {
     // enter master editing from the Masters segment
     await page.getByTestId("pane-masters").click();
     await page.getByTestId("master-thumb-a").click();
-    await expect(page.getByTestId("master-banner")).toContainText("Editing master A");
+    await expect(page.getByTestId("master-banner")).toContainText("Editing Master Page Mode: Master A");
     await expect(page.getByTestId("page-indicator")).toHaveText("Master A");
 
     // draw the shared furniture — a footer bar on the master
@@ -683,7 +686,7 @@ test.describe("Multi-page & masters (L6)", () => {
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
 
     // done: back on page 2, the furniture renders but can't be selected
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
     await expect(page.getByTestId("master-banner")).toHaveCount(0);
     await expect(page.getByTestId("page-indicator")).toHaveText("Page 2 of 2");
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
@@ -705,7 +708,7 @@ test.describe("Multi-page & masters (L6)", () => {
     await page.getByTestId("master-thumb-a").click();
     await page.getByTestId("tool-ellipse").click();
     await dragOnPage(page, { x: 100, y: 100 }, { x: 220, y: 200 });
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
     await expect(page.getByTestId("object-ellipse")).toHaveCount(1);
     await expect(page.getByText("A · applied")).toBeVisible();
 
@@ -724,10 +727,10 @@ test.describe("Multi-page & masters (L6)", () => {
     await page.goto("/layout");
     await page.getByTestId("pane-masters").click();
     await page.getByTestId("master-new").click();
-    await expect(page.getByTestId("master-banner")).toContainText("Editing master C");
+    await expect(page.getByTestId("master-banner")).toContainText("Editing Master Page Mode: Master C");
     await expect(page.getByTestId("page-indicator")).toHaveText("Master C");
     await expect(page.getByText("C · blank")).toBeVisible();
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
     await expect(page.getByTestId("master-banner")).toHaveCount(0);
     await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 1");
   });
@@ -739,7 +742,7 @@ test.describe("Multi-page & masters (L6)", () => {
     await page.getByTestId("master-thumb-a").click();
     await page.getByTestId("tool-rect").click();
     await dragOnPage(page, { x: 60, y: 300 }, { x: 280, y: 330 });
-    await page.getByTestId("master-done").click();
+    await page.getByTestId("master-return").click();
 
     await page.reload();
     // rehydration lands on the first page of the restored two-page file
@@ -788,11 +791,9 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 2 objects");
     await expect(page.getByTestId("multi-select-frame")).toHaveCount(2);
 
-    await page.getByTestId("insp-align").click();
-    await page.getByTestId("obj-align-top").click();
+    await page.getByTestId("arrange-align-top").click();
 
     // a dragless click on a member collapses the group to it — inspect each
-    await page.getByTestId("insp-props").click();
     await page.getByTestId("object-rect").first().click();
     await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
     await expect(page.getByTestId("prop-y")).toHaveValue("0");
@@ -815,7 +816,7 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     ];
     for (const [from, to] of spots) await drawRect(page, from, to);
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     const geoms = [
       { x: "0", w: "1" },
       { x: "2", w: "1" },
@@ -833,11 +834,10 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await page.getByTestId("object-rect").first().click();
     await page.getByTestId("object-rect").nth(1).click({ modifiers: ["Shift"] });
     await page.getByTestId("object-rect").nth(2).click({ modifiers: ["Shift"] });
-    await page.getByTestId("insp-align").click();
     await page.getByTestId("align-rel").selectOption("selection");
     await page.getByTestId("distribute-h").click();
 
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-rect").nth(1).click();
     await expect(page.getByTestId("prop-x")).toHaveValue("3.5");
     // the anchors stayed put
@@ -882,7 +882,7 @@ test.describe("Multi-select, align & snapping (L7)", () => {
     await expect(page.getByTestId("smart-guide")).toHaveCount(0);
 
     // left edges now agree exactly
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-rect").first().click();
     const ax = await page.getByTestId("prop-x").inputValue();
     await page.getByTestId("object-rect").nth(1).click();
@@ -900,7 +900,7 @@ test.describe("Multi-select, align & snapping (L7)", () => {
 
     // a rect whose right edge sits well short of the bleed line; it stays selected
     await drawRect(page, { x: 40, y: 260 }, { x: 200, y: 340 });
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
 
     // drag the east handle to ~4px shy of the right bleed line → it snaps onto it
     const e = (await page.getByTestId("handle-e").boundingBox())!;
@@ -935,33 +935,30 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await page.mouse.up();
   }
 
-  test("the side panel collapses to its tab strip and switches tabs", async ({ page }) => {
+  test("the work row: fixed Pages panel, floating tools, inspector homes", async ({ page }) => {
     await page.goto("/layout");
-    // Pages tab open by default — the L6 navigator is intact inside it
+    // the left panel is the pages navigator, always present (redesign Phase 3)
     await expect(page.getByTestId("side-panel")).toBeVisible();
     await expect(page.getByTestId("pane-pages")).toBeVisible();
-    await expect(page.getByTestId("panel-tab-pages")).toHaveAttribute("aria-pressed", "true");
 
-    // clicking the active tab collapses the panel; the strip stays
-    await page.getByTestId("panel-tab-pages").click();
-    await expect(page.getByTestId("side-panel")).toHaveCount(0);
-    await expect(page.getByTestId("panel-tabs")).toBeVisible();
+    // the tool strip floats over the canvas
+    await expect(page.getByTestId("tool-strip")).toBeVisible();
+    await expect(page.getByTestId("tool-select")).toBeVisible();
 
-    // clicking any tab reopens to it; switching while open keeps it open
-    await page.getByTestId("panel-tab-assets").click();
+    // assets rehomed behind Insert; layers rehomed into the inspector
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await expect(page.getByTestId("asset-import")).toBeVisible();
-    await page.getByTestId("panel-tab-layers").click();
+    await page.getByTestId("insp-layers").click();
     await expect(page.getByTestId("layers-empty")).toBeVisible();
-
-    // the wire's name/size/zoom caption above the page came out in L8
-    await expect(page.getByText(/Untitled publication · Letter/)).toHaveCount(0);
   });
 
   test("an imported image places at natural size, renders, and survives reload", async ({
     page,
   }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
     await expect(page.getByTestId("asset-tile-0")).toContainText("48 × 24 px");
@@ -972,7 +969,7 @@ test.describe("Side panel, assets & layers (L8)", () => {
 
     // 48×24 px at 96 DPI is 0.5×0.25 in → scaled to the 2 in working minimum,
     // centered on Letter: x (8.5−2)/2, y (11−1)/2 — verified numerically
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await page.getByTestId("object-picture").click();
     await expect(page.getByTestId("prop-w")).toHaveValue("2");
     await expect(page.getByTestId("prop-h")).toHaveValue("1");
@@ -982,13 +979,15 @@ test.describe("Side panel, assets & layers (L8)", () => {
     // document metadata (localStorage) + bytes (IndexedDB) both persist
     await page.reload();
     await expect(page.getByTestId("picture-image")).toBeVisible();
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
   });
 
   test("a PDF joins the library but stays honestly un-placeable", async ({ page }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/flyer.pdf");
     await expect(page.getByTestId("asset-tile-0")).toContainText("flyer.pdf");
     await expect(page.getByTestId("asset-tile-0")).toContainText("library only");
@@ -1003,7 +1002,8 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
 
     // the freshly drawn frame is still selected — the click binds, not places
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await page.getByTestId("asset-tile-0").click();
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
@@ -1012,7 +1012,8 @@ test.describe("Side panel, assets & layers (L8)", () => {
 
   test("removing an asset leaves placed pictures in a visible missing state", async ({ page }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
     await page.getByTestId("asset-tile-0").click();
     await expect(page.getByTestId("picture-image")).toBeVisible();
@@ -1035,7 +1036,7 @@ test.describe("Side panel, assets & layers (L8)", () => {
     await page.getByTestId("tool-rect").click();
     await dragOnPage(page, { x: 280, y: 60 }, { x: 360, y: 120 }); // top
 
-    await page.getByTestId("panel-tab-layers").click();
+    await page.getByTestId("insp-layers").click();
     await expect(page.getByTestId("layers-surface")).toContainText("Page 1");
     // topmost first — the reverse of draw order
     await expect(page.getByTestId("layer-row-0")).toContainText("Rectangle");
@@ -1101,7 +1102,8 @@ test.describe("Pictures: fill-on-click & drag-in (L9)", () => {
 
     await expect(page.getByTestId("picture-image")).toBeVisible();
     // the picked file also joined the Assets library
-    await page.getByTestId("panel-tab-assets").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
     await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
 
     // metadata + bytes both persist through reload
@@ -1126,17 +1128,17 @@ test.describe("Pictures: fill-on-click & drag-in (L9)", () => {
     page,
   }) => {
     await page.goto("/layout");
-    // import an asset via the panel, then draw an empty frame
-    await page.getByTestId("panel-tab-assets").click();
-    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
-    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
+    // draw an empty frame first — canvas clicks dismiss the assets popover,
+    // so the import happens after the frame exists (redesign Phase 3)
     await drawPicture(page, { x: 60, y: 240 }, { x: 240, y: 360 });
     await expect(page.getByTestId("picture-image")).toHaveCount(0);
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
+    await expect(page.getByTestId("asset-tile-0")).toContainText("photo.png");
 
     // native HTML drag-drop: dragstart on the tile, dragover + drop on the
     // pasteboard at the frame's screen center (DataTransfer shared via a handle).
-    // The Assets panel is still open from the import above — re-clicking its
-    // tab would collapse it (L8), so we don't.
     const frame = (await page.getByTestId("object-picture").boundingBox())!;
     const cx = frame.x + frame.width / 2;
     const cy = frame.y + frame.height / 2;
@@ -1196,7 +1198,7 @@ test.describe("Rotation & Arrange (L10)", () => {
 
     // the status bar reads the live angle, and the Properties field round-trips
     await expect(page.getByTestId("status-tool")).toContainText("90°");
-    await page.getByTestId("insp-props").click();
+    await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-rotation")).toHaveValue("90");
 
     // typing a rotation commits too
@@ -1204,8 +1206,7 @@ test.describe("Rotation & Arrange (L10)", () => {
     await page.getByTestId("prop-rotation").press("Enter");
     await expect(page.getByTestId("prop-rotation")).toHaveValue("45");
 
-    // Arrange tab's reset zeroes it
-    await page.getByTestId("ribbon-arrange").click();
+    // the Home band's Arrange group reset zeroes it
     await page.getByTestId("arrange-rotate-reset").click();
     await expect(page.getByTestId("prop-rotation")).toHaveValue("0");
 
@@ -1231,7 +1232,6 @@ test.describe("Rotation & Arrange (L10)", () => {
 
     // bring the ellipse to the front
     await page.getByTestId("object-ellipse").click();
-    await page.getByTestId("ribbon-arrange").click();
     await page.getByTestId("arrange-front").click();
     await expect(inked.last()).toHaveAttribute("data-testid", "object-ellipse"); // now top
     await expect(inked.first()).toHaveAttribute("data-testid", "object-rect");
@@ -1245,18 +1245,19 @@ test.describe("Rotation & Arrange (L10)", () => {
     page,
   }) => {
     await page.goto("/layout");
-    await page.getByTestId("panel-tab-assets").click();
-    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
 
-    // a wide picture frame (≈160×60 on screen), then rotate it 90° so it stands tall
+    // a wide picture frame (≈160×60 on screen), then rotate it 90° so it stands
+    // tall — drawn before the assets popover opens (canvas clicks dismiss it)
     await page.getByTestId("tool-pic").click();
     const box = (await page.getByTestId("publication-page").boundingBox())!;
     await page.mouse.move(box.x + 60, box.y + 110);
     await page.mouse.down();
     await page.mouse.move(box.x + 220, box.y + 170, { steps: 8 });
     await page.mouse.up();
-    await page.getByTestId("ribbon-arrange").click();
     await page.getByTestId("arrange-rotate-right").click();
+    await page.getByTestId("ribbon-insert").click();
+    await page.getByTestId("insert-assets").click();
+    await page.getByTestId("asset-file-input").setInputFiles("e2e/fixtures/photo.png");
 
     // the element's box is now the rotated AABB (≈60 wide × 160 tall); a point
     // 55px above center is INSIDE the tall visual but OUTSIDE the old 60px-tall
@@ -1308,18 +1309,25 @@ test.describe("Ruler guides & units (L11)", () => {
     await page.mouse.up();
     await expect(page.getByTestId("guide-h")).toHaveCount(1);
 
-    // draw a rect whose left edge is ~50px right of the vertical guide
+    // draw a rect whose left edge is ~50px right of the vertical guide.
+    // Positions are measured from the guide's rendered center so the scenario
+    // holds at any fit zoom, and the rect is kept narrow (40px) so its right
+    // edge stays clear of the page-center snap line — at some zooms a wider
+    // rect's right edge lands nearer the 4.25in center than the left edge is
+    // to the guide, and the center target wins the snap.
+    const gv = (await page.getByTestId("guide-v").boundingBox())!;
+    const gx = gv.x + gv.width / 2;
     await page.getByTestId("tool-rect").click();
-    await page.mouse.move(box.x + 180, box.y + 80);
+    await page.mouse.move(gx + 50, box.y + 80);
     await page.mouse.down();
-    await page.mouse.move(box.x + 250, box.y + 150, { steps: 8 });
+    await page.mouse.move(gx + 90, box.y + 150, { steps: 8 });
     await page.mouse.up();
 
-    // drag it left so its left edge lands ~5px off the guide → inside the 6px
+    // drag it left so its left edge lands ~4px off the guide → inside the 6px
     // snap radius, it locks onto the guide (a smart guide shows during the drag)
-    await page.mouse.move(box.x + 215, box.y + 115);
+    await page.mouse.move(gx + 70, box.y + 115);
     await page.mouse.down();
-    await page.mouse.move(box.x + 170, box.y + 115, { steps: 10 });
+    await page.mouse.move(gx + 24, box.y + 115, { steps: 10 });
     await expect(page.getByTestId("smart-guide").first()).toBeVisible();
     await page.mouse.up();
 
@@ -1593,5 +1601,277 @@ test.describe("Clipboard: copy, cut & paste (L13)", () => {
     await page.getByTestId("page-thumb-1").click();
     await expect(page.getByTestId("page-indicator")).toHaveText("Page 1 of 2");
     await expect(page.getByTestId("object-rect")).toHaveCount(0);
+  });
+});
+
+/**
+ * Named layers (redesign Phase 5, schema v3): the Layers tab's layer rows —
+ * create, target, hide, lock, merge — and the layer-band z-order clamp.
+ */
+test.describe("Named layers (Phase 5)", () => {
+  async function drawRectAt(page: import("@playwright/test").Page, x1: number, y1: number, x2: number, y2: number) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.getByTestId("tool-rect").click();
+    await page.mouse.move(box.x + x1, box.y + y1);
+    await page.mouse.down();
+    await page.mouse.move(box.x + x2, box.y + y2, { steps: 6 });
+    await page.mouse.up();
+  }
+
+  test("new layers receive new objects; hide and lock gate the canvas", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await drawRectAt(page, 40, 60, 120, 120);
+
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Layer 1");
+
+    // a new layer lands on top and becomes the draw target
+    await page.getByTestId("layer-add").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Layer 2");
+    await expect(page.getByTestId("layer-def-row-0")).toHaveAttribute("data-active", "true");
+    await drawRectAt(page, 160, 60, 240, 120);
+    await expect(page.getByTestId("object-rect")).toHaveCount(2);
+
+    // hiding the new layer removes its object from the canvas
+    await page.getByTestId("layer-eye-0").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(1);
+    await page.getByTestId("layer-eye-0").click();
+    await expect(page.getByTestId("object-rect")).toHaveCount(2);
+
+    // a locked layer renders but rejects selection clicks — the object stops
+    // accepting pointer events, so a click at its location selects nothing
+    await page.getByTestId("layer-lock-0").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Locked");
+    const pageBox = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.click(pageBox.x + 200, pageBox.y + 90);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
+    await page.getByTestId("layer-lock-0").click();
+  });
+
+  test("bring-to-front clamps to the layer band", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await drawRectAt(page, 40, 60, 120, 120); // base layer
+    await page.getByTestId("insp-layers").click();
+    await page.getByTestId("layer-add").click();
+    await drawRectAt(page, 80, 90, 200, 170); // upper layer, overlapping
+
+    // select the base rect (click its non-overlapped corner — the upper
+    // layer's rect intercepts the overlap region, as it should) and bring it
+    // to front — it stays beneath the upper layer's rect
+    const inked = page.locator('[data-testid="publication-page"] [data-testid="object-rect"]');
+    const pageBox = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.click(pageBox.x + 50, pageBox.y + 70);
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+    await page.getByTestId("arrange-front").click();
+    await expect(inked).toHaveCount(2);
+    // the upper-layer rect is still the last painted object
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("1");
+
+    // merge down folds both onto one layer, upper content on top
+    await page.getByTestId("layer-merge").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Layer 1");
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("2");
+    await expect(page.getByTestId("layer-delete-0")).toBeDisabled();
+  });
+
+  test("layers persist: rename + non-print survive a reload", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("insp-layers").click();
+    await page.getByTestId("layer-add").click();
+    await page.getByTestId("layer-def-row-0").locator("span[title='Double-click to rename']").dblclick();
+    await page.getByTestId("layer-name-input").fill("Dieline");
+    await page.getByTestId("layer-name-input").press("Enter");
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Dieline");
+    await page.getByTestId("layer-np-0").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Non-Print");
+
+    await page.reload();
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("insp-layers").click();
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Dieline");
+    await expect(page.getByTestId("layer-def-row-0")).toContainText("Non-Print");
+  });
+});
+
+/**
+ * Live preflight (redesign Phase 6): the headless check flags issues, the
+ * inspector badge counts them, cards locate their object, pins mark the
+ * canvas while the tab is active.
+ */
+test.describe("Preflight (Phase 6)", () => {
+  test("a near-trim object raises a warning; the card locates it", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    // clean document → clean panel
+    await page.getByTestId("insp-preflight").click();
+    await expect(page.getByTestId("preflight-clean")).toBeVisible();
+
+    // draw a rect hugging the top-left trim corner → safe-zone warning
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.getByTestId("tool-rect").click();
+    await page.mouse.move(box.x + 2, box.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 60, box.y + 100, { steps: 5 });
+    await page.mouse.up();
+
+    // debounce (500ms) then the live check publishes
+    await expect(page.getByTestId("preflight-status")).toContainText("1 issue found", {
+      timeout: 5000,
+    });
+    await expect(page.getByTestId("preflight-issue-safe-zone")).toContainText(
+      "Object Too Close to Trim",
+    );
+    await expect(page.getByTestId("preflight-pin")).toHaveCount(1);
+
+    // the card locates: page + selection
+    await page.keyboard.press("Escape"); // drop the draw selection first
+    await page.getByTestId("preflight-issue-safe-zone").click();
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+
+    // moving the object inside the safe zone clears the issue live
+    await page.getByTestId("insp-page").click();
+    await page.getByTestId("prop-x").fill("2");
+    await page.getByTestId("prop-x").press("Enter");
+    await page.getByTestId("prop-y").fill("2");
+    await page.getByTestId("prop-y").press("Enter");
+    await page.getByTestId("insp-preflight").click();
+    await expect(page.getByTestId("preflight-clean")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("preflight-pin")).toHaveCount(0);
+  });
+});
+
+/**
+ * Find & Replace (redesign Phase 7): live results, GREP mode, replace-all as
+ * one undo step, and the figma File-menu popover's New row.
+ */
+test.describe("Find & Replace (Phase 7)", () => {
+  test("finds live, replaces all in one undo step, GREP validates", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    // a text frame with two hits
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.getByTestId("tool-text").click();
+    await page.mouse.move(box.x + 60, box.y + 60);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 320, box.y + 140, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.getByTestId("text-edit-overlay")).toBeVisible();
+    await page.keyboard.type("John met John");
+    await page.keyboard.press("Escape");
+
+    await page.getByTestId("editing-replace").click();
+    await expect(page.getByTestId("find-replace")).toBeVisible();
+    await page.getByTestId("find-input").fill("john");
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Results (2 instances found)");
+    await expect(page.getByTestId("find-result-row")).toHaveCount(1);
+
+    // match case narrows to zero (typed text is "John")
+    await page.getByTestId("find-match-case").check();
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Results (0 instances found)");
+    await page.getByTestId("find-match-case").uncheck();
+
+    // invalid GREP reports instead of matching
+    await page.getByTestId("find-grep").check();
+    await page.getByTestId("find-input").fill("jo(hn");
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Invalid pattern");
+    await page.getByTestId("find-grep").uncheck();
+    await page.getByTestId("find-input").fill("john");
+
+    await page.getByTestId("replace-input").fill("Doe");
+    await page.getByTestId("replace-all").click();
+    await expect(page.getByTestId("replace-done")).toContainText("Replaced 2 instances");
+    await expect(page.getByTestId("find-results-heading")).toHaveText("Results (0 instances found)");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("find-replace")).toBeHidden();
+    await expect(page.getByTestId("text-content").first()).toContainText("Doe met Doe");
+
+    // one undo restores both
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("text-content").first()).toContainText("John met John");
+  });
+
+  test("the File menu's New row starts a fresh document", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("doc-name").fill("Old name");
+    await page.getByTestId("ribbon-file").click();
+    await page.getByTestId("file-new").click();
+    await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
+  });
+});
+
+/**
+ * Masters UX (redesign Phase 8): the amber editing banner, the contextual
+ * Master Properties panel, rename, and duplicate.
+ */
+test.describe("Masters UX (Phase 8)", () => {
+  test("editing a master shows the banner and contextual properties", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    await page.getByTestId("pane-masters").click();
+    await page.getByTestId("master-thumb-a").click();
+    await expect(page.getByTestId("master-banner")).toContainText("Editing Master Page Mode: Master A");
+    await expect(page.getByTestId("master-banner")).toContainText("1 document page");
+
+    // the Page tab is contextual: master properties while editing a master
+    await expect(page.getByTestId("master-properties")).toBeVisible();
+    await page.getByTestId("master-name").fill("Letterhead");
+    await expect(page.getByTestId("master-banner")).toContainText("Master Letterhead");
+
+    // duplicate opens the copy for editing
+    await page.getByTestId("master-duplicate").click();
+    await expect(page.getByTestId("master-banner")).toContainText("Letterhead copy");
+
+    await page.getByTestId("master-return").click();
+    await expect(page.getByTestId("master-banner")).toHaveCount(0);
+    await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
+  });
+});
+
+/**
+ * Template picker (redesign Phase 9): filters, selection drawer, and Create
+ * Document landing in the editor with the configured setup.
+ */
+test.describe("Template picker (Phase 9)", () => {
+  test("filter, configure, and create a document from a template", async ({ page }) => {
+    await page.goto("/templates");
+
+    // category filter + search narrow the explorer
+    await page.getByTestId("tpl-cat-blank").click();
+    await expect(page.getByTestId("tpl-card-booklet-basic")).toHaveCount(0);
+    await page.getByTestId("tpl-search").fill("a5");
+    await expect(page.getByTestId("tpl-card-blank-a5-portrait")).toBeVisible();
+    await expect(page.getByTestId("tpl-card-blank-letter")).toHaveCount(0);
+    await page.getByTestId("tpl-search").fill("");
+
+    // selecting a card opens the drawer seeded with its setup
+    await page.getByTestId("tpl-card-blank-ledger").click();
+    await expect(page.getByTestId("tpl-drawer")).toBeVisible();
+    await expect(page.getByTestId("tpl-w")).toHaveValue("11");
+    await expect(page.getByTestId("tpl-h")).toHaveValue("17");
+
+    // adjust orientation, then create
+    await page.getByTestId("tpl-landscape").click();
+    await page.getByTestId("tpl-create").click();
+    await page.waitForURL("**/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 17 × 11 in");
+  });
+
+  test("the Page tab and Home both link to the picker", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("choose-template").click();
+    await page.waitForURL("**/templates");
+    await page.goto("/");
+    await page.getByTestId("browse-templates").click();
+    await page.waitForURL("**/templates");
   });
 });

@@ -11,16 +11,17 @@ import { TitleBar } from "./TitleBar";
 import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
 import { InsertBand } from "./ribbon/InsertBand";
-import { LayoutBand } from "./ribbon/LayoutBand";
-import { TextBand } from "./ribbon/TextBand";
-import { ArrangeBand } from "./ribbon/ArrangeBand";
-import { ToolPalette } from "./palette/ToolPalette";
+import { FloatingToolStrip } from "./palette/FloatingToolStrip";
 import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
 import { ImportBanner } from "./ImportBanner";
+import { ImportReportScreen } from "./ImportReportScreen";
+import { MasterBanner } from "./MasterBanner";
 import { OversetCheck } from "./OversetCheck";
+import { PreflightBanner } from "./PreflightBanner";
+import { PreflightCheck } from "./PreflightCheck";
 
 /**
  * Home deep links (plan L3): `/layout?preset=…` starts a fresh document at
@@ -62,6 +63,7 @@ function DeepLinkInit() {
  */
 export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
+  const insp = useLayoutStore((s) => s.insp);
   useEditorKeyboard();
 
   // Lazy webfont registration (§10.5): whichever families the document uses
@@ -116,7 +118,7 @@ export function EditorShell() {
       </div>
 
       <div
-        className="hidden min-h-0 flex-1 flex-col lg:flex"
+        className="relative hidden min-h-0 flex-1 flex-col lg:flex"
         data-testid="layout-editor"
         data-hydrated={hydrated ? "true" : "false"}
       >
@@ -124,27 +126,32 @@ export function EditorShell() {
         <ImportBanner />
         {/* Headless (§10.4): measures imported text frames for overset after fonts settle */}
         <OversetCheck />
+        {/* Headless (Phase 6): live preflight — badge, panel, and canvas pins read it */}
+        <PreflightCheck />
         <RibbonTabs />
-        {/* Command band (wire 2b) — content swaps with the active ribbon tab.
-            Single-row sections (plan §2, deviation #5): auto height, controls
+        {/* Command band (redesign plan §2.4) — content swaps with the active
+            menu tab (Home/Insert). Auto height with captioned groups; controls
             wrap within their group on narrow viewports. */}
         <div
           data-testid={`band-${ribbon}`}
-          className="flex min-h-[64px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-[#f7f7f7]"
+          className="flex min-h-[78px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-chrome-ribbon"
         >
           {ribbon === "home" && <HomeBand />}
           {ribbon === "insert" && <InsertBand />}
-          {ribbon === "layout" && <LayoutBand />}
-          {ribbon === "text" && <TextBand />}
-          {ribbon === "arrange" && <ArrangeBand />}
         </div>
         <div className="flex min-h-0 flex-1">
-          <ToolPalette />
           <SidePanel />
-          <CanvasViewport />
+          {/* relative so the floating tool strip overlays the canvas region */}
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            <CanvasViewport />
+            <FloatingToolStrip />
+            <PreflightBanner />
+            <MasterBanner />
+          </div>
           <Inspector />
         </div>
         <StatusBar />
+        {insp === "import" && <ImportReportScreen />}
       </div>
     </>
   );

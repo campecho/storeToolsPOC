@@ -1,9 +1,12 @@
 # Working rules for this repository
 
-Two apps live here. The **host POC** (repo root) is paused, kept as a working
-reference. The **publisher prototype** (`publisher-prototype/`) is the active
-build; **`publisher-prototype/PLAN.md` is the source of truth** for all
-prototype work.
+Two apps live here, both active. The **host POC** (repo root) is being brought
+up to the updated UI in `docs/Publisher replacement.fig`;
+**`docs/UI_LAYOUT_REDESIGN_PLAN.md` is the source of truth** for that work.
+The **publisher prototype** (`publisher-prototype/`) continues separately;
+**`publisher-prototype/PLAN.md` is the source of truth** for all prototype
+work. Every task must be clearly directed at one app or the other — never
+assume a change spans both — unless and until the two are merged.
 
 ## Process
 

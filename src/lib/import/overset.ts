@@ -76,12 +76,14 @@ export function contentBoxPx(
     masters carry furniture, not imported body copy). Pure, so which frames get
     measured is testable without a DOM. */
 export function importedTextFrames(
-  doc: { pages: ReadonlyArray<{ objects: ReadonlyArray<LayoutObject> }> },
+  doc: { pages: ReadonlyArray<{ layers: ReadonlyArray<{ objects: ReadonlyArray<LayoutObject> }> }> },
 ): FrameObject[] {
   const frames: FrameObject[] = [];
   for (const page of doc.pages) {
-    for (const obj of page.objects) {
-      if (obj.type === "text" && obj.text) frames.push(obj);
+    for (const layer of page.layers) {
+      for (const obj of layer.objects) {
+        if (obj.type === "text" && obj.text) frames.push(obj);
+      }
     }
   }
   return frames;

@@ -100,8 +100,8 @@ describe("importedTextFrames + collectOversetIds (no text / no frames → empty 
   it("picks only text frames, across all pages", () => {
     const doc = {
       pages: [
-        { objects: [frame("t1"), { ...frame("r1"), type: "rect" as const, text: undefined }] },
-        { objects: [frame("t2")] },
+        { layers: [{ objects: [frame("t1"), { ...frame("r1"), type: "rect" as const, text: undefined }] }] },
+        { layers: [{ objects: [frame("t2")] }] },
       ],
     };
     expect(importedTextFrames(doc).map((f) => f.id)).toEqual(["t1", "t2"]);
@@ -110,8 +110,8 @@ describe("importedTextFrames + collectOversetIds (no text / no frames → empty 
   it("finds no frames in a document without text", () => {
     const doc = {
       pages: [
-        { objects: [{ ...frame("r1"), type: "rect" as const, text: undefined }] },
-        { objects: [] },
+        { layers: [{ objects: [{ ...frame("r1"), type: "rect" as const, text: undefined }] }] },
+        { layers: [{ objects: [] }] },
       ],
     };
     expect(importedTextFrames(doc)).toEqual([]);
@@ -130,7 +130,11 @@ describe("computeAutofit (the shrink-to-fit scan, via an injected probe)", () =>
     const base = createDefaultDocument();
     return {
       ...base,
-      pages: pages.map((objects, i) => ({ id: `page-${i + 1}`, masterId: "master-a", objects })),
+      pages: pages.map((objects, i) => ({
+        id: `page-${i + 1}`,
+        masterId: "master-a",
+        layers: [{ layerId: base.layers[0].id, objects }],
+      })),
     };
   };
   const docWith = (...objs: FrameObject[]): LayoutDocument => docPages(objs);

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FrameObject, LayoutDocument, LayoutObject } from "@/schema";
+import { BASE_LAYER_ID, baseLayerDef } from "@/schema";
 import type { EscherShapeTransform } from "./escher";
 import { extractShapeTransforms } from "./escher";
 import { applyFlipCorrections } from "./flip-correct";
@@ -76,7 +77,7 @@ const rectFrame = (id: string, x: number, y: number, w: number, h: number, rotat
 
 const makeResult = (pageObjects: LayoutObject[][]): MapResult => {
   const doc: LayoutDocument = {
-    version: 2,
+    version: 3,
     name: "synthetic",
     product: null,
     size: { w: PAGE_W, h: PAGE_H },
@@ -84,7 +85,12 @@ const makeResult = (pageObjects: LayoutObject[][]): MapResult => {
     bleed: 0,
     margin: 0.5,
     columns: 1,
-    pages: pageObjects.map((objects, i) => ({ id: `imp-p${i + 1}`, masterId: null, objects })),
+    pages: pageObjects.map((objects, i) => ({
+      id: `imp-p${i + 1}`,
+      masterId: null,
+      layers: [{ layerId: BASE_LAYER_ID, objects }],
+    })),
+    layers: [baseLayerDef()],
     masters: [],
     assets: {},
     guides: { v: [], h: [] },
@@ -118,7 +124,8 @@ const escherShape = (
 // emits one), so match the flip message to count only mirrored-box restorations.
 const correctedNotes = (r: MapResult) =>
   r.notes.filter((n) => n.kind === "corrected" && n.message.includes("Mirrored text box restored upright"));
-const frame = (r: MapResult, pageIdx: number, objIdx: number) => r.doc.pages[pageIdx].objects[objIdx] as FrameObject;
+const frame = (r: MapResult, pageIdx: number, objIdx: number) =>
+  r.doc.pages[pageIdx].layers[0].objects[objIdx] as FrameObject;
 
 /* ── Unit lane ── */
 
@@ -173,7 +180,7 @@ describe("flip-correct: synthetic corrections", () => {
       ],
     ]);
     const out = applyFlipCorrections(result, [escherShape(2, 3, 4, 1, { flipH: true })]);
-    expect(out.doc.pages[0].objects.map((o) => (o as FrameObject).rotation)).toEqual([179.9, 90, 0]);
+    expect(out.doc.pages[0].layers[0].objects.map((o) => (o as FrameObject).rotation)).toEqual([179.9, 90, 0]);
     expect(correctedNotes(out)).toHaveLength(0);
   });
 
@@ -264,7 +271,7 @@ const imported = (() => {
 })();
 
 const textFramesAt180 = (r: MapResult) =>
-  r.doc.pages.flatMap((p) => p.objects.filter((o) => o.type === "text" && Math.abs(o.rotation - 180) < 0.01));
+  r.doc.pages.flatMap((p) => p.layers[0].objects.filter((o) => o.type === "text" && Math.abs(o.rotation - 180) < 0.01));
 
 describe("flip-correct: real corpus — ecl_workbook", () => {
   it("all 56 folded text frames are restored upright with 56 corrected notes", () => {
@@ -288,7 +295,7 @@ describe("flip-correct: real corpus — ecl_workbook", () => {
 
     // Every corrected frame now sits at the master's true rotation (0).
     const byId = new Map(
-      corrected.doc.pages.flatMap((p) => p.objects.map((o) => [`${p.id}/${o.id}`, o] as const)),
+      corrected.doc.pages.flatMap((p) => p.layers[0].objects.map((o) => [`${p.id}/${o.id}`, o] as const)),
     );
     for (const n of notes) {
       const obj = byId.get(`${n.pageId}/${n.objectId}`);
@@ -303,7 +310,7 @@ describe("flip-correct: real corpus — ecl_workbook", () => {
   it("does not disturb the 82 frames imported at rotation 0", () => {
     const { mapped, corrected } = imported("ecl_workbook");
     const zeros = (r: MapResult) =>
-      r.doc.pages.flatMap((p) => p.objects.filter((o) => o.type === "text" && o.rotation === 0)).length;
+      r.doc.pages.flatMap((p) => p.layers[0].objects.filter((o) => o.type === "text" && o.rotation === 0)).length;
     expect(zeros(corrected)).toBe(zeros(mapped) + 56);
   });
 });

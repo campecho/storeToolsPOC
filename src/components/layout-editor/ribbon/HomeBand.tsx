@@ -2,43 +2,56 @@
 
 import {
   AlignCenter,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
   AlignJustify,
   AlignLeft,
   AlignRight,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  ArrowDown,
+  ArrowUp,
+  BringToFront,
   Clipboard,
   Copy,
   List,
+  RotateCcw,
+  RotateCw,
   Scissors,
   Search,
+  SendToBack,
 } from "lucide-react";
+import { useState } from "react";
 import { useLayoutStore } from "@/store";
+import { FindReplaceDialog } from "../FindReplaceDialog";
+import type { AlignKind } from "@/lib/layout/align";
 import { FONT_FAMILIES, FONT_SIZES, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
 import { FaceSelect } from "../FaceSelect";
 import { useTextTarget } from "../useTextTarget";
 import { RibbonGroup } from "./RibbonGroup";
 
 /**
- * Home command band (wire 2b · Home): Clipboard · Font · Paragraph · Styles ·
- * Editing. Clipboard is live (plan L13) — Paste/Cut/Copy act on the selection
- * and the session clipboard, with real enabled/disabled states. Font/
- * Paragraph/Styles are live against the text target (plan L5) — the frame
- * being edited or the selected text frame — and fall back to the wire's
- * at-rest faces, disabled, when there is none. Controls sit in one row per
- * group and wrap within it (plan §2, deviation #5) — the wire's big Paste
- * tile and stacked columns flatten to uniform pills.
- * PROTOTYPE-ONLY: the Editing group, the list/¶ controls, and Styles'
- * "+ New" are inert chrome for later slices (plan §6).
+ * Home command band (redesign plan §2.4 — figma Home ribbon): Clipboard ·
+ * Font · Paragraph · Styles · Align · Arrange · Editing. Clipboard is live
+ * (plan L13); Font/Paragraph/Styles are live against the text target (plan
+ * L5) and fall back to at-rest faces, disabled, when there is none. Align
+ * and Arrange carry the object actions from the retired Arrange tab (plan
+ * L7/L10) — selection alignment, z-order, and rotation — per decision of
+ * record #1: the old tab's functions rehome rather than drop.
+ * The Editing group opens Find & Replace (Phase 7).
+ * PROTOTYPE-ONLY: the list/¶ controls and Styles' "+ New" are inert chrome.
  */
 
-/** Static command pill — icon + label chrome (the Editing group). */
-function Cmd({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="flex h-6 items-center gap-[5px] whitespace-nowrap rounded-[5px] border border-[#e0e0e0] bg-white px-[7px] text-[10.5px] text-[#666]">
-      {icon}
-      {children}
-    </div>
-  );
-}
+const OBJECT_ALIGNS: { kind: AlignKind; label: string; testId: string; Icon: typeof AlignStartVertical }[] = [
+  { kind: "left", label: "Align left edges", testId: "arrange-align-left", Icon: AlignStartVertical },
+  { kind: "centerH", label: "Align horizontal centers", testId: "arrange-align-centerh", Icon: AlignCenterVertical },
+  { kind: "right", label: "Align right edges", testId: "arrange-align-right", Icon: AlignEndVertical },
+  { kind: "top", label: "Align top edges", testId: "arrange-align-top", Icon: AlignStartHorizontal },
+  { kind: "centerV", label: "Align vertical centers", testId: "arrange-align-centerv", Icon: AlignCenterHorizontal },
+  { kind: "bottom", label: "Align bottom edges", testId: "arrange-align-bottom", Icon: AlignEndHorizontal },
+];
 
 /** Clickable command pill with a disabled state (the live Clipboard group, L13). */
 function CmdBtn({
@@ -113,6 +126,7 @@ function IconBtn({
 }
 
 export function HomeBand() {
+  const [findOpen, setFindOpen] = useState(false);
   const { target, summary, apply, applyStyle } = useTextTarget();
   const font = summary?.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
@@ -123,6 +137,19 @@ export function HomeBand() {
   const copySelection = useLayoutStore((s) => s.copySelection);
   const cutSelection = useLayoutStore((s) => s.cutSelection);
   const pasteClipboard = useLayoutStore((s) => s.pasteClipboard);
+
+  // Align/Arrange (rehomed from the retired Arrange tab + Align inspector
+  // tab, plan L7/L10 — decision of record #1: functions move, never drop)
+  const selectedCount = useLayoutStore((s) => s.selectedIds.length);
+  const alignRel = useLayoutStore((s) => s.alignRel);
+  const setAlignRel = useLayoutStore((s) => s.setAlignRel);
+  const reorder = useLayoutStore((s) => s.reorder);
+  const rotateSelection = useLayoutStore((s) => s.rotateSelection);
+  const alignSelection = useLayoutStore((s) => s.alignSelection);
+  const distributeSelection = useLayoutStore((s) => s.distributeSelection);
+  const none = selectedCount === 0;
+  const alignDisabled = selectedCount < (alignRel === "selection" ? 2 : 1);
+  const distributeDisabled = selectedCount < 3;
 
   return (
     <>
@@ -278,10 +305,87 @@ export function HomeBand() {
         </div>
       </RibbonGroup>
 
-      <RibbonGroup label="Editing" last>
-        <Cmd icon={<Search size={12} strokeWidth={1.8} className="text-[#777]" />}>Find</Cmd>
-        <Cmd>Replace…</Cmd>
+      <RibbonGroup label="Align">
+        {OBJECT_ALIGNS.map(({ kind, label, testId, Icon }) => (
+          <IconBtn
+            key={kind}
+            wide
+            onClick={() => alignSelection(kind)}
+            disabled={alignDisabled}
+            testId={testId}
+            label={label}
+          >
+            <Icon size={15} strokeWidth={1.6} className="text-[#666]" />
+          </IconBtn>
+        ))}
+        <CmdBtn
+          onClick={() => distributeSelection("h")}
+          disabled={distributeDisabled}
+          testId="distribute-h"
+          label="Distribute horizontally"
+        >
+          Dist H
+        </CmdBtn>
+        <CmdBtn
+          onClick={() => distributeSelection("v")}
+          disabled={distributeDisabled}
+          testId="distribute-v"
+          label="Distribute vertically"
+        >
+          Dist V
+        </CmdBtn>
+        <FaceSelect
+          face={alignRel === "page" ? "To page" : "To selection"}
+          value={alignRel}
+          options={[
+            { value: "page", label: "Page" },
+            { value: "selection", label: "Selection" },
+          ]}
+          onChange={(v) => setAlignRel(v as "page" | "selection")}
+          testId="align-rel"
+          label="Align relative to"
+          className="flex h-6 items-center justify-between gap-1 rounded-[5px] border border-[#d6d6d6] bg-white px-[7px] text-[10.5px] text-[#555]"
+        />
       </RibbonGroup>
+
+      <RibbonGroup label="Arrange">
+        <IconBtn wide onClick={() => reorder("front")} disabled={none} testId="arrange-front" label="Bring to front">
+          <BringToFront size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => reorder("forward")} disabled={none} testId="arrange-forward" label="Bring forward">
+          <ArrowUp size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => reorder("backward")} disabled={none} testId="arrange-backward" label="Send backward">
+          <ArrowDown size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => reorder("back")} disabled={none} testId="arrange-back" label="Send to back">
+          <SendToBack size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => rotateSelection("left")} disabled={none} testId="arrange-rotate-left" label="Rotate 90° left">
+          <RotateCcw size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <IconBtn wide onClick={() => rotateSelection("right")} disabled={none} testId="arrange-rotate-right" label="Rotate 90° right">
+          <RotateCw size={15} strokeWidth={1.6} />
+        </IconBtn>
+        <CmdBtn onClick={() => rotateSelection("reset")} disabled={none} testId="arrange-rotate-reset" label="Reset rotation">
+          0°
+        </CmdBtn>
+      </RibbonGroup>
+
+      <RibbonGroup label="Editing" last>
+        <CmdBtn
+          icon={<Search size={12} strokeWidth={1.8} className="text-[#777]" />}
+          onClick={() => setFindOpen(true)}
+          testId="editing-find"
+          label="Find"
+        >
+          Find
+        </CmdBtn>
+        <CmdBtn onClick={() => setFindOpen(true)} testId="editing-replace" label="Replace">
+          Replace…
+        </CmdBtn>
+      </RibbonGroup>
+      {findOpen && <FindReplaceDialog onClose={() => setFindOpen(false)} />}
     </>
   );
 }

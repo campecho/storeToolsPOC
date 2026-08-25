@@ -41,7 +41,7 @@ describe("corpus: 3up_tabs.pub (binder-tab template, rotated text)", () => {
   });
 
   it("places each tab label exactly, rotated 90° clockwise", () => {
-    const tab1 = doc.pages[0].objects[0];
+    const tab1 = doc.pages[0].layers[0].objects[0];
     if (tab1.type !== "text" || !tab1.text) throw new Error("expected text frame");
     expect(tab1.x).toBe(7.1455);
     expect(tab1.y).toBe(1.9828);
@@ -52,8 +52,8 @@ describe("corpus: 3up_tabs.pub (binder-tab template, rotated text)", () => {
   });
 
   it("converts inch-denominated font sizes to points", () => {
-    const tab1 = doc.pages[0].objects[0];
-    const tab3 = doc.pages[2].objects[0];
+    const tab1 = doc.pages[0].layers[0].objects[0];
+    const tab3 = doc.pages[2].layers[0].objects[0];
     if (tab1.type !== "text" || !tab1.text || tab3.type !== "text" || !tab3.text) throw new Error("text");
     expect(tab1.text.paragraphs[0].runs[0].font.size).toBe(12); // 0.1667in × 72
     expect(tab3.text.paragraphs[0].runs[0].font.size).toBe(10); // 0.1389in × 72
@@ -64,13 +64,13 @@ describe("corpus: 3up_tabs.pub (binder-tab template, rotated text)", () => {
     const calibri = fonts.find((f) => f.source === "Calibri");
     expect(calibri?.mappedTo).toBe("Calibri");
     expect(calibri?.reason).toContain("Carlito");
-    const tab1 = doc.pages[0].objects[0];
+    const tab1 = doc.pages[0].layers[0].objects[0];
     if (tab1.type !== "text" || !tab1.text) throw new Error("text");
     expect(tab1.text.paragraphs[0].runs[0].font.family).toBe("Calibri");
   });
 
   it("carries the middle vertical alignment and default insets faithfully (P2)", () => {
-    const tab1 = doc.pages[0].objects[0];
+    const tab1 = doc.pages[0].layers[0].objects[0];
     if (tab1.type !== "text" || !tab1.text) throw new Error("text");
     expect(tab1.text.vAlign).toBe("middle");
     expect(tab1.text.inset).toEqual({ l: 0.04, r: 0.04, t: 0.04, b: 0.04 });
@@ -91,7 +91,7 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
   });
 
   it("carries the card copy with its geometry and per-run style", () => {
-    const firstText = doc.pages[0].objects.find((o) => o.type === "text");
+    const firstText = doc.pages[0].layers[0].objects.find((o) => o.type === "text");
     if (!firstText || firstText.type !== "text" || !firstText.text) throw new Error("text");
     expect(textContent(firstText.text)).toContain("3 Peckville Road");
     expect(firstText.text.paragraphs[0].align).toBe("right");
@@ -105,7 +105,7 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
   });
 
   it("extracts the single JPEG bitmap fill to one picture frame (P3)", () => {
-    const pictures = doc.pages.flatMap((p) => p.objects).filter((o) => o.type === "picture");
+    const pictures = doc.pages.flatMap((p) => p.layers[0].objects).filter((o) => o.type === "picture");
     expect(pictures).toHaveLength(1);
     const pic = pictures[0];
     if (pic.type !== "picture") throw new Error("picture");
@@ -123,7 +123,7 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
 
   it("keeps every shape inside the page bounds (sanity on real geometry)", () => {
     for (const page of doc.pages) {
-      for (const obj of page.objects) {
+      for (const obj of page.layers[0].objects) {
         if (obj.type === "line") continue;
         expect(obj.x).toBeGreaterThanOrEqual(-0.5);
         expect(obj.y).toBeGreaterThanOrEqual(-0.5);
@@ -136,7 +136,7 @@ describe("corpus: bcim_double_cut.pub (2-sided business card with content)", () 
 
 describe("corpus: production_checkpoint_labels.pub (layered, vector-heavy)", () => {
   const { doc, fidelity, fonts, notes } = convert("production_checkpoint_labels");
-  const objects = doc.pages.flatMap((p) => p.objects);
+  const objects = doc.pages.flatMap((p) => p.layers[0].objects);
   const texts = objects.filter((o) => o.type === "text");
 
   it("is a valid 2-page document carrying all 192 shapes", () => {
@@ -254,7 +254,7 @@ describe("corpus: business_card_template_10up.pub (master-page-only template)", 
   it("converts to a valid empty document — never a crash, never a fake win", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
     expect(doc.pages).toHaveLength(1);
-    expect(doc.pages[0].objects).toHaveLength(0);
+    expect(doc.pages[0].layers[0].objects).toHaveLength(0);
   });
 
   it("flags the upstream master-page limitation as tier 3", () => {
@@ -268,7 +268,7 @@ describe("corpus: ecl_workbook.pub (39-page training workbook — flips, arcs, w
   // heavy pages whose body copy Publisher wraps around images, numbered
   // callout circles drawn as two-arc ellipses, and '#' page-number fields.
   const { doc, fidelity, fonts, notes } = convert("ecl_workbook");
-  const objects = doc.pages.flatMap((p) => p.objects);
+  const objects = doc.pages.flatMap((p) => p.layers[0].objects);
 
   it("is a valid 39-page letter document carrying all 508 objects, nothing degraded", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
@@ -288,7 +288,7 @@ describe("corpus: ecl_workbook.pub (39-page training workbook — flips, arcs, w
     }
     expect(notes.some((n) => n.message.includes("bounding box"))).toBe(false);
     // the page-3 callout circle: a real ~0.466×0.400in ellipse, not h=0
-    const circle = doc.pages[2].objects.find(
+    const circle = doc.pages[2].layers[0].objects.find(
       (o) => o.type === "path" && Math.abs(o.w - 0.466) < 0.001 && Math.abs(o.h - 0.4) < 0.001,
     );
     expect(circle).toBeDefined();
@@ -323,7 +323,7 @@ describe("corpus: ecl_workbook.pub (39-page training workbook — flips, arcs, w
     // Per-page substitution, spot-pinned: page 1's footer reads "Page | 1",
     // page 37's "Page | 37".
     const footerOf = (page: number) =>
-      doc.pages[page - 1].objects.find(
+      doc.pages[page - 1].layers[0].objects.find(
         (o) => o.type === "text" && o.text && textContent(o.text).includes("Page |"),
       );
     const p1 = footerOf(1);

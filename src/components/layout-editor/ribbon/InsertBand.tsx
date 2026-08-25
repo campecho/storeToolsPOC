@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 // `Image` aliased: jsx-a11y/alt-text mistakes the lucide glyph for an <img>.
-import { Image as ImageIcon, Link, Shapes, Table } from "lucide-react";
+import { FolderOpen, Image as ImageIcon, Link, Shapes, Table } from "lucide-react";
 import { useLayoutStore } from "@/store";
+import { AssetsPane } from "../panel/AssetsPane";
 import { RibbonGroup } from "./RibbonGroup";
 
 /**
@@ -81,6 +83,51 @@ function TextBoxIcon() {
   );
 }
 
+/**
+ * Assets library, rehomed behind Insert (redesign decision of record #3 —
+ * the left Assets pane retired with the old side-panel strip in Phase 3):
+ * the tile toggles a popover hosting the same import/place library.
+ */
+function AssetsTile() {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrap} className="relative">
+      <Tile
+        label="Assets"
+        icon={<FolderOpen size={18} strokeWidth={1.6} />}
+        onClick={() => setOpen((v) => !v)}
+        testId="insert-assets"
+      />
+      {open && (
+        <div
+          data-testid="assets-popover"
+          className="absolute left-0 top-[58px] z-30 flex max-h-[420px] w-[240px] flex-col overflow-y-auto rounded-[8px] border border-[#dddddd] bg-white p-2 shadow-[0_4px_16px_rgba(0,0,0,.16)]"
+        >
+          <AssetsPane />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function InsertBand() {
   const setTool = useLayoutStore((s) => s.setTool);
   const addPage = useLayoutStore((s) => s.addPage);
@@ -93,7 +140,7 @@ export function InsertBand() {
       </RibbonGroup>
 
       <RibbonGroup label="Text & media" wide gap7>
-        {/* arm the matching tools (plan L4) — the palette shows the armed state */}
+        {/* arm the matching tools (plan L4) — the tool strip shows the armed state */}
         <Tile
           label="Text box"
           icon={<TextBoxIcon />}
@@ -106,6 +153,7 @@ export function InsertBand() {
           onClick={() => setTool("pic")}
           testId="insert-picture"
         />
+        <AssetsTile />
       </RibbonGroup>
 
       <RibbonGroup label="Illustrations" wide gap7>

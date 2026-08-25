@@ -2,7 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { surfaceObjects, useLayoutStore } from "@/store";
+import { interactiveSurfaceObjects, surfaceObjects, visibleSurfaceObjects, useLayoutStore } from "@/store";
+import { visibleLayerIds } from "@/lib/layout/layers";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
 import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
 import {
@@ -378,8 +379,25 @@ export function CanvasViewport() {
   const editingMaster = masterEditingId
     ? doc.masters.find((m) => m.id === masterEditingId)
     : undefined;
-  /** What the tools edit: the master's objects in master mode, else the page's (L6). */
-  const surface = editingMaster ? editingMaster.objects : page.objects;
+  /** What renders: the master's objects in master mode, else the page's
+      visible layers flattened bottom-to-top (schema v3 — hidden layers
+      vanish). Objects on locked layers render but reject interaction. */
+  const surface = editingMaster
+    ? editingMaster.objects
+    : page.layers
+        .filter((l) => visibleLayerIds(doc).has(l.layerId))
+        .flatMap((l) => l.objects);
+  const editableIds = new Set(
+    interactiveSurfaceObjects({ doc, activePageId, masterEditingId }).map((o) => o.id),
+  );
+
+  // preflight pins (Phase 6): shown while the Preflight tab is active
+  const insp = useLayoutStore((st) => st.insp);
+  const preflightIssues = useLayoutStore((st) => st.preflightIssues);
+  const pinned =
+    insp === "preflight" && !masterEditingId
+      ? preflightIssues.filter((i) => i.pageId === activePageId && i.objectId)
+      : [];
   /** Master furniture rendered beneath a page — non-selectable from the page. */
   const appliedMaster =
     !editingMaster && page.masterId
@@ -430,7 +448,7 @@ export function CanvasViewport() {
     const pg = s.doc.pages.find((p) => p.id === s.activePageId);
     const size = s.masterEditingId ? s.doc.size : effectivePageSize(s.doc, pg);
     return {
-      targets: snapTargets(s.doc, surfaceObjects(s), {
+      targets: snapTargets(s.doc, visibleSurfaceObjects(s), {
         exclude,
         columnGuidesOn: s.guidesVisible && s.doc.columns >= 2,
         guidesOn: s.guidesVisible, // objects snap to ruler-dragged guides (L11)
@@ -442,7 +460,7 @@ export function CanvasViewport() {
 
   /** Topmost picture frame on the editing surface containing a page-space point (L9). */
   const pictureAt = (pt: { x: number; y: number }) => {
-    const objs = surfaceObjects(useLayoutStore.getState());
+    const objs = interactiveSurfaceObjects(useLayoutStore.getState());
     for (let i = objs.length - 1; i >= 0; i--) {
       const o = objs[i];
       if (o.type !== "picture") continue;
@@ -896,7 +914,7 @@ export function CanvasViewport() {
       const ry = Math.min(g.startY, g.curY);
       const rw = Math.abs(g.curX - g.startX);
       const rh = Math.abs(g.curY - g.startY);
-      const hit = surfaceObjects(s)
+      const hit = interactiveSurfaceObjects(s)
         .filter((o) => {
           // marquee tests each object's visual footprint (AABB when rotated, L10)
           const b = rotatedBBox(o);
@@ -989,27 +1007,8 @@ export function CanvasViewport() {
             data-testid="canvas-file-input"
             onChange={onPickFile}
           />
-          {/* master-editing mode banner (plan L6). The wire's name/size/zoom
-              caption that sat here came out in L8 — the title bar and status
-              bar already carry all three. */}
-          {editingMaster && (
-            <div
-              data-testid="master-banner"
-              className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-[10px] whitespace-nowrap rounded-full border border-brand bg-brand-tint py-[3px] pl-3 pr-[3px] text-[11px] text-brand"
-            >
-              <span>
-                Editing master {editingMaster.label} — changes apply to every page that uses it
-              </span>
-              <button
-                type="button"
-                data-testid="master-done"
-                onClick={() => useLayoutStore.getState().setMasterEditing(null)}
-                className="cursor-pointer rounded-full border border-brand bg-white px-[9px] py-px text-[10px] font-semibold hover:bg-[#fff5f5]"
-              >
-                Done
-              </button>
-            </div>
-          )}
+          {/* the master-editing banner (Phase 8) renders in the shell —
+              MasterBanner, the figma's amber bar — not here */}
 
           {/* two-page spread partner (plan L12) — a static, click-to-activate
               page beside the active one, positioned in board space so it tracks
@@ -1040,7 +1039,10 @@ export function CanvasViewport() {
                     {pMaster?.objects.map((o) => (
                       <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} withTestId={false} />
                     ))}
-                    {spreadPartner.page.objects.map((o) => (
+                    {spreadPartner.page.layers
+                      .filter((l) => visibleLayerIds(doc).has(l.layerId))
+                      .flatMap((l) => l.objects)
+                      .map((o) => (
                       <ObjectNode key={o.id} obj={o} zoom={zoom} interactive={false} withTestId={false} />
                     ))}
                   </PageSurface>
@@ -1065,12 +1067,32 @@ export function CanvasViewport() {
                   key={o.id}
                   obj={o}
                   zoom={zoom}
-                  interactive={tool === "select"}
+                  interactive={tool === "select" && editableIds.has(o.id)}
                   editing={o.id === editingTextId}
                   onPointerDown={startMove(o)}
                   onDoubleClick={onObjectDoubleClick(o)}
                 />
               ))}
+              {/* preflight pins (Phase 6) — red markers at flagged objects */}
+              {pinned.map((i) => {
+                const o = surface.find((x) => x.id === i.objectId);
+                if (!o) return null;
+                const b = rotatedBBox(o);
+                return (
+                  <div
+                    key={`pin-${i.id}`}
+                    data-testid="preflight-pin"
+                    title={i.title}
+                    className={`pointer-events-none absolute z-10 h-[14px] w-[14px] rounded-full border-2 border-white shadow-[0_1px_3px_rgba(0,0,0,.35)] ${
+                      i.severity === "error" ? "bg-brand" : "bg-warn-border"
+                    }`}
+                    style={{
+                      left: inToPx(b.x + b.w, zoom) - 7,
+                      top: inToPx(b.y, zoom) - 7,
+                    }}
+                  />
+                );
+              })}
               {/* ruler guides render as a full-workspace layer over the
                   pasteboard (below), not clipped to the page. */}
               {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}

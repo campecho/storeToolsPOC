@@ -39,7 +39,10 @@ const WF_H = "text-[11px] font-semibold uppercase tracking-[0.04em] text-[#5f5f5
     a non-empty layout document earns a confirm first. */
 function layoutDocHasContent(): boolean {
   const doc = useLayoutStore.getState().doc;
-  return doc.pages.some((p) => p.objects.length > 0) || doc.masters.some((m) => m.objects.length > 0);
+  return (
+    doc.pages.some((p) => p.layers.some((l) => l.objects.length > 0)) ||
+    doc.masters.some((m) => m.objects.length > 0)
+  );
 }
 
 /** Inline state for the "Open in Layout Editor" handoff (PubConvertCallout phases,

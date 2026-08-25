@@ -1,12 +1,14 @@
-import type {
-  Asset,
-  LayoutDocument,
-  LayoutObject,
-  LayoutPage,
-  Paragraph,
-  PathSeg,
-  TextProps,
-  TextRun,
+import {
+  BASE_LAYER_ID,
+  baseLayerDef,
+  type Asset,
+  type LayoutDocument,
+  type LayoutObject,
+  type LayoutPage,
+  type Paragraph,
+  type PathSeg,
+  type TextProps,
+  type TextRun,
 } from "@/schema";
 import { DEFAULT_TEXT_COLOR, textContent } from "@/lib/layout/text";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
@@ -564,7 +566,8 @@ function mapPage(
     }
   }
 
-  return { id: pageId, masterId: null, objects };
+  // imports land entirely on the base layer — libmspub has no layer concept
+  return { id: pageId, masterId: null, layers: [{ layerId: BASE_LAYER_ID, objects }] };
 }
 
 /** Map a parsed intermediate document to the editor's document model. */
@@ -589,7 +592,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
         }
         return mapped;
       })
-    : [{ id: "imp-p1", masterId: null, objects: [] }];
+    : [{ id: "imp-p1", masterId: null, layers: [{ layerId: BASE_LAYER_ID, objects: [] }] }];
 
   if (fontCtx.sawDingbats)
     notes.push({
@@ -626,7 +629,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   }
 
   const doc: LayoutDocument = {
-    version: 2,
+    version: 3,
     name,
     product: null,
     size,
@@ -639,6 +642,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
     bleed: 0,
     margin: 0.5,
     columns: 1,
+    layers: [baseLayerDef()],
     pages,
     masters: [],
     assets: assets.assets,

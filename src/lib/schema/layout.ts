@@ -11,8 +11,10 @@ import { PhotoOpSchema } from "./photo";
  * CONTRACT: LayoutDocumentSchema IS the document format — the persistence
  * shape, the `.pub` import target (plan §9-§11), and the render contract. Any
  * backend stack implements against it; a committed example lives at
- * fixtures/layout-document.v2.json (v1 kept beside it as the migration input).
- * v1 documents migrate on load via migrateLegacyDocument (schema/layout-v1.ts).
+ * fixtures/layout-document.v3.json (v1/v2 kept beside it as migration inputs).
+ * Older documents migrate on load: v1 → v2 via migrateLegacyDocument
+ * (schema/layout-v1.ts), v2 → v3 via migrateV2Document (schema/layout-v2.ts) —
+ * v3 nests each page's flat objects into named layer containers (Phase 5).
  */
 
 export const OrientationSchema = z.enum(["portrait", "landscape"]);
@@ -157,16 +159,54 @@ export type LineObject = z.infer<typeof LineObjectSchema>;
 export const LayoutObjectSchema = z.union([FrameObjectSchema, LineObjectSchema]);
 export type LayoutObject = z.infer<typeof LayoutObjectSchema>;
 
+/**
+ * Named layer definition (schema v3, redesign Phase 5 — figma "Layers Tab").
+ * Definitions are document-level so names/visibility hold across pages;
+ * contents live per page in PageLayerSchema. Order in the document's `layers`
+ * array is bottom-to-top — the render order.
+ */
+export const LayerDefSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** Layers-panel accent (row bar) — assigned from a palette on creation. */
+  color: z.string(),
+  /** Hidden layers don't render and aren't hit-testable. */
+  visible: z.boolean(),
+  /** Layer-level lock — composes with per-object `locked`: an object is
+      effectively locked when either is true. */
+  locked: z.boolean(),
+  /** Renders in the editor (badged); excluded by print/export tooling. */
+  nonPrint: z.boolean(),
+});
+export type LayerDef = z.infer<typeof LayerDefSchema>;
+
+/** Every document has at least this layer; migrated v1/v2 content lands here. */
+export const BASE_LAYER_ID = "layer-base";
+export function baseLayerDef(): LayerDef {
+  return { id: BASE_LAYER_ID, name: "Layer 1", color: "#41b6e6", visible: true, locked: false, nonPrint: false };
+}
+
+/** One layer's content on one page — z-order within the layer is array order. */
+export const PageLayerSchema = z.object({
+  /** References a document-level LayerDef id. */
+  layerId: z.string(),
+  objects: z.array(LayoutObjectSchema),
+});
+export type PageLayer = z.infer<typeof PageLayerSchema>;
+
 // PROD-TODO: `masterId` is a soft reference — store actions guard it but the
 // schema doesn't; a dangling id renders furniture-less rather than erroring.
-// A real store enforces the constraint (FK or validation on write).
+// A real store enforces the constraint (FK or validation on write). The same
+// applies to `layers[].layerId` vs the document's layer definitions — store
+// normalization (lib/layout/layers.ts) keeps them 1:1 and ordered.
 export const LayoutPageSchema = z.object({
   id: z.string(),
   masterId: z.string().nullable(),
-  objects: z.array(LayoutObjectSchema),
-  /** Per-page size override (L12), inches — the §9 v2 delta pulled forward
-      additively/optional so pre-L12 documents keep parsing. Absent = the
-      document `size`; set = this page renders at its own effective size. */
+  /** Layer containers (schema v3), aligned 1:1 with the document's `layers`
+      order, bottom-to-top. Whole-page z-order is the concatenation. */
+  layers: z.array(PageLayerSchema).min(1),
+  /** Per-page size override (L12), inches. Absent = the document `size`;
+      set = this page renders at its own effective size. */
   sizeOverride: z.object({ w: z.number().positive(), h: z.number().positive() }).optional(),
 });
 export type LayoutPage = z.infer<typeof LayoutPageSchema>;
@@ -207,7 +247,7 @@ export const AssetSchema = z.object({
 export type Asset = z.infer<typeof AssetSchema>;
 
 export const LayoutDocumentSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(3),
   name: z.string(),
   product: ProductBindingSchema.nullable(),
   /** Effective page dimensions in inches (already orientation-applied). */
@@ -218,6 +258,10 @@ export const LayoutDocumentSchema = z.object({
   /** Column guides derive from this (plan §3.5). */
   columns: z.number().int().min(1),
   pages: z.array(LayoutPageSchema).min(1),
+  /** Layer definitions (schema v3), bottom-to-top; every page carries one
+      PageLayer per definition, in this order. Masters stay flat — master
+      furniture renders as a single band beneath all page layers. */
+  layers: z.array(LayerDefSchema).min(1),
   masters: z.array(MasterPageSchema),
   /** Asset library metadata (L8) — defaulted so pre-L8 documents keep parsing. */
   assets: z.record(AssetSchema).default({}),

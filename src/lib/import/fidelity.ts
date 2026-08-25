@@ -731,7 +731,7 @@ export function scoreAgainstReference(input: FidelityInput): FileScore {
           : `${where}: ref ${ref.w}×${ref.h}in vs doc ${size.w}×${size.h}in`,
     );
 
-    const docEls = splitDocObjects(page?.objects ?? []);
+    const docEls = splitDocObjects(page?.layers.flatMap((l) => l.objects) ?? []);
     const refTexts = ref?.texts ?? [];
     const refShapesAll = ref?.shapes ?? [];
     const refPlain = refShapesAll.filter((s) => !s.patternId);
