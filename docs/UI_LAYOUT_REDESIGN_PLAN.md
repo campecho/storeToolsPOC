@@ -181,8 +181,9 @@ Each phase lands independently; gate for every phase: `npm run typecheck`,
 as chrome changes), plus a review pass. Store changes stay in
 `layout-store.ts` unless a schema change is agreed (§6).
 
-**Status (2026-08-24): Phases 0–5 are implemented and green** (typecheck,
-lint, 1080 unit tests, 132 e2e — the one red e2e is a pre-existing
+**Status (2026-08-25): Phases 0–9 are implemented and green** — the full
+redesign scope; Phase 10 remains deferred, each item needing its own plan (typecheck,
+lint, 1121 unit tests, 141 e2e — the one red e2e is a pre-existing
 environment failure: the jailed HEIC conversion needs a codec this container
 lacks; it fails identically on the pre-redesign baseline). Notes of record
 from implementation: Popover/Modal/Field primitives deferred from Phase 0 to
@@ -191,7 +192,12 @@ contextual properties surface (page setup at rest, object properties with a
 selection) so the old Properties tab's functions survive within the four-tab
 figma layout; the import Review pane rides as a conditional fifth inspector
 tab until Phase 9's full-screen report; Distribute + Relative-to joined the
-Home band's Align group when the Align inspector tab retired.
+Home band's Align group when the Align inspector tab retired. Phase 6's
+preflight tiers the figma's thresholds (error under 150 DPI, warning under
+300; safe zone 0.125 in) and skips hidden/non-print layers. Phase 9's
+import report opens automatically for reviewable imports and closes onto a
+deep-linked object; the fixture banner gained View report as the reopen
+path.
 
 - **Phase 0 — Foundations.** Add the token palette above to `globals.css`
   `@theme`. Create shared primitives in `src/components/ui/`: `PillButton`
