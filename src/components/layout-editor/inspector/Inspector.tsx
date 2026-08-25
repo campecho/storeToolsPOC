@@ -1,6 +1,5 @@
 import { useLayoutStore, type InspectorTab } from "@/store";
 import { TabStrip, type TabStripItem } from "@/components/ui/TabStrip";
-import { ImportReportPane } from "../panel/ImportReportPane";
 import { LayersPane } from "../panel/LayersPane";
 import { MasterPropertiesTab } from "./MasterPropertiesTab";
 import { PageTab } from "./PageTab";
@@ -10,9 +9,9 @@ import { TextTab } from "./TextTab";
 
 /**
  * Right inspector (redesign plan §2.5, 288px): Page · Text · Layers ·
- * Preflight on the shared TabStrip (decision of record #7), plus a
- * conditional Review tab while a .pub import report is open (interim home
- * until the Phase 9 full-screen report). The Page tab is the properties
+ * Preflight on the shared TabStrip (decision of record #7); the import
+ * report opens as the Phase 9 full-screen surface, not a tab here. The
+ * Page tab is the properties
  * surface — page setup at rest, object properties with a selection — so the
  * old Properties tab's functions live on without a fifth permanent tab. The
  * old Align tab's actions moved to the Home band's Align group in Phase 3.
@@ -23,7 +22,6 @@ export function Inspector() {
   const setInsp = useLayoutStore((s) => s.setInsp);
   const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
   const masterEditing = useLayoutStore((s) => s.masterEditingId !== null);
-  const hasReport = useLayoutStore((s) => s.importReport !== null);
   const issueCount = useLayoutStore((s) => s.preflightIssues.length);
 
   const tabs: TabStripItem<InspectorTab>[] = [
@@ -31,11 +29,10 @@ export function Inspector() {
     { id: "text", label: "Text" },
     { id: "layers", label: "Layers" },
     { id: "preflight", label: "Preflight", badge: issueCount },
-    ...(hasReport ? [{ id: "import" as const, label: "Review" }] : []),
   ];
 
-  // the conditional Review tab can be active when the report clears mid-session
-  const active = insp === "import" && !hasReport ? "page" : insp;
+  // insp === "import" opens the full-screen report (Phase 9), not a tab here
+  const active = insp === "import" ? "page" : insp;
 
   return (
     <div className="flex w-[288px] shrink-0 flex-col border-l border-[#ececec] bg-white">
@@ -59,7 +56,6 @@ export function Inspector() {
         {active === "text" && <TextTab />}
         {active === "layers" && <LayersPane />}
         {active === "preflight" && <PreflightTab />}
-        {active === "import" && hasReport && <ImportReportPane />}
       </div>
     </div>
   );

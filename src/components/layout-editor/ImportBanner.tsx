@@ -38,6 +38,14 @@ export function ImportBanner() {
         </div>
         <button
           type="button"
+          data-testid="import-view-report"
+          onClick={() => setInsp("import")}
+          className="shrink-0 cursor-pointer rounded-[5px] border border-[#d9c489] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#7a5b00] hover:bg-[#f8f0da]"
+        >
+          View report
+        </button>
+        <button
+          type="button"
           aria-label="Dismiss"
           data-testid="import-banner-dismiss"
           onClick={() => setDismissed(true)}

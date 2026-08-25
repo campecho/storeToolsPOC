@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BoardEntryCard } from "./BoardEntryCard";
 
 /**
@@ -35,7 +36,9 @@ export function ProductColumn() {
             <span className="text-[12px] font-semibold text-brand">Recent projects</span>
             <span className="text-[11px] text-brand">▾</span>
           </div>
-          <span className="cursor-pointer text-[12px] text-info">Browse all templates →</span>
+          <Link href="/templates" data-testid="browse-templates" className="cursor-pointer text-[12px] text-info hover:underline">
+            Browse all templates →
+          </Link>
         </div>
       </div>
 

@@ -17,6 +17,7 @@ import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
 import { ImportBanner } from "./ImportBanner";
+import { ImportReportScreen } from "./ImportReportScreen";
 import { MasterBanner } from "./MasterBanner";
 import { OversetCheck } from "./OversetCheck";
 import { PreflightBanner } from "./PreflightBanner";
@@ -62,6 +63,7 @@ function DeepLinkInit() {
  */
 export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
+  const insp = useLayoutStore((s) => s.insp);
   useEditorKeyboard();
 
   // Lazy webfont registration (§10.5): whichever families the document uses
@@ -116,7 +118,7 @@ export function EditorShell() {
       </div>
 
       <div
-        className="hidden min-h-0 flex-1 flex-col lg:flex"
+        className="relative hidden min-h-0 flex-1 flex-col lg:flex"
         data-testid="layout-editor"
         data-hydrated={hydrated ? "true" : "false"}
       >
@@ -149,6 +151,7 @@ export function EditorShell() {
           <Inspector />
         </div>
         <StatusBar />
+        {insp === "import" && <ImportReportScreen />}
       </div>
     </>
   );

@@ -1834,3 +1834,44 @@ test.describe("Masters UX (Phase 8)", () => {
     await expect(page.getByText("Custom size — not bound to a SKU")).toBeVisible();
   });
 });
+
+/**
+ * Template picker (redesign Phase 9): filters, selection drawer, and Create
+ * Document landing in the editor with the configured setup.
+ */
+test.describe("Template picker (Phase 9)", () => {
+  test("filter, configure, and create a document from a template", async ({ page }) => {
+    await page.goto("/templates");
+
+    // category filter + search narrow the explorer
+    await page.getByTestId("tpl-cat-blank").click();
+    await expect(page.getByTestId("tpl-card-booklet-basic")).toHaveCount(0);
+    await page.getByTestId("tpl-search").fill("a5");
+    await expect(page.getByTestId("tpl-card-blank-a5-portrait")).toBeVisible();
+    await expect(page.getByTestId("tpl-card-blank-letter")).toHaveCount(0);
+    await page.getByTestId("tpl-search").fill("");
+
+    // selecting a card opens the drawer seeded with its setup
+    await page.getByTestId("tpl-card-blank-ledger").click();
+    await expect(page.getByTestId("tpl-drawer")).toBeVisible();
+    await expect(page.getByTestId("tpl-w")).toHaveValue("11");
+    await expect(page.getByTestId("tpl-h")).toHaveValue("17");
+
+    // adjust orientation, then create
+    await page.getByTestId("tpl-landscape").click();
+    await page.getByTestId("tpl-create").click();
+    await page.waitForURL("**/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 17 × 11 in");
+  });
+
+  test("the Page tab and Home both link to the picker", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+    await page.getByTestId("choose-template").click();
+    await page.waitForURL("**/templates");
+    await page.goto("/");
+    await page.getByTestId("browse-templates").click();
+    await page.waitForURL("**/templates");
+  });
+});

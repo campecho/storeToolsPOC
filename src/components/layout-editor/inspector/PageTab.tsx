@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { useLayoutStore } from "@/store";
 import { effectivePageSize } from "@/lib/layout/geometry";
 import { PAGE_PRESETS, formatIn, getPreset, matchPreset } from "@/lib/layout/presets";
@@ -110,6 +111,13 @@ export function PageTab() {
           <div className="cursor-pointer text-[11px] text-info">
             Choose a product to make it born-correct →
           </div>
+          <Link
+            href="/templates"
+            data-testid="choose-template"
+            className="text-[11px] text-info hover:underline"
+          >
+            Choose a template instead
+          </Link>
         </div>
       </div>
 

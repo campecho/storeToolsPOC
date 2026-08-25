@@ -390,6 +390,17 @@ export interface LayoutEditorState {
   preflightIssues: PreflightIssue[];
   setPreflightIssues: (issues: PreflightIssue[]) => void;
 
+  /** Fresh document from a template configuration (Phase 9) — resets the
+      session exactly like resetDoc, then applies the chosen setup. */
+  startFromTemplate: (config: {
+    name: string;
+    w: number;
+    h: number;
+    orientation: Orientation;
+    margin: number;
+    bleed: number;
+  }) => void;
+
   /** Replace every hit across pages and masters (Phase 7) — one undo step;
       a no-hit run leaves the document untouched. */
   replaceAllText: (query: string, replacement: string, opts?: FindOptions) => void;
@@ -645,6 +656,46 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setPages: (pages) => set({ pages }),
 
       setPreflightIssues: (issues) => set({ preflightIssues: issues }),
+
+      startFromTemplate: (config) =>
+        set((s) => {
+          void clearAssetBlobs(); // the library resets with the document
+          const base = createDefaultDocument();
+          const landscape = config.orientation === "landscape";
+          const doc: LayoutDocument = {
+            ...base,
+            name: config.name,
+            size: landscape
+              ? { w: Math.max(config.w, config.h), h: Math.min(config.w, config.h) }
+              : { w: Math.min(config.w, config.h), h: Math.max(config.w, config.h) },
+            orientation: config.orientation,
+            margin: config.margin,
+            bleed: config.bleed,
+          };
+          return {
+            doc,
+            activePageId: "page-1",
+            activeLayerId: BASE_LAYER_ID,
+            masterEditingId: null,
+            guidesVisible: true,
+            spread: false,
+            pageSizeScope: "document",
+            pan: { x: 0, y: 0 },
+            selectedIds: [],
+            editingTextId: null,
+            past: [],
+            future: [],
+            clipboard: [],
+            pasteCount: 0,
+            fitRequestId: s.fitRequestId + 1,
+            importReport: null,
+            fileName: null,
+            fileCreatedAt: null,
+            savedDoc: null,
+            fileError: null,
+            insp: "page" as const,
+          };
+        }),
 
       replaceAllText: (query, replacement, opts) =>
         set((s) => {

@@ -8,11 +8,15 @@ import { expect, test, type Page } from "@playwright/test";
  * the assertions below are pinned to fixtures/pub-traces/demo-flyer.trace.
  */
 
-const importDemoPub = async (page: Page) => {
+const importDemoPub = async (page: Page, opts: { keepReport?: boolean } = {}) => {
   await page.goto("/");
   await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/demo.pub");
   await page.waitForURL("**/layout");
   await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+  // the Phase 9 full-screen report auto-opens over the editor for reviewable
+  // imports — close it unless the test is about the report itself
+  await expect(page.getByTestId("import-report-screen")).toBeVisible();
+  if (!opts.keepReport) await page.getByTestId("report-close").click();
 };
 
 // The Playwright web server runs with STP_IMPORT_FIXTURE=1 (playwright.config.ts),
@@ -134,11 +138,12 @@ test.describe(".pub import (P1)", () => {
 // its note deep-links to the object. Imports here are fixture mode, so the
 // summary carries a "Demo mode" chip; the store auto-opens the Review tab.
 test.describe(".pub import — report panel (P4)", () => {
-  test("the Review tab opens the report pane with a fidelity summary", async ({ page }) => {
-    await importDemoPub(page);
+  test("the import opens the full-screen report with a fidelity summary", async ({ page }) => {
+    await importDemoPub(page, { keepReport: true });
 
-    // The 4th tab appears only after an import, and the store opens straight to it.
-    await expect(page.getByTestId("insp-import")).toBeVisible();
+    // The full-screen report opens straight after the import (Phase 9).
+    await expect(page.getByTestId("import-report-screen")).toBeVisible();
+    await expect(page.getByTestId("report-stats")).toBeVisible();
     const pane = page.getByTestId("import-report-pane");
     await expect(pane).toBeVisible();
     await expect(pane).toContainText("demo.pub"); // the source filename
@@ -150,13 +155,17 @@ test.describe(".pub import — report panel (P4)", () => {
   test("a note deep-links to its object and navigates to its page", async ({ page }) => {
     await importDemoPub(page);
 
-    // Move to page 2 so the deep link's navigation back to page 1 is observable.
+    // Move to page 2 (so the deep link's navigation back is observable),
+    // then reopen the report from the banner (Phase 9 full screen).
     await page.getByTestId("page-next").click();
     await expect(page.getByTestId("page-indicator")).toContainText("Page 2 of 2");
+    await page.getByTestId("import-view-report").click();
+    await expect(page.getByTestId("import-report-screen")).toBeVisible();
 
     // The first note link is the degraded rounded-rect (page 1). Clicking it
-    // jumps to that page and selects the frame.
+    // closes the screen, jumps to that page, and selects the frame.
     await page.getByTestId("import-note-link").first().click();
+    await expect(page.getByTestId("import-report-screen")).toHaveCount(0);
     await expect(page.getByTestId("page-indicator")).toContainText("Page 1 of 2");
 
     // Properties read back the rounded-rect's exact geometry — proof it's the
