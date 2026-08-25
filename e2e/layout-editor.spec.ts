@@ -1696,3 +1696,51 @@ test.describe("Named layers (Phase 5)", () => {
     await expect(page.getByTestId("layer-def-row-0")).toContainText("Non-Print");
   });
 });
+
+/**
+ * Live preflight (redesign Phase 6): the headless check flags issues, the
+ * inspector badge counts them, cards locate their object, pins mark the
+ * canvas while the tab is active.
+ */
+test.describe("Preflight (Phase 6)", () => {
+  test("a near-trim object raises a warning; the card locates it", async ({ page }) => {
+    await page.goto("/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+
+    // clean document → clean panel
+    await page.getByTestId("insp-preflight").click();
+    await expect(page.getByTestId("preflight-clean")).toBeVisible();
+
+    // draw a rect hugging the top-left trim corner → safe-zone warning
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.getByTestId("tool-rect").click();
+    await page.mouse.move(box.x + 2, box.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 60, box.y + 100, { steps: 5 });
+    await page.mouse.up();
+
+    // debounce (500ms) then the live check publishes
+    await expect(page.getByTestId("preflight-status")).toContainText("1 issue found", {
+      timeout: 5000,
+    });
+    await expect(page.getByTestId("preflight-issue-safe-zone")).toContainText(
+      "Object Too Close to Trim",
+    );
+    await expect(page.getByTestId("preflight-pin")).toHaveCount(1);
+
+    // the card locates: page + selection
+    await page.keyboard.press("Escape"); // drop the draw selection first
+    await page.getByTestId("preflight-issue-safe-zone").click();
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+
+    // moving the object inside the safe zone clears the issue live
+    await page.getByTestId("insp-page").click();
+    await page.getByTestId("prop-x").fill("2");
+    await page.getByTestId("prop-x").press("Enter");
+    await page.getByTestId("prop-y").fill("2");
+    await page.getByTestId("prop-y").press("Enter");
+    await page.getByTestId("insp-preflight").click();
+    await expect(page.getByTestId("preflight-clean")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId("preflight-pin")).toHaveCount(0);
+  });
+});

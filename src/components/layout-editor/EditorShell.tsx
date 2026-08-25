@@ -18,6 +18,8 @@ import { Inspector } from "./inspector/Inspector";
 import { StatusBar } from "./StatusBar";
 import { ImportBanner } from "./ImportBanner";
 import { OversetCheck } from "./OversetCheck";
+import { PreflightBanner } from "./PreflightBanner";
+import { PreflightCheck } from "./PreflightCheck";
 
 /**
  * Home deep links (plan L3): `/layout?preset=…` starts a fresh document at
@@ -121,6 +123,8 @@ export function EditorShell() {
         <ImportBanner />
         {/* Headless (§10.4): measures imported text frames for overset after fonts settle */}
         <OversetCheck />
+        {/* Headless (Phase 6): live preflight — badge, panel, and canvas pins read it */}
+        <PreflightCheck />
         <RibbonTabs />
         {/* Command band (redesign plan §2.4) — content swaps with the active
             menu tab (Home/Insert). Auto height with captioned groups; controls
@@ -138,6 +142,7 @@ export function EditorShell() {
           <div className="relative flex min-h-0 min-w-0 flex-1">
             <CanvasViewport />
             <FloatingToolStrip />
+            <PreflightBanner />
           </div>
           <Inspector />
         </div>

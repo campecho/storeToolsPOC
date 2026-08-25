@@ -52,6 +52,7 @@ import {
   type DistributeAxis,
 } from "@/lib/layout/align";
 import type { ImportReport } from "@/lib/import/report";
+import type { PreflightIssue } from "@/lib/layout/preflight";
 
 /**
  * Layout-editor state (plan §3.3). Prototype UI-state names are kept verbatim
@@ -382,6 +383,12 @@ export interface LayoutEditorState {
   setInsp: (insp: InspectorTab) => void;
   setPages: (pages: PagesPaneView) => void;
 
+  // preflight (redesign Phase 6) — session results from the live check;
+  // written by the headless PreflightCheck component, read by the inspector
+  // badge/panel and the canvas pins. Not a history step.
+  preflightIssues: PreflightIssue[];
+  setPreflightIssues: (issues: PreflightIssue[]) => void;
+
   // layers (schema v3, redesign Phase 5)
   /** Target for fresh draws/pastes on a page surface; clamped on doc swaps. */
   activeLayerId: string;
@@ -589,6 +596,7 @@ export const useLayoutStore = create<LayoutEditorState>()(
       insp: "page",
       pages: "pages",
       activeLayerId: BASE_LAYER_ID,
+      preflightIssues: [],
 
       doc: createDefaultDocument(),
       activePageId: "page-1",
@@ -625,6 +633,8 @@ export const useLayoutStore = create<LayoutEditorState>()(
       setTool: (tool) => set({ tool, editingTextId: null }),
       setInsp: (insp) => set({ insp }),
       setPages: (pages) => set({ pages }),
+
+      setPreflightIssues: (issues) => set({ preflightIssues: issues }),
 
       setActiveLayer: (layerId) =>
         set((s) => (s.doc.layers.some((l) => l.id === layerId) ? { activeLayerId: layerId } : s)),

@@ -15,20 +15,20 @@ import { TextTab } from "./TextTab";
  * surface — page setup at rest, object properties with a selection — so the
  * old Properties tab's functions live on without a fifth permanent tab. The
  * old Align tab's actions moved to the Home band's Align group in Phase 3.
- * The Preflight badge counts live issues from Phase 6 — until then it stays
- * hidden at zero.
+ * The Preflight badge counts the live check's issues (Phase 6).
  */
 export function Inspector() {
   const insp = useLayoutStore((s) => s.insp);
   const setInsp = useLayoutStore((s) => s.setInsp);
   const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
   const hasReport = useLayoutStore((s) => s.importReport !== null);
+  const issueCount = useLayoutStore((s) => s.preflightIssues.length);
 
   const tabs: TabStripItem<InspectorTab>[] = [
     { id: "page", label: "Page" },
     { id: "text", label: "Text" },
     { id: "layers", label: "Layers" },
-    { id: "preflight", label: "Preflight", badge: 0 },
+    { id: "preflight", label: "Preflight", badge: issueCount },
     ...(hasReport ? [{ id: "import" as const, label: "Review" }] : []),
   ];
 

@@ -390,6 +390,14 @@ export function CanvasViewport() {
   const editableIds = new Set(
     interactiveSurfaceObjects({ doc, activePageId, masterEditingId }).map((o) => o.id),
   );
+
+  // preflight pins (Phase 6): shown while the Preflight tab is active
+  const insp = useLayoutStore((st) => st.insp);
+  const preflightIssues = useLayoutStore((st) => st.preflightIssues);
+  const pinned =
+    insp === "preflight" && !masterEditingId
+      ? preflightIssues.filter((i) => i.pageId === activePageId && i.objectId)
+      : [];
   /** Master furniture rendered beneath a page — non-selectable from the page. */
   const appliedMaster =
     !editingMaster && page.masterId
@@ -1084,6 +1092,26 @@ export function CanvasViewport() {
                   onDoubleClick={onObjectDoubleClick(o)}
                 />
               ))}
+              {/* preflight pins (Phase 6) — red markers at flagged objects */}
+              {pinned.map((i) => {
+                const o = surface.find((x) => x.id === i.objectId);
+                if (!o) return null;
+                const b = rotatedBBox(o);
+                return (
+                  <div
+                    key={`pin-${i.id}`}
+                    data-testid="preflight-pin"
+                    title={i.title}
+                    className={`pointer-events-none absolute z-10 h-[14px] w-[14px] rounded-full border-2 border-white shadow-[0_1px_3px_rgba(0,0,0,.35)] ${
+                      i.severity === "error" ? "bg-brand" : "bg-warn-border"
+                    }`}
+                    style={{
+                      left: inToPx(b.x + b.w, zoom) - 7,
+                      top: inToPx(b.y, zoom) - 7,
+                    }}
+                  />
+                );
+              })}
               {/* ruler guides render as a full-workspace layer over the
                   pasteboard (below), not clipped to the page. */}
               {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}
