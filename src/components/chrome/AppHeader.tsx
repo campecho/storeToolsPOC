@@ -7,10 +7,11 @@ import { Bell, MessageSquare, Search } from "lucide-react";
 import { useFeedbackStore, selectUnreadCount } from "@/store";
 
 /**
- * Suite top navigation (redesign plan §2.1 — figma "Top Navigation", 59px on
- * Staples red). Tabs per decision of record #4: all five render, the three
- * without surfaces stay disabled. Feedback + notifications keep their
- * functions (no-dropped-functions rule) restyled for the red bar.
+ * Suite top navigation (redesign plan §2.1 — figma "Top Navigation" on
+ * Staples red; slimmed to 50px and divider strokes dropped by request).
+ * Tabs per decision of record #4: all five render, the three without
+ * surfaces stay disabled. Feedback + notifications keep their functions
+ * (no-dropped-functions rule) restyled for the red bar.
  */
 const SUITE_TABS: { label: string; href: Route | null; testId: string }[] = [
   { label: "Publisher", href: "/layout", testId: "suite-publisher" },
@@ -28,7 +29,7 @@ export function AppHeader() {
   const unread = useFeedbackStore(selectUnreadCount);
 
   return (
-    <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-2 bg-brand px-3 sm:h-[59px] sm:gap-3 sm:px-4">
+    <header className="relative z-20 flex h-[50px] shrink-0 items-center gap-2 bg-brand px-3 sm:gap-3 sm:px-4">
       <Link href="/" className="flex shrink-0 items-center" aria-label="PrintStudio home">
         <span className="text-[15px] font-bold text-white">PrintStudio</span>
       </Link>
@@ -43,7 +44,7 @@ export function AppHeader() {
                 data-testid={testId}
                 aria-disabled="true"
                 title="Coming later in the beta"
-                className="flex cursor-not-allowed items-center border-l border-white/30 px-3 text-[12.5px] text-white/60 lg:px-4"
+                className="flex cursor-not-allowed items-center px-3 text-[12.5px] text-white/60 lg:px-4"
               >
                 {label}
               </span>
@@ -55,7 +56,7 @@ export function AppHeader() {
               href={href}
               data-testid={testId}
               aria-current={active ? "page" : undefined}
-              className={`flex items-center border-l border-white/30 px-3 text-[12.5px] text-white lg:px-4 ${
+              className={`flex items-center px-3 text-[12.5px] text-white lg:px-4 ${
                 active ? "bg-brand-press font-semibold" : "hover:bg-brand-press/60"
               }`}
             >
