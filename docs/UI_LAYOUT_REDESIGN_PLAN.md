@@ -51,14 +51,16 @@ Editor screen, top to bottom (1462×906 reference frame):
    (Earlier frames show icon-only nav items; the labeled variant appears in
    every later frame and is the one to build.)
 2. **Document header** — 35px (figma showed 54px; slimmed by request
-   2026-08-26), white, bottom border `#dddddd`. Back arrow;
-   centered doc identity "Smith_BizCard_v2 · Business card 3.5×2"; right:
-   "Autosaved 10:24" + green status badge (stroke `#048103`).
-3. **Menu bar** — 33px, `#f0f0f0`. Left cluster: undo, redo, print icon
-   buttons. Menu items **File · Home · Insert · View · Help**; active item
-   gets a red underline (and red label in later frames); an *open* File menu
-   gets a `#d3d3d3` pill background. (Some frames add Layout/Text/Arrange
-   menus — treat File/Home/Insert/View/Help as canonical; see §6 Q1.)
+   2026-08-26), white, bottom border `#dddddd`. Back arrow; then the menu
+   cluster (see 3); centered doc identity "Smith_BizCard_v2 · Business card
+   3.5×2"; right: "Autosaved 10:24" + green status badge (stroke `#048103`).
+3. **Menu cluster** — merged into the document header by request 2026-08-26
+   (the figma showed it as its own 33px `#f0f0f0` bar). Left cluster: undo,
+   redo, print icon buttons. Menu items **File · Home · Insert · View ·
+   Help**; active item gets a red underline (and red label in later frames);
+   an *open* File menu gets a `#d3d3d3` pill background. (Some frames add
+   Layout/Text/Arrange menus — treat File/Home/Insert/View/Help as
+   canonical; see §6 Q1.)
 4. **Ribbon band** — ~111px, `#f7f7f7`, groups separated by `#ececec` rules,
    each with a small caption. Home tab groups: **Clipboard** (Paste/Cut/Copy),
    **Font** (family "Motiva Sans", size, B/I/U — one frame adds strikethrough
@@ -67,7 +69,12 @@ Editor screen, top to bottom (1462×906 reference frame):
    **Editing** (dropdown + "Replace..." → Find & Replace dialog). Insert tab:
    Clipboard + an **Insert** group of split buttons with chevrons: New Slide,
    Table, Image, Shapes, Text Box.
-5. **Work row**:
+5. **Work row** (sequence since 2026-08-26: tool rail · Pages panel ·
+   canvas · right panel):
+   - **Tool rail** — 54px vertical rail at the left edge, white, right
+     border: the figma's floating bottom-center tool strip (below),
+     re-docked as a fixed left rail by request 2026-08-26. Same tools,
+     grouping, and active treatment.
    - **Left panel, "Pages"** — 189px. Header: "Pages" caption + a red pill /
      secondary pill button pair; page thumbnails (selected = red border +
      red number), a "+" placeholder tile, "Add page" caption. On the Masters
@@ -79,7 +86,8 @@ Editor screen, top to bottom (1462×906 reference frame):
      "Bleed 0.125 in" (red) / "Margin 0.5 in" (blue `#9fb6df`), and a
      **floating bottom-center tool strip** (465×52, white, r4): select
      (active = red overlay), text "T", shape tools, grouped by dividers —
-     this replaces the current left ToolPalette. Master editing adds an amber
+     this replaces the current left ToolPalette. *(2026-08-26: re-docked as
+     the left tool rail above.)* Master editing adds an amber
      banner: "Editing Master Page Mode: Master A — Changes here will apply to
      all 12 document pages bound to Master A" + "Return to Document" button
      (`#fffbe6`/`#ffe58f`/`#faad14`).

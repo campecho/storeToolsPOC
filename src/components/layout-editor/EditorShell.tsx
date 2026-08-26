@@ -8,10 +8,9 @@ import { useLayoutStore } from "@/store";
 import { collectDocFontFamilies, ensureFamiliesLoaded } from "@/lib/layout/webfonts";
 import { useEditorKeyboard } from "./useEditorKeyboard";
 import { TitleBar } from "./TitleBar";
-import { RibbonTabs } from "./ribbon/RibbonTabs";
 import { HomeBand } from "./ribbon/HomeBand";
 import { InsertBand } from "./ribbon/InsertBand";
-import { FloatingToolStrip } from "./palette/FloatingToolStrip";
+import { ToolRail } from "./palette/ToolRail";
 import { SidePanel } from "./panel/SidePanel";
 import { CanvasViewport } from "./canvas/CanvasViewport";
 import { Inspector } from "./inspector/Inspector";
@@ -56,10 +55,11 @@ function DeepLinkInit() {
 }
 
 /**
- * The layout-editor frame (handoff regions 1–8): title bar, ribbon, work-area
- * row (tool palette · pages pane · canvas · inspector), status bar. Fills the
- * viewport under the persistent suite header; every fixed region is shrink-0
- * and the editor never scrolls the document body.
+ * The layout-editor frame (handoff regions 1–8): document header (with the
+ * merged menu cluster), ribbon band, work-area row (tool rail · pages pane ·
+ * canvas · inspector), status bar. Fills the viewport under the persistent
+ * suite header; every fixed region is shrink-0 and the editor never scrolls
+ * the document body.
  */
 export function EditorShell() {
   const ribbon = useLayoutStore((s) => s.ribbon);
@@ -128,10 +128,10 @@ export function EditorShell() {
         <OversetCheck />
         {/* Headless (Phase 6): live preflight — badge, panel, and canvas pins read it */}
         <PreflightCheck />
-        <RibbonTabs />
         {/* Command band (redesign plan §2.4) — content swaps with the active
-            menu tab (Home/Insert). Auto height with captioned groups; controls
-            wrap within their group on narrow viewports. */}
+            menu tab (Home/Insert, in the document header's menu cluster).
+            Auto height with captioned groups; controls wrap within their
+            group on narrow viewports. */}
         <div
           data-testid={`band-${ribbon}`}
           className="flex min-h-[78px] shrink-0 items-stretch border-b border-[#e6e6e6] bg-chrome-ribbon"
@@ -140,11 +140,11 @@ export function EditorShell() {
           {ribbon === "insert" && <InsertBand />}
         </div>
         <div className="flex min-h-0 flex-1">
+          <ToolRail />
           <SidePanel />
-          {/* relative so the floating tool strip overlays the canvas region */}
+          {/* relative so the preflight/master banners overlay the canvas region */}
           <div className="relative flex min-h-0 min-w-0 flex-1">
             <CanvasViewport />
-            <FloatingToolStrip />
             <PreflightBanner />
             <MasterBanner />
           </div>
