@@ -4,8 +4,9 @@ Source design: `docs/Publisher replacement.fig`, page **"Proposal"**, sections
 **"Select Template"** and **"Builder Home + Tabs"**. The binding screens are the
 frames `Home - Page Tab` (two variants), `Home - File Options`, `Layers Tab`,
 `Preflight`, `Text`, `Masters`, `Insert`, `Publisher - select a template`
-(two variants), `publisher-import-report`, and the dialogs `Booklet Setup
-Modal`, `Package Dialog`, `mail-merge-setup`. The frame
+(two variants), `Publisher - Quick Import` (two variants; joined the binding
+set 2026-08-26 — see Phase 11), `publisher-import-report`, and the dialogs
+`Booklet Setup Modal`, `Package Dialog`, `mail-merge-setup`. The frame
 `PrintStudio Pro App Suite Preview` and the "Option 1–6" boards are earlier /
 aspirational exploration, treated here as directional only.
 
@@ -275,6 +276,32 @@ path.
   imposition, Package job, Mail merge, table editor, PDF export presets,
   "Bench"/"Layouts"/"Recent Jobs" suite surfaces, photo editor re-skin to
   the new chrome. Each needs its own plan before work starts.
+- **Phase 11 — picker as home + Quick Import (added 2026-08-26).** Source
+  frames `Publisher - select a template` (`91:768`), `… - Custom`
+  (`223:12210`), and `Publisher - Quick Import` (`200:5279` upload state,
+  `200:5594` uploaded/converted state); the two surfaces are sibling tabs of
+  one full-screen picker (shared `Tabs / Horizontal` component above the
+  left panel). Scope:
+  - The picker moves from `/templates` to `/` and becomes the main page;
+    `/templates` redirects to `/`. The Templates tab is the existing Phase 9
+    picker, re-verified against the current frames for drift.
+  - The **Quick Import** tab becomes the home of publisher file import:
+    uploader dropzone (also absorbing Home's general-file intake), uploaded
+    file card with conversion progress, converted-document preview, and the
+    conversion summary panel (status, page/error/warning stats, issue
+    cards), wired to the existing conversion pipeline and `importReport`
+    data. The visual spec for these frames is recorded here from Figma
+    design context before implementation starts (Figma access dropped at
+    planning time; structure is captured, styling is not).
+  - The Phase 9 **full-screen import report retires**; Quick Import's
+    summary panel is the conversion review surface of record. The editor's
+    reopen path ("View report") re-targets accordingly.
+  - The old Home surface (`QuickJumpRow`, `IntakeColumn`, `ProductColumn`,
+    `PubConvertCallout`, `Coachmark`) **retires**. The feedback / bug-report
+    feature is kept (suite nav affordance + `/feedback/*` routes), per the
+    no-dropped-functions rule; the new-document size tiles' function lives
+    in the Templates tab; the general dropzone's function lives in Quick
+    Import.
 
 Phases 1–4 are the "updated UI layout" the task asks for; 5–9 make the new
 chrome honest (every visible affordance functional or explicitly disabled).
@@ -323,3 +350,15 @@ ask.**
 8. **Host-POC pause** — un-paused. `CLAUDE.md` updated: both apps active,
    every task clearly directed at one app or the other unless and until
    they are merged.
+
+Confirmed 2026-08-26 (Phase 11):
+
+9. **Main page** — the tabbed picker (Templates + Quick Import) replaces
+   Home at `/`; `/templates` redirects to `/`.
+10. **Old Home** — retired, not rehomed, except: feedback / bug-report stays
+    (suite nav + `/feedback/*`), and the general-file dropzone's intake
+    function moves into the Quick Import tab.
+11. **Conversion review** — Quick Import's summary panel replaces the
+    Phase 9 full-screen import report.
+12. **Quick Import frames** — `Publisher - Quick Import` (`200:5279`,
+    `200:5594`) join the binding-frames set.
