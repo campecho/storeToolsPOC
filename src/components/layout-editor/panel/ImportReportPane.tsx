@@ -43,7 +43,7 @@ function pageNumberOf(doc: LayoutDocument, objectId: string): number {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-[6px] text-[10px] font-semibold uppercase tracking-[.05em] text-[#9a9a9a]">
+    <div className="mb-[6px] text-[11.5px] font-semibold uppercase tracking-[.05em] text-[#6b6b6b]">
       {children}
     </div>
   );
@@ -115,15 +115,15 @@ export function ImportReportPane() {
         type="button"
         data-testid={testId}
         onClick={() => deepLink(n.objectId!, n.pageId)}
-        className="flex w-full cursor-pointer items-start gap-[6px] rounded-[5px] px-2 py-[6px] text-left text-[10.5px] leading-relaxed text-[#555] hover:bg-[#f2f2f2]"
+        className="flex w-full cursor-pointer items-start gap-[6px] rounded-[5px] px-2 py-[7px] text-left text-[13px] leading-relaxed text-[#444] hover:bg-[#f2f2f2]"
       >
         <span className="min-w-0 flex-1">{n.message}</span>
-        <ChevronRight size={13} strokeWidth={1.8} className="mt-[1px] shrink-0 text-[#b6b6b6]" />
+        <ChevronRight size={15} strokeWidth={1.8} className="mt-[2px] shrink-0 text-[#8f8f8f]" />
       </button>
     ) : (
       <div
         key={key}
-        className="rounded-[5px] px-2 py-[6px] text-[10.5px] leading-relaxed text-[#777]"
+        className="rounded-[5px] px-2 py-[7px] text-[13px] leading-relaxed text-[#555]"
       >
         {n.message}
       </div>
@@ -133,20 +133,20 @@ export function ImportReportPane() {
     <div data-testid="import-report-pane" className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-[#efefef] px-3 pb-[10px] pt-3">
         <div className="flex items-start gap-[6px]">
-          <FileText size={13} strokeWidth={1.7} className="mt-[1px] shrink-0 text-[#9a9a9a]" />
-          <div className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[#555]">
+          <FileText size={15} strokeWidth={1.7} className="mt-[2px] shrink-0 text-[#757575]" />
+          <div className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#444]">
             {report.source.filename}
           </div>
           {report.mode === "fixture" && (
             <span
               data-testid="import-report-fixture"
-              className="shrink-0 rounded-[4px] border border-[#e5c07b] bg-[#fdf6e3] px-[5px] py-[1px] text-[9px] font-semibold text-[#7a5b00]"
+              className="shrink-0 rounded-[4px] border border-[#e5c07b] bg-[#fdf6e3] px-[6px] py-[2px] text-[10.5px] font-semibold text-[#7a5b00]"
             >
               Demo mode
             </span>
           )}
         </div>
-        <div data-testid="import-report-summary" className="mt-[5px] text-[10px] text-[#9a9a9a]">
+        <div data-testid="import-report-summary" className="mt-[5px] text-[12px] text-[#6b6b6b]">
           {summary}
         </div>
       </div>
@@ -159,17 +159,17 @@ export function ImportReportPane() {
                 <SectionHeading>Fonts</SectionHeading>
                 <div className="flex flex-col gap-[2px]">
                   {remapped.map((f) => (
-                    <div key={f.source} className="rounded-[5px] px-2 py-[5px]">
-                      <div className="flex items-center gap-[5px] text-[10.5px] text-[#555]">
+                    <div key={f.source} className="rounded-[5px] px-2 py-[6px]">
+                      <div className="flex items-center gap-[5px] text-[13px] text-[#444]">
                         <span className="min-w-0 truncate">{f.source}</span>
-                        <ArrowRight size={11} strokeWidth={1.8} className="shrink-0 text-[#b6b6b6]" />
+                        <ArrowRight size={13} strokeWidth={1.8} className="shrink-0 text-[#8f8f8f]" />
                         <span className="min-w-0 truncate font-medium">{f.mappedTo}</span>
                       </div>
-                      <div className="text-[9.5px] leading-relaxed text-[#a4a4a4]">{f.reason}</div>
+                      <div className="text-[11.5px] leading-relaxed text-[#6b6b6b]">{f.reason}</div>
                     </div>
                   ))}
                   {matched > 0 && (
-                    <div className="px-2 py-[3px] text-[9.5px] text-[#a8a8a8]">
+                    <div className="px-2 py-[3px] text-[11.5px] text-[#6b6b6b]">
                       {matched} font{matched > 1 ? "s" : ""} matched exactly.
                     </div>
                   )}
@@ -192,15 +192,15 @@ export function ImportReportPane() {
                         type="button"
                         data-testid="import-overset-link"
                         onClick={() => deepLink(id)}
-                        className="flex w-full cursor-pointer items-center gap-[6px] rounded-[5px] px-2 py-[6px] text-left hover:bg-[#f2f2f2]"
+                        className="flex w-full cursor-pointer items-center gap-[6px] rounded-[5px] px-2 py-[7px] text-left hover:bg-[#f2f2f2]"
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[10.5px] text-[#555]">
+                          <span className="block truncate text-[13px] text-[#444]">
                             {frameLabel(doc, id)}
                           </span>
-                          {n > 0 && <span className="block text-[9.5px] text-[#a4a4a4]">Page {n}</span>}
+                          {n > 0 && <span className="block text-[11.5px] text-[#6b6b6b]">Page {n}</span>}
                         </span>
-                        <ChevronRight size={13} strokeWidth={1.8} className="shrink-0 text-[#b6b6b6]" />
+                        <ChevronRight size={15} strokeWidth={1.8} className="shrink-0 text-[#8f8f8f]" />
                       </button>
                     );
                   })}
@@ -247,7 +247,7 @@ export function ImportReportPane() {
         ) : (
           <div
             data-testid="import-report-clean"
-            className="px-3 py-3 text-[10px] leading-relaxed text-[#a0a0a0]"
+            className="px-3 py-3 text-[12.5px] leading-relaxed text-[#6b6b6b]"
           >
             Imported cleanly — nothing needs review.
           </div>

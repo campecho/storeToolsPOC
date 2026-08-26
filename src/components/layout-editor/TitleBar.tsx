@@ -5,13 +5,17 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { useLayoutStore, selectFileDirty } from "@/store";
+import { MenuCluster } from "./ribbon/MenuCluster";
 import { effectivePageSize } from "@/lib/layout/geometry";
 import { sizeLabel } from "@/lib/layout/presets";
 import { formatLen } from "@/lib/layout/units";
 
 /**
- * Document header (redesign plan §2.2 — figma "Secondary navigation", 54px
- * white bar): back link, centered doc identity, autosave status. The figma
+ * Document header (redesign plan §2.2 — figma "Secondary navigation"; white
+ * bar, slimmed to 35px by request): back link, then the menu cluster (the
+ * figma's standalone 33px menu bar, merged in here by request 2026-08-26 —
+ * undo/redo/print + File · Home · Insert · View · Help), centered doc
+ * identity, autosave status. The figma
  * shows the name as static text; it stays an input so rename keeps working
  * (no-dropped-functions rule). The autosave face is live (Phase 7): the
  * persist layer writes localStorage with every change, so the stamp follows
@@ -48,7 +52,7 @@ export function TitleBar() {
   }, [doc]);
 
   return (
-    <div className="flex h-[54px] shrink-0 items-center gap-3 border-b border-[#dddddd] bg-white px-[14px]">
+    <div className="flex h-[35px] shrink-0 items-center gap-3 border-b border-[#dddddd] bg-white px-[14px]">
       <Link
         href="/"
         data-testid="editor-back"
@@ -57,6 +61,10 @@ export function TitleBar() {
         <ChevronLeft size={15} strokeWidth={2} />
         Back
       </Link>
+
+      <div className="h-[16px] w-px shrink-0 bg-[#e0e0e0]" />
+
+      <MenuCluster />
 
       <div className="flex min-w-0 flex-1 items-center justify-center gap-[9px]">
         <input

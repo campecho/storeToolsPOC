@@ -1,5 +1,38 @@
 @import "tailwindcss";
 
+/* Motiva Sans (Staples brand face) — licensed files supplied 2026-08-26, per
+   the drop-in step in public/fonts/README.md. The Regular file's internal
+   name table is malformed (family reads as junk bytes); harmless here because
+   @font-face matching uses this declared family name, not the font's own. */
+@font-face {
+  font-family: "Motiva Sans";
+  src: url("/fonts/MotivaSans-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Motiva Sans";
+  src: url("/fonts/MotivaSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Motiva Sans";
+  src: url("/fonts/MotivaSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Motiva Sans";
+  src: url("/fonts/MotivaSans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /*
  * Design tokens from the handoff wires
  * (docs/handoff/feedback-tracker/README.md — "Design tokens").
@@ -8,8 +41,8 @@
  */
 @theme {
   /* Motiva Sans is the Staples brand face — see public/fonts/README.md.
-     The handoff prototype itself falls back to system-ui (no font binaries
-     ship with it), so the fallback stack matches wire fidelity. */
+     The @font-face rules above serve the real files; the system-ui tail
+     covers load failure and the swap window. */
   --font-sans: "Motiva Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* brand red — action / active / primary CTA / bug accent */

@@ -199,7 +199,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   document props while editing. The **Home band Font/Paragraph/Styles**, the **Text band**,
   and the **Text inspector tab** go live against the text target (editing frame or selected
   text frame; disabled with the wire's at-rest faces otherwise): curated family list (Motiva
-  Sans leading with system fallback until licensing, per `public/fonts/README`), point sizes,
+  Sans leading, licensed and shipped per `public/fonts/README`), point sizes,
   B/I/U, L/C/R/J alignment, line spacing, and the two minimal style bundles — **Body · Normal
   / Heading** ("+ New" stays static). Text renders true-scale (pt × 96/72 × zoom), clips like
   a print frame, and raises the **red overflow badge** at the bottom edge when content
@@ -451,7 +451,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 - `src/lib/schema/` — Zod schemas + status metadata. `src/lib/data/` — seed content, verbatim
   from the prototype. `src/lib/store/` — the Zustand store (ported 1:1 from the prototype's
   state class). `src/lib/similar.ts` — the similar-items scorer.
-- `public/fonts/` — Motiva Sans drop-in spot (see its README; system fallback until licensed).
+- `public/fonts/` — Motiva Sans WOFF2 files + the libre import stand-ins (see its README).
 
 ## Start here (docs)
 

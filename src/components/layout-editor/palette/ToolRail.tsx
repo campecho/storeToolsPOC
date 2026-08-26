@@ -12,17 +12,18 @@ import type { LucideIcon } from "lucide-react";
 import { useLayoutStore, TOOL_LABELS, type EditorTool } from "@/store";
 
 /**
- * Floating tool strip (redesign plan §2.5 — figma's bottom-center canvas
- * toolbar, replacing the old left tool palette in Phase 3): 9 single-select
- * tools in a floating white card, grouped by dividers. The active tool wears
- * the figma's red fill; the status bar mirrors it.
+ * Vertical tool rail (redesign plan §2.5): 9 single-select tools grouped by
+ * dividers. Originally the figma's floating bottom-center canvas toolbar;
+ * re-docked as a fixed rail between the Pages panel and the workspace by
+ * request 2026-08-26 (sequence: pages · tools · workspace · inspector).
+ * The active tool wears the figma's red fill; the status bar mirrors it.
  */
 
-type StripEntry =
+type RailEntry =
   | { kind: "tool"; id: EditorTool; icon: LucideIcon | null }
   | { kind: "divider" };
 
-const ENTRIES: StripEntry[] = [
+const ENTRIES: RailEntry[] = [
   { kind: "tool", id: "select", icon: MousePointer2 },
   { kind: "tool", id: "text", icon: null }, // serif "T" glyph, per the figma
   { kind: "divider" },
@@ -37,18 +38,18 @@ const ENTRIES: StripEntry[] = [
   { kind: "tool", id: "move", icon: Move },
 ];
 
-export function FloatingToolStrip() {
+export function ToolRail() {
   const tool = useLayoutStore((s) => s.tool);
   const setTool = useLayoutStore((s) => s.setTool);
 
   return (
     <div
       data-testid="tool-strip"
-      className="absolute bottom-[14px] left-1/2 z-10 flex -translate-x-1/2 items-center gap-[6px] rounded-[7px] border border-[#e4e4e4] bg-white px-[10px] py-[7px] shadow-[0_2px_10px_rgba(0,0,0,.13)]"
+      className="flex w-[54px] shrink-0 flex-col items-center gap-[6px] overflow-y-auto border-r border-[#ececec] bg-white py-[10px]"
     >
       {ENTRIES.map((entry, i) => {
         if (entry.kind === "divider") {
-          return <div key={`div-${i}`} className="mx-[2px] h-8 w-px shrink-0 bg-[#e0e0e0]" />;
+          return <div key={`div-${i}`} className="my-[2px] h-px w-8 shrink-0 bg-[#e0e0e0]" />;
         }
         const { id, icon: Icon } = entry;
         const active = tool === id;

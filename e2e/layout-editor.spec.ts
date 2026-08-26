@@ -212,11 +212,11 @@ test.describe("Document model & true-scale page (L3)", () => {
 
     // Wait for fit-on-mount to settle before driving the slider: the page opens
     // at the store default (100%), then CanvasViewport's fit effect fires once
-    // the pasteboard is measured and lands at the fit zoom (51% for Letter in
+    // the pasteboard is measured and lands at the fit zoom (54% for Letter in
     // the pinned 1440×900 viewport under the redesign chrome heights). Setting
     // the slider before that measurement lets the late fit clobber it back —
     // the race this guard removes.
-    await expect(page.getByTestId("zoom-percent")).toHaveText("50%");
+    await expect(page.getByTestId("zoom-percent")).toHaveText("54%");
 
     // slider → exactly 100%: Letter renders at 8.5in × 96dpi = 816px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {
