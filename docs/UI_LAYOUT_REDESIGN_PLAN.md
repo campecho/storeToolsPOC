@@ -48,7 +48,8 @@ Editor screen, top to bottom (1462×906 reference frame):
    right: "Store 3000 (Natick, MA)" + white avatar circle with red initials.
    (Earlier frames show icon-only nav items; the labeled variant appears in
    every later frame and is the one to build.)
-2. **Document header** — 54px, white, bottom border `#dddddd`. Back arrow;
+2. **Document header** — 35px (figma showed 54px; slimmed by request
+   2026-08-26), white, bottom border `#dddddd`. Back arrow;
    centered doc identity "Smith_BizCard_v2 · Business card 3.5×2"; right:
    "Autosaved 10:24" + green status badge (stroke `#048103`).
 3. **Menu bar** — 33px, `#f0f0f0`. Left cluster: undo, redo, print icon

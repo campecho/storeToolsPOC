@@ -10,8 +10,9 @@ import { sizeLabel } from "@/lib/layout/presets";
 import { formatLen } from "@/lib/layout/units";
 
 /**
- * Document header (redesign plan §2.2 — figma "Secondary navigation", 54px
- * white bar): back link, centered doc identity, autosave status. The figma
+ * Document header (redesign plan §2.2 — figma "Secondary navigation"; white
+ * bar, slimmed to 35px by request): back link, centered doc identity,
+ * autosave status. The figma
  * shows the name as static text; it stays an input so rename keeps working
  * (no-dropped-functions rule). The autosave face is live (Phase 7): the
  * persist layer writes localStorage with every change, so the stamp follows
@@ -48,7 +49,7 @@ export function TitleBar() {
   }, [doc]);
 
   return (
-    <div className="flex h-[54px] shrink-0 items-center gap-3 border-b border-[#dddddd] bg-white px-[14px]">
+    <div className="flex h-[35px] shrink-0 items-center gap-3 border-b border-[#dddddd] bg-white px-[14px]">
       <Link
         href="/"
         data-testid="editor-back"
