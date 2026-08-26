@@ -32,8 +32,9 @@ const four = (slug: string): FontFile[] => [
   { file: `${slug}/${slug}-700-italic.woff2`, weight: 700, style: "italic" },
 ];
 
-// ASSUMPTION: curated list is a guess at the in-store set; Motiva Sans renders
-// via system fallback until brand licensing is confirmed (public/fonts/README).
+// ASSUMPTION: curated list is a guess at the in-store set. Motiva Sans loads
+// via @font-face in globals.css (public/fonts/README), not catalog `files` —
+// that mechanism is for the import stand-ins; the brand face is app-wide.
 export const FONT_CATALOG: CatalogFamily[] = [
   {
     name: "Motiva Sans",

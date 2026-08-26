@@ -451,7 +451,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
 - `src/lib/schema/` — Zod schemas + status metadata. `src/lib/data/` — seed content, verbatim
   from the prototype. `src/lib/store/` — the Zustand store (ported 1:1 from the prototype's
   state class). `src/lib/similar.ts` — the similar-items scorer.
-- `public/fonts/` — Motiva Sans drop-in spot (see its README; system fallback until licensed).
+- `public/fonts/` — Motiva Sans WOFF2 files + the libre import stand-ins (see its README).
 
 ## Start here (docs)
 
