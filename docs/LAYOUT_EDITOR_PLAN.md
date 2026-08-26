@@ -350,7 +350,7 @@ Explicitly **not** in L1–L15, with where each lands later — the affordances 
 3. **Single working document**, autosaved to `stp-layout-v1`; opening a new size from Home replaces it (with a confirm when the current doc has content). Multi-document / open / save-as is backlog.
 4. **Desktop-minimum gate** below `lg` rather than a phone reflow — a precision canvas is a station tool; the gate card keeps small screens honest.
 5. **Simple disabled until L14** — per the built-over-time direction; the control renders from L1 so the title bar matches the wire. *(v1.3: the experience model is two levels — Pro dropped, its segment removed in L8.)*
-6. **Fonts** — system stack + a curated family list until Motiva Sans licensing is confirmed (same posture as `public/fonts/README`). *(v1.5: the import library is now planned in §10.5 — self-hosted Google Fonts, metric-compatible remap; Motiva remains a separate licensing question.)*
+6. **Fonts** — system stack + a curated family list until Motiva Sans licensing is confirmed (same posture as `public/fonts/README`). *(v1.5: the import library is now planned in §10.5 — self-hosted Google Fonts, metric-compatible remap.)* *(2026-08-26: Motiva Sans licensing confirmed — the WOFF2 files ship in `public/fonts/`.)*
 7. **Inches only** at first; the unit toggle is handoff-mentioned and cheap to add later because all geometry is canonical-inches behind helpers.
 
 ---

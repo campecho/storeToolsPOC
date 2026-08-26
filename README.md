@@ -199,7 +199,7 @@ below; everything fake or inert is registered in **[STUBS.md](STUBS.md)**):
   document props while editing. The **Home band Font/Paragraph/Styles**, the **Text band**,
   and the **Text inspector tab** go live against the text target (editing frame or selected
   text frame; disabled with the wire's at-rest faces otherwise): curated family list (Motiva
-  Sans leading with system fallback until licensing, per `public/fonts/README`), point sizes,
+  Sans leading, licensed and shipped per `public/fonts/README`), point sizes,
   B/I/U, L/C/R/J alignment, line spacing, and the two minimal style bundles — **Body · Normal
   / Heading** ("+ New" stays static). Text renders true-scale (pt × 96/72 × zoom), clips like
   a print frame, and raises the **red overflow badge** at the bottom edge when content
