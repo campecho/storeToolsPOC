@@ -84,9 +84,9 @@ export type EditorTool =
   | "move";
 /** Inspector tabs (redesign Phase 4 — decision of record #7). "page" is the
     properties surface: page setup at rest, object properties with a selection.
-    "import" is the fidelity-report reader, shown only after a .pub import
-    (interim home until the plan's Phase 9 full-screen report). */
-export type InspectorTab = "page" | "text" | "layers" | "preflight" | "import";
+    The import fidelity report lives on the Quick Import surface at `/`
+    (Phase 11, decision of record #11), not in an inspector tab. */
+export type InspectorTab = "page" | "text" | "layers" | "preflight";
 export type PagesPaneView = "pages" | "masters";
 /** Page-tab "Apply to" target for size edits (plan L12). */
 export type PageSizeScope = "document" | "page";
@@ -1500,14 +1500,9 @@ export const useLayoutStore = create<LayoutEditorState>()(
           // Seed the extracted image bytes (P3) as the library resets with the
           // document; a P1-era import carries none, so an absent set just clears.
           void replaceAssetBlobs(blobs ?? {});
-          // Open the import report panel (P4) when there's anything to review —
-          // font remaps, degradations/flags, or notes; a clean import leaves
-          // the panel as it was. Overset arrives async (setImportOverset) and
-          // opens the panel later if it finds anything.
-          const worthReviewing =
-            report.fonts.length > 0 ||
-            report.notes.length > 0 ||
-            report.fidelity.degraded + report.fidelity.flagged > 0;
+          // The fidelity report stays in `importReport` for the Quick Import
+          // surface at `/` (Phase 11) — the review happens there before the
+          // user enters the editor, so nothing is forced open here.
           const normalized = ensurePageLayers(doc);
           return {
             doc: normalized,
@@ -1533,7 +1528,6 @@ export const useLayoutStore = create<LayoutEditorState>()(
             fileCreatedAt: null,
             savedDoc: null,
             fileError: null,
-            ...(worthReviewing ? { insp: "import" as const } : {}),
           };
         }),
 
@@ -1584,7 +1578,6 @@ export const useLayoutStore = create<LayoutEditorState>()(
           if (!s.importReport) return s;
           return {
             importReport: { ...s.importReport, overset: objectIds },
-            ...(objectIds.length ? { insp: "import" as const } : {}),
           };
         }),
 
@@ -1626,7 +1619,6 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return {
             doc: { ...s.doc, pages },
             importReport: { ...s.importReport, notes, overset: oversetIds },
-            ...(applied.length || oversetIds.length ? { insp: "import" as const } : {}),
           };
         }),
     }),

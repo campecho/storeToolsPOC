@@ -10,7 +10,7 @@ import { TextTab } from "./TextTab";
 /**
  * Right inspector (redesign plan §2.5, 288px): Page · Text · Layers ·
  * Preflight on the shared TabStrip (decision of record #7); the import
- * report opens as the Phase 9 full-screen surface, not a tab here. The
+ * report lives on the Quick Import surface at `/` (Phase 11). The
  * Page tab is the properties
  * surface — page setup at rest, object properties with a selection — so the
  * old Properties tab's functions live on without a fifth permanent tab. The
@@ -31,8 +31,7 @@ export function Inspector() {
     { id: "preflight", label: "Preflight", badge: issueCount },
   ];
 
-  // insp === "import" opens the full-screen report (Phase 9), not a tab here
-  const active = insp === "import" ? "page" : insp;
+  const active = insp;
 
   return (
     <div className="flex w-[288px] shrink-0 flex-col border-l border-[#ececec] bg-white">

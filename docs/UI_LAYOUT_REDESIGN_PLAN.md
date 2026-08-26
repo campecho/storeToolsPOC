@@ -290,9 +290,10 @@ path.
     file card with conversion progress, converted-document preview, and the
     conversion summary panel (status, page/error/warning stats, issue
     cards), wired to the existing conversion pipeline and `importReport`
-    data. The visual spec for these frames is recorded here from Figma
-    design context before implementation starts (Figma access dropped at
-    planning time; structure is captured, styling is not).
+    data. Built structure-first from the frames' captured node trees plus
+    the panel visuals already implemented in Phase 9 (Figma access dropped
+    mid-session); a styling verification pass against live Figma design
+    context remains open and lands as a follow-up.
   - The Phase 9 **full-screen import report retires**; Quick Import's
     summary panel is the conversion review surface of record. The editor's
     reopen path ("View report") re-targets accordingly.

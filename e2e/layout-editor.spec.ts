@@ -6,9 +6,9 @@ import { test, expect } from "@playwright/test";
  * selection with the status-bar readout, and ribbon-tab switching.
  */
 test.describe("Layout editor shell (L1)", () => {
-  test("opens from the homepage Layout card with the editor chrome", async ({ page }) => {
+  test("opens from the suite nav Publisher tab with the editor chrome", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("quickjump-layout").click();
+    await page.getByTestId("suite-publisher").click();
     await expect(page).toHaveURL(/\/layout$/);
 
     // editor title bar + suite header coexist ("one shared surface")
@@ -55,10 +55,10 @@ test.describe("Layout editor shell (L1)", () => {
     await expect(page.getByText("Paste", { exact: true })).toBeVisible();
   });
 
-  test("back link returns to Print Studio home", async ({ page }) => {
+  test("back link returns to the picker home", async ({ page }) => {
     await page.goto("/layout");
     await page.getByTestId("editor-back").click();
-    await expect(page.getByText("Bring in a file")).toBeVisible();
+    await expect(page.getByText("Template Explorer")).toBeVisible();
   });
 });
 
@@ -265,26 +265,27 @@ test.describe("Document model & true-scale page (L3)", () => {
     await expect(page.getByTestId("size-hint")).toHaveText("· Letter · 8.5 × 11 in");
   });
 
-  test("homepage size tiles deep-link into fresh documents", async ({ page }) => {
-    // a saved document must not survive a deep link — the link wins
+  test("the picker starts fresh documents; size deep links still win", async ({ page }) => {
+    // a saved document must not survive creating from the picker — the choice wins
     await page.goto("/layout");
     await page.getByTestId("doc-name").fill("Old work");
     await page.getByTestId("editor-back").click();
+    await expect(page.getByText("Template Explorer")).toBeVisible();
 
-    await page.getByTestId("size-tile-ledger").click();
+    await page.getByTestId("tpl-card-blank-ledger").click();
+    await page.getByTestId("tpl-create").click();
     await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 11 × 17 in");
     await expect(page.getByTestId("doc-name")).toHaveValue("Untitled publication");
-    await expect(page).toHaveURL(/\/layout$/); // query cleaned off
-
-    // custom tile lands in the width field, ready to type
-    await page.getByTestId("editor-back").click();
-    await page.getByTestId("size-tile-custom").click();
-    await expect(page.getByTestId("page-w")).toBeFocused();
     await expect(page).toHaveURL(/\/layout$/);
 
-    // direct URL form works too
+    // the old size tiles' direct URL forms still deep-link
     await page.goto("/layout?preset=legal");
     await expect(page.getByTestId("size-hint")).toHaveText("· Legal · 8.5 × 14 in");
+
+    // the custom form lands in the width field, ready to type
+    await page.goto("/layout?custom=1");
+    await expect(page.getByTestId("page-w")).toBeFocused();
+    await expect(page).toHaveURL(/\/layout$/); // query cleaned off
   });
 });
 
@@ -1841,7 +1842,7 @@ test.describe("Masters UX (Phase 8)", () => {
  */
 test.describe("Template picker (Phase 9)", () => {
   test("filter, configure, and create a document from a template", async ({ page }) => {
-    await page.goto("/templates");
+    await page.goto("/");
 
     // category filter + search narrow the explorer
     await page.getByTestId("tpl-cat-blank").click();
@@ -1865,13 +1866,16 @@ test.describe("Template picker (Phase 9)", () => {
     await expect(page.getByTestId("size-hint")).toHaveText("· Ledger · 17 × 11 in");
   });
 
-  test("the Page tab and Home both link to the picker", async ({ page }) => {
+  test("the Page tab links to the picker; /templates redirects there", async ({ page }) => {
     await page.goto("/layout");
     await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
     await page.getByTestId("choose-template").click();
-    await page.waitForURL("**/templates");
-    await page.goto("/");
-    await page.getByTestId("browse-templates").click();
-    await page.waitForURL("**/templates");
+    await page.waitForURL((url) => url.pathname === "/");
+    await expect(page.getByText("Template Explorer")).toBeVisible();
+
+    // pre-move deep links survive: /templates redirects to the picker at /
+    await page.goto("/templates");
+    await page.waitForURL((url) => url.pathname === "/");
+    await expect(page.getByText("Template Explorer")).toBeVisible();
   });
 });

@@ -1,22 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * `.pub` import, P1 (plan §10.6's e2e): the homepage callout converts a
- * Publisher file and the document opens in the editor with correctly sized,
- * correctly placed frames. The web server runs with STP_IMPORT_FIXTURE=1
- * (playwright.config.ts), so conversion serves the golden demo-flyer trace —
- * the assertions below are pinned to fixtures/pub-traces/demo-flyer.trace.
+ * `.pub` import, P1 (plan §10.6's e2e): the picker's Quick Import tab
+ * (Phase 11) converts a Publisher file, shows the conversion summary panel
+ * in place, and Open in Editor lands the document in the editor with
+ * correctly sized, correctly placed frames. The web server runs with
+ * STP_IMPORT_FIXTURE=1 (playwright.config.ts), so conversion serves the
+ * golden demo-flyer trace — the assertions below are pinned to
+ * fixtures/pub-traces/demo-flyer.trace.
  */
 
 const importDemoPub = async (page: Page, opts: { keepReport?: boolean } = {}) => {
-  await page.goto("/");
+  await page.goto("/?tab=import");
   await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/demo.pub");
-  await page.waitForURL("**/layout");
-  await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
-  // the Phase 9 full-screen report auto-opens over the editor for reviewable
-  // imports — close it unless the test is about the report itself
-  await expect(page.getByTestId("import-report-screen")).toBeVisible();
-  if (!opts.keepReport) await page.getByTestId("report-close").click();
+  // the conversion summary panel (Phase 11) renders in place for review
+  await expect(page.getByTestId("quick-import-report")).toBeVisible();
+  if (!opts.keepReport) {
+    await page.getByTestId("report-continue").click();
+    await page.waitForURL("**/layout");
+    await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
+  }
 };
 
 // The Playwright web server runs with STP_IMPORT_FIXTURE=1 (playwright.config.ts),
@@ -45,7 +48,7 @@ test.describe(".pub import — demo-mode is visible (P1 follow-up)", () => {
 });
 
 test.describe(".pub import (P1)", () => {
-  test("converts from the homepage callout into correctly-placed frames", async ({ page }) => {
+  test("converts from the Quick Import tab into correctly-placed frames", async ({ page }) => {
     await importDemoPub(page);
 
     // Named after the uploaded file, sized from the source page
@@ -105,45 +108,50 @@ test.describe(".pub import (P1)", () => {
 
   test("replacing a publication with content asks first", async ({ page }) => {
     await importDemoPub(page); // leaves a doc with content behind
-    await page.goto("/");
+    await page.goto("/?tab=import");
 
     await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/demo.pub");
     await expect(page.getByTestId("pub-import-note")).toContainText("replaces the open publication");
 
-    // Cancel keeps the current document and returns the callout to idle
+    // Cancel keeps the current document and returns the uploader to idle
     await page.getByTestId("pub-confirm-cancel").click();
-    await expect(page.getByTestId("pub-convert-button")).toBeVisible();
-    await expect(page).toHaveURL("/");
+    await expect(page.getByTestId("pub-import-note")).toHaveCount(0);
+    await expect(page.getByTestId("quick-import-browse")).toHaveText("Browse files");
 
     // Replace & convert proceeds
     await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/demo.pub");
     await page.getByTestId("pub-confirm-replace").click();
+    await expect(page.getByTestId("quick-import-report")).toBeVisible();
+    await page.getByTestId("report-continue").click();
     await page.waitForURL("**/layout");
     await expect(page.getByTestId("doc-name")).toHaveValue("demo");
   });
 
   test("content sniffing rejects a non-Publisher file with an honest note", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?tab=import");
     // A PNG handed to the picker (extension filters don't gate setInputFiles —
     // exactly the never-trust-the-extension case the sniffer owns)
     await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/photo.png");
     await expect(page.getByTestId("pub-import-note")).toContainText("doesn't look like a Publisher");
     // Still recoverable
-    await expect(page.getByTestId("pub-convert-button")).toBeVisible();
+    await expect(page.getByTestId("quick-import-browse")).toHaveText("Browse files");
   });
 });
 
-// The report panel (plan §10.4, P4). The golden demo flyer has a degraded
-// rounded-rect (rounded corners dropped), so the review path is populated and
-// its note deep-links to the object. Imports here are fixture mode, so the
-// summary carries a "Demo mode" chip; the store auto-opens the Review tab.
+// The report panel (plan §10.4, P4 — hosted on the Quick Import tab since
+// Phase 11). The golden demo flyer has a degraded rounded-rect (rounded
+// corners dropped), so the review path is populated and its note deep-links
+// to the object. Imports here are fixture mode, so the summary carries a
+// "Demo mode" chip.
 test.describe(".pub import — report panel (P4)", () => {
-  test("the import opens the full-screen report with a fidelity summary", async ({ page }) => {
+  test("the conversion shows the summary panel before the editor", async ({ page }) => {
     await importDemoPub(page, { keepReport: true });
 
-    // The full-screen report opens straight after the import (Phase 9).
-    await expect(page.getByTestId("import-report-screen")).toBeVisible();
+    // The summary panel renders in place — review happens before the editor.
+    await expect(page).toHaveURL(/\?tab=import/);
+    await expect(page.getByTestId("quick-import-report")).toBeVisible();
     await expect(page.getByTestId("report-stats")).toBeVisible();
+    await expect(page.getByTestId("quick-import-file-card")).toBeVisible();
     const pane = page.getByTestId("import-report-pane");
     await expect(pane).toBeVisible();
     await expect(pane).toContainText("demo.pub"); // the source filename
@@ -156,16 +164,17 @@ test.describe(".pub import — report panel (P4)", () => {
     await importDemoPub(page);
 
     // Move to page 2 (so the deep link's navigation back is observable),
-    // then reopen the report from the banner (Phase 9 full screen).
+    // then reopen the report from the banner (it lands on Quick Import).
     await page.getByTestId("page-next").click();
     await expect(page.getByTestId("page-indicator")).toContainText("Page 2 of 2");
     await page.getByTestId("import-view-report").click();
-    await expect(page.getByTestId("import-report-screen")).toBeVisible();
+    await expect(page).toHaveURL(/\?tab=import/);
+    await expect(page.getByTestId("quick-import-report")).toBeVisible();
 
     // The first note link is the degraded rounded-rect (page 1). Clicking it
-    // closes the screen, jumps to that page, and selects the frame.
+    // jumps to that page, selects the frame, and opens the editor.
     await page.getByTestId("import-note-link").first().click();
-    await expect(page.getByTestId("import-report-screen")).toHaveCount(0);
+    await page.waitForURL("**/layout");
     await expect(page.getByTestId("page-indicator")).toContainText("Page 1 of 2");
 
     // Properties read back the rounded-rect's exact geometry — proof it's the
@@ -175,13 +184,13 @@ test.describe(".pub import — report panel (P4)", () => {
     await expect(page.getByTestId("prop-w")).toHaveValue("7");
   });
 
-  // NOTE: the blue `import-review-banner` and its "View report" button
-  // (togglePanelTab("import")) are a LIVE-mode affordance. This webServer forces
-  // STP_IMPORT_FIXTURE=1, and a file-upload POST response can't be rewritten to
-  // fake live mode (Playwright's route.fetch can't replay the multipart file
-  // body), so there's no honest fixture-mode e2e for that path. The panel it
-  // opens is covered by the two tests above; the button is a one-line wrapper
-  // over the same togglePanelTab the tab strip uses. Covered live, not in CI.
+  // NOTE: the blue `import-review-banner` and its "View report" button are a
+  // LIVE-mode affordance. This webServer forces STP_IMPORT_FIXTURE=1, and a
+  // file-upload POST response can't be rewritten to fake live mode
+  // (Playwright's route.fetch can't replay the multipart file body), so
+  // there's no honest fixture-mode e2e for that path. The panel it opens is
+  // covered by the two tests above; the button is a one-line wrapper over the
+  // same navigation the fixture banner's button uses. Covered live, not in CI.
 });
 
 // P4: `.puz` pack-and-go. e2e/fixtures/demo.puz is a stored CAB wrapping the
@@ -190,8 +199,10 @@ test.describe(".pub import — report panel (P4)", () => {
 // re-sniff → accept path in the route before it hands off.
 test.describe(".pub import — .puz pack-and-go (P4)", () => {
   test("uploading a .puz unpacks the inner .pub and opens the editor", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?tab=import");
     await page.getByTestId("pub-file-input").setInputFiles("e2e/fixtures/demo.puz");
+    await expect(page.getByTestId("quick-import-report")).toBeVisible();
+    await page.getByTestId("report-continue").click();
     await page.waitForURL("**/layout");
     await expect(page.getByTestId("layout-editor")).toHaveAttribute("data-hydrated", "true");
     // Named from the outer .puz (its extension is stripped just like ".pub")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Info, X } from "lucide-react";
 import { useLayoutStore } from "@/store";
 
@@ -12,12 +13,12 @@ import { useLayoutStore } from "@/store";
  *  - fixture mode → an unmissable amber banner ("this is sample content, not
  *    your file") with the reason and the fix;
  *  - live mode with degradations → a quiet info line ("N items need review")
- *    pointing at the report (the full panel is P4).
+ *    pointing at the report on the Quick Import surface at `/` (Phase 11).
  * Dismissible; clears when a new document loads (importReport resets).
  */
 export function ImportBanner() {
+  const router = useRouter();
   const report = useLayoutStore((s) => s.importReport);
-  const setInsp = useLayoutStore((s) => s.setInsp);
   const [dismissed, setDismissed] = useState(false);
 
   if (!report || dismissed) return null;
@@ -39,7 +40,7 @@ export function ImportBanner() {
         <button
           type="button"
           data-testid="import-view-report"
-          onClick={() => setInsp("import")}
+          onClick={() => router.push("/?tab=import")}
           className="shrink-0 cursor-pointer rounded-[5px] border border-[#d9c489] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#7a5b00] hover:bg-[#f8f0da]"
         >
           View report
@@ -108,7 +109,7 @@ export function ImportBanner() {
       <button
         type="button"
         data-testid="import-view-report"
-        onClick={() => setInsp("import")}
+        onClick={() => router.push("/?tab=import")}
         className="shrink-0 cursor-pointer rounded-[5px] border border-[#b7d2f0] bg-white px-[8px] py-[2px] text-[11px] font-semibold text-[#1c4e80] hover:bg-[#eaf2fc]"
       >
         View report

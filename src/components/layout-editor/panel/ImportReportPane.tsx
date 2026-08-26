@@ -7,7 +7,8 @@ import { flattenPage } from "@/lib/layout/layers";
 import type { LayoutDocument } from "@/schema";
 
 /**
- * Import report tab (plan §10.4): the P4 fidelity reader. A `.pub` import
+ * Import report body (plan §10.4): the P4 fidelity reader, hosted in the
+ * Quick Import tab's conversion summary panel since Phase 11. A `.pub` import
  * stashes a structured report in the store; this pane turns it into a review
  * checklist — remapped fonts, text that may overflow, and simplified or
  * dropped elements — with every object-anchored item a deep link that selects
@@ -55,7 +56,7 @@ export function ImportReportPane() {
   const setActivePage = useLayoutStore((s) => s.setActivePage);
   const setSelection = useLayoutStore((s) => s.setSelection);
 
-  // Rendered only after an import (the tab itself is conditional), but stay
+  // Rendered only after an import (the host panel is conditional), but stay
   // honest if the report cleared out from under us.
   if (!report) return null;
 
