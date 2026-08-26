@@ -7,17 +7,21 @@ import { ObjectNode } from "../canvas/ObjectNode";
  * Live pages-pane thumbnails (plan L6): a true mini-render of the page model
  * — the same ObjectNode tree the canvas draws, laid out at reference zoom 1
  * and CSS-scaled into the tile, so the thumbnail can't drift from the page.
- * Tiles contain-fit an 88 × 114 budget (the wire's tile is exactly Letter at
- * that fit); the active page carries the wire's red border and numeral. The
- * tile is sized from the page's *effective* size (plan L12), so an overridden
- * page reads true-shape in the navigator.
+ * Tiles contain-fit an 88 × 114 budget by default (the wire's tile is exactly
+ * Letter at that fit); surfaces that need a bigger read — the import report's
+ * review preview — pass their own budget. The active page carries the wire's
+ * red border and numeral. The tile is sized from the page's *effective* size
+ * (plan L12), so an overridden page reads true-shape in the navigator.
  */
 
 export const THUMB_MAX_W = 88;
 export const THUMB_MAX_H = 114;
 
-export function thumbScale(size: { w: number; h: number }): number {
-  return Math.min(THUMB_MAX_W / inToPx(size.w, 1), THUMB_MAX_H / inToPx(size.h, 1));
+export function thumbScale(
+  size: { w: number; h: number },
+  budget: { w: number; h: number } = { w: THUMB_MAX_W, h: THUMB_MAX_H },
+): number {
+  return Math.min(budget.w / inToPx(size.w, 1), budget.h / inToPx(size.h, 1));
 }
 
 /** Objects at zoom 1, scaled down as one layer. `withTestId={false}` keeps
@@ -25,12 +29,15 @@ export function thumbScale(size: { w: number; h: number }): number {
 export function MiniRender({
   size,
   objects,
+  budget,
 }: {
   /** The page's effective size in inches (plan L12). */
   size: { w: number; h: number };
   objects: LayoutObject[];
+  /** Contain-fit budget in px; defaults to the pages-pane tile. */
+  budget?: { w: number; h: number };
 }) {
-  const scale = thumbScale(size);
+  const scale = thumbScale(size, budget);
   return (
     <div
       className="pointer-events-none relative overflow-hidden bg-white"
@@ -60,6 +67,7 @@ export function PageThumb({
   removable,
   onSelect,
   onRemove,
+  budget,
 }: {
   doc: LayoutDocument;
   page: LayoutPage;
@@ -70,6 +78,8 @@ export function PageThumb({
   removable: boolean;
   onSelect: () => void;
   onRemove: () => void;
+  /** Contain-fit budget in px; defaults to the pages-pane tile. */
+  budget?: { w: number; h: number };
 }) {
   const master = page.masterId ? doc.masters.find((m) => m.id === page.masterId) : undefined;
   // master furniture beneath page objects — the same stacking as the canvas
@@ -90,7 +100,7 @@ export function PageThumb({
             : "border border-[#dcdcdc] hover:border-[#b8b8b8]"
         }`}
       >
-        <MiniRender size={size} objects={objects} />
+        <MiniRender size={size} objects={objects} budget={budget} />
       </button>
       {removable && (
         <button
@@ -108,7 +118,9 @@ export function PageThumb({
         </button>
       )}
       <div
-        className={`text-[11px] ${active ? "font-semibold text-brand" : "text-[#999]"}`}
+        className={`${budget && budget.w > THUMB_MAX_W ? "text-[14px]" : "text-[11px]"} ${
+          active ? "font-semibold text-brand" : "text-[#6b6b6b]"
+        }`}
       >
         {index + 1}
       </div>

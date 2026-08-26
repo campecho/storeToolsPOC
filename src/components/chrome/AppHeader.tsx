@@ -29,10 +29,7 @@ export function AppHeader() {
 
   return (
     <header className="relative z-20 flex h-[52px] shrink-0 items-center gap-2 bg-brand px-3 sm:h-[59px] sm:gap-3 sm:px-4">
-      <Link href="/" className="flex shrink-0 items-center gap-2" aria-label="PrintStudio home">
-        <span className="flex h-[25px] w-[25px] items-center justify-center rounded-full bg-white text-[14px] font-black text-brand">
-          S
-        </span>
+      <Link href="/" className="flex shrink-0 items-center" aria-label="PrintStudio home">
         <span className="text-[15px] font-bold text-white">PrintStudio</span>
       </Link>
 

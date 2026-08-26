@@ -40,8 +40,9 @@ rail, no template picker, no find & replace.
 
 Editor screen, top to bottom (1462×906 reference frame):
 
-1. **Suite top nav** — 59px, `#cc0000`. Staples logo + "PrintStudio"
-   wordmark; suite tabs **Publisher · Bench · Photo Editor · Layouts ·
+1. **Suite top nav** — 59px, `#cc0000`. "PrintStudio" wordmark (the figma's
+   Staples "S" roundel was dropped by request 2026-08-26 — wordmark only);
+   suite tabs **Publisher · Bench · Photo Editor · Layouts ·
    Recent Jobs** (white text, white divider strokes); search field
    ("Search products, templates, orders — or paste a file link", white, r6);
    right: "Store 3000 (Natick, MA)" + white avatar circle with red initials.
