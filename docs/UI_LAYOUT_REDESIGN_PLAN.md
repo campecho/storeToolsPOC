@@ -41,15 +41,17 @@ rail, no template picker, no find & replace.
 Editor screen, top to bottom (1462×906 reference frame):
 
 1. **Suite top nav** — 50px (figma showed 59px; slimmed by request
-   2026-08-26), `#cc0000`. "PrintStudio" wordmark (the figma's
-   Staples "S" roundel was dropped by request 2026-08-26 — wordmark only);
-   suite tabs **Publisher · Bench · Photo Editor · Layouts ·
-   Recent Jobs** (white text; the figma's white divider strokes between
-   tabs were removed by the same request); search field
-   ("Search products, templates, orders — or paste a file link", white, r6);
-   right: "Store 3000 (Natick, MA)" + white avatar circle with red initials.
-   (Earlier frames show icon-only nav items; the labeled variant appears in
-   every later frame and is the one to build.)
+   2026-08-26), `#cc0000`, rearranged to the 2026-08-26 mock: logo mark
+   (rounded open-bottom frame) + "PrintStudio" wordmark (the figma's
+   Staples "S" roundel stays dropped); then the search field, left-placed
+   ("Search products, templates, orders — or paste a file link", white
+   pill); then, pushed right, suite tabs **Publisher · Bench · Photo
+   Editor · Layouts ▾ · Recent Jobs** — 13.5px, all full white (no dimming
+   on the disabled three), active = bold + 3px white underline, no divider
+   strokes, no darker active background; right: "**Store 3000** (Natick,
+   MA)" (store number bold). The feedback button, bell, and avatar keep
+   their functions after the store label (no-dropped-functions rule; the
+   mock's crop ends at the store label).
 2. **Document header** — 35px (figma showed 54px; slimmed by request
    2026-08-26), white, bottom border `#dddddd`. Back arrow; then the menu
    cluster (see 3); centered doc identity "Smith_BizCard_v2 · Business card
@@ -69,12 +71,12 @@ Editor screen, top to bottom (1462×906 reference frame):
    **Editing** (dropdown + "Replace..." → Find & Replace dialog). Insert tab:
    Clipboard + an **Insert** group of split buttons with chevrons: New Slide,
    Table, Image, Shapes, Text Box.
-5. **Work row** (sequence since 2026-08-26: tool rail · Pages panel ·
+5. **Work row** (sequence since 2026-08-26: Pages panel · tool rail ·
    canvas · right panel):
-   - **Tool rail** — 54px vertical rail at the left edge, white, right
-     border: the figma's floating bottom-center tool strip (below),
-     re-docked as a fixed left rail by request 2026-08-26. Same tools,
-     grouping, and active treatment.
+   - **Tool rail** — 54px vertical rail between the Pages panel and the
+     canvas, white, right border: the figma's floating bottom-center tool
+     strip (below), re-docked as a fixed rail by request 2026-08-26. Same
+     tools, grouping, and active treatment.
    - **Left panel, "Pages"** — 189px. Header: "Pages" caption + a red pill /
      secondary pill button pair; page thumbnails (selected = red border +
      red number), a "+" placeholder tile, "Add page" caption. On the Masters

@@ -12,10 +12,10 @@ import type { LucideIcon } from "lucide-react";
 import { useLayoutStore, TOOL_LABELS, type EditorTool } from "@/store";
 
 /**
- * Left tool rail (redesign plan §2.5): 9 single-select tools grouped by
+ * Vertical tool rail (redesign plan §2.5): 9 single-select tools grouped by
  * dividers. Originally the figma's floating bottom-center canvas toolbar;
- * moved to a fixed vertical rail at the left edge of the work row by
- * request 2026-08-26 (sequence: tools · pages · workspace · inspector).
+ * re-docked as a fixed rail between the Pages panel and the workspace by
+ * request 2026-08-26 (sequence: pages · tools · workspace · inspector).
  * The active tool wears the figma's red fill; the status bar mirrors it.
  */
 

@@ -56,7 +56,7 @@ function DeepLinkInit() {
 
 /**
  * The layout-editor frame (handoff regions 1–8): document header (with the
- * merged menu cluster), ribbon band, work-area row (tool rail · pages pane ·
+ * merged menu cluster), ribbon band, work-area row (pages pane · tool rail ·
  * canvas · inspector), status bar. Fills the viewport under the persistent
  * suite header; every fixed region is shrink-0 and the editor never scrolls
  * the document body.
@@ -140,8 +140,8 @@ export function EditorShell() {
           {ribbon === "insert" && <InsertBand />}
         </div>
         <div className="flex min-h-0 flex-1">
-          <ToolRail />
           <SidePanel />
+          <ToolRail />
           {/* relative so the preflight/master banners overlay the canvas region */}
           <div className="relative flex min-h-0 min-w-0 flex-1">
             <CanvasViewport />
