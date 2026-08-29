@@ -44,9 +44,9 @@ async function openDemoPhoto(page: Page) {
 }
 
 test.describe("Photo editor shell (PE1)", () => {
-  test("the homepage Photo Edit card navigates to /photo", async ({ page }) => {
+  test("the suite nav Photo Editor tab navigates to /photo", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("quickjump-photo-edit").click();
+    await page.getByTestId("suite-photo").click();
     await expect(page).toHaveURL(/\/photo$/);
     // Lands on the hydrated shell, no photo yet.
     await expect(page.getByTestId("photo-editor")).toHaveAttribute("data-hydrated", "true");

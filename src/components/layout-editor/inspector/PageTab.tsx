@@ -112,7 +112,7 @@ export function PageTab() {
             Choose a product to make it born-correct →
           </div>
           <Link
-            href="/templates"
+            href="/"
             data-testid="choose-template"
             className="text-[11px] text-info hover:underline"
           >

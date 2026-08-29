@@ -10,8 +10,8 @@ async function dismissAutoCelebrate(page: Page) {
   await expect(page.getByTestId("celebrate-modal")).toBeHidden();
 }
 
-test.describe("Home & file intake", () => {
-  test("renders the header chrome and homepage sections", async ({ page }) => {
+test.describe("Picker home", () => {
+  test("renders the header chrome and picker sections", async ({ page }) => {
     await page.goto("/");
 
     // persistent header
@@ -19,20 +19,15 @@ test.describe("Home & file intake", () => {
     await expect(page.getByText("Store #1284")).toBeVisible();
     await expect(page.getByTestId("give-feedback")).toBeVisible();
 
-    // homepage sections
-    await expect(page.getByText("Bring in a file")).toBeVisible();
+    // the main page is the picker (Phase 11): Templates tab at rest
+    await expect(page.getByText("Filters")).toBeVisible();
+    await expect(page.getByText("Template Explorer")).toBeVisible();
+
+    // Quick Import is the sibling tab — the uploader dropzone lives there
+    await page.getByTestId("picker-import").click();
     await expect(page.getByText("Drop a customer file to start")).toBeVisible();
-    await expect(page.getByText("Pick a product", { exact: true })).toBeVisible();
-    await expect(page.getByText("Business cards", { exact: true })).toBeVisible();
-
-    // recognition card with live impact tally
-    await expect(page.getByText("7 improvements")).toBeVisible();
-
-    // coachmark shows on first visit and dismisses
-    const coachHeadline = page.getByText("Hit a snag or have an idea?", { exact: true });
-    await expect(coachHeadline).toBeVisible();
-    await page.getByRole("button", { name: "Dismiss" }).click();
-    await expect(coachHeadline).toBeHidden();
+    await page.getByTestId("picker-templates").click();
+    await expect(page.getByText("Template Explorer")).toBeVisible();
   });
 });
 
@@ -309,7 +304,7 @@ test.describe("Notifications & celebrate", () => {
 
     // once per session: leaving and returning does not re-fire
     await page.getByRole("link", { name: "Back to Print Studio" }).click();
-    await page.getByTestId("open-board").click();
+    await page.goto("/feedback/board");
     await expect(page).toHaveURL(/\/feedback\/board/);
     await expect(modal).toBeHidden();
   });
@@ -439,7 +434,7 @@ test.describe("Extension hydration guard", () => {
     await page.waitForTimeout(1200);
 
     // app hydrated and interactive
-    await expect(page.getByText("Drop a customer file to start")).toBeVisible();
+    await expect(page.getByText("Template Explorer")).toBeVisible();
     await page.getByTestId("give-feedback").click();
     await expect(page.getByText("One sentence from you — we capture the rest.")).toBeVisible();
 
@@ -452,9 +447,7 @@ test.describe("Extension hydration guard", () => {
 
 test.describe("Tracker navigation", () => {
   test("sub-bar tabs switch between board and releases; back returns home", async ({ page }) => {
-    await page.goto("/");
-    await page.getByTestId("open-board").click();
-    await expect(page).toHaveURL(/\/feedback\/board/);
+    await page.goto("/feedback/board");
     await dismissAutoCelebrate(page);
     await expect(page.getByText("What stores are asking for")).toBeVisible();
 
@@ -463,6 +456,6 @@ test.describe("Tracker navigation", () => {
     await expect(page.getByText("You asked, we delivered.")).toBeVisible();
 
     await page.getByRole("link", { name: "Back to Print Studio" }).click();
-    await expect(page.getByText("Drop a customer file to start")).toBeVisible();
+    await expect(page.getByText("Template Explorer")).toBeVisible();
   });
 });

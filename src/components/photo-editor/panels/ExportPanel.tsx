@@ -25,7 +25,7 @@ import { openInLayoutEditor } from "@/lib/photo/layout-handoff";
  * "Open in Layout Editor" is LIVE (PE7): it flattens the applied recipe to a PNG,
  * registers + places it as a layout asset, and navigates — with an inline confirm
  * gate (never a browser dialog) when the layout document already has content, so a
- * photo is never dropped onto a busy page unannounced (PubConvertCallout pattern).
+ * photo is never dropped onto a busy page unannounced (QuickImportTab pattern).
  *
  * The export flow is fire-and-forget from the UI's point of view: setRendering
  * flips a session flag (status-bar chip + this button's guard), the fetch runs
@@ -35,7 +35,7 @@ import { openInLayoutEditor } from "@/lib/photo/layout-handoff";
 const WF_H = "text-[11px] font-semibold uppercase tracking-[0.04em] text-[#5f5f5f]";
 
 /** Layout document carries placed content on any page or master — mirrors
-    PubConvertCallout's gate. The handoff lands the photo on the current page, so
+    QuickImportTab's gate. The handoff lands the photo on the current page, so
     a non-empty layout document earns a confirm first. */
 function layoutDocHasContent(): boolean {
   const doc = useLayoutStore.getState().doc;
@@ -45,7 +45,7 @@ function layoutDocHasContent(): boolean {
   );
 }
 
-/** Inline state for the "Open in Layout Editor" handoff (PubConvertCallout phases,
+/** Inline state for the "Open in Layout Editor" handoff (QuickImportTab phases,
     kept in-panel rather than a browser dialog). */
 type HandoffPhase =
   | { kind: "idle" }
