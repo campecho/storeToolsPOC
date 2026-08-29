@@ -2,6 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import type { FrameObject, LayoutObject, PathSeg } from "@/schema";
 import { inToPx } from "@/lib/layout/geometry";
 import { bboxOf } from "@/lib/layout/objects";
+import {
+  arrowheadShape,
+  dashPatternIn,
+  headInsetIn,
+  headLengthIn,
+  trimmedSegment,
+} from "@/lib/layout/line-decor";
+import {
+  isParametricShape,
+  outlineOvershoot,
+  shadedFill,
+  shapeOutline,
+  shapeShading,
+} from "@/lib/layout/shape-paths";
 import { isOverflowing, textContent } from "@/lib/layout/text";
 import { useLayoutStore } from "@/store";
 import { paraCss, runCss } from "./rich-text-dom";
@@ -9,7 +23,9 @@ import { useAssetUrl } from "@/lib/assets/use-asset-url";
 
 /**
  * One document object at true scale (plan §3.2): rect / ellipse / picture /
- * text frames as positioned divs, lines as an SVG spanning their bbox.
+ * text frames as positioned divs, lines as an SVG spanning their bbox, and
+ * the parametric shape kinds merged from the publisher prototype (rounded
+ * rect / star / callout / banner) as SVG outlines from `shapeOutline`.
  * Stroke widths and type scale with zoom (they're page ink, not chrome); a
  * picture frame renders its bound asset (L8) or the gray placeholder with a
  * mountain glyph — and a visible missing-asset state when the bytes are gone.
@@ -17,6 +33,13 @@ import { useAssetUrl } from "@/lib/assets/use-asset-url";
  * L5) when content exceeds them; an empty frame shows a faint dashed
  * affordance so it stays findable. The pane thumbnails reuse this component
  * with `withTestId={false}` so mini-renders never duplicate canvas testids.
+ *
+ * Parametric shapes take pointer events on the OUTLINE (fill region +
+ * stroke), not the frame box — a star's empty corners and the space beside a
+ * callout tail let clicks fall through to what's beneath, matching the
+ * prototype's outline hit-testing. Lines render their merged decorations:
+ * dash pattern, arrow/circle/diamond heads, and the stroke trimmed back so
+ * it meets a pointed head instead of spilling past it.
  */
 
 /** Normalized (0–1) path segments → SVG path data at pixel size (schema v2). */
@@ -244,9 +267,35 @@ export function ObjectNode({
   if (obj.type === "line") {
     const b = bboxOf(obj);
     const strokePx = obj.stroke.width * zoom;
-    const pad = strokePx / 2 + 5; // room for the stroke + a grabbable halo
+    // Decorations (merged from the prototype): head geometry is in page
+    // inches; the stroke width feeds it in px-at-zoom-1 (the schema's unit).
+    const headLen = headLengthIn(obj.headSize, obj.stroke.width);
+    const angleEnd = Math.atan2(obj.y2 - obj.y1, obj.x2 - obj.x1);
+    const startHead = arrowheadShape(
+      obj.headStart,
+      { x: obj.x1, y: obj.y1 },
+      angleEnd + Math.PI,
+      headLen,
+    );
+    const endHead = arrowheadShape(obj.headEnd, { x: obj.x2, y: obj.y2 }, angleEnd, headLen);
+    const [t1, t2] = trimmedSegment(
+      { x: obj.x1, y: obj.y1 },
+      { x: obj.x2, y: obj.y2 },
+      headInsetIn(obj.headStart, headLen),
+      headInsetIn(obj.headEnd, headLen),
+    );
+    const dashIn = dashPatternIn(obj.dash, obj.stroke.width);
+    const headPad = startHead || endHead ? inToPx(headLen, zoom) : 0;
+    const pad = strokePx / 2 + 5 + headPad; // stroke + grabbable halo + head room
     const w = inToPx(b.w, zoom);
     const h = inToPx(b.h, zoom);
+    // page inches → this svg's local px
+    const lx = (v: number) => inToPx(v - b.x, zoom) + pad;
+    const ly = (v: number) => inToPx(v - b.y, zoom) + pad;
+    const heads = [
+      { head: startHead, key: "start" },
+      { head: endHead, key: "end" },
+    ];
     return (
       <svg
         data-testid={withTestId ? "object-line" : undefined}
@@ -261,24 +310,108 @@ export function ObjectNode({
       >
         {/* wide invisible twin so a hairline is still grabbable */}
         <line
-          x1={inToPx(obj.x1 - b.x, zoom) + pad}
-          y1={inToPx(obj.y1 - b.y, zoom) + pad}
-          x2={inToPx(obj.x2 - b.x, zoom) + pad}
-          y2={inToPx(obj.y2 - b.y, zoom) + pad}
+          x1={lx(obj.x1)}
+          y1={ly(obj.y1)}
+          x2={lx(obj.x2)}
+          y2={ly(obj.y2)}
           stroke="transparent"
           strokeWidth={Math.max(10, strokePx)}
           pointerEvents={interactive ? "stroke" : "none"}
         />
         <line
-          x1={inToPx(obj.x1 - b.x, zoom) + pad}
-          y1={inToPx(obj.y1 - b.y, zoom) + pad}
-          x2={inToPx(obj.x2 - b.x, zoom) + pad}
-          y2={inToPx(obj.y2 - b.y, zoom) + pad}
+          x1={lx(t1.x)}
+          y1={ly(t1.y)}
+          x2={lx(t2.x)}
+          y2={ly(t2.y)}
           stroke={obj.stroke.color}
           strokeWidth={strokePx}
+          strokeDasharray={dashIn?.map((v) => inToPx(v, zoom)).join(" ")}
           pointerEvents="none"
         />
+        {heads.map(({ head, key }) =>
+          head === null ? null : head.kind === "circle" ? (
+            <circle
+              key={key}
+              data-testid={withTestId ? `line-head-${key}` : undefined}
+              cx={lx(head.center.x)}
+              cy={ly(head.center.y)}
+              r={inToPx(head.radius, zoom)}
+              fill={obj.stroke.color}
+              pointerEvents="none"
+            />
+          ) : (
+            <polygon
+              key={key}
+              data-testid={withTestId ? `line-head-${key}` : undefined}
+              points={head.points.map((p) => `${lx(p.x)},${ly(p.y)}`).join(" ")}
+              fill={obj.stroke.color}
+              pointerEvents="none"
+            />
+          ),
+        )}
       </svg>
+    );
+  }
+
+  if (isParametricShape(obj)) {
+    const w = Math.max(inToPx(obj.w, zoom), 1);
+    const h = Math.max(inToPx(obj.h, zoom), 1);
+    // The callout's tail reaches outside the frame box — extend the svg
+    // canvas over the overshoot so the tail both renders AND takes clicks.
+    const overshoot = outlineOvershoot(obj);
+    const ex0 = Math.min(0, ...overshoot.map((p) => p.x));
+    const ey0 = Math.min(0, ...overshoot.map((p) => p.y));
+    const ex1 = Math.max(1, ...overshoot.map((p) => p.x));
+    const ey1 = Math.max(1, ...overshoot.map((p) => p.y));
+    const strokeW = obj.stroke ? obj.stroke.width * zoom : 0;
+    const outline = pathData(shapeOutline(obj, obj.w, obj.h), w, h);
+    const shading = obj.fill ? pathData(shapeShading(obj, obj.w, obj.h), w, h) : "";
+    return (
+      <div
+        data-testid={withTestId ? `object-${obj.type}` : undefined}
+        className="pointer-events-none absolute"
+        style={{
+          left: inToPx(obj.x, zoom),
+          top: inToPx(obj.y, zoom),
+          width: w,
+          height: h,
+          transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
+        }}
+      >
+        <svg
+          className="absolute overflow-visible"
+          style={{
+            left: ex0 * w,
+            top: ey0 * h,
+            width: (ex1 - ex0) * w,
+            height: (ey1 - ey0) * h,
+          }}
+        >
+          <g transform={`translate(${-ex0 * w}, ${-ey0 * h})`}>
+            <path
+              d={outline}
+              fill={obj.fill ?? "none"}
+              fillRule="evenodd"
+              stroke={obj.stroke?.color}
+              strokeWidth={strokeW || undefined}
+              className={interactive ? "cursor-move" : undefined}
+              pointerEvents={interactive ? "visiblePainted" : "none"}
+              onPointerDown={interactive ? onPointerDown : undefined}
+              onDoubleClick={interactive ? onDoubleClick : undefined}
+            />
+            {shading && (
+              <path
+                d={shading}
+                fill={shadedFill(obj.fill!)}
+                fillRule="evenodd"
+                stroke={obj.stroke?.color}
+                strokeWidth={strokeW || undefined}
+                pointerEvents="none"
+              />
+            )}
+          </g>
+        </svg>
+      </div>
     );
   }
 

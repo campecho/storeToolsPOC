@@ -4,8 +4,10 @@ import {
   NUDGE_IN,
   angleFromCenter,
   bboxOf,
+  createArrow,
   createFrame,
   createLine,
+  createShape,
   createTextFrame,
   normalizeAngle,
   resizeBBox,
@@ -16,6 +18,7 @@ import {
   translated,
   withBBox,
 } from "./objects";
+import { tailTipFor } from "./shape-paths";
 
 describe("factories", () => {
   it("frames get wireframe-language defaults and respect the minimum size", () => {
@@ -58,6 +61,36 @@ describe("factories", () => {
 
   it("every object gets a unique id", () => {
     expect(createFrame("rect", 0, 0, 1, 1).id).not.toBe(createFrame("rect", 0, 0, 1, 1).id);
+  });
+
+  it("arrows are lines with an end head stored, nothing else (additive rule)", () => {
+    const a = createArrow(1, 1, 4, 3);
+    expect(a).toMatchObject({ type: "line", x1: 1, y1: 1, x2: 4, y2: 3, headEnd: "arrow" });
+    expect(a.headStart).toBeUndefined();
+    expect(a.headSize).toBeUndefined();
+    expect(a.dash).toBeUndefined();
+  });
+
+  it("parametric shapes store their prototype draw defaults explicitly", () => {
+    expect(createShape("roundedRect", 0, 0, 2, 1)).toMatchObject({
+      type: "roundedRect",
+      cornerRadius: 0.1,
+    });
+    expect(createShape("starPolygon", 0, 0, 2, 2)).toMatchObject({
+      type: "starPolygon",
+      points: 5,
+      innerRadiusRatio: 0.5,
+    });
+    expect(createShape("callout", 0, 0, 2, 1).tailTip).toEqual(tailTipFor("bottom-left"));
+    expect(createShape("banner", 0, 0, 4, 1)).toMatchObject({
+      type: "banner",
+      panelInset: 0.17,
+      panelHeight: 0.65,
+    });
+    expect(createShape("starPolygon", 0, 0, 2, 2)).toMatchObject({
+      fill: "#f2f2f2",
+      stroke: { color: "#8f8f8f", width: 1 },
+    });
   });
 });
 
@@ -188,5 +221,36 @@ describe("rotation geometry (L10)", () => {
     const anchorAfter = rotatePoint(next.x, next.y, c2.x, c2.y, rotation);
     expect(anchorAfter.x).toBeCloseTo(anchorBefore.x, 6);
     expect(anchorAfter.y).toBeCloseTo(anchorBefore.y, 6);
+  });
+});
+
+describe("rotatedBBox — bounds take in what is drawn (merged prototype rule)", () => {
+  it("extends a callout's footprint over its tail tip", () => {
+    const c = createShape("callout", 1, 1, 2, 1);
+    c.tailTip = { x: 1.5, y: 1.5 }; // half a box right of and below the frame
+    const b = rotatedBBox(c);
+    expect(b.x).toBe(1);
+    expect(b.y).toBe(1);
+    expect(b.w).toBeCloseTo(2 * 1.5, 9); // reaches the tip at x = 1 + 3
+    expect(b.h).toBeCloseTo(1.5, 9);
+  });
+
+  it("rotates the tail tip with the frame", () => {
+    const c = createShape("callout", 0, 0, 2, 2);
+    c.tailTip = { x: 0.5, y: 1.5 }; // straight below the center
+    c.rotation = 90; // …now straight left of it
+    const b = rotatedBBox(c);
+    expect(b.x).toBeCloseTo(-1, 9);
+    expect(b.w).toBeCloseTo(3, 9);
+    expect(b.h).toBeCloseTo(2, 9);
+  });
+
+  it("leaves every in-box kind at its plain bounds", () => {
+    const star = createShape("starPolygon", 1, 1, 2, 2);
+    expect(rotatedBBox(star)).toEqual({ x: 1, y: 1, w: 2, h: 2 });
+    // a callout whose tip sits inside the body overshoots nowhere the box isn't
+    const c = createShape("callout", 1, 1, 2, 1);
+    c.tailTip = { x: 0.5, y: 0.5 };
+    expect(rotatedBBox(c)).toEqual({ x: 1, y: 1, w: 2, h: 1 });
   });
 });

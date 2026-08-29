@@ -4,6 +4,7 @@ export type { FeedbackState, ReportStep, CelebrateEntry } from "./feedback-store
 export {
   useLayoutStore,
   TOOL_LABELS,
+  SHAPE_TOOL_TYPES,
   createDefaultDocument,
   selectFileDirty,
   surfaceObjects,
@@ -19,5 +20,7 @@ export type {
   ExperienceLevel,
   TransformPatch,
   ObjectPropsPatch,
+  ShapeParamPatch,
+  LineDecorPatch,
   TextPropsPatch,
 } from "./layout-store";
