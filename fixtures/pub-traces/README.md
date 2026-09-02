@@ -15,6 +15,16 @@ property vocabulary (`svg:x`, `draw:fill`, `librevenge:rotate`,
 match what real conversions emit. The **format** is therefore byte-exact;
 the **callback sequence** is authored, not parsed from a real publication.
 
+The publication itself is a plausible customer file — a neighborhood coffee
+shop's two-page grand-opening flyer — so fixture mode demos like a real
+import: page 1 is the front (banner + headline over a bezier swoosh, the shop
+emblem beside mixed-style body copy with hanging-indent bullets, a rounded
+coupon box with a 15°-tilted "free pastry" sticker, the footer address under
+a divider, and a "NOW OPEN" starburst with its label tilted −12°); page 2 is
+the back (the opening-week schedule, the emblem again, the address). The
+emblem is `demo-flyer-art.png` (640×640, ~13 KB), rendered from a hand-drawn
+SVG; the emitter reads it from `argv[1]` and embeds the bytes.
+
 Format quirks this ground truth pinned down (encoded in `trace-parser.ts`):
 
 - some callbacks print a space before `(` (`drawRectangle (…)`), others
@@ -29,23 +39,23 @@ Format quirks this ground truth pinned down (encoded in `trace-parser.ts`):
 The golden exercises **both** ways Publisher images reach the trace, so the
 image-extraction step (P3) has a synthetic fixture for each path:
 
-- **`drawGraphicObject`** (page 1) — the direct embed: `librevenge:mime-type`
-  + `office:binary-data` (base64). The payload is a real programmatically
-  generated 8×8 PNG (solid `#cc0000`, 74 bytes), so `imageDimensions` reads a
-  genuine 8×8 IHDR — it replaced the earlier 12-char signature-only stub.
-- **Bitmap fill** (page 2) — `setStyle(draw:fill: bitmap, draw:fill-image: …,
-  librevenge:mime-type: image/png, style:repeat: stretch)` applied to the next
-  axis-aligned `drawRectangle`. This is the **dominant real-corpus path**
-  (see below): a bitmap fill on the following rectangle, not a graphic object.
-  The golden reuses the same 8×8 PNG payload, so the mapper's content-dedupe
-  collapses both frames to one asset.
+- **Bitmap fill** (page 1, the emblem beside the body copy) —
+  `setStyle(draw:fill: bitmap, draw:fill-image: …, librevenge:mime-type:
+  image/png, style:repeat: stretch)` applied to the next axis-aligned
+  `drawRectangle`. This is the **dominant real-corpus path** (see below): a
+  bitmap fill on the following rectangle, not a graphic object.
+- **`drawGraphicObject`** (page 2, the emblem above the address) — the direct
+  embed: `librevenge:mime-type` + `office:binary-data` (base64). The payload
+  is the same real PNG (`demo-flyer-art.png`), so `imageDimensions` reads a
+  genuine 640×640 IHDR and the mapper's content-dedupe collapses both frames
+  to one asset.
 
-Regenerate (needs `g++ librevenge-dev pkg-config`):
+Regenerate (needs `g++ librevenge-dev pkg-config`; run from this directory):
 
 ```bash
 g++ -o trace-emitter trace-emitter.cpp \
   $(pkg-config --cflags --libs librevenge-0.0 librevenge-generators-0.0 librevenge-stream-0.0)
-./trace-emitter > demo-flyer.trace
+./trace-emitter demo-flyer-art.png > demo-flyer.trace
 ```
 
 ## Real-corpus traces

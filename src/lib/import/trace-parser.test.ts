@@ -12,9 +12,11 @@ describe("parseTrace against the librevenge golden (plan P1)", () => {
     expect(events[0]).toEqual({ name: "startDocument", props: {} });
     expect(events.at(-1)).toEqual({ name: "endDocument", props: {} });
     expect(events.filter((e) => e.name === "startPage")).toHaveLength(2);
-    // 3 on page 1 (banner, rotated, rounded) + gray backer + bitmap-fill rect on page 2
-    expect(events.filter((e) => e.name === "drawRectangle")).toHaveLength(5);
-    expect(events.filter((e) => e.name === "startTextObject")).toHaveLength(3);
+    // page 1: banner, bitmap-fill emblem, coupon, sticker · page 2: backer, band
+    expect(events.filter((e) => e.name === "drawRectangle")).toHaveLength(6);
+    // page 1: headline, subline, body, coupon, sticker, footer, "NOW OPEN" ·
+    // page 2: title, schedule, address, web line
+    expect(events.filter((e) => e.name === "startTextObject")).toHaveLength(11);
   });
 
   it("tolerates both spacing forms (`drawRectangle (` and `setStyle(`)", () => {
@@ -37,14 +39,14 @@ describe("parseTrace against the librevenge golden (plan P1)", () => {
     const pts = poly.props["svg:points"];
     expect(Array.isArray(pts) && pts).toHaveLength(10);
     if (!Array.isArray(pts)) throw new Error("points not a vector");
-    expect(toInches(pts[0]["svg:x"])).toBe(6);
+    expect(toInches(pts[0]["svg:x"])).toBe(6.95); // the starburst's top vertex
 
     const path = events.find((e) => e.name === "drawPath");
     if (!path || !("props" in path)) throw new Error("no drawPath");
     const segs = path.props["svg:d"];
     if (!Array.isArray(segs)) throw new Error("d not a vector");
     expect(segs.map((s) => s["librevenge:path-action"])).toEqual(["M", "C", "Z"]);
-    expect(toInches(segs[1]["svg:x1"])).toBe(1.5);
+    expect(toInches(segs[1]["svg:x1"])).toBe(3.25);
   });
 
   it("keeps insertText payloads verbatim, including commas", () => {

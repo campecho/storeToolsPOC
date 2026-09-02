@@ -55,12 +55,14 @@ test.describe(".pub import (P1)", () => {
     await expect(page.getByTestId("doc-name")).toHaveValue("demo");
     await expect(page.getByTestId("page-indicator")).toContainText("of 2");
 
-    // Page 1 of the demo flyer: 3 rects (banner + rotated + rounded), 2 REAL
-    // vector paths since P2 (the star polygon and the bezier leaf), 2 text
-    // frames, the divider line, and the picture frame — nothing dropped.
+    // Page 1 of the demo flyer (14 objects): 3 rects (banner, coupon box,
+    // tilted sticker), 2 REAL vector paths since P2 (the headline swoosh and
+    // the "NOW OPEN" starburst), 7 text frames, the footer divider line, and
+    // the emblem picture (a bitmap-fill rect, the corpus's dominant image
+    // path) — nothing dropped.
     await expect(page.getByTestId("object-rect")).toHaveCount(3);
     await expect(page.getByTestId("object-path")).toHaveCount(2);
-    await expect(page.getByTestId("object-text")).toHaveCount(2);
+    await expect(page.getByTestId("object-text")).toHaveCount(7);
     await expect(page.getByTestId("object-line")).toHaveCount(1);
     await expect(page.getByTestId("object-picture")).toHaveCount(1);
 
@@ -77,9 +79,10 @@ test.describe(".pub import (P1)", () => {
 
     // Geometry accuracy (the Milestone-1 bar): the banner rect is exactly
     // 0.5,0.5 7.5×1.75 in. Select it from the Layers list (bottom of the
-    // z-order = last row) and read the Properties transform.
+    // z-order = last row, 14 objects → row 13) and read the Properties
+    // transform.
     await page.getByTestId("insp-layers").click();
-    await page.getByTestId("layer-row-8").click();
+    await page.getByTestId("layer-row-13").click();
     await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-x")).toHaveValue("0.5");
     await expect(page.getByTestId("prop-y")).toHaveValue("0.5");
@@ -88,17 +91,18 @@ test.describe(".pub import (P1)", () => {
     await expect(page.getByTestId("prop-rotation")).toHaveValue("0");
 
     // Rotation carries through unchanged (verified vs the pub2xhtml reference
-    // render); z-order: the rotated accent is the 4th object → layers row 5.
+    // render); z-order: the tilted sticker is the 9th object → layers row 5.
     // Layers and properties now share the inspector, so switch back first.
     await page.getByTestId("insp-layers").click();
     await page.getByTestId("layer-row-5").click();
     await page.getByTestId("insp-page").click();
     await expect(page.getByTestId("prop-rotation")).toHaveValue("15");
 
-    // Page 2 renders its own content
+    // Page 2 (the back) renders its own content: the cream backer + the band
     await page.getByTestId("page-next").click();
-    await expect(page.getByTestId("object-rect")).toHaveCount(1);
-    await expect(page.getByTestId("text-content")).toContainText("123 Main Street");
+    await expect(page.getByTestId("object-rect")).toHaveCount(2);
+    await expect(page.getByTestId("object-picture")).toHaveCount(1);
+    await expect(page.getByTestId("text-content").filter({ hasText: "412 Harbor Street" })).toHaveCount(1);
 
     // The import persists like any document
     await page.reload();

@@ -10,47 +10,74 @@ import type { ImportNote } from "./report";
 import { parseTrace } from "./trace-parser";
 
 const golden = readFileSync(join(process.cwd(), "fixtures/pub-traces/demo-flyer.trace"), "utf8");
+// The emblem PNG the emitter embeds (both image paths carry the same bytes).
+const art = readFileSync(join(process.cwd(), "fixtures/pub-traces/demo-flyer-art.png"));
 const ir = buildModel(parseTrace(golden));
 const { doc, fidelity, fonts, notes, blobs } = mapToLayoutDocument(ir, "Demo flyer");
+
+// Shape indices in the golden, 0-based (trace-emitter.cpp's [n] markers are
+// the same objects numbered from 1).
+const P1 = {
+  banner: 0,
+  swoosh: 1,
+  headline: 2,
+  subline: 3,
+  emblem: 4,
+  body: 5,
+  coupon: 6,
+  couponText: 7,
+  sticker: 8,
+  stickerText: 9,
+  divider: 10,
+  footer: 11,
+  star: 12,
+  nowOpen: 13,
+} as const;
+const P2 = { backer: 0, band: 1, title: 2, schedule: 3, emblem: 4, address: 5, web: 6 } as const;
+const PAGE1_SHAPES = 14;
+const PAGE2_SHAPES = 7;
 
 describe("buildModel (plan §10.2 intermediate model)", () => {
   it("captures pages and shape counts", () => {
     expect(ir.pages).toHaveLength(2);
     expect(ir.pages[0].wIn).toBe(8.5);
     expect(ir.pages[0].hIn).toBe(11);
-    // banner rect, headline text, body text, rotated rect, rounded rect,
-    // divider line, polygon, path, image = 9 shapes on page 1
-    expect(ir.pages[0].shapes).toHaveLength(9);
-    // page 2: gray backer rect, address text, bitmap-fill rect = 3 shapes
-    expect(ir.pages[1].shapes).toHaveLength(3);
+    // page 1 (the front): banner rect, swoosh path, headline text, subline
+    // text, bitmap-fill emblem rect, body text, coupon rect, coupon text,
+    // sticker rect, sticker text, divider line, footer text, starburst
+    // polygon, "NOW OPEN" text = 14 shapes
+    expect(ir.pages[0].shapes).toHaveLength(PAGE1_SHAPES);
+    // page 2 (the back): cream backer rect, band rect, title text, schedule
+    // text, graphic-object emblem, address text, web line = 7 shapes
+    expect(ir.pages[1].shapes).toHaveLength(PAGE2_SHAPES);
   });
 
   it("applies setStyle statefully to subsequent draws", () => {
     const banner = ir.pages[0].shapes[0];
     expect(banner.kind).toBe("rect");
-    expect(banner.style.fill).toBe("#cc0000");
+    expect(banner.style.fill).toBe("#3b2314");
     expect(banner.style.stroke).toBeNull();
   });
 
   it("captures text runs, breaks, and paragraph props", () => {
-    const headline = ir.pages[0].shapes[1];
+    const headline = ir.pages[0].shapes[P1.headline];
     if (headline.kind !== "textbox") throw new Error("expected textbox");
     expect(headline.paragraphs).toHaveLength(1);
     expect(headline.paragraphs[0].spans[0]).toMatchObject({
       text: "GRAND OPENING",
       fontName: "Impact",
-      sizePt: 48,
+      sizePt: 54,
       color: "#ffffff",
     });
     expect(headline.paragraphs[0].lineSpacing).toBeCloseTo(1.19, 5);
     expect(headline.style.textVAlign).toBe("middle");
     expect(headline.style.paddingIn?.l).toBeCloseTo(0.04, 5);
 
-    const addr = ir.pages[1].shapes[1];
+    const addr = ir.pages[1].shapes[P2.address];
     if (addr.kind !== "textbox") throw new Error("expected textbox");
     // two spans + the line break between them
     expect(addr.paragraphs[0].spans.map((s) => s.text)).toEqual([
-      "123 Main Street",
+      "412 Harbor Street",
       "\n",
       "Anytown, USA 01234",
     ]);
@@ -87,13 +114,13 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
       y: 0.5,
       w: 7.5,
       h: 1.75,
-      fill: "#cc0000",
+      fill: "#3b2314",
       rotation: 0,
     });
   });
 
   it("maps text frames with per-run family, size, ink color, and line spacing", () => {
-    const headline = doc.pages[0].layers[0].objects[1];
+    const headline = doc.pages[0].layers[0].objects[P1.headline];
     if (headline.type !== "text" || !headline.text) throw new Error("expected text frame");
     const para = headline.text.paragraphs[0];
     expect(para.runs).toHaveLength(1);
@@ -101,25 +128,44 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
       text: "GRAND OPENING",
       color: "#ffffff", // the corpus's white-on-dark labels made this a P2 must
     });
-    expect(para.runs[0].font).toMatchObject({ family: "Impact", size: 48, bold: false });
+    expect(para.runs[0].font).toMatchObject({ family: "Impact", size: 54, bold: false });
     expect(para.align).toBe("center");
     expect(para.lineSpacing).toBeCloseTo(1.19, 5);
   });
 
   it("keeps multi-style paragraphs as real runs (P2) — merging same-style neighbors", () => {
-    const body = doc.pages[0].layers[0].objects[2];
+    const body = doc.pages[0].layers[0].objects[P1.body];
     if (body.type !== "text" || !body.text) throw new Error("expected text frame");
     expect(textContent(body.text)).toBe(
-      "Join us Saturday for our grand opening celebration with door prizes and demos.\nDoors open at 9 AM."
+      [
+        "Join us Saturday for our grand opening celebration — free coffee, door prizes and live music all day long.",
+        "•  Free small coffee for the first 100 guests",
+        "•  Ribbon cutting at 8 AM with Mayor Ortiz",
+        "•  Live music on the patio from noon",
+        "•  Door prizes drawn every hour",
+        "Doors open at 7 AM.",
+        "Locally roasted. Poured with care.",
+      ].join("\n"),
     );
     // regular / bold / regular — three runs, bold carried per-run
     const runs = body.text.paragraphs[0].runs;
     expect(runs.map((r) => [r.text, r.font.bold])).toEqual([
       ["Join us Saturday for our ", false],
       ["grand opening celebration", true],
-      [" with door prizes and demos.", false],
+      [" — free coffee, door prizes and live music all day long.", false],
     ]);
     expect(runs.every((r) => r.font.family === "Times New Roman")).toBe(true);
+    // the bullet's "•  " + text spans share a style → merged into one run,
+    // with the hanging indent carried on the paragraph
+    const bullet = body.text.paragraphs[1];
+    expect(bullet.runs).toHaveLength(1);
+    expect(bullet.runs[0].text).toBe("•  Free small coffee for the first 100 guests");
+    expect(bullet.indent).toBeCloseTo(0.22, 5);
+    expect(bullet.firstLineIndent).toBeCloseTo(-0.16, 5);
+    // the italic tagline keeps its style and ink color per run
+    const tagline = body.text.paragraphs[6].runs[0];
+    expect(tagline.font.italic).toBe(true);
+    expect(tagline.color).toBe("#e07a1f");
     // no flatten note anymore — this is faithful now
     expect(notes.some((n) => n.objectId === body.id)).toBe(false);
   });
@@ -127,41 +173,53 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   it("passes rotation through unchanged (both conventions are CW about the center)", () => {
     // Verified against pub2xhtml's reference render of the corpus (3up_tabs):
     // librevenge:rotate θ → SVG rotate(θ, cx, cy) with no negation.
-    const rotated = doc.pages[0].layers[0].objects[3];
-    expect(rotated.type).toBe("rect");
-    if (rotated.type === "line") throw new Error("unexpected line");
-    expect(rotated.rotation).toBe(15);
+    const sticker = doc.pages[0].layers[0].objects[P1.sticker];
+    expect(sticker.type).toBe("rect");
+    if (sticker.type === "line") throw new Error("unexpected line");
+    expect(sticker.rotation).toBe(15);
+    // the sticker's text frame rotates with it; a negative angle normalizes
+    const stickerText = doc.pages[0].layers[0].objects[P1.stickerText];
+    if (stickerText.type !== "text") throw new Error("expected text frame");
+    expect(stickerText.rotation).toBe(15);
+    const nowOpen = doc.pages[0].layers[0].objects[P1.nowOpen];
+    if (nowOpen.type !== "text") throw new Error("expected text frame");
+    expect(nowOpen.rotation).toBe(348);
   });
 
   it("still degrades rounded corners with a note — never silently", () => {
     const ids = new Set(notes.filter((n) => n.tier === 2).map((n) => n.objectId));
-    const rounded = doc.pages[0].layers[0].objects[4];
-    expect(ids.has(rounded.id)).toBe(true);
+    const coupon = doc.pages[0].layers[0].objects[P1.coupon];
+    expect(ids.has(coupon.id)).toBe(true);
+    // the rest of the rectangle survives: fill + stroke, exact box
+    expect(coupon).toMatchObject({ type: "rect", x: 0.75, y: 6.25, w: 7, h: 1.9, fill: "#f6efe3" });
+    if (coupon.type === "line") throw new Error("unexpected line");
+    expect(coupon.stroke).toEqual({ color: "#3b2314", width: 1.92 }); // 0.02in × 96
   });
 
   it("extracts the drawGraphicObject image to a stretched picture frame (P3) — no note", () => {
-    const picture = doc.pages[0].layers[0].objects[8];
+    const picture = doc.pages[1].layers[0].objects[P2.emblem];
     if (picture.type !== "picture") throw new Error("expected picture frame");
     expect(picture.assetId).toBeDefined();
     expect(picture.fit).toBe("stretch");
     // the extracted image is faithful now — no degradation note
     expect(notes.some((n) => n.objectId === picture.id)).toBe(false);
-    // asset metadata carries the sniffed mime + real 8×8 dimensions
+    // asset metadata carries the sniffed mime + the emblem's real dimensions
     const asset = doc.assets[picture.assetId!];
-    expect(asset).toMatchObject({ kind: "image", mime: "image/png", width: 8, height: 8, name: "imported-1.png" });
-    expect(asset.bytes).toBe(74);
+    expect(asset).toMatchObject({ kind: "image", mime: "image/png", width: 640, height: 640, name: "imported-1.png" });
+    expect(asset.bytes).toBe(art.length);
     // and the bytes ride the blobs payload keyed by the same id
     expect(blobs[picture.assetId!]).toBeDefined();
     expect(blobs[picture.assetId!].mime).toBe("image/png");
-    expect(decodeBase64(blobs[picture.assetId!].dataB64).length).toBe(74);
+    expect(decodeBase64(blobs[picture.assetId!].dataB64)).toEqual(new Uint8Array(art));
   });
 
-  it("converts a page-2 bitmap-fill rect to a picture sharing the deduped asset", () => {
-    const picture = doc.pages[1].layers[0].objects[2];
+  it("converts the page-1 bitmap-fill rect to a picture sharing the deduped asset", () => {
+    const picture = doc.pages[0].layers[0].objects[P1.emblem];
     if (picture.type !== "picture") throw new Error("expected picture frame");
     expect(picture.fit).toBe("stretch");
-    // same PNG payload as the page-1 graphic → one shared asset, not two
-    const graphic = doc.pages[0].layers[0].objects[8];
+    expect(picture).toMatchObject({ x: 0.5, y: 2.5, w: 3.4, h: 3.4 });
+    // same PNG payload as the page-2 graphic → one shared asset, not two
+    const graphic = doc.pages[1].layers[0].objects[P2.emblem];
     if (graphic.type !== "picture") throw new Error("expected picture frame");
     expect(picture.assetId).toBe(graphic.assetId);
     expect(Object.keys(doc.assets)).toHaveLength(1);
@@ -170,16 +228,19 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("converts polygons to real closed paths with normalized (0–1) points (P2)", () => {
-    const polygon = doc.pages[0].layers[0].objects[6];
+    const polygon = doc.pages[0].layers[0].objects[P1.star];
     if (polygon.type !== "path" || !polygon.d) throw new Error("expected path");
-    // bbox exact, as before
-    expect(polygon.x).toBe(4.6);
-    expect(polygon.y).toBe(8.9);
-    expect(polygon.w).toBeCloseTo(2.8, 5);
-    expect(polygon.h).toBeCloseTo(2.1, 5);
-    // 10 star points + close, first vertex (6.0, 8.9) normalizes into the box
+    // bbox exact: the starburst's vertex hull (center 6.95, 9.65; outer r 0.95)
+    expect(polygon.x).toBeCloseTo(6.0465, 4);
+    expect(polygon.y).toBeCloseTo(8.7, 4);
+    expect(polygon.w).toBeCloseTo(1.807, 4);
+    expect(polygon.h).toBeCloseTo(1.7186, 4);
+    // 10 star points + close, first vertex (6.95, 8.7) — top center of the box
     expect(polygon.d).toHaveLength(11);
-    expect(polygon.d[0]).toEqual({ c: "M", x: 0.5, y: 0 });
+    expect(polygon.d[0].c).toBe("M");
+    if (polygon.d[0].c !== "M") throw new Error("expected M");
+    expect(polygon.d[0].x).toBeCloseTo(0.5, 3);
+    expect(polygon.d[0].y).toBeCloseTo(0, 5);
     expect(polygon.d[10]).toEqual({ c: "Z" });
     for (const seg of polygon.d) {
       if (seg.c === "Z") continue;
@@ -191,18 +252,20 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("converts bezier paths to real paths, keeping cubic control points (P2)", () => {
-    const path = doc.pages[0].layers[0].objects[7];
+    const path = doc.pages[0].layers[0].objects[P1.swoosh];
     if (path.type !== "path" || !path.d) throw new Error("expected path");
-    expect(path.d[0]).toEqual({ c: "M", x: 0, y: 0.5 });
+    // the swoosh starts at the bbox's bottom-left (the curve bows upward)
+    expect(path.d[0]).toEqual({ c: "M", x: 0, y: 1 });
     const c = path.d[1];
     if (c.c !== "C") throw new Error("expected cubic");
     expect(c.x).toBe(1); // end point at the right edge of the bbox
+    expect(c.y).toBe(1);
     expect(path.d[2]).toEqual({ c: "Z" });
     expect(notes.some((n) => n.objectId === path.id)).toBe(false);
   });
 
   it("maps the divider polyline to a line object with px stroke width", () => {
-    const line = doc.pages[0].layers[0].objects[5];
+    const line = doc.pages[0].layers[0].objects[P1.divider];
     if (line.type !== "line") throw new Error("expected line");
     expect(line.x1).toBe(0.75);
     expect(line.x2).toBe(7.75);
@@ -210,7 +273,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("defaults unspecified line spacing to Publisher single (1.19)", () => {
-    const addr = doc.pages[1].layers[0].objects[1];
+    const addr = doc.pages[1].layers[0].objects[P2.address];
     if (addr.type !== "text" || !addr.text) throw new Error("expected text frame");
     expect(addr.text.paragraphs[0].lineSpacing).toBe(PUBLISHER_DEFAULT_LINE_SPACING);
   });
@@ -223,7 +286,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("carries vertical alignment and text insets faithfully (P2) — no notes needed", () => {
-    const headline = doc.pages[0].layers[0].objects[1];
+    const headline = doc.pages[0].layers[0].objects[P1.headline];
     if (headline.type !== "text" || !headline.text) throw new Error("expected text frame");
     expect(headline.text.vAlign).toBe("middle");
     expect(headline.text.inset).toEqual({ l: 0.04, r: 0.04, t: 0.04, b: 0.04 });
@@ -231,12 +294,15 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
   });
 
   it("tallies fidelity so the report adds up (P3: the image now extracts clean)", () => {
-    // 9 page-1 shapes + 3 page-2 shapes (the added bitmap rect) = 12
-    expect(fidelity.converted + fidelity.degraded + fidelity.flagged).toBe(12);
+    const total = PAGE1_SHAPES + PAGE2_SHAPES;
+    expect(fidelity.converted + fidelity.degraded + fidelity.flagged).toBe(total);
     expect(fidelity.flagged).toBe(0); // no tables in the demo trace
-    // only the rounded rect still degrades — the image + bitmap rect convert
+    // only the rounded coupon box degrades — both image paths convert clean
     expect(fidelity.degraded).toBe(1);
-    expect(fidelity.converted).toBe(11);
+    expect(fidelity.converted).toBe(total - 1);
+    // and nothing else on the flyer raised a note (no wrap-overlap, no page
+    // numbers): the one note is the coupon's
+    expect(notes.filter((n) => n.objectId)).toHaveLength(1);
   });
 });
 
