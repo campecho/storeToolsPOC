@@ -35,6 +35,13 @@ import {
  * inches (width pt / 72 / 2) on every object type — the contracts spell this
  * out only for lines; applying it uniformly is a working guess for SME
  * review.
+ *
+ * Fill rule: a fill makes its whole painted area hit, and an OPEN path is
+ * painted with its fill implicitly closed (Canvas 2D `fill()` joins the ends
+ * for free), so a filled partial shape hits across that region as well as on
+ * its stroke. Unfilled, an open path has no interior at all — nothing is
+ * painted there to click. Illustrator's rule, and the invariant behind it is
+ * the one worth keeping: the hit region equals the painted region.
  */
 
 export type HitTestOptions = {
@@ -96,14 +103,20 @@ function pathHitsPoint(
   local: Point,
   subs: readonly FlattenedSubpath[],
   interiorSelectable: boolean,
+  filled: boolean,
   band: number,
 ): boolean {
   for (const sub of subs) {
     if (subpathStrokeHit(sub, local, band)) return true;
   }
   if (!interiorSelectable) return false;
-  // Interior exists only where subpaths close (even-odd over closed rings).
-  const rings = subs.filter((s) => s.closed).map((s) => s.points);
+  // A closed subpath rings its own interior. An OPEN one rings the interior
+  // its FILL paints: Canvas 2D `fill()` closes every subpath implicitly, so a
+  // partial shape (the pen's open path) shows a filled region — and a region
+  // you can see is a region you must be able to click. Unfilled, an open
+  // subpath contributes nothing: there is no painted interior to hit, which
+  // is Illustrator's rule and keeps the hit region equal to the paint.
+  const rings = subs.filter((s) => s.closed || filled).map((s) => s.points);
   return rings.length > 0 && pointInRingsEvenOdd(local, rings);
 }
 
@@ -116,7 +129,8 @@ function objectHitsPoint(obj: LayoutObject, p: Point, opts: HitTestOptions): boo
   // Rotation-aware: inverse-rotate the point about the frame pivot into the
   // frame's unrotated coordinates, then test axis-aligned.
   const local = obj.rotation === 0 ? p : rotatePoint(p, framePivot(frame), -obj.rotation);
-  const interiorSelectable = obj.fill !== null || opts.unfilledInterior === "selects";
+  const filled = obj.fill !== null;
+  const interiorSelectable = filled || opts.unfilledInterior === "selects";
   const band = opts.toleranceIn + strokeHalfIn(obj.stroke);
   if (obj.type === "shape" && obj.shape === "ellipse") {
     return ellipseHitsPoint(local, frame, interiorSelectable, band);
@@ -128,6 +142,7 @@ function objectHitsPoint(obj: LayoutObject, p: Point, opts: HitTestOptions): boo
       local,
       flattenPath(shapeOutline(obj, frame.w, frame.h), frame),
       interiorSelectable,
+      filled,
       band,
     );
   }

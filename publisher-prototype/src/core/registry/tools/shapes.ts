@@ -763,7 +763,7 @@ export const penTool: ToolContract = {
   undo: "per-gesture",
   notes: [
     "'Freeform shapes where feasible.' (§4.4) — this tool is that requirement's creation surface; node editing is handed to the node-select tool.",
-    "Open paths have no interior hit; closed unfilled paths pass through per the unfilled-interior rule.",
+    "A partial (open) path hits across its FILL as well as its stroke: the fill paints with the path implicitly closed, so the region is visible and must be clickable (Illustrator's rule — the hit region equals the painted region). Unfilled, an open path has no interior at all and hits on its stroke only; closed unfilled paths pass through per the unfilled-interior rule.",
     "Each anchor placement commits its own action so per-gesture undo steps back one anchor at a time; the close/finish gesture commits the shape itself.",
     "The path in progress previews LIVE (Illustrator's pen): the segment the next press would add rubber-bands from the last anchor to the pointer — snapping to the closing segment over the close target — and a curve-anchor drag draws the curve it is shaping, not only its handles. Preview only: it commits nothing, so it carries no clause of its own.",
     "PARTIAL SHAPES ARE KEPT (user-ratified 2026-09-08, Illustrator parity): every exit from the pen — Esc, Enter, double-click, or picking another tool — commits the draft as an open path. Esc no longer discards (the earlier pen.esc.discards-path clause is retired), and undo, one anchor at a time, is the only way to unmake a draft. A draft with no shape in it (one anchor, or every point identical) still discards on the way out.",

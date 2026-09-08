@@ -11,7 +11,9 @@ import {
   notificationCount,
   pageObjects,
   screenPoint,
+  selectionIds,
   shapeAt,
+  type DocPoint,
 } from "./helpers";
 
 /**
@@ -233,6 +235,69 @@ test("pen.double-click.commits-open-path", async ({ page }) => {
   expectNear(second.shape.w, 2);
   expectNear(second.shape.h, 2);
   expect(await penAnchors(page)).toEqual([]);
+});
+
+/**
+ * What COLOR is painted at this document point — the §5 testing note's
+ * pixel-sampling probe. Konva draws each layer to its own canvas, stacked in
+ * DOM order, so walking them topmost-first and taking the first non-
+ * transparent pixel is what the eye sees there. Asking for the colour rather
+ * than mere opacity is the point: the page itself paints opaque white
+ * everywhere, so "something is painted here" would be true of the whole page
+ * and prove nothing.
+ */
+async function paintedColorAt(page: Page, pt: DocPoint): Promise<string> {
+  const p = await screenPoint(page, pt);
+  return page.evaluate(({ x, y }) => {
+    const canvases = [...document.querySelectorAll("canvas")].reverse();
+    for (const canvas of canvases) {
+      const rect = canvas.getBoundingClientRect();
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      const sx = Math.round(((x - rect.left) * canvas.width) / rect.width);
+      const sy = Math.round(((y - rect.top) * canvas.height) / rect.height);
+      const [r, g, b, a] = ctx.getImageData(sx, sy, 1, 1).data;
+      if ((a ?? 0) === 0) continue;
+      const hex = (v: number | undefined) => (v ?? 0).toString(16).padStart(2, "0");
+      return `#${hex(r)}${hex(g)}${hex(b)}`;
+    }
+    return "transparent";
+  }, p);
+}
+
+/** The pen's default fill (penTool options, src/core/registry/tools/shapes.ts). */
+const PEN_FILL = "#4472c4";
+
+test("a partial shape's FILL is both painted and clickable", async ({ page }) => {
+  await activate(page, "Pen / freeform");
+  // Three corners, left open: the fill paints across the implied closure.
+  await clickAt(page, { x: 1, y: 3 });
+  await clickAt(page, { x: 4, y: 3 });
+  await clickAt(page, { x: 4, y: 6 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const { shape, d } = pathShapeAt(await pageObjects(page), 0);
+  expect(hasClosingZ(d)).toBe(false);
+  expect(shape.fill).not.toBeNull();
+  // Enter handed the page back to Select, and the new object came selected;
+  // clear it so the click below is what does the selecting.
+  await clickAt(page, { x: 7, y: 7 });
+  await expect.poll(() => selectionIds(page)).toEqual([]);
+  // Deep inside the filled region and well clear of every drawn edge, so
+  // neither the stroke band nor tolerance can account for a hit.
+  const insideFill = { x: 3, y: 4 };
+  const outsideFill = { x: 1.5, y: 5 };
+  // The fill really is painted there — and really is not on the other side of
+  // the implied closure, which is what makes the click assertions mean
+  // something.
+  expect(await paintedColorAt(page, insideFill)).toBe(PEN_FILL);
+  expect(await paintedColorAt(page, outsideFill)).not.toBe(PEN_FILL);
+  await clickAt(page, insideFill);
+  await expect.poll(() => selectionIds(page)).toEqual([shape.id]);
+  // Where nothing is painted, the same partial shape lets the click through.
+  await clickAt(page, outsideFill);
+  await expect.poll(() => selectionIds(page)).toEqual([]);
 });
 
 test("pen.esc.ends-path", async ({ page }) => {

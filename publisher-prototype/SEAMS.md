@@ -79,6 +79,19 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   reverses. The path in progress also previews live (rubber band to the pointer,
   curve visible while its handle is dragged); previews commit nothing, so they
   carry no clause.
+- **Fill rule for open paths (recorded 2026-09-08, user-ratified):** a filled OPEN
+  path hits across its fill as well as its stroke. `core/hittest` had built path
+  interiors from closed subpaths only, but the renderer fills an open path with
+  its ends implicitly joined (Canvas 2D `fill()`), so a partial shape painted a
+  region nobody could click. Interiors now ring open subpaths too — gated on
+  `fill !== null`, so an unfilled open path still has no interior and hits on its
+  stroke alone, even under a tool declaring `unfilledInterior: "selects"` (that
+  rule is a frame-editing affordance and keeps its meaning for closed shapes).
+  This is Illustrator's model, and the invariant to hold onto going forward is
+  the reason it is right: **the hit region equals the painted region.** Only
+  stored `path` shapes are affected — every parametric builder closes each
+  subpath with `Z`. The MARQUEE rule is deliberately untouched: it intersects
+  geometry and ignores fill, so an open path's implied region is not part of it.
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no
