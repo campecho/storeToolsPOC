@@ -46,6 +46,24 @@ npm run dev
 The host repo's workflow for this app is a thin cd-and-run shim over `npm run ci`;
 all CI logic lives here (PLAN.md §0.1).
 
+## Container image
+
+`Dockerfile` builds `dist/` and serves it from unprivileged nginx — no server
+component, just a static host with an SPA fallback and hashed-asset caching.
+It listens on `$PORT` (default 8080), so it runs as-is on any container
+platform that injects one.
+
+```sh
+docker build -t publisher-prototype .
+docker run --rm -p 8080:8080 publisher-prototype                   # open
+docker run --rm -p 8080:8080 -e APP_PASSWORD=hunter2 publisher-prototype  # gated
+```
+
+Set `APP_PASSWORD` and the whole site sits behind HTTP Basic auth (username
+`prototype`, override with `APP_USER`) — the shared-password gate a hosted
+build needs. Leave it unset and the app serves openly, which is what local
+runs and the image check want.
+
 ## Layout
 
 ```
