@@ -147,7 +147,7 @@ Canvas focus, no text field involved.
 | Keys | Does | Tool | Clause | Status |
 | :--- | :--- | :--- | :----- | :----- |
 | `Esc` | Cancels the gesture in flight and restores the geometry it started from | any | `select.esc.cancels-drag` and each draw tool's `*.esc.cancels-draw` | Wired |
-| `Esc` | Discards the pen draft between presses | Pen | `pen.esc.discards-path` | Wired |
+| `Esc` | Ends the pen path and keeps it — the draft commits as an open shape | Pen | `pen.esc.ends-path` | Wired |
 | `Enter` | Finishes the open pen path | Pen | `pen.double-click.commits-open-path` | Wired |
 | `Delete` / `Backspace` | Removes the selected objects; locked ones stay | Select | `select.delete.removes-selection` | Wired |
 | Arrow keys | Nudges the selection by the options-bar increment (default 0.1 in) | Select | `select.arrow.nudges` | Wired |
@@ -271,6 +271,11 @@ deciding what a foreign paste means, which is dev-team work, not a binding.
 `Esc` differs from Publisher on purpose — it is the universal cancel here, and
 overloading it to also mean deselect would make a mid-drag `Esc` ambiguous. Deselect
 takes Illustrator's `Ctrl`+`Shift`+`A` instead, which nothing else wanted.
+
+The pen is `Esc`'s one exception, and it is Illustrator's behavior: `Esc` **ends** the
+path in progress and keeps what was drawn (`pen.esc.ends-path`) rather than throwing it
+away. A partial shape is a shape, so no exit from the pen discards one; undo, one anchor
+at a time, is what unmakes a draft.
 
 ### Object manipulation and layout
 

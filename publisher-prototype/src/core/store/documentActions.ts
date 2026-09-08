@@ -327,8 +327,9 @@ export function isDrawCommit(action: UnknownAction): action is UnknownAction & {
 }
 
 /** The gesture pipeline's DevTools record for an aborted gesture (Esc during
-    drag, discarded pen path). No DOCUMENT reducer handles it — an aborted
-    gesture never changes the document — but the pen draft (app state,
-    penSlice) clears on it: pen.esc.discards-path binds to this action, and a
-    non-empty draft IS state to discard. */
+    drag, a pen draft too small to be a shape). No DOCUMENT reducer handles
+    it — an aborted gesture never changes the document — but the pen draft
+    (app state, penSlice) clears on it, which is how an unfinishable draft
+    resolves in one action. Esc under the pen does NOT come here any more:
+    pen.esc.ends-path commits the draft (Illustrator parity). */
 export const gestureCancelled = createAction("gesture/cancelled");

@@ -194,6 +194,11 @@ export type ToolGestureArgs = {
 
 export type ToolGestures = {
   preview: GesturePreview | null;
+  /** Where the pointer is while the pen tool waits between presses — what the
+      overlay rubber-bands the next segment to. Null when no draft is running,
+      the pointer has left the canvas, or a press has taken over (the press's
+      own preview draws the pending segment from then on). */
+  penHover: GesturePoint | null;
   /** True while any gesture session runs (wheel input is dropped, like pan). */
   active: boolean;
   /** The cursor of the handle a resize/rotate started from, held for the whole
@@ -205,6 +210,8 @@ export type ToolGestures = {
   onPointerMove(e: React.PointerEvent<HTMLDivElement>): void;
   /** pointerup / pointercancel / lostpointercapture — idempotent. */
   onPointerEnd(e: React.PointerEvent<HTMLDivElement>): void;
+  /** The pointer left the canvas — the pen's rubber band goes with it. */
+  onPointerLeave(): void;
   /** select.double-click-group.enters-group under the select tool, and
       pen.double-click.commits-open-path under the pen (the pointer half;
       Enter is the keyboard half). No-op for every other tool. */
@@ -225,6 +232,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const dispatch = useAppDispatch();
   const sessionRef = useRef<Session | null>(null);
   const [preview, setPreview] = useState<GesturePreview | null>(null);
+  const [penHover, setPenHover] = useState<GesturePoint | null>(null);
   const [active, setActive] = useState(false);
   const [handleCursor, setHandleCursor] = useState<string | null>(null);
   // Latest args for the natively-attached keyboard listener (frameRef pattern).
@@ -246,6 +254,29 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     [dispatch],
   );
 
+  /** Finish the pen draft as a shape — the single exit Enter, Esc,
+      double-click and the switch-away path all take (pen.esc.ends-path and
+      pen.double-click.commits-open-path; core/gestures/pen.ts owns the
+      geometry). `keepTool` leaves the active tool alone by going round
+      `commit`'s hand-back-to-Select: a draft finished BECAUSE the user
+      picked another tool must not bounce them out of it. */
+  const finishDraft = useCallback(
+    (anchors: readonly PenAnchor[], keepTool = false): void => {
+      const { pageIndex, toolOptions } = argsRef.current;
+      const action = finishPenDraft(
+        anchors,
+        pageIndex,
+        optionBoolean(toolOptions, "pen", "autoClose", false),
+        drawStyleFromOptions(toolOptions, "pen"),
+        createObjectId,
+      );
+      if (action === null) return;
+      if (keepTool) dispatch(action);
+      else commit(action);
+    },
+    [commit, dispatch],
+  );
+
   const toDoc = (e: { clientX: number; clientY: number }): GesturePoint => {
     const el = args.areaRef.current;
     const rect = el ? el.getBoundingClientRect() : { left: 0, top: 0 };
@@ -259,6 +290,10 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
 
   const begin = (session: Session, pointerId: number): void => {
     sessionRef.current = session;
+    // A press supersedes the hover band — from here the session's own preview
+    // draws the pending segment, and clearing now also keeps a stale point
+    // from a previous draft off the next path's first anchor.
+    setPenHover(null);
     // Capture on the canvas area for every gesture — handle downs included —
     // so the workspace's shared move/up/interrupt handlers see the stream.
     args.areaRef.current?.setPointerCapture(pointerId);
@@ -514,7 +549,13 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
     const session = sessionRef.current;
-    if (!session) return;
+    if (!session) {
+      // Between pen presses the pointer still matters: it is the far end of
+      // the rubber band. React state, exactly like the in-gesture preview —
+      // the §6.3 rule bans the STORE dispatch, not the tracking.
+      if (args.activeTool === "pen" && args.penAnchors.length > 0) setPenHover(toDoc(e));
+      return;
+    }
     const modifiers: GestureModifiers = { shift: e.shiftKey, alt: e.altKey };
     if (e.buttons === 0) {
       // The release happened where we couldn't see it — end the gesture
@@ -528,6 +569,10 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
 
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>): void => {
     endSession({ shift: e.shiftKey, alt: e.altKey });
+  };
+
+  const onPointerLeave = (): void => {
+    setPenHover(null);
   };
 
   /** Every selected object's starting geometry, in the shape the transform
@@ -686,8 +731,8 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     begin(session, e.pointerId);
   };
 
-  // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or
-  // discards a pen draft between presses (pen.esc.discards-path); Enter
+  // Esc cancels the in-flight gesture (…esc.cancels-draw / -drag clauses) or,
+  // under the pen, ENDS the path and keeps it (pen.esc.ends-path); Enter
   // finishes the pen draft (pen.double-click.commits-open-path's keyboard
   // half); arrows nudge the selection (select.arrow.nudges, coarsened by
   // Shift per select.shift-arrow.nudges-coarse); Delete removes it;
@@ -728,6 +773,27 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
       }
       if (e.key === "Escape") {
         const session = sessionRef.current;
+        const { activeTool, penAnchors } = argsRef.current;
+        // The text-entry guard matters more here than it did for a discard:
+        // Esc in a panel field reverts that field's edit run (NumberField),
+        // and must not also commit the path behind it.
+        if (activeTool === "pen" && penAnchors.length > 0 && !isTextEntryTarget(e.target)) {
+          // pen.esc.ends-path: Esc leaves the pen path and KEEPS it. A press
+          // in flight is abandoned by DROPPING the session rather than
+          // cancelling it — session.cancel() dispatches gesture/cancelled,
+          // which clears the very draft this clause exists to keep — so the
+          // gesture still resolves in exactly one action: the finish.
+          if (session) {
+            sessionRef.current = null;
+            argsRef.current.suppressClickRef.current = true;
+            setActive(false);
+            setPreview(null);
+            setHandleCursor(null);
+          }
+          setPenHover(null);
+          finishDraft(penAnchors);
+          return;
+        }
         if (session) {
           sessionRef.current = null;
           session.cancel();
@@ -736,25 +802,16 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           setActive(false);
           setPreview(null);
           setHandleCursor(null);
-          return;
         }
-        const { activeTool, penAnchors } = argsRef.current;
-        if (activeTool === "pen" && penAnchors.length > 0) commit(gestureCancelled());
         return;
       }
       if (e.key === "Enter") {
-        const { activeTool, penAnchors, pageIndex, toolOptions } = argsRef.current;
+        const { activeTool, penAnchors } = argsRef.current;
         if (activeTool !== "pen" || sessionRef.current !== null) return;
         if (penAnchors.length === 0 || isTextEntryTarget(e.target)) return;
         e.preventDefault();
-        const action = finishPenDraft(
-          penAnchors,
-          pageIndex,
-          optionBoolean(toolOptions, "pen", "autoClose", false),
-          drawStyleFromOptions(toolOptions, "pen"),
-          createObjectId,
-        );
-        if (action !== null) commit(action);
+        setPenHover(null);
+        finishDraft(penAnchors);
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
@@ -794,21 +851,25 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [commit]);
+  }, [commit, finishDraft]);
 
-  // Switching away from the pen mid-draft discards it (there is no way to
-  // resume a draft under another tool, and stale drafts would ghost-render).
+  // Switching away from the pen mid-draft KEEPS what was drawn: there is no
+  // way to resume a draft under another tool, so the draft commits as an open
+  // path on the way out instead of evaporating (Illustrator parity — see the
+  // pen contract's partial-shapes note). `keepTool` because the user has
+  // already chosen where to go next.
   const prevToolRef = useRef(args.activeTool);
   useEffect(() => {
     const prev = prevToolRef.current;
+    if (prev === args.activeTool) return;
     prevToolRef.current = args.activeTool;
-    if (prev === "pen" && args.activeTool !== "pen" && argsRef.current.penAnchors.length > 0) {
-      commit(gestureCancelled());
-    }
-  }, [args.activeTool, commit]);
+    setPenHover(null);
+    const { penAnchors } = argsRef.current;
+    if (prev === "pen" && penAnchors.length > 0) finishDraft(penAnchors, true);
+  }, [args.activeTool, finishDraft]);
 
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>): void => {
-    const { activeTool, penAnchors, pageIndex, toolOptions } = argsRef.current;
+    const { activeTool, penAnchors } = argsRef.current;
     if (activeTool === "select") {
       // select.double-click-group.enters-group: descend one level into the
       // group under the pointer and select what sits at that level. The
@@ -825,24 +886,20 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
     // The double-click's own second click just added a duplicate anchor at
     // the same point — the finish builds from the draft without it, and the
     // single pen/drawCommitted (or discard) clears the whole draft.
-    const action = finishPenDraft(
-      penAnchors.slice(0, -1),
-      pageIndex,
-      optionBoolean(toolOptions, "pen", "autoClose", false),
-      drawStyleFromOptions(toolOptions, "pen"),
-      createObjectId,
-    );
-    if (action !== null) commit(action);
+    setPenHover(null);
+    finishDraft(penAnchors.slice(0, -1));
   };
 
   return {
     preview,
+    penHover,
     active,
     handleCursor,
     beginShapeAdjust,
     onPointerDown,
     onPointerMove,
     onPointerEnd,
+    onPointerLeave,
     onDoubleClick,
     beginResize,
     beginRotate,

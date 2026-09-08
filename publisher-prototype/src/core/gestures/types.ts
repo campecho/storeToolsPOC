@@ -42,11 +42,16 @@ export type DrawStyle = { fill: Paint | null; stroke: Stroke | null };
 export type GesturePreview =
   | { kind: "draw"; shape: "rect" | "ellipse"; x: number; y: number; w: number; h: number }
   | { kind: "draw-path"; x: number; y: number; w: number; h: number; d: PathSeg[] }
+  /** A pen press in flight: the tangent handle being pulled, plus `pending` —
+      the segment from the last placed anchor into the anchor being placed,
+      already carrying this drag's handle, so the curve is visible while it
+      is shaped. Empty on the draft's first anchor (nothing to draw from). */
   | {
       kind: "pen-handle";
       point: GesturePoint;
       handleIn: GesturePoint;
       handleOut: GesturePoint;
+      pending: PathSeg[];
     }
   | { kind: "line"; x1: number; y1: number; x2: number; y2: number }
   | { kind: "marquee"; x: number; y: number; w: number; h: number }

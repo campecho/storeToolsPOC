@@ -9,17 +9,24 @@ import type { DrawStyle, GestureMachine, GestureContext, GesturePoint } from "./
 /**
  * Pen / freeform tool core — mechanizes pen.click.adds-anchor,
  * pen.click-drag.adds-curve-anchor, pen.click-start.closes-path, and
- * pen.esc.discards-path (src/core/registry/tools/shapes.ts). Unlike every
+ * pen.esc.ends-path (src/core/registry/tools/shapes.ts). Unlike every
  * other drawing tool, a pen path spans MANY pointer sessions: each press is
  * its own gesture committing one anchor action into the pen draft slice, and
  * the close/finish gesture commits the whole shape. finishPenDraft covers
- * the pointer-less half of pen.double-click.commits-open-path (Enter and
- * the shell's double-click handler).
+ * every pointer-less finish — Enter, Esc, the shell's double-click handler,
+ * and switching away from the tool.
  *
  * Curve anchors mirror their handles about the anchor point at placement —
  * the drag pulls handleOut, handleIn is its reflection (the Publisher/
  * Illustrator convention; independent handle editing belongs to the
  * node-select tool).
+ *
+ * The path in progress previews LIVE, the way Illustrator's pen does: the
+ * segment the next press would add rubber-bands from the last anchor to the
+ * pointer (penRubberBand), and a curve-anchor drag draws the curve it is
+ * shaping rather than only its handles (the machine's `pending` preview).
+ * Both are pure functions of the draft and one point — the shell renders
+ * them from React state, never from a per-pointermove dispatch (§6.3).
  */
 
 export type PenContext = GestureContext & {
@@ -73,6 +80,46 @@ export function penDraftSegments(anchors: readonly PenAnchor[]): PathSeg[] {
   return segs;
 }
 
+/**
+ * Whether a press at `point` would CLOSE the draft: on the first anchor,
+ * within the zoom-independent tolerance, with a ring closable at all (3+
+ * anchors). The press machine and the rubber band share this one test, so
+ * the preview can never promise a close the click won't make.
+ */
+export function penClosesAt(
+  anchors: readonly PenAnchor[],
+  point: Point,
+  zoom: number,
+): boolean {
+  const start = anchors[0];
+  if (anchors.length < 3 || start === undefined) return false;
+  return (
+    Math.hypot(point.x - start.point.x, point.y - start.point.y) <= penStartToleranceIn(zoom)
+  );
+}
+
+/**
+ * The rubber band between presses: the segment the NEXT press would add,
+ * drawn live from the last placed anchor to the pointer. It is a complete
+ * mini-path — its own M at the last anchor — so the overlay renders it
+ * beside the committed draft without splicing into it.
+ *
+ * The far end snaps to the first anchor when a press there would close the
+ * ring, so the band shows the closing segment exactly as it will commit. An
+ * empty draft has nothing to rubber-band from and yields nothing.
+ */
+export function penRubberBand(
+  anchors: readonly PenAnchor[],
+  point: Point,
+  zoom: number,
+): PathSeg[] {
+  const last = anchors[anchors.length - 1];
+  const start = anchors[0];
+  if (last === undefined) return [];
+  const to = penClosesAt(anchors, point, zoom) && start !== undefined ? start : { point };
+  return [{ c: "M", x: last.point.x, y: last.point.y }, segmentInto(last, to)];
+}
+
 function segPoints(seg: PathSeg): Point[] {
   switch (seg.c) {
     case "M":
@@ -97,9 +144,18 @@ function segPoints(seg: PathSeg): Point[] {
  * larger than the drawn ink on strong curves — exact curve extrema are the
  * node-editing tranche's concern, working simplification for SME review).
  *
- * Null when the draft can't be a shape: fewer than 2 anchors open / 3
- * closed, or a degenerate (zero width or height) bounding box —
- * ASSUMPTION: axis-collinear straight drafts are the line tool's job.
+ * A STRAIGHT draft keeps its zero-extent axis rather than vanishing: a
+ * horizontal or vertical path commits with `h` (or `w`) of 0, which the
+ * schema allows and the resize clamp already treats as an unscalable axis
+ * (MIN_RESIZE_SIZE_IN's `bounds.w > 0` guard). Normalization divides by the
+ * extent, so the flat axis normalizes to 0 for every point.
+ * (Decision of record, user-ratified 2026-09-08, retiring the earlier
+ * "axis-collinear straight drafts are the line tool's job" assumption — a
+ * partial shape must never disappear on the way out of the tool.)
+ *
+ * Null when the draft can't be a shape at all: fewer than 2 anchors open / 3
+ * closed, or a POINT-degenerate box — every point identical, which has no
+ * geometry to keep in either axis.
  */
 export function penObjectFromDraft(
   anchors: readonly PenAnchor[],
@@ -121,9 +177,9 @@ export function penObjectFromDraft(
   const y = Math.min(...ys);
   const w = Math.max(...xs) - x;
   const h = Math.max(...ys) - y;
-  if (w === 0 || h === 0) return null;
-  const nx = (v: number) => (v - x) / w;
-  const ny = (v: number) => (v - y) / h;
+  if (w === 0 && h === 0) return null;
+  const nx = (v: number) => (w === 0 ? 0 : (v - x) / w);
+  const ny = (v: number) => (h === 0 ? 0 : (v - y) / h);
   const d: PathSeg[] = docSegs.map((seg) => {
     switch (seg.c) {
       case "M":
@@ -167,13 +223,7 @@ export function penObjectFromDraft(
  */
 export const penMachine: GestureMachine<PenPressState, PenContext> = {
   begin(point, ctx) {
-    const start = ctx.anchors[0];
-    const closing =
-      ctx.anchors.length >= 3 &&
-      start !== undefined &&
-      Math.hypot(point.x - start.point.x, point.y - start.point.y) <=
-        penStartToleranceIn(ctx.zoom);
-    return { ...beginDrag(point, ctx), closing };
+    return { ...beginDrag(point, ctx), closing: penClosesAt(ctx.anchors, point, ctx.zoom) };
   },
   update: (state, point, modifiers) => ({ ...updateDrag(state, point, modifiers), closing: state.closing }),
   end(state) {
@@ -204,22 +254,35 @@ export const penMachine: GestureMachine<PenPressState, PenContext> = {
     // The rubber handle: out where the pointer is, in mirrored. Under-slop
     // (or a closing press) both coincide with the point and render as a dot.
     const handleOut = state.dragged ? state.current : state.start;
-    return {
-      kind: "pen-handle",
-      point: state.start,
-      handleOut,
-      handleIn: mirror(handleOut, state.start),
-    };
+    const handleIn = mirror(handleOut, state.start);
+    // …and the segment this press is shaping, live: from the last placed
+    // anchor into the anchor being placed, THIS drag's handleIn already
+    // applied, so the curve appears while the handle is pulled instead of
+    // only once the next press finalizes it. A closing press previews the
+    // closing segment into the first anchor.
+    const last = state.ctx.anchors[state.ctx.anchors.length - 1];
+    const into = state.closing
+      ? state.ctx.anchors[0]
+      : { point: state.start, ...(state.dragged ? { handleIn } : {}) };
+    const pending: PathSeg[] =
+      last === undefined || into === undefined
+        ? []
+        : [{ c: "M", x: last.point.x, y: last.point.y }, segmentInto(last, into)];
+    return { kind: "pen-handle", point: state.start, handleOut, handleIn, pending };
   },
 };
 
 /**
- * Finish the draft as a shape — the pen.double-click.commits-open-path
- * clause (Enter, and double-click via the shell, which passes the draft
- * minus the double-click's duplicate anchor). The autoClose option turns a
- * closable finish into a closed ring. An unfinishable draft (too few
- * anchors, degenerate box) discards instead — the gesture still resolves
- * in exactly one action.
+ * Finish the draft as a shape — the one exit every way out of the pen takes:
+ * pen.double-click.commits-open-path (Enter, and double-click via the shell,
+ * which passes the draft minus the double-click's duplicate anchor),
+ * pen.esc.ends-path, and the shell's switch-away-from-the-tool path. What
+ * was drawn is KEPT in all of them (Illustrator parity, user-ratified
+ * 2026-09-08); undo, one anchor at a time, is the only way to unmake it.
+ *
+ * The autoClose option turns a closable finish into a closed ring. A draft
+ * with no shape in it at all (one anchor, or every point identical)
+ * discards instead — the gesture still resolves in exactly one action.
  */
 export function finishPenDraft(
   anchors: readonly PenAnchor[],

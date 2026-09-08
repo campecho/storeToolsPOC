@@ -263,3 +263,31 @@ describe("select.drag-empty.marquee-selects (intersect, not contain)", () => {
     expect(hits.map((o) => o.id)).toEqual(["locked"]);
   });
 });
+
+describe("a straight path — the zero-extent frame the pen commits for a partial shape", () => {
+  /** Two anchors on one horizontal line: normalized x spans the frame, the
+      flat axis is 0 throughout (core/gestures/pen.ts penObjectFromDraft). */
+  const straight = shapeRect("straight", {
+    shape: "path",
+    x: 1,
+    y: 3,
+    w: 3,
+    h: 0,
+    fill: null,
+    stroke: stroke(1),
+    d: [
+      { c: "M", x: 0, y: 0 },
+      { c: "L", x: 1, y: 0 },
+    ],
+  });
+
+  it("stays clickable along its stroke and misses away from it", () => {
+    expect(hitTestPoint([straight], { x: 2.5, y: 3 }, OPTS).map((o) => o.id)).toEqual(["straight"]);
+    expect(hitTestPoint([straight], { x: 2.5, y: 3.4 }, OPTS)).toHaveLength(0);
+  });
+
+  it("stays marquee-selectable", () => {
+    const overlapping = { x: 2, y: 2.5, w: 1, h: 1 };
+    expect(hitTestMarquee([straight], overlapping, { lockedObjects: "skips" })).toHaveLength(1);
+  });
+});

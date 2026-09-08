@@ -59,11 +59,26 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   it, `pen/drawCommitted` commits the finished shape into the document (one
   history entry) and clears it, and the shell's undo path retracts anchors
   (`pen/anchorRetracted`) while a draft is active instead of popping document
-  history — redo is unavailable mid-draft. `gesture/cancelled` (the
-  pen.esc.discards-path binding) now clears this draft; its no-reducer rule
-  narrows to "no DOCUMENT reducer". The committed shape normalizes into the
-  control hull's bounding box; independent handle editing and curved closing
-  segments are the node-select tranche's scope.
+  history — redo is unavailable mid-draft. `gesture/cancelled` clears this draft
+  too (how a draft too small to be a shape resolves in one action); its
+  no-reducer rule narrows to "no DOCUMENT reducer". The committed shape
+  normalizes into the control hull's bounding box; independent handle editing and
+  curved closing segments are the node-select tranche's scope.
+- **Partial pen paths are kept (recorded 2026-09-08, user-ratified):** every exit
+  from the pen commits the draft as an open path — Esc included. The
+  `pen.esc.discards-path` clause is retired for `pen.esc.ends-path`
+  (action `pen/drawCommitted`), and switching tools mid-draft commits rather than
+  discarding, deliberately skipping the usual hand-back to Select so the tool the
+  user just picked survives. Undo, one anchor at a time, is the only way to unmake
+  a draft; only a draft with no shape in it (one anchor, or every point identical)
+  still resolves as `gesture/cancelled`. A STRAIGHT draft commits with a
+  zero-extent frame box rather than being dropped as "the line tool's job" — the
+  schema allows `w`/`h` of 0 and the resize clamp already treats a zero-extent
+  bound as an unscalable axis. Rationale: Illustrator parity — a partial shape is
+  a shape, and silently deleting drawn work on a tool change is the behavior this
+  reverses. The path in progress also previews live (rubber band to the pointer,
+  curve visible while its handle is dragged); previews commit nothing, so they
+  carry no clause.
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no

@@ -1,6 +1,8 @@
 import { DPI, visibleDocRect, type Size, type Viewport } from "../../core/geometry/viewport";
 import {
   penDraftSegments,
+  penRubberBand,
+  type GesturePoint,
   type GesturePreview,
   type LineEndpointHandle,
   type ResizeHandle,
@@ -26,6 +28,10 @@ import { CHROME_COLOR, SelectionChrome } from "./SelectionChrome";
  * The alignment probe (debug-bar toggle) draws the page and bleed bounds so
  * overlay↔canvas registration is verifiable by eye at any zoom/pan.
  */
+
+/** Segments already in document inches denormalize through the identity box —
+    pathToSvg is a pure formatter for them. */
+const DOC_INCH_BOX = { x: 0, y: 0, w: 1, h: 1 } as const;
 
 /** A frame box drawn at its own rotation — the outline every preview that
     stands in for a frame object uses, so ghosts hug their object exactly the
@@ -83,11 +89,19 @@ function PreviewShapes({
       return <path d={pathToSvg(preview.d, preview)} {...outline} />;
     case "pen-handle": {
       // The rubber tangent handle of an in-flight curve-anchor drag: the
-      // handle line through the anchor plus dots at its ends. An under-slop
-      // press degenerates to a single dot at the anchor.
+      // segment this press is shaping, drawn live, plus the handle line
+      // through the anchor and dots at its ends. An under-slop press
+      // degenerates to a straight pending segment and a single dot.
       const r = 3.5 / (DPI * zoom);
       return (
         <>
+          {preview.pending.length > 0 && (
+            <path
+              data-testid="pen-pending-segment"
+              d={pathToSvg(preview.pending, DOC_INCH_BOX)}
+              {...outline}
+            />
+          )}
           <line
             x1={preview.handleIn.x}
             y1={preview.handleIn.y}
@@ -194,23 +208,46 @@ function PreviewShapes({
   }
 }
 
-/** The committed pen draft (penSlice state): the drafted path so far, a dot
-    per anchor, and — once the ring is closable — a ring on the first anchor
-    marking the close target (pen.click-start.closes-path). */
-function PenDraft({ anchors, zoom }: { anchors: readonly PenAnchor[]; zoom: number }) {
+/** The committed pen draft (penSlice state): the drafted path so far, the
+    rubber band from its last anchor to the pointer, a dot per anchor, and —
+    once the ring is closable — a ring on the first anchor marking the close
+    target (pen.click-start.closes-path).
+
+    The band is what makes the path in progress readable: without it the next
+    segment only appears once the click that fixes it lands. It is drawn from
+    the same `hover` point the next press would use, through the core's own
+    close test, so it shows the closing segment exactly where clicking would
+    close (core/gestures/pen.ts). */
+function PenDraft({
+  anchors,
+  hover,
+  zoom,
+}: {
+  anchors: readonly PenAnchor[];
+  hover: GesturePoint | null;
+  zoom: number;
+}) {
   const first = anchors[0];
   if (first === undefined) return null;
   const r = 3.5 / (DPI * zoom);
+  const band = hover === null ? [] : penRubberBand(anchors, hover, zoom);
   return (
     <g data-testid="pen-draft">
       <path
-        // Draft segments are already document inches — the identity box
-        // makes pathToSvg a pure formatter here.
-        d={pathToSvg(penDraftSegments(anchors), { x: 0, y: 0, w: 1, h: 1 })}
+        d={pathToSvg(penDraftSegments(anchors), DOC_INCH_BOX)}
         fill="none"
         stroke={CHROME_COLOR}
         vectorEffect="non-scaling-stroke"
       />
+      {band.length > 0 && (
+        <path
+          data-testid="pen-rubber-band"
+          d={pathToSvg(band, DOC_INCH_BOX)}
+          fill="none"
+          stroke={CHROME_COLOR}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
       {anchors.map((anchor, i) => (
         <circle key={i} cx={anchor.point.x} cy={anchor.point.y} r={r} fill={CHROME_COLOR} />
       ))}
@@ -238,6 +275,7 @@ export function SvgOverlay({
   groupedSelection,
   frameRotation,
   penDraft,
+  penHover,
   showChrome,
   onResizeStart,
   onRotateStart,
@@ -256,6 +294,9 @@ export function SvgOverlay({
   frameRotation: number;
   /** The pen draft's anchors while the pen tool is active; empty otherwise. */
   penDraft: readonly PenAnchor[];
+  /** The pointer position the draft rubber-bands to; null when there is
+      nothing to band to (no draft, pointer off canvas, press in flight). */
+  penHover: GesturePoint | null;
   /** Select tool active and no gesture preview showing. */
   showChrome: boolean;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent<SVGElement>) => void;
@@ -325,7 +366,7 @@ export function SvgOverlay({
           onLineEndpointStart={onLineEndpointStart}
         />
       )}
-      <PenDraft anchors={penDraft} zoom={viewport.zoom} />
+      <PenDraft anchors={penDraft} hover={penHover} zoom={viewport.zoom} />
       {preview !== null && (
         <g data-testid="gesture-preview">
           <PreviewShapes preview={preview} selectedObjects={selectedObjects} zoom={viewport.zoom} />

@@ -89,6 +89,13 @@ export async function draw(
   await drag(page, from, to, modifiers);
 }
 
+/** Move the pointer to a document point without pressing — what the overlay's
+    hover-driven chrome (the pen's rubber band) reads. */
+export async function hoverAt(page: Page, pt: DocPoint): Promise<void> {
+  const p = await screenPoint(page, pt);
+  await page.mouse.move(p.x, p.y);
+}
+
 export async function clickAt(
   page: Page,
   pt: DocPoint,

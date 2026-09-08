@@ -12,10 +12,10 @@ import { documentSlice } from "./documentSlice";
  * dispatches one anchor action, and the shell's undo path retracts anchors
  * while a draft is active instead of popping document history.
  *
- * The draft clears on: the path committing (pen/drawCommitted), the draft
- * being discarded (gesture/cancelled — the pen.esc.discards-path clause; see
- * the note on gestureCancelled in documentActions.ts), and any document
- * swap.
+ * The draft clears on: the path committing (pen/drawCommitted — which every
+ * exit from the tool now takes, per pen.esc.ends-path), a draft too small to
+ * be a shape resolving instead as gesture/cancelled (see the note on
+ * gestureCancelled in documentActions.ts), and any document swap.
  */
 
 /** One placed anchor. Handles are absent on straight anchors; a curve anchor
