@@ -1,15 +1,24 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import type Konva from "konva";
 import { Circle, Ellipse, Group, Layer, Line, Path, Rect, Stage, Text } from "react-konva";
 import { clampCornerRadius, shapeOutline, shapeShading } from "../../core/geometry/shapePaths";
 import { DPI, pageOriginPx, type Size, type Viewport } from "../../core/geometry/viewport";
+import type { Rect as PageRect } from "../../core/hittest";
 import type { LayoutObject, LineObject, Paint, Stroke, Swatch } from "../../core/model";
 import {
+  PT_PER_IN,
   arrowheadShape,
   dashPatternIn,
   headInsetIn,
   headLengthIn,
   trimmedSegment,
 } from "../../core/render/lineDecor";
+import {
+  PASTEBOARD_GHOST_OPACITY,
+  objectPlacement,
+  pageRegion,
+  type PagePlacement,
+} from "../../core/render/pagePlacement";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
 import { paintToCss, paintToShadedCss } from "../../core/render/paint";
 import { pathToSvg } from "../../core/render/path";
@@ -26,11 +35,16 @@ import { pathToSvg } from "../../core/render/path";
  * decision of record (user-ratified 2026-08-17, recorded in SEAMS.md),
  * matching core/hittest's framePivot: each node positions at its center
  * with matching offsets so Konva rotation happens about that point.
+ *
+ * Ink outside the page GHOSTS (requirement §2.5: the page/pasteboard
+ * boundary must be visually unambiguous, since it decides what prints).
+ * Placement is a core fact — core/render/pagePlacement classifies each
+ * object on, off, or straddling the page — and this file only decides how
+ * many times to draw: an on-page object exactly as before, an off-page
+ * object once at ghost opacity, a straddling object twice under
+ * complementary clips so its on-page part keeps full strength. Nothing else
+ * dims: furniture is its own layer and the chrome is SVG.
  */
-
-/** Stroke widths are points (the print-rule convention); the stage draws in
-    inches, so widths divide by 72 and scale with zoom like real ink. */
-const PT_PER_IN = 72;
 
 const PLACEHOLDER_COLOR = "#8a97a8";
 
@@ -38,6 +52,8 @@ function fillProps(fill: Paint | null, swatches: readonly Swatch[]): { fill?: st
   return fill ? { fill: paintToCss(fill, swatches) } : {};
 }
 
+/** Stroke widths are points (the print-rule convention); the stage draws in
+    inches, so widths divide by PT_PER_IN and scale with zoom like real ink. */
 function strokeProps(
   stroke: Stroke | null,
   swatches: readonly Swatch[],
@@ -238,6 +254,67 @@ function renderObject(o: LayoutObject, swatches: readonly Swatch[]): ReactNode {
   }
 }
 
+/** Far larger than any pasteboard, in inches: the outer ring of the
+    pasteboard clip. A constant rather than the visible rect, so the clip
+    never depends on the viewport and never changes on a pan. */
+const CLIP_EXTENT = 1e4;
+
+type PlacementClips = {
+  pages: (ctx: Konva.Context) => void;
+  pasteboard: (ctx: Konva.Context) => ["evenodd"];
+};
+
+/** The two clips a straddling object draws under, complementary by
+    construction: the page region as-is, and everything except it — a huge
+    rect with each page cut out under the even-odd rule, which Konva applies
+    by spreading the clipFunc's return value into context.clip. Both draw in
+    document inches: Konva applies the group's absolute transform before
+    calling them. */
+function placementClips(region: readonly PageRect[]): PlacementClips {
+  return {
+    pages: (ctx) => {
+      for (const r of region) ctx.rect(r.x, r.y, r.w, r.h);
+    },
+    pasteboard: (ctx) => {
+      ctx.rect(-CLIP_EXTENT, -CLIP_EXTENT, 2 * CLIP_EXTENT, 2 * CLIP_EXTENT);
+      for (const r of region) ctx.rect(r.x, r.y, r.w, r.h);
+      return ["evenodd"];
+    },
+  };
+}
+
+/** How many times an object draws, and under what clip, by where it sits
+    relative to the page. On-page is the byte-for-byte render of before; an
+    off-page object ghosts whole; a straddling object draws once clipped to
+    the page at full strength and once clipped to the pasteboard at ghost
+    opacity, so the page edge is the exact seam between the two. */
+function renderPlaced(
+  o: LayoutObject,
+  swatches: readonly Swatch[],
+  placement: PagePlacement,
+  clips: PlacementClips,
+): ReactNode {
+  switch (placement) {
+    case "on":
+      return renderObject(o, swatches);
+    case "off":
+      return (
+        <Group key={o.id} opacity={PASTEBOARD_GHOST_OPACITY}>
+          {renderObject(o, swatches)}
+        </Group>
+      );
+    case "straddling":
+      return (
+        <Group key={o.id}>
+          <Group clipFunc={clips.pages}>{renderObject(o, swatches)}</Group>
+          <Group clipFunc={clips.pasteboard} opacity={PASTEBOARD_GHOST_OPACITY}>
+            {renderObject(o, swatches)}
+          </Group>
+        </Group>
+      );
+  }
+}
+
 export function CanvasStage({
   viewport,
   vpSize,
@@ -251,8 +328,22 @@ export function CanvasStage({
   objects: readonly LayoutObject[];
   swatches: readonly Swatch[];
 }) {
-  if (vpSize.w <= 0 || vpSize.h <= 0) return null;
   const { size, bleed, slug, margin, columns } = setup;
+  // Placement memoizes on the page's dimensions, not on `setup`: the
+  // workspace rebuilds `setup` on every render, including each in-flight
+  // pan frame, and a memo keyed on it would recompute — and hand react-konva
+  // fresh clip closures — every frame. Keyed on width and height, the region,
+  // the clips and the placements change only on document mutation or a
+  // page-size edit.
+  const pageW = size.w;
+  const pageH = size.h;
+  const region = useMemo(() => pageRegion({ w: pageW, h: pageH }), [pageW, pageH]);
+  const clips = useMemo(() => placementClips(region), [region]);
+  const placements = useMemo(
+    () => objects.map((o) => objectPlacement(o, region)),
+    [objects, region],
+  );
+  if (vpSize.w <= 0 || vpSize.h <= 0) return null;
   /* Column guides divide the margin box; drawn at interior boundaries only. */
   const columnXs = Array.from({ length: Math.max(0, columns - 1) }, (_, i) => {
     const boxW = size.w - 2 * margin;
@@ -320,8 +411,14 @@ export function CanvasStage({
           />
         ))}
       </Layer>
-      {/* Content: document mutation cadence; z-order is array order. */}
-      <Layer listening={false}>{objects.map((o) => renderObject(o, swatches))}</Layer>
+      {/* Content: document mutation cadence; z-order is array order. The
+          placements array is the objects array's length by construction;
+          under noUncheckedIndexedAccess the index may still read undefined,
+          and "straddling" is exact whatever the truth, so the fallback can
+          never draw a wrong pixel. */}
+      <Layer listening={false}>
+        {objects.map((o, i) => renderPlaced(o, swatches, placements[i] ?? "straddling", clips))}
+      </Layer>
     </Stage>
   );
 }
