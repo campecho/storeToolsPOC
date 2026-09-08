@@ -13,12 +13,18 @@ import {
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
 import { paintToCss, paintToShadedCss } from "../../core/render/paint";
 import { pathToSvg } from "../../core/render/path";
+import { pageShadow } from "./pageShadow";
 
 /**
- * The Konva render surface (PLAN.md §6.2): furniture and content layers in
- * canonical inches, with `zoom` applied as the stage scale and pan as the
- * stage position. Neither layer listens — interaction belongs to the SVG
+ * The Konva render surface (PLAN.md §6.2): page ground, content, and guide
+ * layers in canonical inches, with `zoom` applied as the stage scale and pan
+ * as the stage position. No layer listens — interaction belongs to the SVG
  * overlay and the workspace's pointer handlers, never to Konva hit graphs.
+ *
+ * The furniture draws in two layers around the content, not one beneath it:
+ * the page fill and its shadow are ground, while the guides that mark
+ * positions — slug, bleed, margin, columns — draw on top, so content never
+ * hides them (§6.2).
  *
  * Content renders schema-v3 objects: shapes and lines for real; textFrame,
  * pictureFrame, table, and mergeField as labeled placeholder frames until
@@ -270,13 +276,29 @@ export function CanvasStage({
       scaleY={scale}
       listening={false}
     >
-      {/* Furniture: pasteboard is the container background; page fill, shadow,
-          slug, bleed, margin and column guides redraw only on page-setup or
-          zoom change. Trim/bleed/slug read as visually distinct indicators
-          (§1.4): black page edge, red bleed, grey slug. */}
+      {/* Page ground: pasteboard is the container background; the page fill and
+          its drop shadow redraw only on page-setup or zoom change. The shadow
+          is the POC's (pageShadow.ts) — same soft falloff, same screen size at
+          every zoom. */}
       <Layer listening={false}>
-        <Rect x={0.06} y={0.06} width={size.w} height={size.h} fill="rgba(0,0,0,0.18)" />
-        <Rect x={0} y={0} width={size.w} height={size.h} fill="#ffffff" />
+        <Rect
+          x={0}
+          y={0}
+          width={size.w}
+          height={size.h}
+          fill="#ffffff"
+          {...pageShadow(scale)}
+          perfectDrawEnabled={false}
+        />
+      </Layer>
+      {/* Content: document mutation cadence; z-order is array order. */}
+      <Layer listening={false}>{objects.map((o) => renderObject(o, swatches))}</Layer>
+      {/* Guides ABOVE content (§6.2): slug, bleed, margin and column lines mark
+          positions, so a full-bleed object or one staged on the pasteboard must
+          not hide them. Same page-setup/zoom cadence as the ground. Each reads
+          as its own indicator (§1.4): red bleed, grey slug, blue margin and
+          columns; trim is the page fill's own edge, drawn on the ground. */}
+      <Layer listening={false}>
         {slug > 0 && (
           <Rect
             x={-bleed - slug}
@@ -320,8 +342,6 @@ export function CanvasStage({
           />
         ))}
       </Layer>
-      {/* Content: document mutation cadence; z-order is array order. */}
-      <Layer listening={false}>{objects.map((o) => renderObject(o, swatches))}</Layer>
     </Stage>
   );
 }
