@@ -420,3 +420,40 @@ test("auto-close commits Enter finishes as closed rings", async ({ page }) => {
   const { d } = pathShapeAt(await pageObjects(page), 0);
   expect(hasClosingZ(d)).toBe(true);
 });
+
+test("the selection box takes in the stroke — it hugs the painted edge, not the centreline", async ({
+  page,
+}) => {
+  await activate(page, "Pen / freeform");
+  // 20pt of stroke is 0.139in of halo either side — visible, and far past any
+  // rounding the doc↔screen round trip introduces.
+  const width = page.getByTestId("options-bar").getByLabel("Stroke width", { exact: true });
+  await width.fill("20");
+  await width.blur();
+  await clickAt(page, { x: 2, y: 3 });
+  await clickAt(page, { x: 5, y: 3 });
+  await clickAt(page, { x: 5, y: 6 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const shape = shapeAt(await pageObjects(page), 0);
+  // The STORED geometry stays geometric — the halo is presentation, and the
+  // stroke stays editable without the box going stale.
+  expectNear(shape.x, 2);
+  expectNear(shape.y, 3);
+  expectNear(shape.w, 3);
+  expectNear(shape.h, 3);
+  // The CHROME, though, is drawn a halo outside it on every side.
+  const halo = 20 / 72 / 2;
+  const corners = await page
+    .getByTestId("selection-chrome")
+    .locator("polygon")
+    .first()
+    .getAttribute("points");
+  const pts = (corners ?? "").split(" ").map((p) => p.split(",").map(Number));
+  const xs = pts.map((p) => p[0] ?? NaN);
+  const ys = pts.map((p) => p[1] ?? NaN);
+  expectNear(Math.min(...xs), shape.x - halo);
+  expectNear(Math.min(...ys), shape.y - halo);
+  expectNear(Math.max(...xs), shape.x + shape.w + halo);
+  expectNear(Math.max(...ys), shape.y + shape.h + halo);
+});

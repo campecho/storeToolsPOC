@@ -108,8 +108,32 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   Transform panel would report a W/H that did not match the handles drawn around
   the shape. Because the frame IS the ink, chrome, `objectAabb`,
   align/distribute, resize and the Transform panel agree with no further work.
-  Bounds are geometric — the stroke's own width is not counted, matching
-  Illustrator's default (its "Use Preview Bounds" preference is what adds it).
+- **The selection frame takes in the stroke; measurement does not (recorded
+  2026-09-08, user-ratified):** a stroke straddles the path it follows, so a
+  geometric frame cuts through the middle of a heavy outline and the chrome reads
+  as misaligned with the shape. `selectionPreviewFrame` grows the frame by each
+  shape's halo (`strokeOutsetIn` — half the stroke width in inches), and the
+  chrome draws that. The STORED frame stays geometric, deliberately: stroke width
+  is editable after placement (`object/strokeWidthCommitted`), so a baked-in halo
+  would go stale on the next edit, and resize would scale padding that does not
+  scale in the paint.
+  **Reach, chosen deliberately:** chrome and resize/rotate only. `objectAabb`,
+  `selectionAabb`, align & distribute, and the Transform panel's editable
+  x/y/w/h stay geometric — that panel reads AND writes the stored box, so a
+  preview-bounds reading there would have to deflate on commit. Illustrator's own
+  "Use Preview Bounds" is global; this is the narrower half of it.
+  **Resize stays exact rather than drifting:** `ResizeContext.outsets` carries
+  each object's halo, and the machine scales the box the chrome drew before
+  taking that halo back off, so the painted edge lands under the dragged handle.
+  Scaling the geometry while anchoring to the preview box would have been off by
+  up to half a stroke — invisible at the 0.75pt default, ~13px at 20pt. The
+  halo is symmetric, so the centre is unchanged and ROTATION reads the plain
+  geometric frame; the shape-adjust handles do too, since they mark fractions of
+  the stored box.
+  **Lines and arrows are excluded for now** (same ratification): a 12pt line's
+  box is still a zero-height segment through its middle, and an arrowhead still
+  leaves the box entirely. `strokeOutsetIn` returns 0 for them rather than
+  pretending otherwise — a known gap, not an oversight.
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no

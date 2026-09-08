@@ -43,8 +43,17 @@ export type ResizeContext = GestureContext & {
       (selectionFrame). Zero makes every step below an identity. */
   rotation: number;
   /** Initial geometry of every selected object: frames as boxes, lines as
-      endpoints. */
+      endpoints. Stored geometry, without stroke — see `outsets`. */
   initial: Record<string, FrameBox | LineEndpoints>;
+  /** Each object's stroke halo in inches (core/hittest strokeOutsetIn), where
+      it has one. `bounds` is the PREVIEW frame — geometry plus halo, the box
+      the chrome draws — so each object is scaled as the box you see and then
+      has its own halo taken back off, leaving the painted edge under the
+      dragged handle. A stroke does not scale with its object, which is why
+      the halo comes off after the scale rather than riding it. Absent or 0
+      makes every step below an identity, so an unstroked selection, a line,
+      and a caller that passes nothing all behave exactly as before. */
+  outsets?: Record<string, number>;
 };
 
 const OPPOSITE_HANDLE: Record<ResizeHandle, ResizeHandle> = {
@@ -205,8 +214,23 @@ function scaledBoxes(
   const out: Record<string, FrameBox | LineEndpoints> = {};
   for (const [id, g] of Object.entries(ctx.initial)) {
     if ("w" in g) {
-      const box = scaleBox(g, ctx.anchor, sx, sy);
-      out[id] = { ...box, x: box.x + pin.x, y: box.y + pin.y };
+      const s = ctx.outsets?.[id] ?? 0;
+      // Scale the box the chrome drew — geometry plus halo — then take the
+      // halo off. The clamp is the floor the scale clamp cannot express: a
+      // shape whose stroke is thicker than its shrunk preview box would
+      // otherwise deflate to a negative size.
+      const box = scaleBox(
+        { x: g.x - s, y: g.y - s, w: g.w + 2 * s, h: g.h + 2 * s },
+        ctx.anchor,
+        sx,
+        sy,
+      );
+      out[id] = {
+        x: box.x + s + pin.x,
+        y: box.y + s + pin.y,
+        w: Math.max(0, box.w - 2 * s),
+        h: Math.max(0, box.h - 2 * s),
+      };
     } else {
       out[id] = {
         x1: ctx.anchor.x + (g.x1 - ctx.anchor.x) * sx + pin.x,

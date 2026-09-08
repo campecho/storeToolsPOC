@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { tailTipFor, type LineObject, type ShapeObject } from "../model";
-import { objectAabb, orientedSelectionBox, selectionAabb, selectionFrame } from "./aabb";
+import { tailTipFor, type LineObject, type ShapeObject, type Stroke } from "../model";
+import {
+  objectAabb,
+  orientedSelectionBox,
+  selectionAabb,
+  selectionFrame,
+  selectionPreviewFrame,
+  strokeOutsetIn,
+} from "./aabb";
 import { boundsOfPoints, rotatePoint, rotatedFrameCorners } from "./geometry";
 
 function shapeRect(id: string, over: Partial<ShapeObject> = {}): ShapeObject {
@@ -205,5 +212,78 @@ describe("selectionFrame", () => {
 
   it("is null for an empty selection", () => {
     expect(selectionFrame([])).toBeNull();
+  });
+});
+
+describe("selectionPreviewFrame (the stroke halo the chrome draws)", () => {
+  /** 7.2pt is a tenth of an inch, so the halo is exactly 0.05 in. */
+  const STROKED: Stroke = {
+    paint: { kind: "color", color: { space: "rgb", values: [0, 0, 0] } },
+    width: 7.2,
+  };
+  const HALO = 0.05;
+
+  it("grows a lone stroked shape by half its stroke on every side", () => {
+    const frame = selectionPreviewFrame([shapeRect("r", { stroke: STROKED })]);
+    expect(frame?.box).toEqual({ x: 1 - HALO, y: 1 - HALO, w: 2 + 2 * HALO, h: 1 + 2 * HALO });
+  });
+
+  it("keeps the geometric CENTRE, so the rotation pivot is untouched", () => {
+    const stroked = shapeRect("r", { stroke: STROKED });
+    const geo = selectionFrame([stroked])?.box;
+    const preview = selectionPreviewFrame([stroked])?.box;
+    if (!geo || !preview) throw new Error("expected both frames");
+    expect(preview.x + preview.w / 2).toBeCloseTo(geo.x + geo.w / 2, 10);
+    expect(preview.y + preview.h / 2).toBeCloseTo(geo.y + geo.h / 2, 10);
+  });
+
+  it("is the geometric frame for an unstroked shape", () => {
+    expect(selectionPreviewFrame([shapeRect("r")])).toEqual(selectionFrame([shapeRect("r")]));
+  });
+
+  it("leaves LINES on centreline bounds — the decision of record excludes them", () => {
+    expect(selectionPreviewFrame([line("l")])).toEqual(selectionFrame([line("l")]));
+  });
+
+  it("unions each member's OWN halo across a multi-selection", () => {
+    const thick = shapeRect("a", { x: 0, y: 0, w: 1, h: 1, stroke: STROKED });
+    const bare = shapeRect("b", { x: 3, y: 3, w: 1, h: 1 });
+    // The stroked member grows; the bare one does not, so the union is
+    // lopsided rather than padded all round.
+    expect(selectionPreviewFrame([thick, bare])?.box).toEqual({
+      x: -HALO,
+      y: -HALO,
+      w: 4 + HALO,
+      h: 4 + HALO,
+    });
+  });
+
+  it("carries the halo through a rotated frame in the object's own space", () => {
+    const turned = shapeRect("r", { rotation: 90, stroke: STROKED });
+    const frame = selectionPreviewFrame([turned]);
+    // A lone object reports its own box at its own angle, so the halo shows
+    // up in the box rather than in the angle.
+    expect(frame?.rotation).toBe(90);
+    expect(frame?.box).toEqual({ x: 1 - HALO, y: 1 - HALO, w: 2 + 2 * HALO, h: 1 + 2 * HALO });
+  });
+
+  it("does NOT leak into measurement — objectAabb and selectionAabb stay geometric", () => {
+    const stroked = shapeRect("r", { stroke: STROKED });
+    expect(objectAabb(stroked)).toEqual({ x: 1, y: 1, w: 2, h: 1 });
+    expect(selectionAabb([stroked])).toEqual({ x: 1, y: 1, w: 2, h: 1 });
+  });
+});
+
+describe("strokeOutsetIn", () => {
+  it("is half the stroke width in inches", () => {
+    const stroked = shapeRect("r", {
+      stroke: { paint: { kind: "color", color: { space: "rgb", values: [0, 0, 0] } }, width: 7.2 },
+    });
+    expect(strokeOutsetIn(stroked)).toBeCloseTo(0.05, 10);
+  });
+
+  it("is zero for an unstroked shape and for every line", () => {
+    expect(strokeOutsetIn(shapeRect("r"))).toBe(0);
+    expect(strokeOutsetIn(line("l"))).toBe(0);
   });
 });

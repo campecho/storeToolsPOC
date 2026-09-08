@@ -280,3 +280,81 @@ describe("select.esc.cancels-drag (resize)", () => {
     expect(resizeMachine.cancel().action.type).toBe(gestureCancelled.type);
   });
 });
+
+describe("resize over preview bounds (the stroke halo)", () => {
+  /** One shape, geometry 1×1 at (1,1), wearing a halo of 0.25 in. The chrome
+      therefore drew (0.75, 0.75)–(2.25, 2.25), which is where the pointer
+      grabs and what the machine scales. */
+  const HALO = 0.25;
+  const GEO: FrameBox = { x: 1, y: 1, w: 1, h: 1 };
+  const PREVIEW: FrameBox = { x: 0.75, y: 0.75, w: 1.5, h: 1.5 };
+
+  function haloCtx(handle: ResizeHandle, outset = HALO): ResizeContext {
+    return {
+      pageIndex: 0,
+      zoom: 1,
+      handle,
+      anchor: { x: PREVIEW.x, y: PREVIEW.y },
+      bounds: PREVIEW,
+      rotation: 0,
+      initial: { a: GEO },
+      outsets: { a: outset },
+    };
+  }
+
+  function dragSe(to: GesturePoint, outset = HALO): FrameBox {
+    const start = { x: PREVIEW.x + PREVIEW.w, y: PREVIEW.y + PREVIEW.h };
+    let state = resizeMachine.begin(start, haloCtx("se", outset));
+    state = resizeMachine.update(state, to, NONE);
+    const box = boxesOf(resizeMachine.end(state, NONE))["a"];
+    if (box === undefined || !("w" in box)) throw new Error("expected a frame box");
+    return box;
+  }
+
+  it("lands the PAINTED edge under the pointer, not the geometric one", () => {
+    // Drag the se corner to (3.75, 3.75): the preview box doubles, so the
+    // painted edge must end there — which puts the geometry's edge a halo
+    // short of it.
+    const box = dragSe({ x: 3.75, y: 3.75 });
+    expect(box.x + box.w + HALO).toBeCloseTo(3.75, 10);
+    expect(box.y + box.h + HALO).toBeCloseTo(3.75, 10);
+    // Geometry: the 1.5 preview box scaled ×2 is 3, less the halo on both
+    // sides is 2.5. The stroke itself does not scale.
+    expect(box.w).toBeCloseTo(2.5, 10);
+    expect(box.h).toBeCloseTo(2.5, 10);
+    expect(box.x).toBeCloseTo(1, 10);
+  });
+
+  it("leaves the object untouched when the handle returns to where it started", () => {
+    // Out past the slop and back: the gesture commits, at scale 1 — inflating
+    // and deflating by the same halo has to be an exact round trip.
+    const start = { x: PREVIEW.x + PREVIEW.w, y: PREVIEW.y + PREVIEW.h };
+    let state = resizeMachine.begin(start, haloCtx("se"));
+    state = resizeMachine.update(state, { x: 3, y: 3 }, NONE);
+    state = resizeMachine.update(state, start, NONE);
+    const box = boxesOf(resizeMachine.end(state, NONE))["a"];
+    if (box === undefined || !("w" in box)) throw new Error("expected a frame box");
+    expect(box.x).toBeCloseTo(GEO.x, 10);
+    expect(box.y).toBeCloseTo(GEO.y, 10);
+    expect(box.w).toBeCloseTo(GEO.w, 10);
+    expect(box.h).toBeCloseTo(GEO.h, 10);
+  });
+
+  it("is the old behaviour exactly when there is no halo to speak of", () => {
+    // outset 0 — an unstroked shape, or a caller that passes no outsets at
+    // all — has to reduce to the plain scale.
+    const box = dragSe({ x: 3.75, y: 3.75 }, 0);
+    const anchor = { x: PREVIEW.x, y: PREVIEW.y };
+    const sx = (3.75 - anchor.x) / (PREVIEW.x + PREVIEW.w - anchor.x);
+    expect(box.w).toBeCloseTo(GEO.w * sx, 10);
+    expect(box.x).toBeCloseTo(anchor.x + (GEO.x - anchor.x) * sx, 10);
+  });
+
+  it("never deflates past zero when the stroke outweighs the shrunk box", () => {
+    // Crushed to the anchor: the scale clamp floors the PREVIEW box, which can
+    // still be narrower than the halo it has to give back.
+    const box = dragSe({ x: PREVIEW.x, y: PREVIEW.y });
+    expect(box.w).toBeGreaterThanOrEqual(0);
+    expect(box.h).toBeGreaterThanOrEqual(0);
+  });
+});

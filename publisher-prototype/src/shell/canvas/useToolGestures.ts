@@ -35,7 +35,13 @@ import {
   type LineEndpointHandle,
   type ResizeHandle,
 } from "../../core/gestures";
-import { framePivot, hitTestPoint, selectionFrame } from "../../core/hittest";
+import {
+  framePivot,
+  hitTestPoint,
+  selectionFrame,
+  selectionPreviewFrame,
+  strokeOutsetIn,
+} from "../../core/hittest";
 import {
   copiedGroups,
   enteredGroup,
@@ -593,9 +599,14 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
   const beginResize = (handle: ResizeHandle, e: React.PointerEvent<SVGElement>): void => {
     if (e.button !== 0 || args.panning || sessionRef.current) return;
     const selection = selectedObjects();
-    const frame = selectionFrame(selection, groupFrame()?.rotation ?? 0);
+    // The PREVIEW frame: the box the chrome drew, whose corner the pointer is
+    // on. The machine scales that and deflates each object's own halo back off
+    // on commit, so the painted edge follows the handle exactly.
+    const frame = selectionPreviewFrame(selection, groupFrame()?.rotation ?? 0);
     if (frame === null) return;
     const initial = initialGeometry(selection);
+    const outsets: Record<string, number> = {};
+    for (const obj of selection) outsets[obj.id] = strokeOutsetIn(obj);
     e.stopPropagation();
     setHandleCursor(resizeCursor(handle, frame.rotation));
     begin(
@@ -610,6 +621,7 @@ export function useToolGestures(args: ToolGestureArgs): ToolGestures {
           bounds: frame.box,
           rotation: frame.rotation,
           initial,
+          outsets,
         },
         commit,
       ),
