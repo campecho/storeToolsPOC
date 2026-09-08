@@ -17,9 +17,14 @@ FROM nginxinc/nginx-unprivileged:alpine AS runner
 ENV PORT=8080
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 # Runs before the envsubst step (10- sorts before 20-) and writes the
-# credentials the template's `include /tmp/auth.conf` picks up.
+# credentials the template's `include /tmp/auth.conf` picks up. The entrypoint
+# skips a script that isn't executable, and this image's default user (101)
+# can't chmod a root-owned file, so set the bit as root and step back down —
+# rather than trusting the checkout to have carried the bit.
+USER root
 COPY docker-entrypoint.d/10-basic-auth.sh /docker-entrypoint.d/10-basic-auth.sh
-RUN chmod +x /docker-entrypoint.d/10-basic-auth.sh
+RUN chmod 0755 /docker-entrypoint.d/10-basic-auth.sh
+USER 101
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 8080
 # nginx-unprivileged already runs as non-root (uid 101) — no addgroup/adduser
