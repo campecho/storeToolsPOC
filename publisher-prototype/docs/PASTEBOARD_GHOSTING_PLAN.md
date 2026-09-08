@@ -1,7 +1,8 @@
 # Pasteboard ghosting — implementation plan
 
 **Document type:** Feature implementation plan (publisher prototype only)
-**Status:** Draft v1 — awaiting ratification of the decisions in §1 before any code
+**Status:** Draft v1.1 — reviewed against the codebase (2026-09-08); awaiting
+ratification of the decisions in §1 before any code
 **Last updated:** 2026-09-08
 **Maps to:** [`PLAN.md`](../PLAN.md) §6.2 (render layers — the content layer's display
 rule), §6.8 (the pasteboard is spread-scoped), §6.3 (gesture previews live in the SVG
@@ -101,10 +102,14 @@ which the §6.2 layer split exists to avoid. Recorded as a consequence, not a bu
 
 ### D5 — The region is a list, today of one rect
 
-The "page" the rule clips to is `pageRegion(setup): readonly Rect[]`. Today it returns
-the one page at the origin. PLAN.md §6.8 makes the spread the display unit and scopes the
-pasteboard to it, so the region is typed as a list now, which lets facing pages land as
-data rather than as a signature change through the renderer. The classifier stays exact
+The "page" the rule clips to is `pageRegion(size: PageSize): readonly Rect[]`. Today it
+returns the one page at the origin, and its parameter is exactly what it reads. PLAN.md
+§6.8 makes the spread the display unit and scopes the pasteboard to it, so the RETURN
+type is a list now: the classifier and both clips are written over a list of rects and
+will not change when facing pages land. The PARAMETER will — a spread's rects need the
+document and page index (or a `Spread`), which neither `PageSize` nor
+`EffectivePageSetup` can express — so that day changes `pageRegion`'s signature and its
+one call site in `CanvasStage`, and nothing downstream of it. The classifier stays exact
 for one page and merely conservative for several (an object crossing the spine counts as
 straddling and clips correctly to the union — see §2.1). No spread work is done here.
 
@@ -118,10 +123,8 @@ Framework-free, next to `pageSetup.ts` and `lineDecor.ts`. Imports only from wit
 `core/` (`check:boundaries` enforces it).
 
 ```ts
-import type { Rect } from "../hittest";
-import { objectAabb } from "../hittest";
-import type { LayoutObject } from "../model";
-import type { EffectivePageSetup } from "./pageSetup";
+import { objectAabb, type Rect } from "../hittest";
+import type { LayoutObject, PageSize } from "../model";
 import { headLengthIn, PT_PER_IN } from "./lineDecor";
 import { DPI, ZOOM_MIN } from "../geometry/viewport";
 
@@ -130,9 +133,10 @@ export const PASTEBOARD_GHOST_OPACITY = 0.5;
 
 export type PagePlacement = "on" | "off" | "straddling";
 
-/** The page region in document inches. One page at the origin today; a
-    spread's pages under facing binding (PLAN.md §6.8) when that lands. */
-export function pageRegion(setup: EffectivePageSetup): readonly Rect[];
+/** The page region in document inches: one page at the origin. A spread's
+    pages (PLAN.md §6.8) will need the document and page index instead —
+    see D5. */
+export function pageRegion(size: PageSize): readonly Rect[];
 
 /** How far ink can reach past an object's geometric outline, in inches. */
 export function inkPadIn(o: LayoutObject): number;
@@ -159,14 +163,22 @@ rather than exact:
 
 | Object | Pad (inches) | Reason |
 |---|---|---|
-| Shape with a stroke | `stroke.width / PT_PER_IN × MITER_PAD` with `MITER_PAD = 10` | Konva's default `lineJoin` is `miter` with `miterLimit` 10, so a sharp vertex's miter can spike up to ten stroke widths past the geometric point (a star's tips). |
+| Shape with a stroke | `stroke.width / PT_PER_IN × MITER_PAD` with `MITER_PAD = 10` | Konva leaves the canvas defaults, `lineJoin: miter` with `miterLimit` 10. The limit bounds the miter's full length, so a sharp vertex's tip (a star's points) reaches at most five stroke widths past the geometric point; ten is that bound doubled, on purpose. |
 | Shape without a stroke | `0` | Fills never leave the outline. |
 | Line | stroke pad as above `+ headLengthIn(o.headSize, o.stroke.width)` | Endpoint bounds omit the stroke's half-width and the heads' sideways reach; one head length covers both. |
 | textFrame / pictureFrame / table / mergeField | `1 / (DPI × ZOOM_MIN)` | The placeholder's 1px `strokeScaleEnabled={false}` hairline is widest in document inches at minimum zoom (0.104 in); classification must not depend on zoom. |
 
 `objectAabb` already handles rotation and the callout's tail, so `inkBounds` adds only
-the pad. Pads are derived from the same constants the renderer draws with (`PT_PER_IN`,
-`headLengthIn`, `DPI`, `ZOOM_MIN`), never from copies.
+the pad. Pads read `headLengthIn`, `DPI` and `ZOOM_MIN` from the modules that own them,
+and `PT_PER_IN` from `lineDecor` — which today is one of three declarations of `72`
+(`lineDecor.ts`, `hittest/geometry.ts`, and a local copy in `CanvasStage.tsx`). S2 folds
+the renderer's copy into the `lineDecor` import so the pad and the drawn stroke share one
+constant; the `hittest` copy is out of scope and noted.
+
+One obligation to record with the decision: `inkPadIn` covers what the renderer draws
+*today*. The schema's `effects` (shadow, glow, soft edge, bevel, reflection) are unread by
+the renderer; the day they draw, they reach past the outline and `inkPadIn` must grow a
+term for them, or the `on` shortcut will leave an unghosted shadow hanging off the page.
 
 **Multi-rect regions (D5).** `on` requires containment in a *single* rect. For one page
 that is exact. For a spread, an object crossing the spine is inside the union but no
@@ -177,11 +189,24 @@ is built for this.
 ### 2.2 The renderer — `shell/canvas/CanvasStage.tsx`
 
 The existing `renderObject` keeps its body and every branch unchanged; the change is at
-its call site. One new function chooses how many times to draw and under what clip:
+its call site. `CanvasStage.tsx` already imports react-konva's `Rect` component, so the
+geometry type comes in aliased — `import { type Rect as PageRect } from "../../core/hittest"`
+— or the file fails `tsc` on a duplicate identifier. One new function chooses how many
+times to draw and under what clip:
 
 ```tsx
-function renderPlaced(o: LayoutObject, swatches: readonly Swatch[], region: readonly Rect[]) {
-  switch (objectPlacement(o, region)) {
+type PlacementClips = {
+  pages: (ctx: Konva.Context) => void;
+  pasteboard: (ctx: Konva.Context) => ["evenodd"];
+};
+
+function renderPlaced(
+  o: LayoutObject,
+  swatches: readonly Swatch[],
+  placement: PagePlacement,
+  clips: PlacementClips,
+): ReactNode {
+  switch (placement) {
     case "on":
       return renderObject(o, swatches); // byte-for-byte today's output
     case "off":
@@ -193,8 +218,8 @@ function renderPlaced(o: LayoutObject, swatches: readonly Swatch[], region: read
     case "straddling":
       return (
         <Group key={o.id}>
-          <Group clipFunc={clipToPages(region)}>{renderObject(o, swatches)}</Group>
-          <Group clipFunc={clipToPasteboard(region)} opacity={PASTEBOARD_GHOST_OPACITY}>
+          <Group clipFunc={clips.pages}>{renderObject(o, swatches)}</Group>
+          <Group clipFunc={clips.pasteboard} opacity={PASTEBOARD_GHOST_OPACITY}>
             {renderObject(o, swatches)}
           </Group>
         </Group>
@@ -207,13 +232,13 @@ The two clips are the only Konva-specific code, shell-side because they take a K
 context:
 
 ```ts
-const clipToPages = (region: readonly Rect[]) => (ctx: Konva.Context) => {
+const clipToPages = (region: readonly PageRect[]) => (ctx: Konva.Context) => {
   for (const r of region) ctx.rect(r.x, r.y, r.w, r.h);
 };
 // Everything except the pages: a rect far larger than any pasteboard, with
 // each page cut out under the even-odd rule (Container.js:231 spreads the
 // return value into context.clip).
-const clipToPasteboard = (region: readonly Rect[]) => (ctx: Konva.Context): ["evenodd"] => {
+const clipToPasteboard = (region: readonly PageRect[]) => (ctx: Konva.Context): ["evenodd"] => {
   ctx.rect(-CLIP_EXTENT, -CLIP_EXTENT, 2 * CLIP_EXTENT, 2 * CLIP_EXTENT);
   for (const r of region) ctx.rect(r.x, r.y, r.w, r.h);
   return ["evenodd"];
@@ -227,20 +252,48 @@ Facts the implementation relies on, all verified against the installed Konva:
   clipped by the axis-aligned page edge, which is what we want.
 - The two clips are exact complements. At the page edge the canvas antialiases both, and
   their coverages sum to one, so the seam is a sub-pixel blend of full and ghost — not a
-  gap and not a double-dark line. Verify visually at 400% (§5).
+  gap and not a double-dark line. Reproduced in Chromium during plan review with the
+  exact construction at a 96× transform: on-page `a = 255`, off-page `a = 128`, untouched
+  `a = 0`, a one-pixel 255→128 seam. Still verify at 400% on the real stage (§5).
 - The outer clip extent is a constant (`CLIP_EXTENT = 1e4` inches), not the visible rect,
   so the clip does not depend on the viewport and does not change on pan.
 - `react-konva` passes `clipFunc` and `opacity` straight through (`Group` is typed as
-  `Konva.GroupConfig`). Nesting one `Group` around two clipped `Group`s keeps one keyed
-  child per object in the layer, so z-order stays array order.
+  `Konva.GroupConfig`), and `import type Konva from "konva"` gives the `Konva.Context`
+  type that satisfies the config-level `clipFunc` parameter under `verbatimModuleSyntax`
+  and `consistent-type-imports` — the sketch above was compiled against the project's
+  `tsconfig` during review. Nesting one `Group` around two clipped `Group`s keeps one
+  keyed child per object in the layer, so z-order stays array order.
 - Both layers have `listening={false}`; the doubled nodes cost no hit-graph drawing.
 
-**Where the region and placements are computed.** `CanvasStage` derives
-`region = pageRegion(setup)` and memoizes the per-object placement on
-`[objects, region]` with `useMemo` — `objects` is structurally shared by Immer and only
-changes on document mutation, while the stage re-renders on every in-flight pan. Hooks
-go above the existing early return (`react-hooks/rules-of-hooks` is an error in this
-config).
+**Where the region and placements are computed.** In `CanvasStage`, above the existing
+early return (`react-hooks/rules-of-hooks` is an error in this config; the file has no
+hooks yet, so `useMemo` joins the existing import as
+`import { useMemo, type ReactNode } from "react"`), with the `size` destructuring moved
+up to feed them:
+
+```ts
+const { w: pageW, h: pageH } = setup.size;
+const region = useMemo(() => pageRegion({ w: pageW, h: pageH }), [pageW, pageH]);
+const clips = useMemo(
+  () => ({ pages: clipToPages(region), pasteboard: clipToPasteboard(region) }),
+  [region],
+);
+const placements = useMemo(
+  () => objects.map((o) => objectPlacement(o, region)),
+  [objects, region],
+);
+```
+
+The dependencies are primitives on purpose. `CanvasWorkspace` rebuilds `setup` with
+`effectivePageSetup` on every render, and an in-flight pan re-renders it per
+`pointermove`, so a memo keyed on `setup` — or on a `region` derived from it — would
+recompute, and hand react-konva fresh `clipFunc` closures, every frame. Keyed on the
+page's width and height, the region, the clips and the placements survive a pan
+untouched and change only on document mutation (`objects` is structurally shared by
+Immer) or a page-size edit. The content layer then maps `objects` with
+`renderPlaced(o, swatches, placements[i] ?? "straddling", clips)` — under
+`noUncheckedIndexedAccess` the index is possibly undefined, and `straddling` is the
+answer that is exact whatever the truth, so the fallback can never draw a wrong pixel.
 
 ### 2.3 Deliberately unchanged
 
@@ -260,8 +313,10 @@ config).
   child, so where an object's Konva parts overlap, the lower part shows through the
   upper one in the ghost. Today only the banner is built that way — its shaded folds are
   a second `Path` painted over the outline — so a ghosted banner's folds read slightly
-  lighter than fill × 0.8. A line's stroke stops at each head's base, so heads do not
-  overlap it; placeholder frames' stroke and label do not overlap. The dev team's
+  lighter than fill × 0.8. An arrow or diamond head does not overlap its line — the
+  stroke stops at the head's base — but a CIRCLE head is centred on the tip and sits over
+  the stroke it caps, so a ghosted circle-headed line shows the stroke through the head.
+  Placeholder frames' stroke and label do not overlap. The dev team's
   renderer should composite an object as one unit; Konva can (`cache()`), at the cost of
   an offscreen bitmap per ghosted object at the current zoom, which is not worth it
   for one shape kind in a prototype.
@@ -299,9 +354,10 @@ slice 4 is the record. A review pass follows all four.
 ### S2 — Renderer (main thread)
 
 - **Edit** `src/shell/canvas/CanvasStage.tsx` per §2.2: `renderPlaced`, the two clip
-  builders, `CLIP_EXTENT`, the memoized region/placements, and the content layer mapping
-  `renderPlaced` instead of `renderObject`. Update the file-top comment to state the
-  rule and cite §2.5.
+  builders, `CLIP_EXTENT`, the memoized region/clips/placements above the early return,
+  the content layer mapping `renderPlaced` instead of `renderObject`, the `PageRect`
+  alias, and the local `PT_PER_IN` replaced by the `lineDecor` import. Update the
+  file-top comment to state the rule and cite §2.5.
 - No change to `CanvasWorkspace.tsx`: the stage already receives `setup`.
 - Manual check before committing: load the stress fixture from the debug bar (300
   objects across a one-inch apron, ~30% rotated) and confirm drag/marquee stay smooth
@@ -316,17 +372,29 @@ pixel-sampling helper for render-level smoke checks" PLAN.md §5 already anticip
 
 - **Add** to `e2e/helpers.ts`: `contentPixelAt(page, pt: DocPoint)` returning
   `{ r, g, b, a }` from the content layer's canvas — the *last* `<canvas>` under
-  `[data-testid="canvas-area"]` (Konva appends one per layer in order), scaled by
-  `canvas.width / canvas.clientWidth` for the pixel ratio, sampled through
-  `getImageData` at the `screenPoint` of `pt`. Document the last-canvas rule at the
-  helper.
-- **Add** `e2e/pasteboard.spec.ts` with the §4 e2e rows. Assert on **alpha**, not
-  colour: the layer canvas is transparent where nothing is drawn, so a ghost pixel
-  reads `a ≈ 128` and a full pixel `a === 255`, independent of the pasteboard colour and
-  the rectangle tool's default fill (`#4472c4`, so drawn rects are filled).
-- Keep probe points inside the default viewport: at 100% zoom on Playwright's
-  1280×720 page there is ~2.4 in of pasteboard left and right of the page.
-- Done when `npm run e2e` passes locally, including the existing suite.
+  `[data-testid="canvas-area"]` (Konva appends one per layer in order; the SVG overlay
+  is not a canvas, and with `listening={false}` no hit canvas reaches the DOM). Take
+  `screenPoint(pt)`, which is page-absolute, **subtract the canvas element's own
+  bounding box**, then scale by `canvas.width / canvas.clientWidth` for the pixel ratio
+  and read one pixel with `getImageData`. Document the last-canvas rule at the helper.
+- **Add** `e2e/pasteboard.spec.ts` with the §4 e2e rows. Its `beforeEach` follows the
+  suite's pattern (`page.goto("/")`, canvas area visible) and then **zooms to 50%**: fill
+  the debug bar's `Zoom percent` field with `50`, press Enter, and wait for the store's
+  zoom to read `0.5`. This is not optional. At the 100% boot zoom the canvas area —
+  866×603 px under `devices["Desktop Chrome"]`, after the dock, rail and panel — shows
+  only 0.26 in of pasteboard beside the page and nothing above `y ≈ 2.4 in`, which is
+  why every existing spec stays inside `x ≥ 0.2, y ≥ 2.5`. At 50% the visible document
+  runs from about `x = −4.7` to `13.2` and `y = −0.8` to `11.8`, which reaches every
+  coordinate in §4.
+- Assert on **alpha**, not colour: the layer canvas is transparent where nothing is
+  drawn, so a ghost pixel reads `a ≈ 128` and a full pixel `a === 255`, independent of
+  the pasteboard colour and the rectangle tool's default fill (`#4472c4`, so drawn
+  rects are filled; their default 0.75pt stroke pads the classification but never
+  reaches a rectangle's centre).
+- Done when `npm run e2e` passes locally, including the existing suite. In a container
+  whose pre-installed Chromium predates the pinned `@playwright/test`, point
+  `PLAYWRIGHT_CHROMIUM_PATH` at the installed binary — `playwright.config.ts` already
+  honours it — rather than running `playwright install`.
 
 ### S4 — The record (main thread)
 
@@ -335,8 +403,9 @@ pixel-sampling helper for render-level smoke checks" PLAN.md §5 already anticip
   rejected with the furniture reason; `core/render/pagePlacement.ts` as the one
   authority for on/off/straddling, with §2.5's export exclusion and §10.1's straddle
   rule named as its next consumers; the `0.5` ASSUMPTION; the per-part ghost
-  limitation; the commit-time consequence; and the note that any new renderer path
-  (text, images, masters) inherits the rule only by going through `renderObject`.
+  limitation; the commit-time consequence; the obligation that `inkPadIn` grows a term
+  for `effects` the day they render; and the note that any new renderer path (text,
+  images, masters) inherits the rule only by going through `renderObject`.
 - **`PLAN.md` §6.2** — one sentence after the coordinate paragraph: ink outside the
   page ghosts at `PASTEBOARD_GHOST_OPACITY`; the content layer clips straddling objects
   both ways; placement is a core fact.
@@ -375,7 +444,7 @@ pixel-sampling helper for render-level smoke checks" PLAN.md §5 already anticip
 | `inkPadIn` | line, 2pt stroke, no heads | `20 / 72 + headLengthIn(undefined, 2)` (heads absent still pad — cheap and safe) |
 | `inkPadIn` | textFrame placeholder | `1 / (96 × 0.1)` |
 | `inkBounds` | 1×1 rect at the origin rotated 45° | bounds ≈ 1.414 wide, centred on (0.5, 0.5) — proves it reads `objectAabb` |
-| `inkBounds` | callout with its tail outside the box | wider than the frame — proves the overshoot rides along |
+| `inkBounds` | callout with `tailTip: { x: -0.3, y: 0.5 }` (a schema-valid callout must carry `tailTip`; the four presets leave the box in *y* only, so an *x*-outside tip is set explicitly) | extends left of the frame by 0.3 × w — proves the overshoot rides along |
 | `objectPlacement` | unstroked rect flush with the left edge (`x = 0`) | `on` |
 | `objectPlacement` | the same rect with a 1pt stroke | `straddling` (ink crosses) |
 | `objectPlacement` | rect at `x = -2, w = 1` | `off` |
@@ -385,6 +454,9 @@ pixel-sampling helper for render-level smoke checks" PLAN.md §5 already anticip
 | `objectPlacement` | line from (−3, 1) to (−2, 1) | `off` |
 
 ### End-to-end — `pasteboard.spec.ts`
+
+Every row runs at the 50% zoom S3's `beforeEach` sets; at the boot zoom none of these
+coordinates is on screen (S3).
 
 | Title | Steps | Assert |
 |---|---|---|
@@ -417,6 +489,12 @@ Done means all of PLAN.md's and `CLAUDE.md`'s gates: typecheck and lint clean; t
 the new logic written and passing; no new `any`, no TODOs, no commented-out code; the
 one new pattern (pixel probe) flagged here and in the SEAMS entry; no file touched
 outside §3's list.
+
+On "tests for the new logic": the classifier is covered by unit tests. The renderer
+change cannot be — Vitest runs in the `node` environment over `src/**/*.test.ts` only,
+and the codebase has no component tests by design (PLAN.md §5: Konva has no DOM to
+assert against). S3's pixel probe **is** the renderer's test, which is why it is a
+required slice and not a nice-to-have.
 
 ---
 
