@@ -194,3 +194,30 @@ export function lineAt(objects: LayoutObject[], index: number): LineObject {
 export function expectNear(actual: number, expected: number): void {
   expect(Math.abs(actual - expected)).toBeLessThanOrEqual(0.01);
 }
+
+/** One pixel of the CONTENT layer's canvas at a document point, as
+    un-premultiplied RGBA 0–255. The content layer is the LAST <canvas> under
+    the canvas area: Konva appends one canvas per Layer in layer order, the
+    SVG overlay is not a canvas, and with listening={false} no hit canvas
+    reaches the DOM. Coordinates: screenPoint is page-absolute, so the
+    canvas element's own box is subtracted before scaling by the pixel
+    ratio (canvas.width / clientWidth). */
+export async function contentPixelAt(
+  page: Page,
+  pt: DocPoint,
+): Promise<{ r: number; g: number; b: number; a: number }> {
+  const screen = await screenPoint(page, pt);
+  const canvas = page.locator('[data-testid="canvas-area"] canvas').last();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("content canvas not visible");
+  const x = screen.x - box.x;
+  const y = screen.y - box.y;
+  return canvas.evaluate((el, { x, y }) => {
+    const canvasEl = el as HTMLCanvasElement;
+    const ratio = canvasEl.width / canvasEl.clientWidth;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) throw new Error("content canvas has no 2d context");
+    const d = ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data;
+    return { r: d[0] ?? 0, g: d[1] ?? 0, b: d[2] ?? 0, a: d[3] ?? 0 };
+  }, { x, y });
+}
