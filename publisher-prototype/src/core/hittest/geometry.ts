@@ -186,6 +186,80 @@ export function convexPolygonsOverlap(a: readonly Point[], b: readonly Point[]):
 
 export type FlattenedSubpath = { points: Point[]; closed: boolean };
 
+/**
+ * Where one axis of a cubic turns around: the roots of B'(t) strictly inside
+ * (0, 1). B'(t)/3 is the quadratic at² + bt + c below, so this is the
+ * ordinary quadratic formula with the degenerate cases named — a === 0 makes
+ * it linear (the curve's axis accelerates uniformly), and b === 0 with it
+ * means the axis never turns at all.
+ *
+ * Endpoints are the caller's business: these are the INTERIOR extrema, which
+ * together with the two endpoints give a cubic's exact extent on that axis.
+ */
+function cubicTurningPoints(p0: number, p1: number, p2: number, p3: number): number[] {
+  const a = -p0 + 3 * p1 - 3 * p2 + p3;
+  const b = 2 * (p0 - 2 * p1 + p2);
+  const c = p1 - p0;
+  const inside = (t: number) => t > 0 && t < 1;
+  if (Math.abs(a) < 1e-12) {
+    if (Math.abs(b) < 1e-12) return [];
+    return [-c / b].filter(inside);
+  }
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return [];
+  const root = Math.sqrt(disc);
+  return [(-b + root) / (2 * a), (-b - root) / (2 * a)].filter(inside);
+}
+
+/**
+ * The EXACT bounds of a path in absolute coordinates — the box the drawn ink
+ * occupies, not the box its control points span. A cubic's control points can
+ * sit well outside the curve they steer (a half-circle-ish arc reaches only
+ * ~3/4 of the way to its handles), so hulling them yields a box visibly
+ * larger than the shape; solving each cubic's turning points instead makes it
+ * hug what is painted. Straight segments and endpoints contribute directly.
+ *
+ * Null for a path with no points at all. The two axes are solved
+ * independently, which is why x and y are collected apart: a turn in x says
+ * nothing about where y turns.
+ */
+export function pathBounds(segs: readonly PathSeg[]): Rect | null {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  let current: Point | null = null;
+  for (const seg of segs) {
+    switch (seg.c) {
+      case "M":
+      case "L":
+        current = { x: seg.x, y: seg.y };
+        xs.push(current.x);
+        ys.push(current.y);
+        break;
+      case "C": {
+        const from = current ?? { x: seg.x1, y: seg.y1 };
+        xs.push(seg.x);
+        ys.push(seg.y);
+        for (const t of cubicTurningPoints(from.x, seg.x1, seg.x2, seg.x)) {
+          xs.push(cubicAt(from.x, seg.x1, seg.x2, seg.x, t));
+        }
+        for (const t of cubicTurningPoints(from.y, seg.y1, seg.y2, seg.y)) {
+          ys.push(cubicAt(from.y, seg.y1, seg.y2, seg.y, t));
+        }
+        current = { x: seg.x, y: seg.y };
+        break;
+      }
+      case "Z":
+        // The closing segment is a straight line between two points already
+        // counted, so it can reach nothing new.
+        break;
+    }
+  }
+  if (xs.length === 0 || ys.length === 0) return null;
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+}
+
 function cubicAt(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const u = 1 - t;
   return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;

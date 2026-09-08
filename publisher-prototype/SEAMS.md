@@ -62,8 +62,9 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   history — redo is unavailable mid-draft. `gesture/cancelled` clears this draft
   too (how a draft too small to be a shape resolves in one action); its
   no-reducer rule narrows to "no DOCUMENT reducer". The committed shape
-  normalizes into the control hull's bounding box; independent handle editing and
-  curved closing segments are the node-select tranche's scope.
+  normalizes into the box the drawn ink occupies (see the frame-box entry below);
+  independent handle editing and curved closing segments are the node-select
+  tranche's scope.
 - **Partial pen paths are kept (recorded 2026-09-08, user-ratified):** every exit
   from the pen commits the draft as an open path — Esc included. The
   `pen.esc.discards-path` clause is retired for `pen.esc.ends-path`
@@ -92,6 +93,23 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   stored `path` shapes are affected — every parametric builder closes each
   subpath with `Z`. The MARQUEE rule is deliberately untouched: it intersects
   geometry and ignores fill, so an open path's implied region is not part of it.
+- **A drawn path's frame box is its INK, not its control hull (recorded
+  2026-09-08, user-ratified):** `penObjectFromDraft` had bounded every control
+  point, which on strong curves drew a selection box visibly larger than the
+  shape inside it — a handle-driven arch reaches only three quarters of the way
+  to its handles, so the box ran a third too tall. `core/hittest` gained
+  `pathBounds`, which solves each cubic's turning points (the roots of B'(t) in
+  (0,1)) and bounds the curve exactly; the pen normalizes into that.
+  **Consequence, deliberate:** a hard-pulled handle now normalizes OUTSIDE 0–1.
+  That is legal — `PathSegSchema` does not clamp — and precedented, the callout's
+  `tailTip` having always lived outside its frame. The alternative considered and
+  rejected was keeping the hull as the frame and computing ink bounds separately
+  for the chrome: it would split "the frame box" from "the box you see", so the
+  Transform panel would report a W/H that did not match the handles drawn around
+  the shape. Because the frame IS the ink, chrome, `objectAabb`,
+  align/distribute, resize and the Transform panel agree with no further work.
+  Bounds are geometric — the stroke's own width is not counted, matching
+  Illustrator's default (its "Use Preview Bounds" preference is what adds it).
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no

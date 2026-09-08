@@ -1,4 +1,5 @@
 import type { UnknownAction } from "@reduxjs/toolkit";
+import { pathBounds } from "../hittest";
 import type { PathSeg, ShapeObject } from "../model";
 import { gestureCancelled, penDrawCommitted } from "../store/documentActions";
 import { penAnchorCommitted, penCurveAnchorCommitted, type PenAnchor } from "../store/penSlice";
@@ -120,29 +121,20 @@ export function penRubberBand(
   return [{ c: "M", x: last.point.x, y: last.point.y }, segmentInto(last, to)];
 }
 
-function segPoints(seg: PathSeg): Point[] {
-  switch (seg.c) {
-    case "M":
-    case "L":
-      return [{ x: seg.x, y: seg.y }];
-    case "C":
-      return [
-        { x: seg.x1, y: seg.y1 },
-        { x: seg.x2, y: seg.y2 },
-        { x: seg.x, y: seg.y },
-      ];
-    case "Z":
-      return [];
-  }
-}
-
 /**
  * The committed pen shape: document-space draft segments (plus the closing
- * segment and Z when closed) normalized into their bounding box — control
- * points included, so every normalized coordinate stays within 0–1 (the
- * frame box is the control hull's box; ASSUMPTION: it may run slightly
- * larger than the drawn ink on strong curves — exact curve extrema are the
- * node-editing tranche's concern, working simplification for SME review).
+ * segment and Z when closed) normalized into the box the drawn INK occupies —
+ * `pathBounds`, which solves each cubic's turning points rather than hulling
+ * its control points. The frame is therefore exactly the shape you see, and
+ * the selection chrome, align/distribute, resize and the Transform panel all
+ * agree with it because they all read this one box.
+ *
+ * A curve's control points can consequently normalize OUTSIDE 0–1 — a handle
+ * pulled hard sits beyond the ink it steers. That is legal and precedented:
+ * PathSegSchema does not clamp, and the callout's `tailTip` already lives
+ * outside its frame by design. (Decision of record, user-ratified
+ * 2026-09-08, retiring the earlier control-hull simplification, which drew a
+ * box visibly taller than the curve inside it.)
  *
  * A STRAIGHT draft keeps its zero-extent axis rather than vanishing: a
  * horizontal or vertical path commits with `h` (or `w`) of 0, which the
@@ -170,13 +162,9 @@ export function penObjectFromDraft(
   if (closed && first && last) {
     docSegs.push(segmentInto(last, first), { c: "Z" });
   }
-  const pts = docSegs.flatMap(segPoints);
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  const w = Math.max(...xs) - x;
-  const h = Math.max(...ys) - y;
+  const bounds = pathBounds(docSegs);
+  if (bounds === null) return null;
+  const { x, y, w, h } = bounds;
   if (w === 0 && h === 0) return null;
   const nx = (v: number) => (w === 0 ? 0 : (v - x) / w);
   const ny = (v: number) => (h === 0 ? 0 : (v - y) / h);

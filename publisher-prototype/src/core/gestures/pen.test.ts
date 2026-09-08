@@ -289,15 +289,36 @@ describe("penObjectFromDraft", () => {
     ]);
   });
 
-  it("grows the frame box to cover control points so every normalized coordinate stays within [0, 1]", () => {
+  it("hugs the drawn ink rather than the control hull — the frame is the curve's own box", () => {
     const curved: PenAnchor = { point: { x: 1, y: 1 }, handleOut: { x: 1, y: 0 } };
     const object = penObjectFromDraft([curved, anchor(2, 1)], false, STYLE, "id-1");
-    // The handle at y=0 sits above both anchors (y=1) — the frame covers it.
-    expect(object).toMatchObject({ x: 1, y: 0, w: 1, h: 1 });
-    for (const value of pathOf(object).flatMap(segCoords)) {
+    // The handle reaches y=0, but the curve it steers turns at y=5/9. The
+    // frame starts THERE — hulling the handle would leave 5/9 of an inch of
+    // empty box above the ink.
+    expect(object?.x).toBeCloseTo(1, 10);
+    expect(object?.y).toBeCloseTo(5 / 9, 10);
+    expect(object?.w).toBeCloseTo(1, 10);
+    expect(object?.h).toBeCloseTo(4 / 9, 10);
+  });
+
+  it("normalizes a hard-pulled handle OUTSIDE [0, 1] — the trade the ink-tight frame makes", () => {
+    const curved: PenAnchor = { point: { x: 1, y: 1 }, handleOut: { x: 1, y: 0 } };
+    const object = penObjectFromDraft([curved, anchor(2, 1)], false, STYLE, "id-1");
+    const seg = pathOf(object)[1];
+    if (seg?.c !== "C") throw new Error("expected a cubic segment");
+    // The control point sits above the box (PathSegSchema does not clamp, and
+    // the callout's tailTip is the standing precedent)…
+    expect(seg.y1).toBeCloseTo(-1.25, 10);
+    expect(() => LayoutObjectSchema.parse(object)).not.toThrow();
+    // …while every ON-CURVE point still lands inside it.
+    for (const value of pathOf(object)
+      .filter((s) => s.c !== "C")
+      .flatMap(segCoords)) {
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThanOrEqual(1);
     }
+    expect(seg.x).toBeCloseTo(1, 10);
+    expect(seg.y).toBeCloseTo(1, 10);
   });
 
   it("keeps a STRAIGHT draft, flat axis and all — a partial shape never vanishes", () => {

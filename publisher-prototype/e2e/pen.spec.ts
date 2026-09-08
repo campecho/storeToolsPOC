@@ -300,6 +300,26 @@ test("a partial shape's FILL is both painted and clickable", async ({ page }) =>
   await expect.poll(() => selectionIds(page)).toEqual([]);
 });
 
+test("a curved path's frame box hugs the curve, not its handles", async ({ page }) => {
+  await activate(page, "Pen / freeform");
+  // Three anchors on y=4, each dragging a 1.4in tangent — an S whose handles
+  // reach y=2.6 and y=5.4 but whose ink only reaches y=2.95 and y=5.05.
+  await drag(page, { x: 2, y: 4 }, { x: 2, y: 2.6 });
+  await drag(page, { x: 5, y: 4 }, { x: 5, y: 5.4 });
+  await drag(page, { x: 7, y: 4 }, { x: 7, y: 2.6 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const shape = shapeAt(await pageObjects(page), 0);
+  // Ends are the anchors themselves, so x is unremarkable; y is the test.
+  expectNear(shape.x, 2);
+  expectNear(shape.w, 5);
+  expectNear(shape.y, 2.95);
+  expectNear(shape.h, 2.1);
+  // The chrome draws this box, so hugging the ink here is hugging it on
+  // screen — a control-hull frame would have been 2.8 tall, a third too much.
+  expect(shape.h).toBeLessThan(2.8);
+});
+
 test("pen.esc.ends-path", async ({ page }) => {
   await activate(page, "Pen / freeform");
   await clickAt(page, { x: 1, y: 3 });
