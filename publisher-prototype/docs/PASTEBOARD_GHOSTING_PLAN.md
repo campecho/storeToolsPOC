@@ -1,8 +1,11 @@
 # Pasteboard ghosting — implementation plan
 
 **Document type:** Feature implementation plan (publisher prototype only)
-**Status:** Draft v1.1 — reviewed against the codebase (2026-09-08); awaiting
-ratification of the decisions in §1 before any code
+**Status:** Ratified and implemented 2026-09-08 — all five §1 defaults confirmed by the
+user; the decision of record is the "Pasteboard ghosting" entry in [`SEAMS.md`](../SEAMS.md).
+The implementation follows §2–§4 as written, with one bundling difference: the two clip
+builders sketched in §2.2 are one `placementClips(region)` function returning both, so
+they memoize as a unit.
 **Last updated:** 2026-09-08
 **Maps to:** [`PLAN.md`](../PLAN.md) §6.2 (render layers — the content layer's display
 rule), §6.8 (the pasteboard is spread-scoped), §6.3 (gesture previews live in the SVG
