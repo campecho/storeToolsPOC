@@ -2,7 +2,7 @@
 
 **Document type:** Implementation plan (standalone application)
 **Status:** Draft v2.4 — plan of record
-**Last updated:** 2026-08-20
+**Last updated:** 2026-09-08
 **Source of truth:** [`docs/microsoft_publisher_feature_requirements.md`](docs/microsoft_publisher_feature_requirements.md)
 (§1–§14) — **committed in this directory** so every § citation resolves inside the handoff
 **Relationship to `storeToolsPOC`:** **reference implementation only.** The model is a
@@ -417,6 +417,14 @@ in sync is applying zoom/pan to the SVG `viewBox`.
 Coordinates are canonical **inches, zoom-independent**, with zoom as `stage.scale` and
 pan as `stage.position`, so every snap and geometry calculation is render-agnostic pure
 math. Photo mode runs the same stage in pixel space with the same overlay pattern.
+
+**Ink outside the page ghosts** (§2.5: the page/pasteboard boundary "must be visually
+unambiguous, since it determines what prints"). The content layer draws an off-page
+object at `PASTEBOARD_GHOST_OPACITY` and a straddling object twice under complementary
+clips, so its on-page part keeps full strength and the page edge is the exact seam.
+Placement — on, off, or straddling — is a core fact (`core/render/pagePlacement.ts`),
+the one authority §10.1's straddle rule and §2.5's export exclusion read later. Furniture
+and the SVG chrome do not dim. Decision of record in `SEAMS.md` (2026-09-08).
 
 **The canvas's display unit is the spread, not the page** (§6.8). Under single-page
 binding a spread is one page and nothing changes; under facing binding the stage draws

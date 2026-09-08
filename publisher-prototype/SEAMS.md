@@ -587,3 +587,44 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   non-additive schema change bumps the version and ships a migration); and asset
   BYTES finally get a home (S3's client blob store; the POC's `stp-assets-v1`
   metadata/bytes split is the cited prior art).
+- **Pasteboard ghosting (recorded 2026-09-08, user decision):** ink outside the page
+  renders at `PASTEBOARD_GHOST_OPACITY` (0.5 — ASSUMPTION, for SME review), and an
+  object crossing the page edge keeps its on-page part at full strength while the
+  off-page part ghosts. §2.5 asks for the page/pasteboard boundary to be "visually
+  unambiguous, since it determines what prints"; this is the content layer's answer.
+  Placement is a CORE fact: `core/render/pagePlacement.ts` classifies every object
+  `on`, `off` or `straddling` from `objectAabb` inflated by an ink pad (stroke miters,
+  line heads, the placeholder hairline at minimum zoom), and the renderer only decides
+  how many times to draw — once as before, once ghosted, or twice under complementary
+  Konva clips (the page, and everything-but-the-page under the even-odd rule). The
+  classifier is deliberately conservative: a wrong answer can only turn `on`/`off` into
+  `straddling`, which costs a second draw and changes no pixel. It is the one authority
+  §10.1's straddle check and §2.5's print/export exclusion should read when they land,
+  rather than measuring again.
+  Rejected: a translucent pasteboard-coloured VEIL above the content layer. One node,
+  and mathematically the whole composite faded — but it also fades the bleed and slug
+  boxes and the page shadow, which sit outside the page in a separately cadenced
+  furniture layer; a change to furniture nobody asked for. Held as the fallback if SME
+  review rejects the per-node artifacts below: two content layers, one clipped to the
+  page and one to the pasteboard with CSS opacity on its canvas, which composites whole
+  and leaves furniture alone at the price of drawing everything twice on every pan.
+  Consequences of record. Konva multiplies a group's opacity into each child, so a
+  ghosted object made of several Konva parts ghosts PER PART: the banner's shaded folds
+  read slightly lighter than fill × 0.8, a circle head shows the stroke it caps, and —
+  since every shape sets `perfectDrawEnabled={false}` — a thick stroke shows a
+  half-stroke band inside its edge where it overlaps the fill. All cosmetic inside a
+  50% ghost; the dev team's renderer should composite an object as one unit. The ghost
+  changes on COMMIT, not mid-drag: a move preview is an SVG outline (§6.3), so the Konva
+  object fades when the gesture lands. Stored object `opacity` stays unread here (the
+  Effects tranche's); ghosting is a group opacity, so the two multiply for free when it
+  arrives. `inkPadIn` covers what the renderer draws TODAY — the day `effects` (shadow,
+  glow …) render, it must grow a term for them or an off-page shadow will hang unghosted.
+  Any new renderer path (shaped text, placed images, masters) inherits the rule only by
+  going through `renderObject`; a second render path is a second place to get this wrong.
+  NEW PATTERN, flagged: `e2e/pasteboard.spec.ts` reads PIXELS. The suite asserts on store
+  state because Konva has no DOM, and no unit test can reach the renderer (Vitest runs in
+  node over `.test.ts`), so this feature — purely visual — gets the pixel-sampling probe
+  PLAN.md §5 anticipated: `contentPixelAt` samples the content layer's canvas and the
+  specs assert on ALPHA (255 on the page, ≈128 ghosted, 0 untouched), independent of
+  fill and pasteboard colours. The spec zooms to 50% first: the boot viewport shows a
+  quarter inch of pasteboard and nothing above y ≈ 2.4 in.
