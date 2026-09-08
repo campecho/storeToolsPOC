@@ -403,11 +403,25 @@ stable over a 30-minute session.
 
 | Layer | Technology | Redraw cadence |
 |---|---|---|
-| **Furniture** — pasteboard, page fill/shadow, bleed, margins (mirrored under facing binding), column guides, slug, spine | **Canvas** (Konva, cached) | Page-setup, binding, or zoom change only |
+| **Page ground** — pasteboard, page fill/shadow | **Canvas** (Konva, cached) | Page-setup, binding, or zoom change only |
 | **Content** — objects, text, images, master furniture beneath | **Canvas** (Konva) | Document mutation; `batchDraw` per frame |
+| **Guides** — bleed, margins (mirrored under facing binding), column guides, slug, spine | **Canvas** (Konva, cached) | Page-setup, binding, or zoom change only |
 | **Overlay** — selection frame + 8 handles, marquee, snap guides, node handles, overflow badges | **SVG** | Interaction rate |
 | **Text editing** | **DOM** overlay (§6.4 phasing) | Only while editing |
 | **Rulers** | **DOM** | Cheap; zoom/pan-aware off shared viewport state |
+
+**Why the furniture is two layers, not one:** guides mark positions — a bleed line an
+object is meant to run past, a margin the operator is checking against — so they have to
+stay visible when content covers them. A full-bleed photo, or one staged on the
+pasteboard over the slug, would swallow a guide drawn beneath it. Page fill and shadow
+are ground and stay under the content; everything that draws a line goes on top. Both
+keep the furniture cadence — a guide redraw is page-setup or zoom, never a document
+mutation.
+
+**Page shadow:** the POC's, unchanged — `0 3px 16px rgba(0,0,0,.22)`, held at that size
+in screen px at every zoom like the rest of the fixed-px chrome (the guides' hairline
+weights). Konva scales shadow blur and offset by the stage scale, so the values divide
+by it (`shell/canvas/pageShadow.ts`).
 
 **Why SVG for the overlay:** the snap pipeline must intercept transforms mid-gesture
 (ruling out `Konva.Transformer`), and interaction chrome — the exact thing being

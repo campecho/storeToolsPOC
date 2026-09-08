@@ -602,9 +602,10 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   §10.1's straddle check and §2.5's print/export exclusion should read when they land,
   rather than measuring again.
   Rejected: a translucent pasteboard-coloured VEIL above the content layer. One node,
-  and mathematically the whole composite faded — but it also fades the bleed and slug
-  boxes and the page shadow, which sit outside the page in a separately cadenced
-  furniture layer; a change to furniture nobody asked for. Held as the fallback if SME
+  and mathematically the whole composite faded — but it also fades the page shadow,
+  which lies outside the page on the ground layer beneath the content (the guides
+  moved above the content the same week and would escape it); a change to furniture
+  nobody asked for, and nothing reusable built. Held as the fallback if SME
   review rejects the per-node artifacts below: two content layers, one clipped to the
   page and one to the pasteboard with CSS opacity on its canvas, which composites whole
   and leaves furniture alone at the price of drawing everything twice on every pan.

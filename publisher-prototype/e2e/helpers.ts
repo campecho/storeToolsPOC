@@ -195,19 +195,23 @@ export function expectNear(actual: number, expected: number): void {
   expect(Math.abs(actual - expected)).toBeLessThanOrEqual(0.01);
 }
 
+/** The stage draws page ground, content, then guides (CanvasStage.tsx), and
+    Konva appends one <canvas> per Layer in that order. */
+const CONTENT_CANVAS_INDEX = 1;
+
 /** One pixel of the CONTENT layer's canvas at a document point, as
-    un-premultiplied RGBA 0–255. The content layer is the LAST <canvas> under
-    the canvas area: Konva appends one canvas per Layer in layer order, the
-    SVG overlay is not a canvas, and with listening={false} no hit canvas
-    reaches the DOM. Coordinates: screenPoint is page-absolute, so the
-    canvas element's own box is subtracted before scaling by the pixel
-    ratio (canvas.width / clientWidth). */
+    un-premultiplied RGBA 0–255. The content layer is the MIDDLE <canvas> of
+    the three under the canvas area (CONTENT_CANVAS_INDEX); the SVG overlay
+    is not a canvas, and with listening={false} no hit canvas reaches the
+    DOM. Coordinates: screenPoint is page-absolute, so the canvas element's
+    own box is subtracted before scaling by the pixel ratio
+    (canvas.width / clientWidth). */
 export async function contentPixelAt(
   page: Page,
   pt: DocPoint,
 ): Promise<{ r: number; g: number; b: number; a: number }> {
   const screen = await screenPoint(page, pt);
-  const canvas = page.locator('[data-testid="canvas-area"] canvas').last();
+  const canvas = page.locator('[data-testid="canvas-area"] canvas').nth(CONTENT_CANVAS_INDEX);
   const box = await canvas.boundingBox();
   if (!box) throw new Error("content canvas not visible");
   const x = screen.x - box.x;

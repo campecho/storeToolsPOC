@@ -374,9 +374,11 @@ and no test reads pixels today. This feature is purely visual, so it needs the "
 pixel-sampling helper for render-level smoke checks" PLAN.md §5 already anticipates.
 
 - **Add** to `e2e/helpers.ts`: `contentPixelAt(page, pt: DocPoint)` returning
-  `{ r, g, b, a }` from the content layer's canvas — the *last* `<canvas>` under
-  `[data-testid="canvas-area"]` (Konva appends one per layer in order; the SVG overlay
-  is not a canvas, and with `listening={false}` no hit canvas reaches the DOM). Take
+  `{ r, g, b, a }` from the content layer's canvas — the *middle* of the three
+  `<canvas>` elements under `[data-testid="canvas-area"]` (Konva appends one per layer in
+  order and the stage draws ground, content, guides since the guides moved above content;
+  the SVG overlay is not a canvas, and with `listening={false}` no hit canvas reaches the
+  DOM). Take
   `screenPoint(pt)`, which is page-absolute, **subtract the canvas element's own
   bounding box**, then scale by `canvas.width / canvas.clientWidth` for the pixel ratio
   and read one pixel with `getImageData`. Document the last-canvas rule at the helper.
