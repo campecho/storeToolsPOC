@@ -1,0 +1,83 @@
+# Deploys the POC (repo root) to Cloud Run on merge to main.
+# Runbook, one-time GCP setup and the variables below: docs/DEPLOY_CLOUD_RUN_PLAN.md.
+#
+# publisher-prototype/ is a separate application on its own service — see
+# deploy-prototype-cloud-run.yml — so prototype-only pushes don't redeploy this.
+
+name: Deploy POC to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "publisher-prototype/**"
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-poc-cloud-run
+  cancel-in-progress: false
+
+env:
+  SERVICE: ${{ vars.POC_CLOUD_RUN_SERVICE }}
+  REGION: ${{ vars.GCP_REGION }}
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # required for keyless WIF auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy
+        env:
+          # Secret Manager secret holding the shared password, and the
+          # prototype's URL for the launcher's second card. Both optional:
+          # unset simply means an open deployment / a card that says "not
+          # linked yet". Read through env, never interpolated into the shell.
+          ACCESS_SECRET: ${{ vars.ACCESS_PASSWORD_SECRET }}
+          PROTOTYPE_URL: ${{ vars.PROTOTYPE_URL }}
+        run: |
+          set -euo pipefail
+          # Cloud Build's default 10m is tight for this image: npm ci, a Next
+          # production build, and the apt layer for the converters.
+          gcloud config set builds/timeout 1800
+          flags=()
+          if [ -n "$ACCESS_SECRET" ]; then
+            flags+=(--set-secrets "STP_ACCESS_PASSWORD=${ACCESS_SECRET}:latest")
+          fi
+          if [ -n "$PROTOTYPE_URL" ]; then
+            flags+=(--set-env-vars "STP_PROTOTYPE_URL=${PROTOTYPE_URL}")
+          fi
+          # --max-instances=1 is load-bearing, not tuning: import jobs and proof
+          # sessions are in-memory server state (STUBS.md, "Import server state"),
+          # so a second instance would answer with a different session's world.
+          # 2Gi/2vCPU covers sharp plus the spawned pub2raw/heif-convert/tificc
+          # converters; 300s is the ceiling one conversion may take.
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --project "$PROJECT_ID" --region "$REGION" \
+            --platform managed --allow-unauthenticated \
+            --memory 2Gi --cpu 2 --port 8080 --timeout 300 \
+            --min-instances 0 --max-instances 1 --concurrency 40 \
+            "${flags[@]}"
+
+      - name: Show the service URL
+        run: |
+          gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" --region "$REGION" \
+            --format='value(status.url)' | sed 's|^|Deployed: |'

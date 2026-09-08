@@ -168,9 +168,51 @@ jobs:
           # A JPEG comes back (SOI marker) and is non-trivial.
           head -c 2 /tmp/render.jpg | od -An -tx1 | grep -q "ff d8"
           test "$(stat -c%s /tmp/render.jpg)" -gt 10000
+      # Second boot of the same image with a password configured: the deployed
+      # POC is public, so the middleware gate is the only thing standing in
+      # front of the upload/convert routes (docs/DEPLOY_CLOUD_RUN_PLAN.md).
+      # Unit tests cover the token; only a real boot proves the middleware runs
+      # inside the standalone output and that the cookie survives the round trip.
+      - name: Access gate smoke — closed app, working password
+        run: |
+          set -euo pipefail
+          docker run -d --name stp-gate -p 8081:8080 \
+            -e STP_ACCESS_PASSWORD=hunter2 \
+            -e STP_PROTOTYPE_URL=https://prototype.example \
+            stp-poc
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8081/launcher >/dev/null 2>&1; then break; fi
+            if [ "$i" = 30 ]; then
+              echo "::error::Gated runner never became ready on :8081"; docker logs stp-gate; exit 1
+            fi
+            sleep 2
+          done
+          host=http://localhost:8081
+          # 1. The app itself is closed, and lands on the gate.
+          curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "$host/" | tee /tmp/root.txt
+          grep -q '^307 .*/launcher' /tmp/root.txt
+          # 2. So are the routes that run converters on uploads.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$host/api/photo")" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$host/api/import")" = 401
+          # 3. A wrong password goes back to the gate flagged, with no cookie.
+          curl -sS -o /dev/null -c /tmp/bad-jar -w '%{http_code} %{redirect_url}\n' \
+            -d 'password=nope&next=/photo' "$host/api/access" | tee /tmp/bad.txt
+          grep -q '^303 .*/launcher?error=1' /tmp/bad.txt
+          ! grep -q stp_access /tmp/bad-jar
+          # 4. The right password mints the cookie, honours ?next=, and opens the app.
+          curl -sS -o /dev/null -c /tmp/jar -w '%{http_code} %{redirect_url}\n' \
+            -d 'password=hunter2&next=/photo' "$host/api/access" | tee /tmp/ok.txt
+          grep -q '^303 .*/photo$' /tmp/ok.txt
+          grep -q stp_access /tmp/jar
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/jar "$host/photo")" = 200
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/jar "$host/api/photo")" = 200
+          # 5. The wrapper page offers the other app once you are through.
+          curl -sS -b /tmp/jar "$host/launcher" | grep -q 'https://prototype.example'
       - name: Runner logs on failure
         if: failure()
-        run: docker logs stp || true
-      - name: Stop the runner
+        run: |
+          docker logs stp || true
+          docker logs stp-gate || true
+      - name: Stop the runners
         if: always()
-        run: docker rm -f stp || true
+        run: docker rm -f stp stp-gate || true
