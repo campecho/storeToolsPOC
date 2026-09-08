@@ -59,11 +59,81 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   it, `pen/drawCommitted` commits the finished shape into the document (one
   history entry) and clears it, and the shell's undo path retracts anchors
   (`pen/anchorRetracted`) while a draft is active instead of popping document
-  history — redo is unavailable mid-draft. `gesture/cancelled` (the
-  pen.esc.discards-path binding) now clears this draft; its no-reducer rule
-  narrows to "no DOCUMENT reducer". The committed shape normalizes into the
-  control hull's bounding box; independent handle editing and curved closing
-  segments are the node-select tranche's scope.
+  history — redo is unavailable mid-draft. `gesture/cancelled` clears this draft
+  too (how a draft too small to be a shape resolves in one action); its
+  no-reducer rule narrows to "no DOCUMENT reducer". The committed shape
+  normalizes into the box the drawn ink occupies (see the frame-box entry below);
+  independent handle editing and curved closing segments are the node-select
+  tranche's scope.
+- **Partial pen paths are kept (recorded 2026-09-08, user-ratified):** every exit
+  from the pen commits the draft as an open path — Esc included. The
+  `pen.esc.discards-path` clause is retired for `pen.esc.ends-path`
+  (action `pen/drawCommitted`), and switching tools mid-draft commits rather than
+  discarding, deliberately skipping the usual hand-back to Select so the tool the
+  user just picked survives. Undo, one anchor at a time, is the only way to unmake
+  a draft; only a draft with no shape in it (one anchor, or every point identical)
+  still resolves as `gesture/cancelled`. A STRAIGHT draft commits with a
+  zero-extent frame box rather than being dropped as "the line tool's job" — the
+  schema allows `w`/`h` of 0 and the resize clamp already treats a zero-extent
+  bound as an unscalable axis. Rationale: Illustrator parity — a partial shape is
+  a shape, and silently deleting drawn work on a tool change is the behavior this
+  reverses. The path in progress also previews live (rubber band to the pointer,
+  curve visible while its handle is dragged); previews commit nothing, so they
+  carry no clause.
+- **Fill rule for open paths (recorded 2026-09-08, user-ratified):** a filled OPEN
+  path hits across its fill as well as its stroke. `core/hittest` had built path
+  interiors from closed subpaths only, but the renderer fills an open path with
+  its ends implicitly joined (Canvas 2D `fill()`), so a partial shape painted a
+  region nobody could click. Interiors now ring open subpaths too — gated on
+  `fill !== null`, so an unfilled open path still has no interior and hits on its
+  stroke alone, even under a tool declaring `unfilledInterior: "selects"` (that
+  rule is a frame-editing affordance and keeps its meaning for closed shapes).
+  This is Illustrator's model, and the invariant to hold onto going forward is
+  the reason it is right: **the hit region equals the painted region.** Only
+  stored `path` shapes are affected — every parametric builder closes each
+  subpath with `Z`. The MARQUEE rule is deliberately untouched: it intersects
+  geometry and ignores fill, so an open path's implied region is not part of it.
+- **A drawn path's frame box is its INK, not its control hull (recorded
+  2026-09-08, user-ratified):** `penObjectFromDraft` had bounded every control
+  point, which on strong curves drew a selection box visibly larger than the
+  shape inside it — a handle-driven arch reaches only three quarters of the way
+  to its handles, so the box ran a third too tall. `core/hittest` gained
+  `pathBounds`, which solves each cubic's turning points (the roots of B'(t) in
+  (0,1)) and bounds the curve exactly; the pen normalizes into that.
+  **Consequence, deliberate:** a hard-pulled handle now normalizes OUTSIDE 0–1.
+  That is legal — `PathSegSchema` does not clamp — and precedented, the callout's
+  `tailTip` having always lived outside its frame. The alternative considered and
+  rejected was keeping the hull as the frame and computing ink bounds separately
+  for the chrome: it would split "the frame box" from "the box you see", so the
+  Transform panel would report a W/H that did not match the handles drawn around
+  the shape. Because the frame IS the ink, chrome, `objectAabb`,
+  align/distribute, resize and the Transform panel agree with no further work.
+- **The selection frame takes in the stroke; measurement does not (recorded
+  2026-09-08, user-ratified):** a stroke straddles the path it follows, so a
+  geometric frame cuts through the middle of a heavy outline and the chrome reads
+  as misaligned with the shape. `selectionPreviewFrame` grows the frame by each
+  shape's halo (`strokeOutsetIn` — half the stroke width in inches), and the
+  chrome draws that. The STORED frame stays geometric, deliberately: stroke width
+  is editable after placement (`object/strokeWidthCommitted`), so a baked-in halo
+  would go stale on the next edit, and resize would scale padding that does not
+  scale in the paint.
+  **Reach, chosen deliberately:** chrome and resize/rotate only. `objectAabb`,
+  `selectionAabb`, align & distribute, and the Transform panel's editable
+  x/y/w/h stay geometric — that panel reads AND writes the stored box, so a
+  preview-bounds reading there would have to deflate on commit. Illustrator's own
+  "Use Preview Bounds" is global; this is the narrower half of it.
+  **Resize stays exact rather than drifting:** `ResizeContext.outsets` carries
+  each object's halo, and the machine scales the box the chrome drew before
+  taking that halo back off, so the painted edge lands under the dragged handle.
+  Scaling the geometry while anchoring to the preview box would have been off by
+  up to half a stroke — invisible at the 0.75pt default, ~13px at 20pt. The
+  halo is symmetric, so the centre is unchanged and ROTATION reads the plain
+  geometric frame; the shape-adjust handles do too, since they mark fractions of
+  the stored box.
+  **Lines and arrows are excluded for now** (same ratification): a 12pt line's
+  box is still a zero-height segment through its middle, and an arrowhead still
+  leaves the box entirely. `strokeOutsetIn` returns 0 for them rather than
+  pretending otherwise — a known gap, not an oversight.
 - **Panel commits (recorded 2026-08-18):** control-panel edits mutate the document
   through the same store vocabulary as canvas gestures — one dispatched action per
   committed edit, one history entry — but the registry's `PanelSpec` carries no

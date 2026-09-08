@@ -113,6 +113,60 @@ describe("hitTest.unfilledInterior (passesThrough vs selects)", () => {
   });
 });
 
+describe("a partial (open) path — the fill hits, because the fill is painted", () => {
+  /** Three corners of the frame box, NOT closed — what the pen commits for a
+      partial shape. Filled, the canvas paints it as if the open side were
+      joined; the hit region has to agree. */
+  const OPEN_D: ShapeObject["d"] = [
+    { c: "M", x: 0, y: 0 },
+    { c: "L", x: 1, y: 0 },
+    { c: "L", x: 1, y: 1 },
+  ];
+  const openPath = (over: Partial<ShapeObject> = {}) =>
+    shapeRect("open", { shape: "path", x: 0, y: 0, w: 2, h: 2, d: OPEN_D, ...over });
+  /** Inside the region the implicit closure encloses, and well clear of every
+      drawn edge — so only the fill rule can produce a hit here. */
+  const insideFill = { x: 1.5, y: 0.9 };
+
+  it("selects on a click inside the filled region", () => {
+    expect(hitTestPoint([openPath()], insideFill, OPTS).map((o) => o.id)).toEqual(["open"]);
+  });
+
+  it("still misses outside that region", () => {
+    expect(hitTestPoint([openPath()], { x: 0.4, y: 1.5 }, OPTS)).toHaveLength(0);
+  });
+
+  it("hits its stroke whether or not it is filled", () => {
+    const onStroke = { x: 1, y: 0 };
+    expect(hitTestPoint([openPath()], onStroke, OPTS)).toHaveLength(1);
+    expect(hitTestPoint([openPath({ fill: null })], onStroke, OPTS)).toHaveLength(1);
+  });
+
+  it("has NO interior when unfilled — nothing is painted there to click", () => {
+    const unfilled = [openPath({ fill: null })];
+    expect(hitTestPoint(unfilled, insideFill, OPTS)).toHaveLength(0);
+    // …not even for a tool whose contract selects empty interiors: that rule
+    // is about a frame's own interior, and an open unfilled path has none.
+    expect(
+      hitTestPoint(unfilled, insideFill, { ...OPTS, unfilledInterior: "selects" }),
+    ).toHaveLength(0);
+  });
+
+  it("leaves a CLOSED path's rules exactly as they were", () => {
+    const closed = (over: Partial<ShapeObject> = {}) =>
+      shapeRect("closed", { shape: "path", x: 0, y: 0, w: 2, h: 2, d: TRIANGLE_D, ...over });
+    const insideTriangle = { x: 1, y: 0.5 };
+    expect(hitTestPoint([closed()], insideTriangle, OPTS)).toHaveLength(1);
+    expect(hitTestPoint([closed({ fill: null })], insideTriangle, OPTS)).toHaveLength(0);
+    expect(
+      hitTestPoint([closed({ fill: null })], insideTriangle, {
+        ...OPTS,
+        unfilledInterior: "selects",
+      }),
+    ).toHaveLength(1);
+  });
+});
+
 describe("hitTest.lockedObjects (skips vs hits)", () => {
   const locked = shapeRect("locked", { locked: true });
   it("skips locked objects under the pointer by default", () => {
@@ -261,5 +315,33 @@ describe("select.drag-empty.marquee-selects (intersect, not contain)", () => {
     const locked = shapeRect("locked", { locked: true });
     const hits = hitTestMarquee([locked], { x: 0.5, y: 0.5, w: 1, h: 1 }, { lockedObjects: "hits" });
     expect(hits.map((o) => o.id)).toEqual(["locked"]);
+  });
+});
+
+describe("a straight path — the zero-extent frame the pen commits for a partial shape", () => {
+  /** Two anchors on one horizontal line: normalized x spans the frame, the
+      flat axis is 0 throughout (core/gestures/pen.ts penObjectFromDraft). */
+  const straight = shapeRect("straight", {
+    shape: "path",
+    x: 1,
+    y: 3,
+    w: 3,
+    h: 0,
+    fill: null,
+    stroke: stroke(1),
+    d: [
+      { c: "M", x: 0, y: 0 },
+      { c: "L", x: 1, y: 0 },
+    ],
+  });
+
+  it("stays clickable along its stroke and misses away from it", () => {
+    expect(hitTestPoint([straight], { x: 2.5, y: 3 }, OPTS).map((o) => o.id)).toEqual(["straight"]);
+    expect(hitTestPoint([straight], { x: 2.5, y: 3.4 }, OPTS)).toHaveLength(0);
+  });
+
+  it("stays marquee-selectable", () => {
+    const overlapping = { x: 2, y: 2.5, w: 1, h: 1 };
+    expect(hitTestMarquee([straight], overlapping, { lockedObjects: "skips" })).toHaveLength(1);
   });
 });

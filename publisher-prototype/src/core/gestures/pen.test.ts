@@ -11,9 +11,11 @@ import {
 import { penStartToleranceIn } from "./constants";
 import {
   finishPenDraft,
+  penClosesAt,
   penDraftSegments,
   penMachine,
   penObjectFromDraft,
+  penRubberBand,
   type PenContext,
 } from "./pen";
 import type { DrawStyle, GestureModifiers, GesturePoint, GestureResult } from "./types";
@@ -111,7 +113,43 @@ describe("pen.click-drag.adds-curve-anchor", () => {
       point: { x: 1, y: 1 },
       handleOut: { x: 2, y: 2 },
       handleIn: { x: 0, y: 0 },
+      // Nothing placed yet — no previous anchor to draw a segment from.
+      pending: [],
     });
+  });
+
+  it("previews the CURVE being shaped, not only its handles, once a previous anchor exists", () => {
+    let state = penMachine.begin({ x: 3, y: 1 }, ctx({ anchors: [anchor(1, 1)] }));
+    state = penMachine.update(state, { x: 4, y: 2 }, NONE);
+    const preview = penMachine.preview(state);
+    if (preview.kind !== "pen-handle") throw new Error("expected a pen-handle preview");
+    // Straight from the placed anchor (no handleOut on it), curving into the
+    // new one through THIS drag's mirrored handleIn — visible while dragging.
+    expect(preview.pending).toEqual([
+      { c: "M", x: 1, y: 1 },
+      { c: "C", x1: 1, y1: 1, x2: 2, y2: 0, x: 3, y: 1 },
+    ]);
+  });
+
+  it("previews a straight pending segment on an under-slop press", () => {
+    const state = penMachine.begin({ x: 3, y: 1 }, ctx({ anchors: [anchor(1, 1)] }));
+    const preview = penMachine.preview(state);
+    if (preview.kind !== "pen-handle") throw new Error("expected a pen-handle preview");
+    expect(preview.pending).toEqual([
+      { c: "M", x: 1, y: 1 },
+      { c: "L", x: 3, y: 1 },
+    ]);
+  });
+
+  it("previews the CLOSING segment on a press that closes the ring", () => {
+    const state = penMachine.begin({ x: 1, y: 1 }, ctx({ anchors: RING }));
+    const preview = penMachine.preview(state);
+    if (preview.kind !== "pen-handle") throw new Error("expected a pen-handle preview");
+    // Last anchor (3,3) back to the first (1,1) — what the close commits.
+    expect(preview.pending).toEqual([
+      { c: "M", x: 3, y: 3 },
+      { c: "L", x: 1, y: 1 },
+    ]);
   });
 });
 
@@ -140,11 +178,65 @@ describe("pen.click-start.closes-path", () => {
   });
 });
 
-describe("pen.esc.discards-path", () => {
-  it("cancel returns the gesture/cancelled record", () => {
-    const cancelled = penMachine.cancel();
-    expect(cancelled.action.type).toBe(clauseAction("pen.esc.discards-path"));
-    expect(cancelled.action.type).toBe(gestureCancelled.type);
+describe("pen.esc.ends-path", () => {
+  it("commits the draft rather than discarding it — the clause's action is the draw commit", () => {
+    expect(clauseAction("pen.esc.ends-path")).toBe(penDrawCommitted.type);
+  });
+
+  it("still cancels an aborted PRESS with the gesture/cancelled record — the draft it has yet to join is the shell's to keep", () => {
+    expect(penMachine.cancel().action.type).toBe(gestureCancelled.type);
+  });
+});
+
+describe("penClosesAt", () => {
+  it("is true only on the first anchor of a closable ring, within tolerance", () => {
+    expect(penClosesAt(RING, { x: 1, y: 1 }, 1)).toBe(true);
+    expect(penClosesAt(RING, { x: 2, y: 2 }, 1)).toBe(false);
+    // Two anchors are no ring, however exactly the press lands.
+    expect(penClosesAt([anchor(1, 1), anchor(3, 1)], { x: 1, y: 1 }, 1)).toBe(false);
+    expect(penClosesAt([], { x: 1, y: 1 }, 1)).toBe(false);
+  });
+
+  it("agrees with the press machine at every zoom — one test, two callers", () => {
+    const offset = 0.05;
+    for (const zoom of [1, 4]) {
+      const point = { x: 1 + offset, y: 1 };
+      const closes = penClosesAt(RING, point, zoom);
+      const committed = press(point, ctx({ anchors: RING, zoom }));
+      expect(committed.action?.type, `zoom ${zoom}`).toBe(
+        closes ? penDrawCommitted.type : penAnchorCommitted.type,
+      );
+    }
+  });
+});
+
+describe("penRubberBand", () => {
+  it("yields nothing without a draft to band from", () => {
+    expect(penRubberBand([], { x: 2, y: 2 }, 1)).toEqual([]);
+  });
+
+  it("bands straight from the last anchor to the pointer", () => {
+    expect(penRubberBand([anchor(1, 1), anchor(3, 1)], { x: 4, y: 2 }, 1)).toEqual([
+      { c: "M", x: 3, y: 1 },
+      { c: "L", x: 4, y: 2 },
+    ]);
+  });
+
+  it("carries the last anchor's outgoing handle, so the band curves the way the segment will", () => {
+    const curved: PenAnchor = { point: { x: 1, y: 1 }, handleOut: { x: 2, y: 0 } };
+    expect(penRubberBand([curved], { x: 4, y: 2 }, 1)).toEqual([
+      { c: "M", x: 1, y: 1 },
+      { c: "C", x1: 2, y1: 0, x2: 4, y2: 2, x: 4, y: 2 },
+    ]);
+  });
+
+  it("snaps to the closing segment over the close target, and lets go outside it", () => {
+    expect(penRubberBand(RING, { x: 1, y: 1 }, 1)).toEqual([
+      { c: "M", x: 3, y: 3 },
+      { c: "L", x: 1, y: 1 },
+    ]);
+    const loose = penRubberBand(RING, { x: 1.5, y: 1 }, 1);
+    expect(loose[1]).toEqual({ c: "L", x: 1.5, y: 1 });
   });
 });
 
@@ -197,25 +289,57 @@ describe("penObjectFromDraft", () => {
     ]);
   });
 
-  it("grows the frame box to cover control points so every normalized coordinate stays within [0, 1]", () => {
+  it("hugs the drawn ink rather than the control hull — the frame is the curve's own box", () => {
     const curved: PenAnchor = { point: { x: 1, y: 1 }, handleOut: { x: 1, y: 0 } };
     const object = penObjectFromDraft([curved, anchor(2, 1)], false, STYLE, "id-1");
-    // The handle at y=0 sits above both anchors (y=1) — the frame covers it.
-    expect(object).toMatchObject({ x: 1, y: 0, w: 1, h: 1 });
-    for (const value of pathOf(object).flatMap(segCoords)) {
+    // The handle reaches y=0, but the curve it steers turns at y=5/9. The
+    // frame starts THERE — hulling the handle would leave 5/9 of an inch of
+    // empty box above the ink.
+    expect(object?.x).toBeCloseTo(1, 10);
+    expect(object?.y).toBeCloseTo(5 / 9, 10);
+    expect(object?.w).toBeCloseTo(1, 10);
+    expect(object?.h).toBeCloseTo(4 / 9, 10);
+  });
+
+  it("normalizes a hard-pulled handle OUTSIDE [0, 1] — the trade the ink-tight frame makes", () => {
+    const curved: PenAnchor = { point: { x: 1, y: 1 }, handleOut: { x: 1, y: 0 } };
+    const object = penObjectFromDraft([curved, anchor(2, 1)], false, STYLE, "id-1");
+    const seg = pathOf(object)[1];
+    if (seg?.c !== "C") throw new Error("expected a cubic segment");
+    // The control point sits above the box (PathSegSchema does not clamp, and
+    // the callout's tailTip is the standing precedent)…
+    expect(seg.y1).toBeCloseTo(-1.25, 10);
+    expect(() => LayoutObjectSchema.parse(object)).not.toThrow();
+    // …while every ON-CURVE point still lands inside it.
+    for (const value of pathOf(object)
+      .filter((s) => s.c !== "C")
+      .flatMap(segCoords)) {
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThanOrEqual(1);
     }
+    expect(seg.x).toBeCloseTo(1, 10);
+    expect(seg.y).toBeCloseTo(1, 10);
   });
 
-  it("yields null for a degenerate box or too few anchors", () => {
-    expect(penObjectFromDraft([anchor(0, 0), anchor(2, 0)], false, STYLE, "id-1")).toBeNull();
+  it("keeps a STRAIGHT draft, flat axis and all — a partial shape never vanishes", () => {
+    const object = penObjectFromDraft([anchor(0, 0), anchor(2, 0)], false, STYLE, "id-1");
+    expect(object).toMatchObject({ x: 0, y: 0, w: 2, h: 0 });
+    // The flat axis normalizes to 0 for every point rather than dividing by it.
+    expect(pathOf(object)).toEqual([
+      { c: "M", x: 0, y: 0 },
+      { c: "L", x: 1, y: 0 },
+    ]);
+    expect(() => LayoutObjectSchema.parse(object)).not.toThrow();
+  });
+
+  it("yields null only for a POINT-degenerate box or too few anchors", () => {
+    expect(penObjectFromDraft([anchor(2, 2), anchor(2, 2)], false, STYLE, "id-1")).toBeNull();
     expect(penObjectFromDraft([anchor(1, 1)], false, STYLE, "id-1")).toBeNull();
     expect(penObjectFromDraft([], false, STYLE, "id-1")).toBeNull();
   });
 });
 
-describe("finishPenDraft (pen.double-click.commits-open-path)", () => {
+describe("finishPenDraft (pen.double-click.commits-open-path, pen.esc.ends-path)", () => {
   function commitOf(action: UnknownAction | null): DrawCommit {
     if (action === null || !penDrawCommitted.match(action)) {
       throw new Error(`expected a ${penDrawCommitted.type} commit`);
@@ -230,6 +354,13 @@ describe("finishPenDraft (pen.double-click.commits-open-path)", () => {
   it("discards a one-anchor draft with gesture/cancelled", () => {
     const action = finishPenDraft([anchor(1, 1)], 0, false, STYLE, () => "id-1");
     expect(action?.type).toBe(gestureCancelled.type);
+  });
+
+  it("keeps a straight draft rather than discarding it", () => {
+    const payload = commitOf(
+      finishPenDraft([anchor(1, 3), anchor(4, 3)], 0, false, STYLE, () => "id-1"),
+    );
+    expect(shapeOf(payload)).toMatchObject({ shape: "path", x: 1, y: 3, w: 3, h: 0 });
   });
 
   it("commits 2 non-collinear anchors as an open path, passing the pageIndex through", () => {

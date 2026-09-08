@@ -275,6 +275,9 @@ export function CanvasWorkspace({
           endPanDrag();
           gestures.onPointerEnd(e);
         }}
+        // The pen's rubber band tracks a pointer that is over the canvas;
+        // off it there is nothing to band to.
+        onPointerLeave={gestures.onPointerLeave}
         onDoubleClick={gestures.onDoubleClick}
         onClick={(e) => {
           if (dragJustEndedRef.current) {
@@ -306,6 +309,7 @@ export function CanvasWorkspace({
           groupedSelection={groupFrame !== null}
           frameRotation={groupFrame?.rotation ?? 0}
           penDraft={activeTool === "pen" ? penAnchors : []}
+          penHover={activeTool === "pen" ? gestures.penHover : null}
           showChrome={activeTool === "select" && gestures.preview === null}
           onResizeStart={gestures.beginResize}
           onShapeAdjustStart={gestures.beginShapeAdjust}

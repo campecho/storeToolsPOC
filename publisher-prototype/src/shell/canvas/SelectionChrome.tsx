@@ -17,6 +17,7 @@ import {
   rotatePoint,
   rotatedFrameCorners,
   selectionFrame,
+  selectionPreviewFrame,
   type Point,
   type Rect,
 } from "../../core/hittest";
@@ -30,11 +31,12 @@ import { resizeCursor, rotateCursor } from "./cursors";
  * overlay; handle SIZES compute from px via zoom so they stay constant on
  * screen at any zoom.
  *
- * The frame is `selectionFrame`'s (core/hittest/aabb.ts) — a lone object's
- * own rotated box, so the chrome HUGS the object instead of boxing the space
- * around it. Handles and the rotation stem rotate with it, which is also the
- * space the resize machine scales in. Multi-selections and lines fall back to
- * the union AABB drawn unrotated.
+ * The frame is `selectionPreviewFrame`'s (core/hittest/aabb.ts) — a lone
+ * object's own rotated box, grown by each shape's stroke halo so the chrome
+ * HUGS WHAT IS PAINTED rather than cutting through the middle of a heavy
+ * outline. Handles and the rotation stem rotate with it, which is also the
+ * box the resize machine scales. Multi-selections and lines fall back to the
+ * union AABB drawn unrotated.
  *
  * A LONE LINE is the exception, and the reason is that a line is two points
  * rather than a box: it shows those two points as its handles and NOTHING
@@ -198,9 +200,16 @@ export function SelectionChrome({
   /** Starts the drag of one end of a lone line. */
   onLineEndpointStart: (which: LineEndpointHandle, e: React.PointerEvent<SVGElement>) => void;
 }) {
-  const frame = selectionFrame(objects, frameRotation);
+  // The chrome hugs what is PAINTED — geometry plus each shape's stroke halo
+  // (core/hittest selectionPreviewFrame), which is the box resize scales too.
+  const frame = selectionPreviewFrame(objects, frameRotation);
   if (frame === null) return null;
   const { box, rotation } = frame;
+  // …but the adjust handles ride the shape's own geometry: a corner radius or
+  // a star's inner radius is a fraction of the stored box, and the gesture
+  // they start works in it, so placing them in the haloed box would set them
+  // adrift of the parameter they drag.
+  const geoBox = selectionFrame(objects, frameRotation)?.box ?? box;
   const pivot = framePivot(box);
   /** Frame space → document space: the chrome's one rotation-aware step. */
   const toDoc = (p: Point): Point => (rotation === 0 ? p : rotatePoint(p, pivot, rotation));
@@ -215,9 +224,12 @@ export function SelectionChrome({
   const adjusts =
     shape === undefined
       ? []
-      : adjustHandlesFor(shape, box, Math.min(handleSize, box.w / 2)).map((handle) => ({
+      : adjustHandlesFor(shape, geoBox, Math.min(handleSize, geoBox.w / 2)).map((handle) => ({
           id: handle.id,
-          at: toDoc({ x: box.x + handle.point.x * box.w, y: box.y + handle.point.y * box.h }),
+          at: toDoc({
+            x: geoBox.x + handle.point.x * geoBox.w,
+            y: geoBox.y + handle.point.y * geoBox.h,
+          }),
         }));
   // A LONE line shows its two points and nothing else: a line is two points,
   // so a frame with eight stretch handles would be chrome for an object it is

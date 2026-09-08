@@ -91,7 +91,7 @@ describe("penSlice", () => {
     expect(next.anchors).toEqual([]);
   });
 
-  it("clears on gestureCancelled — the pen.esc.discards-path clause", () => {
+  it("clears on gestureCancelled — how a draft too small to be a shape resolves", () => {
     expect(reducer(drafted([CURVE_ANCHOR]), gestureCancelled()).anchors).toEqual([]);
   });
 

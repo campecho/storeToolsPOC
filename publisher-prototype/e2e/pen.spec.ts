@@ -4,12 +4,16 @@ import {
   activate,
   armCounter,
   clickAt,
+  dockTool,
   drag,
   expectNear,
+  hoverAt,
   notificationCount,
   pageObjects,
   screenPoint,
+  selectionIds,
   shapeAt,
+  type DocPoint,
 } from "./helpers";
 
 /**
@@ -71,6 +75,18 @@ function pathShapeAt(
   return { shape, d };
 }
 
+/** An overlay path's `d` attribute, checked the way store geometry is: the
+    command letters exactly, the coordinates within the same tolerance
+    (pointer input round-trips through screen pixels, so the numbers land
+    near the document inches a spec asks for, not on them). */
+function expectPath(d: string | null, commands: string, coords: number[]): void {
+  if (d === null) throw new Error("expected a path d attribute");
+  expect((d.match(/[A-Z]/g) ?? []).join(" ")).toBe(commands);
+  const actual = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+  expect(actual).toHaveLength(coords.length);
+  coords.forEach((expected, i) => expectNear(actual[i] ?? NaN, expected));
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("canvas-area")).toBeVisible();
@@ -124,6 +140,45 @@ test("pen.click-drag.adds-curve-anchor", async ({ page }) => {
   expectNear(curve.handleOut.y, 4.4);
   expectNear(curve.handleIn.x, 2.4);
   expectNear(curve.handleIn.y, 3.6);
+});
+
+test("the path in progress previews live — rubber band, then the curve being shaped", async ({
+  page,
+}) => {
+  await activate(page, "Pen / freeform");
+  const band = page.getByTestId("pen-rubber-band");
+  // Nothing to band to before the first anchor lands.
+  await clickAt(page, { x: 1, y: 3 });
+  await expect(band).toHaveCount(0);
+  // Moving the pointer draws the segment the next click would add — the
+  // outline is visible BEFORE anything is finalized.
+  await hoverAt(page, { x: 4, y: 3 });
+  await expect(band).toHaveCount(1);
+  expectPath(await band.getAttribute("d"), "M L", [1, 3, 4, 3]);
+  // The pointer leaving the canvas takes the band with it.
+  await page.mouse.move(0, 0);
+  await expect(band).toHaveCount(0);
+  // Over the close target of a closable ring the band shows the CLOSING
+  // segment, back to the first anchor.
+  await clickAt(page, { x: 4, y: 3 });
+  await clickAt(page, { x: 4, y: 5 });
+  // Inside the 8px close tolerance (0.083 in at zoom 1) but a clear 0.05 in
+  // off the anchor: the band snapping proves it targets the close, not the
+  // pointer.
+  await hoverAt(page, { x: 1.05, y: 3 });
+  expectPath(await band.getAttribute("d"), "M L", [4, 5, 1, 3]);
+  // And a curve-anchor drag previews the curve it is shaping, not just its
+  // handles: a cubic from the last placed anchor into the one being placed,
+  // carrying the drag's mirrored handle.
+  const from = await screenPoint(page, { x: 6, y: 5 });
+  const to = await screenPoint(page, { x: 6.6, y: 5.4 });
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 4 });
+  const pending = page.getByTestId("pen-pending-segment");
+  await expect(pending).toHaveCount(1);
+  expectPath(await pending.getAttribute("d"), "M C", [4, 5, 4, 5, 5.4, 4.6, 6, 5]);
+  await page.mouse.up();
 });
 
 test("pen.click-start.closes-path", async ({ page }) => {
@@ -182,25 +237,136 @@ test("pen.double-click.commits-open-path", async ({ page }) => {
   expect(await penAnchors(page)).toEqual([]);
 });
 
-test("pen.esc.discards-path", async ({ page }) => {
+/**
+ * What COLOR is painted at this document point — the §5 testing note's
+ * pixel-sampling probe. Konva draws each layer to its own canvas, stacked in
+ * DOM order, so walking them topmost-first and taking the first non-
+ * transparent pixel is what the eye sees there. Asking for the colour rather
+ * than mere opacity is the point: the page itself paints opaque white
+ * everywhere, so "something is painted here" would be true of the whole page
+ * and prove nothing.
+ */
+async function paintedColorAt(page: Page, pt: DocPoint): Promise<string> {
+  const p = await screenPoint(page, pt);
+  return page.evaluate(({ x, y }) => {
+    const canvases = [...document.querySelectorAll("canvas")].reverse();
+    for (const canvas of canvases) {
+      const rect = canvas.getBoundingClientRect();
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      const sx = Math.round(((x - rect.left) * canvas.width) / rect.width);
+      const sy = Math.round(((y - rect.top) * canvas.height) / rect.height);
+      const [r, g, b, a] = ctx.getImageData(sx, sy, 1, 1).data;
+      if ((a ?? 0) === 0) continue;
+      const hex = (v: number | undefined) => (v ?? 0).toString(16).padStart(2, "0");
+      return `#${hex(r)}${hex(g)}${hex(b)}`;
+    }
+    return "transparent";
+  }, p);
+}
+
+/** The pen's default fill (penTool options, src/core/registry/tools/shapes.ts). */
+const PEN_FILL = "#4472c4";
+
+test("a partial shape's FILL is both painted and clickable", async ({ page }) => {
+  await activate(page, "Pen / freeform");
+  // Three corners, left open: the fill paints across the implied closure.
+  await clickAt(page, { x: 1, y: 3 });
+  await clickAt(page, { x: 4, y: 3 });
+  await clickAt(page, { x: 4, y: 6 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const { shape, d } = pathShapeAt(await pageObjects(page), 0);
+  expect(hasClosingZ(d)).toBe(false);
+  expect(shape.fill).not.toBeNull();
+  // Enter handed the page back to Select, and the new object came selected;
+  // clear it so the click below is what does the selecting.
+  await clickAt(page, { x: 7, y: 7 });
+  await expect.poll(() => selectionIds(page)).toEqual([]);
+  // Deep inside the filled region and well clear of every drawn edge, so
+  // neither the stroke band nor tolerance can account for a hit.
+  const insideFill = { x: 3, y: 4 };
+  const outsideFill = { x: 1.5, y: 5 };
+  // The fill really is painted there — and really is not on the other side of
+  // the implied closure, which is what makes the click assertions mean
+  // something.
+  expect(await paintedColorAt(page, insideFill)).toBe(PEN_FILL);
+  expect(await paintedColorAt(page, outsideFill)).not.toBe(PEN_FILL);
+  await clickAt(page, insideFill);
+  await expect.poll(() => selectionIds(page)).toEqual([shape.id]);
+  // Where nothing is painted, the same partial shape lets the click through.
+  await clickAt(page, outsideFill);
+  await expect.poll(() => selectionIds(page)).toEqual([]);
+});
+
+test("a curved path's frame box hugs the curve, not its handles", async ({ page }) => {
+  await activate(page, "Pen / freeform");
+  // Three anchors on y=4, each dragging a 1.4in tangent — an S whose handles
+  // reach y=2.6 and y=5.4 but whose ink only reaches y=2.95 and y=5.05.
+  await drag(page, { x: 2, y: 4 }, { x: 2, y: 2.6 });
+  await drag(page, { x: 5, y: 4 }, { x: 5, y: 5.4 });
+  await drag(page, { x: 7, y: 4 }, { x: 7, y: 2.6 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const shape = shapeAt(await pageObjects(page), 0);
+  // Ends are the anchors themselves, so x is unremarkable; y is the test.
+  expectNear(shape.x, 2);
+  expectNear(shape.w, 5);
+  expectNear(shape.y, 2.95);
+  expectNear(shape.h, 2.1);
+  // The chrome draws this box, so hugging the ink here is hugging it on
+  // screen — a control-hull frame would have been 2.8 tall, a third too much.
+  expect(shape.h).toBeLessThan(2.8);
+});
+
+test("pen.esc.ends-path", async ({ page }) => {
   await activate(page, "Pen / freeform");
   await clickAt(page, { x: 1, y: 3 });
-  await clickAt(page, { x: 3, y: 3 });
+  await clickAt(page, { x: 3, y: 5 });
   await expect.poll(async () => (await penAnchors(page)).length).toBe(2);
-  const before = await page.evaluate(() => {
-    const store = window.__PROTOTYPE_STORE__;
-    if (!store) throw new Error("dev store handle missing");
-    return store.getState().document.present;
-  });
+  // Esc ENDS the path and keeps it (Illustrator parity) — one action, and
+  // what was drawn is now an open path object.
+  await armCounter(page);
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  expect(await notificationCount(page)).toBe(1);
+  const { shape, d } = pathShapeAt(await pageObjects(page), 0);
+  expect(hasClosingZ(d)).toBe(false);
+  expectNear(shape.x, 1);
+  expectNear(shape.y, 3);
+  expect(await penAnchors(page)).toEqual([]);
+});
+
+test("Esc discards a draft too small to be a shape — nothing to keep", async ({ page }) => {
+  await activate(page, "Pen / freeform");
+  await clickAt(page, { x: 1, y: 3 });
+  await expect.poll(async () => (await penAnchors(page)).length).toBe(1);
+  const documentState = () =>
+    page.evaluate(() => {
+      const store = window.__PROTOTYPE_STORE__;
+      if (!store) throw new Error("dev store handle missing");
+      return store.getState().document.present;
+    });
+  const before = await documentState();
   await page.keyboard.press("Escape");
   await expect.poll(() => penAnchors(page)).toEqual([]);
   expect((await pageObjects(page)).length).toBe(0);
-  const after = await page.evaluate(() => {
-    const store = window.__PROTOTYPE_STORE__;
-    if (!store) throw new Error("dev store handle missing");
-    return store.getState().document.present;
-  });
-  expect(after).toEqual(before);
+  expect(await documentState()).toEqual(before);
+});
+
+test("a straight partial path commits with a zero-extent frame rather than vanishing", async ({
+  page,
+}) => {
+  await activate(page, "Pen / freeform");
+  await clickAt(page, { x: 1, y: 3 });
+  await clickAt(page, { x: 4, y: 3 });
+  await expect.poll(async () => (await penAnchors(page)).length).toBe(2);
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const { shape } = pathShapeAt(await pageObjects(page), 0);
+  expectNear(shape.w, 3);
+  expect(shape.h).toBe(0);
 });
 
 test("pen draft undo retracts one anchor at a time and leaves document history alone", async ({
@@ -228,14 +394,18 @@ test("pen draft undo retracts one anchor at a time and leaves document history a
   await expect(page.getByRole("button", { name: "Redo", exact: true })).toBeDisabled();
 });
 
-test("switching tools discards the draft", async ({ page }) => {
+test("switching tools commits the draft and leaves the new tool alone", async ({ page }) => {
   await activate(page, "Pen / freeform");
   await clickAt(page, { x: 1, y: 3 });
-  await clickAt(page, { x: 3, y: 3 });
+  await clickAt(page, { x: 3, y: 5 });
   await expect.poll(async () => (await penAnchors(page)).length).toBe(2);
-  await activate(page, "Select");
+  await activate(page, "Rectangle");
   await expect.poll(() => penAnchors(page)).toEqual([]);
-  expect((await pageObjects(page)).length).toBe(0);
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  expect(hasClosingZ(pathShapeAt(await pageObjects(page), 0).d)).toBe(false);
+  // The user picked Rectangle — finishing the draft must not bounce them to
+  // Select the way an ordinary draw commit does.
+  await expect(dockTool(page, "Rectangle")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("auto-close commits Enter finishes as closed rings", async ({ page }) => {
@@ -249,4 +419,41 @@ test("auto-close commits Enter finishes as closed rings", async ({ page }) => {
   await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
   const { d } = pathShapeAt(await pageObjects(page), 0);
   expect(hasClosingZ(d)).toBe(true);
+});
+
+test("the selection box takes in the stroke — it hugs the painted edge, not the centreline", async ({
+  page,
+}) => {
+  await activate(page, "Pen / freeform");
+  // 20pt of stroke is 0.139in of halo either side — visible, and far past any
+  // rounding the doc↔screen round trip introduces.
+  const width = page.getByTestId("options-bar").getByLabel("Stroke width", { exact: true });
+  await width.fill("20");
+  await width.blur();
+  await clickAt(page, { x: 2, y: 3 });
+  await clickAt(page, { x: 5, y: 3 });
+  await clickAt(page, { x: 5, y: 6 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  const shape = shapeAt(await pageObjects(page), 0);
+  // The STORED geometry stays geometric — the halo is presentation, and the
+  // stroke stays editable without the box going stale.
+  expectNear(shape.x, 2);
+  expectNear(shape.y, 3);
+  expectNear(shape.w, 3);
+  expectNear(shape.h, 3);
+  // The CHROME, though, is drawn a halo outside it on every side.
+  const halo = 20 / 72 / 2;
+  const corners = await page
+    .getByTestId("selection-chrome")
+    .locator("polygon")
+    .first()
+    .getAttribute("points");
+  const pts = (corners ?? "").split(" ").map((p) => p.split(",").map(Number));
+  const xs = pts.map((p) => p[0] ?? NaN);
+  const ys = pts.map((p) => p[1] ?? NaN);
+  expectNear(Math.min(...xs), shape.x - halo);
+  expectNear(Math.min(...ys), shape.y - halo);
+  expectNear(Math.max(...xs), shape.x + shape.w + halo);
+  expectNear(Math.max(...ys), shape.y + shape.h + halo);
 });
