@@ -297,6 +297,17 @@ body {
   outline: 2px solid #333;
 }
 
+/* The off-page ghost slider: narrow enough not to dominate the bar, and its
+   percent readout wide enough that scrubbing 0–100% doesn't reflow the
+   groups to its right. */
+.debug-bar input[type="range"] {
+  width: 90px;
+}
+
+.debug-bar [data-testid="ghost-opacity"] {
+  min-width: 32px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 24px 1fr;

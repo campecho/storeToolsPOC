@@ -13,12 +13,7 @@ import {
   headLengthIn,
   trimmedSegment,
 } from "../../core/render/lineDecor";
-import {
-  PASTEBOARD_GHOST_OPACITY,
-  objectPlacement,
-  pageRegion,
-  type PagePlacement,
-} from "../../core/render/pagePlacement";
+import { objectPlacement, pageRegion, type PagePlacement } from "../../core/render/pagePlacement";
 import type { EffectivePageSetup } from "../../core/render/pageSetup";
 import { paintToCss, paintToShadedCss } from "../../core/render/paint";
 import { pathToSvg } from "../../core/render/path";
@@ -50,6 +45,9 @@ import { pageShadow } from "./pageShadow";
  * object once at ghost opacity, a straddling object twice under
  * complementary clips so its on-page part keeps full strength. Nothing else
  * dims: the ground and the guides are their own layers and the chrome is SVG.
+ * The ghost opacity arrives as a prop rather than read from the core
+ * constant: it is under SME review (PLAN.md §0.1) and the debug bar drives
+ * it live, so this file takes the value it is handed.
  */
 
 const PLACEHOLDER_COLOR = "#8a97a8";
@@ -299,13 +297,14 @@ function renderPlaced(
   swatches: readonly Swatch[],
   placement: PagePlacement,
   clips: PlacementClips,
+  ghostOpacity: number,
 ): ReactNode {
   switch (placement) {
     case "on":
       return renderObject(o, swatches);
     case "off":
       return (
-        <Group key={o.id} opacity={PASTEBOARD_GHOST_OPACITY}>
+        <Group key={o.id} opacity={ghostOpacity}>
           {renderObject(o, swatches)}
         </Group>
       );
@@ -313,7 +312,7 @@ function renderPlaced(
       return (
         <Group key={o.id}>
           <Group clipFunc={clips.pages}>{renderObject(o, swatches)}</Group>
-          <Group clipFunc={clips.pasteboard} opacity={PASTEBOARD_GHOST_OPACITY}>
+          <Group clipFunc={clips.pasteboard} opacity={ghostOpacity}>
             {renderObject(o, swatches)}
           </Group>
         </Group>
@@ -327,12 +326,16 @@ export function CanvasStage({
   setup,
   objects,
   swatches,
+  ghostOpacity,
 }: {
   viewport: Viewport;
   vpSize: Size;
   setup: EffectivePageSetup;
   objects: readonly LayoutObject[];
   swatches: readonly Swatch[];
+  /** Opacity for ink outside the page — App state, seeded from the core
+      constant and driven by the debug bar's slider. */
+  ghostOpacity: number;
 }) {
   const { size, bleed, slug, margin, columns } = setup;
   // Placement memoizes on the page's dimensions, not on `setup`: the
@@ -388,7 +391,9 @@ export function CanvasStage({
           and "straddling" is exact whatever the truth, so the fallback can
           never draw a wrong pixel. */}
       <Layer listening={false}>
-        {objects.map((o, i) => renderPlaced(o, swatches, placements[i] ?? "straddling", clips))}
+        {objects.map((o, i) =>
+          renderPlaced(o, swatches, placements[i] ?? "straddling", clips, ghostOpacity),
+        )}
       </Layer>
       {/* Guides ABOVE content (§6.2): slug, bleed, margin and column lines mark
           positions, so a full-bleed object or one staged on the pasteboard must

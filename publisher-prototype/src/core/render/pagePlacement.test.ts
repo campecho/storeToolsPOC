@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocument, type LineObject, type ShapeObject, type TextFrame } from "../model";
-import { classifyPlacement, inkBounds, inkPadIn, objectPlacement, pageRegion } from "./pagePlacement";
+import {
+  GHOST_OPACITY_MAX,
+  GHOST_OPACITY_MIN,
+  PASTEBOARD_GHOST_OPACITY,
+  clampGhostOpacity,
+  classifyPlacement,
+  inkBounds,
+  inkPadIn,
+  objectPlacement,
+  pageRegion,
+} from "./pagePlacement";
 import { headLengthIn } from "./lineDecor";
 import type { Rect } from "../hittest";
 
@@ -259,5 +269,28 @@ describe("objectPlacement", () => {
     expect(
       objectPlacement(line({ x1: -3, y1: 1, x2: -2, y2: 1, stroke: blackStroke(1) }), region),
     ).toBe("off");
+  });
+});
+
+describe("clampGhostOpacity", () => {
+  it("passes a value already in range through untouched", () => {
+    expect(clampGhostOpacity(0.25)).toBe(0.25);
+    expect(clampGhostOpacity(PASTEBOARD_GHOST_OPACITY)).toBe(PASTEBOARD_GHOST_OPACITY);
+  });
+
+  it("keeps both ends of the range — hidden and undimmed are both answers", () => {
+    expect(clampGhostOpacity(GHOST_OPACITY_MIN)).toBe(GHOST_OPACITY_MIN);
+    expect(clampGhostOpacity(GHOST_OPACITY_MAX)).toBe(GHOST_OPACITY_MAX);
+  });
+
+  it("clamps past either end", () => {
+    expect(clampGhostOpacity(-0.4)).toBe(GHOST_OPACITY_MIN);
+    expect(clampGhostOpacity(7)).toBe(GHOST_OPACITY_MAX);
+  });
+
+  it("falls back to the default on a non-finite read, not to an end of the range", () => {
+    expect(clampGhostOpacity(Number.NaN)).toBe(PASTEBOARD_GHOST_OPACITY);
+    expect(clampGhostOpacity(Number.POSITIVE_INFINITY)).toBe(PASTEBOARD_GHOST_OPACITY);
+    expect(clampGhostOpacity(Number.NEGATIVE_INFINITY)).toBe(PASTEBOARD_GHOST_OPACITY);
   });
 });

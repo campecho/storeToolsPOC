@@ -34,6 +34,7 @@ export function CanvasWorkspace({
   activeTool,
   pageIndex,
   showProbe,
+  ghostOpacity,
   toolOptions,
   onVpSizeChange,
   onObjectDrawn,
@@ -43,6 +44,8 @@ export function CanvasWorkspace({
   /** Which document page renders — App-local state until the Pages panel. */
   pageIndex: number;
   showProbe: boolean;
+  /** Opacity for ink outside the page — App state, straight to the stage. */
+  ghostOpacity: number;
   /** Live option values (App state) the wired tools' gesture ctx consumes. */
   toolOptions: ToolOptionValues;
   onVpSizeChange: (size: Size) => void;
@@ -298,6 +301,7 @@ export function CanvasWorkspace({
           setup={setup}
           objects={objects}
           swatches={doc.swatches}
+          ghostOpacity={ghostOpacity}
         />
         <SvgOverlay
           viewport={effective}
