@@ -66,7 +66,7 @@ pool, and the Cloud Build/Artifact Registry plumbing. Three things are missing f
 repo. Run as a project owner:
 
 ```sh
-PROJECT_ID=<the protoLab project id>
+PROJECT_ID=design-studio-498915           # protoLab's project (user, 2026-09-09)
 REGION=us-central1                       # match protoLab's GCP_REGION
 REPO=campecho/storetoolspoc              # lowercase — the WIF condition is exact-match
 SA="gh-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -98,6 +98,9 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${REPO}" \
   --project "$PROJECT_ID"
+
+# The GCP_WIF_PROVIDER value for §3, printed with the project number resolved:
+echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/providers/storetoolspoc"
 ```
 
 **3. The shared password, and who may read it:**
@@ -131,10 +134,10 @@ itself lives in Secret Manager, and only its *name* appears here):
 
 | Variable | Value |
 |---|---|
-| `GCP_PROJECT_ID` | the protoLab project id |
+| `GCP_PROJECT_ID` | `design-studio-498915` (protoLab's project) |
 | `GCP_REGION` | `us-central1` (match §2) |
-| `GCP_DEPLOY_SA` | `gh-deployer@<project-id>.iam.gserviceaccount.com` |
-| `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/storetoolspoc` |
+| `GCP_DEPLOY_SA` | `gh-deployer@design-studio-498915.iam.gserviceaccount.com` |
+| `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/storetoolspoc` — the project *number*, which §2 prints |
 | `POC_CLOUD_RUN_SERVICE` | `store-tools-poc` |
 | `PROTOTYPE_CLOUD_RUN_SERVICE` | `publisher-prototype` |
 | `ACCESS_PASSWORD_SECRET` | `store-tools-access-password` (omit to deploy with no gate) |
