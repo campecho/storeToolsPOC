@@ -32,11 +32,16 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const gate = request.nextUrl.clone();
-  gate.pathname = "/launcher";
-  gate.search = "";
-  if (pathname !== "/") gate.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
-  return NextResponse.redirect(gate);
+  // A RELATIVE `Location`, resolved by the client against the URL it asked
+  // for. `NextResponse.redirect()` demands an absolute URL, and the only
+  // origin this server can see is its own bind address — behind a proxy that
+  // is `http://0.0.0.0:8080`, which is nowhere (observed on the deployed POC,
+  // 2026-09-09).
+  const carried =
+    pathname === "/"
+      ? ""
+      : `?${new URLSearchParams({ next: `${pathname}${request.nextUrl.search}` })}`;
+  return new NextResponse(null, { status: 307, headers: { Location: `/launcher${carried}` } });
 }
 
 export const config = {

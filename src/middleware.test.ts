@@ -43,16 +43,21 @@ describe("access middleware", () => {
       const response = await gated("/photo?zoom=2");
 
       expect(response.status).toBe(307);
-      const location = new URL(response.headers.get("location") ?? "");
-      expect(location.pathname).toBe("/launcher");
-      expect(location.searchParams.get("next")).toBe("/photo?zoom=2");
+      expect(response.headers.get("location")).toBe("/launcher?next=%2Fphoto%3Fzoom%3D2");
     });
 
     it("sends a bare visitor to the gate with nothing to carry", async () => {
-      const location = new URL((await gated("/")).headers.get("location") ?? "");
+      expect((await gated("/")).headers.get("location")).toBe("/launcher");
+    });
 
-      expect(location.pathname).toBe("/launcher");
-      expect(location.searchParams.has("next")).toBe(false);
+    it("redirects to a path, never to a host it guessed", async () => {
+      // Behind a proxy the only origin this server can see is its own bind
+      // address, so an absolute Location lands the visitor on 0.0.0.0:8080
+      // (the deployed POC did exactly that, 2026-09-09). A relative Location
+      // is resolved by the client against the host it actually asked for.
+      for (const path of ["/", "/photo", "/layout?doc=1"]) {
+        expect((await gated(path)).headers.get("location")).toMatch(/^\/launcher(\?|$)/);
+      }
     });
 
     it("answers API callers with 401 rather than a redirect to HTML", async () => {

@@ -24,24 +24,20 @@ export async function POST(request: NextRequest) {
   const requestedNext = form.get("next");
   const next = safeNextPath(typeof requestedNext === "string" ? requestedNext : null);
 
-  const target = request.nextUrl.clone();
-  target.search = "";
-
   const password = accessPassword();
   if (!password) {
     // No gate configured (dev, e2e, image smoke): nothing to check.
-    return redirectTo(target, next);
+    return seeOther(next);
   }
 
   if (typeof submitted !== "string" || !timingSafeEquals(submitted, password)) {
-    target.pathname = "/launcher";
-    target.searchParams.set("error", "1");
-    if (next !== "/") target.searchParams.set("next", next);
-    return NextResponse.redirect(target, { status: 303 });
+    const query = new URLSearchParams({ error: "1" });
+    if (next !== "/") query.set("next", next);
+    return seeOther(`/launcher?${query}`);
   }
 
   const expiresAt = Date.now() + ACCESS_TTL_MS;
-  const response = redirectTo(target, next);
+  const response = seeOther(next);
   response.cookies.set({
     name: ACCESS_COOKIE,
     value: await createAccessToken(password, expiresAt),
@@ -56,11 +52,15 @@ export async function POST(request: NextRequest) {
   return response;
 }
 
-/** 303 so the browser follows with GET (this handler answers a form POST). */
-function redirectTo(base: URL, path: string): NextResponse {
-  const target = new URL(base);
-  const [pathname, search = ""] = path.split("?");
-  target.pathname = pathname;
-  target.search = search;
-  return NextResponse.redirect(target, { status: 303 });
+/**
+ * 303 (so the browser follows a form POST with GET) to a path on this host.
+ *
+ * A RELATIVE `Location`, resolved by the client against the URL it asked for.
+ * `NextResponse.redirect()` demands an absolute URL, and the only origin the
+ * server can see is its own bind address — behind a proxy that is
+ * `http://0.0.0.0:8080`, which is where this gate used to send people after a
+ * correct password (observed on the deployed POC, 2026-09-09).
+ */
+function seeOther(path: string): NextResponse {
+  return new NextResponse(null, { status: 303, headers: { Location: path } });
 }
