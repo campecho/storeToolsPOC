@@ -24,8 +24,43 @@ export function accessPassword(): string | undefined {
  * rather than shipping a dead link.
  */
 export function prototypeUrl(): string | undefined {
-  const value = process.env.STP_PROTOTYPE_URL;
-  return value ? value : undefined;
+  const raw = process.env.STP_PROTOTYPE_URL?.trim();
+  if (!raw) return undefined;
+
+  // A bare host — `publisher-prototype-….a.run.app`, which is how a deploy
+  // variable usually gets pasted — is a RELATIVE href in HTML, so the card
+  // would point back into this app and go nowhere (observed 2026-09-09).
+  // Assume https for a schemeless value, and drop anything that doesn't end
+  // up an http(s) URL rather than rendering a dead card.
+  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The origin the visitor actually used, from the proxy's own headers.
+ *
+ * Redirects have to name an absolute URL (Next's middleware runtime rejects a
+ * relative `Location`), and the server can't see where the visitor knocked:
+ * behind Cloud Run its own origin is the bind address, so building from it
+ * sent people to `http://0.0.0.0:8080` (observed 2026-09-09). Cloud Run passes
+ * the caller's `Host` through and terminates TLS, hence `x-forwarded-proto`.
+ *
+ * `fallback` (the request's own URL) covers a direct hit with no Host header.
+ * Trusting these headers is the standard posture behind a proxy that sets
+ * them; the worst a forged `Host` does here is redirect its own sender.
+ */
+export function externalOrigin(headers: Headers, fallback: URL): string {
+  // Both headers can be a comma-separated chain; the first entry is the client.
+  const host = (headers.get("x-forwarded-host") ?? headers.get("host") ?? "").split(",")[0].trim();
+  if (!host) return fallback.origin;
+
+  const forwardedProto = (headers.get("x-forwarded-proto") ?? "").split(",")[0].trim();
+  return `${forwardedProto || fallback.protocol.replace(":", "")}://${host}`;
 }
 
 /**

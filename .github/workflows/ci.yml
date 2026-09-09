@@ -188,21 +188,26 @@ jobs:
             sleep 2
           done
           host=http://localhost:8081
-          # 1. The app itself is closed, and lands on the gate.
-          curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "$host/" | tee /tmp/root.txt
-          grep -q '^307 .*/launcher' /tmp/root.txt
+          # 1. The app itself is closed, and lands on the gate — on THIS host.
+          #    Asserting the whole redirect target, not just its path: the gate
+          #    once built an absolute Location from the server's own bind
+          #    address and sent visitors to http://0.0.0.0:8080 (2026-09-09),
+          #    which a path-only assertion happily passed.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$host/")" = 307
+          test "$(curl -sS -o /dev/null -w '%{redirect_url}' "$host/")" = "$host/launcher"
           # 2. So are the routes that run converters on uploads.
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$host/api/photo")" = 401
           test "$(curl -sS -o /dev/null -w '%{http_code}' "$host/api/import")" = 401
           # 3. A wrong password goes back to the gate flagged, with no cookie.
           curl -sS -o /dev/null -c /tmp/bad-jar -w '%{http_code} %{redirect_url}\n' \
             -d 'password=nope&next=/photo' "$host/api/access" | tee /tmp/bad.txt
-          grep -q '^303 .*/launcher?error=1' /tmp/bad.txt
+          grep -q "^303 $host/launcher?error=1&next=%2Fphoto$" /tmp/bad.txt
           ! grep -q stp_access /tmp/bad-jar
-          # 4. The right password mints the cookie, honours ?next=, and opens the app.
+          # 4. The right password mints the cookie, honours ?next=, and opens the
+          #    app — landing on this host, not the container's bind address.
           curl -sS -o /dev/null -c /tmp/jar -w '%{http_code} %{redirect_url}\n' \
             -d 'password=hunter2&next=/photo' "$host/api/access" | tee /tmp/ok.txt
-          grep -q '^303 .*/photo$' /tmp/ok.txt
+          grep -q "^303 $host/photo$" /tmp/ok.txt
           grep -q stp_access /tmp/jar
           test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/jar "$host/photo")" = 200
           test "$(curl -sS -o /dev/null -w '%{http_code}' -b /tmp/jar "$host/api/photo")" = 200

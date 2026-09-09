@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { accessPassword, safeNextPath } from "@/lib/access/session";
+import { accessPassword, externalOrigin, safeNextPath } from "@/lib/access/session";
 import {
   ACCESS_COOKIE,
   ACCESS_TTL_MS,
@@ -24,24 +24,24 @@ export async function POST(request: NextRequest) {
   const requestedNext = form.get("next");
   const next = safeNextPath(typeof requestedNext === "string" ? requestedNext : null);
 
-  const target = request.nextUrl.clone();
-  target.search = "";
+  // The origin the visitor used — see externalOrigin: this server's own is the
+  // container's bind address, which is nowhere from a browser.
+  const origin = externalOrigin(request.headers, request.nextUrl);
 
   const password = accessPassword();
   if (!password) {
     // No gate configured (dev, e2e, image smoke): nothing to check.
-    return redirectTo(target, next);
+    return seeOther(origin, next);
   }
 
   if (typeof submitted !== "string" || !timingSafeEquals(submitted, password)) {
-    target.pathname = "/launcher";
-    target.searchParams.set("error", "1");
-    if (next !== "/") target.searchParams.set("next", next);
-    return NextResponse.redirect(target, { status: 303 });
+    const query = new URLSearchParams({ error: "1" });
+    if (next !== "/") query.set("next", next);
+    return seeOther(origin, `/launcher?${query}`);
   }
 
   const expiresAt = Date.now() + ACCESS_TTL_MS;
-  const response = redirectTo(target, next);
+  const response = seeOther(origin, next);
   response.cookies.set({
     name: ACCESS_COOKIE,
     value: await createAccessToken(password, expiresAt),
@@ -56,11 +56,7 @@ export async function POST(request: NextRequest) {
   return response;
 }
 
-/** 303 so the browser follows with GET (this handler answers a form POST). */
-function redirectTo(base: URL, path: string): NextResponse {
-  const target = new URL(base);
-  const [pathname, search = ""] = path.split("?");
-  target.pathname = pathname;
-  target.search = search;
-  return NextResponse.redirect(target, { status: 303 });
+/** 303 so the browser follows a form POST with GET, on the visitor's origin. */
+function seeOther(origin: string, path: string): NextResponse {
+  return NextResponse.redirect(new URL(path, origin), { status: 303 });
 }

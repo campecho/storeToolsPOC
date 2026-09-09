@@ -11,7 +11,8 @@ describe("accessPassword / prototypeUrl", () => {
     process.env.STP_ACCESS_PASSWORD = "hunter2";
     process.env.STP_PROTOTYPE_URL = "https://prototype.example";
     expect(accessPassword()).toBe("hunter2");
-    expect(prototypeUrl()).toBe("https://prototype.example");
+    // Normalised through URL — see the normalisation suite below.
+    expect(prototypeUrl()).toBe("https://prototype.example/");
 
     // An empty variable is how a deploy unsets one — it must not gate the app
     // behind the empty string, nor render a card linking to nowhere.
@@ -24,6 +25,30 @@ describe("accessPassword / prototypeUrl", () => {
     delete process.env.STP_PROTOTYPE_URL;
     expect(accessPassword()).toBeUndefined();
     expect(prototypeUrl()).toBeUndefined();
+  });
+});
+
+describe("prototypeUrl normalisation", () => {
+  it("assumes https for a bare host, so the card is a link off this app", () => {
+    // The Cloud Run URL as it gets pasted into a deploy variable. Left as-is
+    // this is a relative href and the card leads back into the POC.
+    process.env.STP_PROTOTYPE_URL = "publisher-prototype-abc-uc.a.run.app";
+    expect(prototypeUrl()).toBe("https://publisher-prototype-abc-uc.a.run.app/");
+  });
+
+  it("keeps an explicit scheme and trims stray whitespace", () => {
+    process.env.STP_PROTOTYPE_URL = "  https://proto.example/app  ";
+    expect(prototypeUrl()).toBe("https://proto.example/app");
+
+    process.env.STP_PROTOTYPE_URL = "http://localhost:8080";
+    expect(prototypeUrl()).toBe("http://localhost:8080/");
+  });
+
+  it("drops a value that isn't an http(s) URL rather than rendering a dead card", () => {
+    for (const value of ["javascript:alert(1)", "mailto:someone@example.com", "http://", "   "]) {
+      process.env.STP_PROTOTYPE_URL = value;
+      expect(prototypeUrl()).toBeUndefined();
+    }
   });
 });
 

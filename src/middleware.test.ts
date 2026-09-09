@@ -11,8 +11,8 @@ afterEach(() => {
   process.env = { ...ORIGINAL };
 });
 
-function request(path: string, cookie?: string): NextRequest {
-  const headers = new Headers();
+function request(path: string, cookie?: string, extra?: HeadersInit): NextRequest {
+  const headers = new Headers(extra);
   if (cookie) headers.set("cookie", `${ACCESS_COOKIE}=${cookie}`);
   return new NextRequest(new URL(path, ORIGIN), { headers });
 }
@@ -34,25 +34,50 @@ describe("access middleware", () => {
       delete process.env.STP_ACCESS_PASSWORD;
     });
 
-    const gated = (path: string, cookie?: string) => {
+    const gated = (path: string, cookie?: string, extra?: HeadersInit) => {
       process.env.STP_ACCESS_PASSWORD = PASSWORD;
-      return middleware(request(path, cookie));
+      return middleware(request(path, cookie, extra));
     };
 
     it("sends an unauthenticated browser to the gate, carrying where it was headed", async () => {
       const response = await gated("/photo?zoom=2");
 
       expect(response.status).toBe(307);
-      const location = new URL(response.headers.get("location") ?? "");
-      expect(location.pathname).toBe("/launcher");
-      expect(location.searchParams.get("next")).toBe("/photo?zoom=2");
+      expect(response.headers.get("location")).toBe(
+        `${ORIGIN}/launcher?next=%2Fphoto%3Fzoom%3D2`,
+      );
     });
 
     it("sends a bare visitor to the gate with nothing to carry", async () => {
-      const location = new URL((await gated("/")).headers.get("location") ?? "");
+      expect((await gated("/")).headers.get("location")).toBe(`${ORIGIN}/launcher`);
+    });
 
-      expect(location.pathname).toBe("/launcher");
-      expect(location.searchParams.has("next")).toBe(false);
+    it("redirects to the host the visitor used, not the one it listens on", async () => {
+      // What the deployed POC actually saw (2026-09-09): the server's own
+      // origin is the container's bind address, so a redirect built from it
+      // lands on http://0.0.0.0:8080. The proxy's headers are the only source
+      // for where the visitor knocked.
+      process.env.STP_ACCESS_PASSWORD = PASSWORD;
+      const behindProxy = new NextRequest(new URL("/photo", "http://0.0.0.0:8080"), {
+        headers: { host: "store-tools.example", "x-forwarded-proto": "https" },
+      });
+
+      const location = (await middleware(behindProxy)).headers.get("location");
+
+      expect(location).toBe("https://store-tools.example/launcher?next=%2Fphoto");
+      expect(location).not.toContain("0.0.0.0");
+    });
+
+    it("prefers x-forwarded-host over the Host header when a proxy sets both", async () => {
+      const response = await gated("/photo", undefined, {
+        host: "internal.invalid",
+        "x-forwarded-host": "store-tools.example",
+        "x-forwarded-proto": "https",
+      });
+
+      expect(response.headers.get("location")).toBe(
+        "https://store-tools.example/launcher?next=%2Fphoto",
+      );
     });
 
     it("answers API callers with 401 rather than a redirect to HTML", async () => {
