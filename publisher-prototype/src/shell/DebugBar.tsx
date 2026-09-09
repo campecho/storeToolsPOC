@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { clampZoom, fitZoom, zoomInStep, zoomOutStep, type Size } from "../core/geometry/viewport";
 import { deserializeDocument, serializeDocument } from "../core/model";
+import {
+  GHOST_OPACITY_MAX,
+  GHOST_OPACITY_MIN,
+  clampGhostOpacity,
+} from "../core/render/pagePlacement";
 import { effectivePageSetup } from "../core/render/pageSetup";
 import {
   documentLoadedCommitted,
@@ -28,18 +33,32 @@ import photoSingleImageRaw from "../../fixtures/photo-single-image.json?raw";
  * The debug bar (PLAN.md §6.6): model-development controls that are not
  * part of the specified surface — the mode switch, the §6.6 JSON round-trip
  * (export/import/fixtures), undo/redo, page stepping, and the viewport
- * controls, alignment probe, and §6.2 spike-gate stress fixture with its FPS
- * readout. Deliberately plain.
+ * controls, alignment probe, off-page ghost slider, and §6.2 spike-gate
+ * stress fixture with its FPS readout. Deliberately plain.
  *
  * Every load path — import and fixtures alike — goes through
  * deserializeDocument, the model's one migrate-on-read door; parse errors
  * surface inline in the bar.
+ *
+ * The ghost slider is a REVIEW knob, and belongs here for the same reason
+ * the probe does: PLAN.md §2 gives the specified surface three regions and
+ * no header, and §0.1 says an assumption's placeholder number "must never
+ * read as a decision". `PASTEBOARD_GHOST_OPACITY` is one of those numbers,
+ * so this bar lets an SME judge it against real content live rather than
+ * from a screenshot at one fixed value. It changes no document state.
  */
+
+/** Slider granularity: 5% steps over the whole range. Presentation, so it
+    lives here rather than in core beside the range the clamp enforces. */
+const GHOST_OPACITY_STEP = 0.05;
+
 export function DebugBar({
   mode,
   onModeChange,
   showProbe,
   onProbeChange,
+  ghostOpacity,
+  onGhostOpacityChange,
   vpSize,
   pageIndex,
   onPageIndexChange,
@@ -49,6 +68,8 @@ export function DebugBar({
   onModeChange: (mode: AppMode) => void;
   showProbe: boolean;
   onProbeChange: (show: boolean) => void;
+  ghostOpacity: number;
+  onGhostOpacityChange: (opacity: number) => void;
   vpSize: Size;
   pageIndex: number;
   onPageIndexChange: (pageIndex: number) => void;
@@ -223,6 +244,23 @@ export function DebugBar({
         <input type="checkbox" checked={showProbe} onChange={(e) => onProbeChange(e.target.checked)} />
         overlay probe
       </label>
+      {/* Ink outside the page ghosts at this opacity (§2.5). The value is an
+          ASSUMPTION under review, so the slider spans the whole range — 0%
+          hides off-page ink, 100% leaves it undimmed. Furniture and the SVG
+          chrome never dim, whatever this reads. */}
+      <span className="debug-group" role="group" aria-label="Off-page ghost">
+        <span>off-page ghost</span>
+        <input
+          aria-label="Off-page ghost opacity"
+          type="range"
+          min={GHOST_OPACITY_MIN}
+          max={GHOST_OPACITY_MAX}
+          step={GHOST_OPACITY_STEP}
+          value={ghostOpacity}
+          onChange={(e) => onGhostOpacityChange(clampGhostOpacity(e.target.valueAsNumber))}
+        />
+        <span data-testid="ghost-opacity">{Math.round(ghostOpacity * 100)}%</span>
+      </span>
       <span className="debug-group" role="group" aria-label="Stress fixture">
         {stressCount === 0 ? (
           <button onClick={() => dispatch(stressFixtureLoaded(buildStressFixture()))}>

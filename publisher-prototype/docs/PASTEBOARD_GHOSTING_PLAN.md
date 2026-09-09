@@ -87,6 +87,17 @@ It is where to go if SME review rejects the per-node artifacts; it is not the de
 placeholder number must never read as a decision, so it carries an `ASSUMPTION:` tag for
 SME validation. No UI exposes it in this slice.
 
+**Follow-up, 2026-09-09 — the number is now tunable live.** The constant is unchanged and
+still the boot default; core gained `GHOST_OPACITY_MIN`/`GHOST_OPACITY_MAX` and
+`clampGhostOpacity` beside it, the debug bar renders an "off-page ghost" range slider over
+0–100% in 5% steps with a percent readout, and `CanvasStage` takes a `ghostOpacity` prop
+(threaded by `CanvasWorkspace`) instead of importing the constant, with the value in
+`App`-local state seeded from it — the `showProbe` pattern, so it is a view preference: no
+store state, nothing serialized, nothing to undo, and a reload returns to `0.5`. This
+takes §6's "a debug-bar slider is a five-line follow-up if review wants to tune it live",
+so the SME judges the number against real content rather than a screenshot at one fixed
+value.
+
 ### D3 — Stored object `opacity` stays unread (scope)
 
 The renderer ignores the schema's per-object `opacity` today. This feature does not
@@ -457,6 +468,10 @@ pixel-sampling helper for render-level smoke checks" PLAN.md §5 already anticip
 | `objectPlacement` | unrotated square well inside; same square rotated 45° at the corner of the page so a corner pokes out | `on` then `straddling` |
 | `objectPlacement` | line from (−1, 1) to (1, 1) | `straddling` |
 | `objectPlacement` | line from (−3, 1) to (−2, 1) | `off` |
+| `clampGhostOpacity` | a value already in range (0.25, and the default) | unchanged |
+| `clampGhostOpacity` | each end of the range (0 and 1) | unchanged — hidden and undimmed are both answers |
+| `clampGhostOpacity` | past either end (−0.4, 7) | `GHOST_OPACITY_MIN` / `GHOST_OPACITY_MAX` |
+| `clampGhostOpacity` | non-finite (`NaN`, ±`Infinity`) | `PASTEBOARD_GHOST_OPACITY` — a malformed read shows the assumption under review, not an end of the range |
 
 ### End-to-end — `pasteboard.spec.ts`
 
@@ -470,6 +485,11 @@ coordinates is on screen (S3).
 | a straddling object ghosts only its off-page part | draw a rectangle (−1, 1)→(1, 3) | `a === 255` at (0.5, 2); `a` within 3 of 128 at (−0.5, 2) |
 | moving an object onto the pasteboard ghosts it on commit | draw on-page, select, drag its centre to (−1.5, 2) | after the drag: `a` ≈ 128 at the new centre, `a === 0` at the old one |
 | the chrome is not ghosted | select the pasteboard rectangle | the selection frame `[data-handle]`s are present (existing pattern) — a store/DOM assertion, since the chrome is SVG |
+| the ghost slider boots at the 50% assumption (added 2026-09-09, D2's follow-up) | none | the bar's percent readout reads `50%` |
+| lowering the slider dims pasteboard ink further | draw a rectangle (−2, 1)→(−0.5, 3); set the slider to 0.25 | `a` within 3 of 64 at (−1.25, 2) |
+| raising the slider to 100% leaves pasteboard ink undimmed | the same rectangle; slider to 1 | `a === 255` at (−1.25, 2) |
+| dropping the slider to 0% hides pasteboard ink | the same rectangle; slider to 0 | `a === 0` at (−1.25, 2) |
+| the slider moves only the off-page half of a straddling object | draw a rectangle (−1, 1)→(1, 3); slider to 0.25 | `a === 255` at (0.5, 2); `a` within 3 of 64 at (−0.5, 2) |
 
 ---
 
@@ -515,7 +535,8 @@ required slice and not a nice-to-have.
   step, not a visual defect.
 - **The number.** `0.5` will be judged by the SME on the real pasteboard grey; it is one
   constant, and a debug-bar slider is a five-line follow-up if review wants to tune it
-  live. Not built now.
+  live. ~~Not built now.~~ **Built 2026-09-09** — see D2's follow-up; the constant and
+  its ASSUMPTION tag are unchanged, the slider only overrides it for the session.
 - **Spreads.** When §6.8's spread display lands, `pageRegion` grows to the spread's
   pages and this feature needs no other change; whether the classifier should then be
   made exact for the union (a rect-subtraction helper) is that work's call, driven by

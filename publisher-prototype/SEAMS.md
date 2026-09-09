@@ -662,6 +662,13 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   object crossing the page edge keeps its on-page part at full strength while the
   off-page part ghosts. §2.5 asks for the page/pasteboard boundary to be "visually
   unambiguous, since it determines what prints"; this is the content layer's answer.
+  **Amended 2026-09-09:** the debug bar's "off-page ghost" slider now drives that opacity
+  live (0–100%, `clampGhostOpacity` holding the range), so review judges the number
+  against real content instead of a screenshot at one fixed value. It is App-local view
+  state seeded from the constant — the `showProbe` pattern, a view preference and not a
+  document fact, so nothing is stored, serialized or undoable and a reload returns to 0.5;
+  the constant stays the ASSUMPTION of record, the boot default, and what the pixel probe
+  asserts.
   Placement is a CORE fact: `core/render/pagePlacement.ts` classifies every object
   `on`, `off` or `straddling` from `objectAabb` inflated by an ink pad (stroke miters,
   line heads, the placeholder hairline at minimum zoom), and the renderer only decides

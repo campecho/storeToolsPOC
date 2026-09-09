@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { contentPixelAt, draw, drag, pageObjects, shapeAt, centerOf } from "./helpers";
 
 /**
@@ -64,4 +64,49 @@ test("moving an object onto the pasteboard ghosts it on commit", async ({ page }
 test("the selection chrome is not ghosted", async ({ page }) => {
   await draw(page, "Rectangle", { x: -2, y: 1 }, { x: -0.5, y: 3 });
   await expect(page.locator("[data-handle]").first()).toBeVisible();
+});
+
+/**
+ * The debug bar's off-page ghost slider drives that opacity live, so an SME
+ * can judge the 50% ASSUMPTION against real content (PLAN.md §0.1). Same
+ * alpha probe: 0.25 reads a ≈ 64, and the on-page half of a straddler must
+ * not move off 255 at any setting — the slider dims ink outside the page and
+ * nothing else.
+ */
+
+/** Sets the slider and waits for its percent readout to agree. */
+async function setGhostOpacity(page: Page, opacity: number) {
+  await page.getByLabel("Off-page ghost opacity").fill(String(opacity));
+  await expect(page.getByTestId("ghost-opacity")).toHaveText(`${Math.round(opacity * 100)}%`);
+}
+
+test("the ghost slider boots at the 50% assumption", async ({ page }) => {
+  await expect(page.getByTestId("ghost-opacity")).toHaveText("50%");
+});
+
+test("lowering the slider dims pasteboard ink further", async ({ page }) => {
+  await draw(page, "Rectangle", { x: -2, y: 1 }, { x: -0.5, y: 3 });
+  await setGhostOpacity(page, 0.25);
+  const { a } = await contentPixelAt(page, { x: -1.25, y: 2 });
+  expect(Math.abs(a - 64)).toBeLessThanOrEqual(3);
+});
+
+test("raising the slider to 100% leaves pasteboard ink undimmed", async ({ page }) => {
+  await draw(page, "Rectangle", { x: -2, y: 1 }, { x: -0.5, y: 3 });
+  await setGhostOpacity(page, 1);
+  expect((await contentPixelAt(page, { x: -1.25, y: 2 })).a).toBe(255);
+});
+
+test("dropping the slider to 0% hides pasteboard ink", async ({ page }) => {
+  await draw(page, "Rectangle", { x: -2, y: 1 }, { x: -0.5, y: 3 });
+  await setGhostOpacity(page, 0);
+  expect((await contentPixelAt(page, { x: -1.25, y: 2 })).a).toBe(0);
+});
+
+test("the slider moves only the off-page half of a straddling object", async ({ page }) => {
+  await draw(page, "Rectangle", { x: -1, y: 1 }, { x: 1, y: 3 });
+  await setGhostOpacity(page, 0.25);
+  expect((await contentPixelAt(page, { x: 0.5, y: 2 })).a).toBe(255);
+  const { a } = await contentPixelAt(page, { x: -0.5, y: 2 });
+  expect(Math.abs(a - 64)).toBeLessThanOrEqual(3);
 });

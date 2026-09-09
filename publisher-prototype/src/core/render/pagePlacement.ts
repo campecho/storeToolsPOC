@@ -24,8 +24,29 @@ import { DPI, ZOOM_MIN } from "../geometry/viewport";
  */
 
 /** ASSUMPTION: 50% is a working guess for SME review (PLAN.md §0.1) —
-    the ghost opacity of ink outside the page. */
+    the ghost opacity of ink outside the page. The debug bar's off-page
+    ghost slider seeds from this and overrides it live, so review can judge
+    the number against real content instead of a screenshot; the default
+    here is what boots, what the fixtures render at, and what the pixel
+    probe asserts. */
 export const PASTEBOARD_GHOST_OPACITY = 0.5;
+
+/** The range that slider offers. Both ends are legitimate answers to §2.5's
+    "visually unambiguous" boundary — hide off-page ink entirely, or don't
+    dim it at all — so review gets the whole interval rather than a safe
+    band around the guess. */
+export const GHOST_OPACITY_MIN = 0;
+export const GHOST_OPACITY_MAX = 1;
+
+/** Clamps a ghost opacity into range, the `clampZoom` pattern. A non-finite
+    value — the shell reads a control whose value is a string — falls back to
+    the default rather than to an end of the range, so a malformed read shows
+    the assumption under review, not `0` (every off-page object invisible)
+    or `1` (no page boundary at all). */
+export function clampGhostOpacity(opacity: number): number {
+  if (!Number.isFinite(opacity)) return PASTEBOARD_GHOST_OPACITY;
+  return Math.min(GHOST_OPACITY_MAX, Math.max(GHOST_OPACITY_MIN, opacity));
+}
 
 export type PagePlacement = "on" | "off" | "straddling";
 

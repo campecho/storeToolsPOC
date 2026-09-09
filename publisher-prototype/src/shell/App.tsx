@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Size } from "../core/geometry/viewport";
 import { toolRegistry } from "../core/registry";
 import type { ToolMode } from "../core/registry";
+import { PASTEBOARD_GHOST_OPACITY } from "../core/render/pagePlacement";
 import { selectDocument } from "../core/store";
 import { CanvasWorkspace } from "./canvas/CanvasWorkspace";
 import { DebugBar } from "./DebugBar";
@@ -33,6 +34,13 @@ export function App() {
   const [mode, setMode] = useState<AppMode>("layout");
   const [activeTool, setActiveTool] = useState("pan");
   const [showProbe, setShowProbe] = useState(false);
+  // How much ink outside the page dims (§2.5). App-local React state like
+  // showProbe, deliberately not store state: it is a view preference, not
+  // a document fact — nothing to serialize, nothing to undo. It seeds from
+  // the core constant, which stays the ASSUMPTION of record (PLAN.md §0.1);
+  // the debug bar's slider only overrides it for the session, so a reload
+  // is always back at the value under review.
+  const [ghostOpacity, setGhostOpacity] = useState(PASTEBOARD_GHOST_OPACITY);
   const [vpSize, setVpSize] = useState<Size>({ w: 0, h: 0 });
   // Which page renders is app-local React state, deliberately not store
   // state — the Pages panel (Phase B) owns real page navigation. Loading a
@@ -106,6 +114,8 @@ export function App() {
         onModeChange={switchMode}
         showProbe={showProbe}
         onProbeChange={setShowProbe}
+        ghostOpacity={ghostOpacity}
+        onGhostOpacityChange={setGhostOpacity}
         vpSize={vpSize}
         pageIndex={boundedPageIndex}
         onPageIndexChange={setPageIndex}
@@ -128,6 +138,7 @@ export function App() {
           activeTool={activeTool}
           pageIndex={boundedPageIndex}
           showProbe={showProbe}
+          ghostOpacity={ghostOpacity}
           toolOptions={toolOptions}
           onVpSizeChange={setVpSize}
           onObjectDrawn={activateSelectTool}
