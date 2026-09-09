@@ -45,23 +45,39 @@ jobs:
 
       - name: Deploy
         env:
-          # Secret Manager secret holding the shared password, and the
-          # prototype's URL for the launcher's second card. Both optional:
-          # unset simply means an open deployment / a card that says "not
-          # linked yet". Read through env, never interpolated into the shell.
-          ACCESS_SECRET: ${{ vars.ACCESS_PASSWORD_SECRET }}
+          # The shared gate password (an Actions SECRET, so it's editable in the
+          # GitHub UI and masked in logs) and the prototype's URL for the
+          # launcher's second card. Both optional: unset means an open
+          # deployment / a card that says "not linked yet". Read through env,
+          # never interpolated into the shell.
+          ACCESS_PASSWORD: ${{ secrets.ACCESS_PASSWORD }}
           PROTOTYPE_URL: ${{ vars.PROTOTYPE_URL }}
         run: |
           set -euo pipefail
           # Cloud Build's default 10m is tight for this image: npm ci, a Next
           # production build, and the apt layer for the converters.
           gcloud config set builds/timeout 1800
+          # A file, not --set-env-vars: that flag's delimiter (comma, or whatever
+          # a ^x^ prefix names) can occur in a password, and JSON — valid YAML —
+          # has no such collision. Written by python so quoting is not hand-rolled.
+          python3 - > /tmp/run-env.json <<'PY'
+          import json, os
+          env = {}
+          for name, key in (("ACCESS_PASSWORD", "STP_ACCESS_PASSWORD"),
+                            ("PROTOTYPE_URL", "STP_PROTOTYPE_URL")):
+              value = os.environ.get(name, "")
+              if value:
+                  env[key] = value
+          print(json.dumps(env))
+          PY
           flags=()
-          if [ -n "$ACCESS_SECRET" ]; then
-            flags+=(--set-secrets "STP_ACCESS_PASSWORD=${ACCESS_SECRET}:latest")
-          fi
-          if [ -n "$PROTOTYPE_URL" ]; then
-            flags+=(--set-env-vars "STP_PROTOTYPE_URL=${PROTOTYPE_URL}")
+          if [ "$(cat /tmp/run-env.json)" = "{}" ]; then
+            # Nothing configured: clear the service's env rather than inheriting
+            # a stale password from the previous revision. The image's own ENV
+            # (NODE_ENV, PORT, …) is baked in and unaffected.
+            flags+=(--clear-env-vars)
+          else
+            flags+=(--env-vars-file /tmp/run-env.json)
           fi
           # --max-instances=1 is load-bearing, not tuning: import jobs and proof
           # sessions are in-memory server state (STUBS.md, "Import server state"),
@@ -75,6 +91,8 @@ jobs:
             --memory 2Gi --cpu 2 --port 8080 --timeout 300 \
             --min-instances 0 --max-instances 1 --concurrency 40 \
             "${flags[@]}"
+          # The password sat in that file; the runner is ephemeral, but don't leave it.
+          rm -f /tmp/run-env.json
 
       - name: Show the service URL
         run: |

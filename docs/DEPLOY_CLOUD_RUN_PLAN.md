@@ -36,7 +36,9 @@ about the build changed for deployment.
 
 ### How the password works
 
-One shared password, one Secret Manager secret, injected into both services:
+One shared password, held as the **`ACCESS_PASSWORD` Actions secret** (user decision,
+2026-09-09: editable in the GitHub UI, no gcloud needed) and injected into both services
+as an environment variable at deploy time:
 
 - **POC** — `STP_ACCESS_PASSWORD`. `src/middleware.ts` gates *every* path except
   `/launcher`, `/api/access` and `/fonts/*`. A correct password at `/launcher` mints an
@@ -62,8 +64,8 @@ for a demo, not a substitute for IAM/IAP if this ever holds anything real.
 ## 2. One-time GCP setup (reusing protoLab's project)
 
 protoLab's project already has the deploy service account, the `github` Workload Identity
-pool, and the Cloud Build/Artifact Registry plumbing. Three things are missing for this
-repo. Run as a project owner:
+pool, and the Cloud Build/Artifact Registry plumbing. One thing is missing for this repo:
+a provider that trusts it. Run as a project owner:
 
 ```sh
 PROJECT_ID=design-studio-498915           # protoLab's project (user, 2026-09-09)
@@ -73,13 +75,7 @@ SA="gh-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 ```
 
-**1. Enable Secret Manager** (the rest of the APIs are already on from protoLab):
-
-```sh
-gcloud services enable secretmanager.googleapis.com --project "$PROJECT_ID"
-```
-
-**2. A WIF provider for this repo.** protoLab's provider pins
+**1. A WIF provider for this repo.** protoLab's provider pins
 `assertion.repository=='campecho/protolab'`, so a second repo needs its own provider in
 the same pool — leaving protoLab's working path untouched:
 
@@ -103,34 +99,22 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" \
 echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/providers/storetoolspoc"
 ```
 
-**3. The shared password, and who may read it:**
+**2. The password** needs nothing in GCP — it is an Actions secret (§3), passed to both
+services as an environment variable by the deploy workflows.
 
-```sh
-printf '%s' '<choose a password>' | gcloud secrets create store-tools-access-password \
-  --data-file=- --replication-policy=automatic --project "$PROJECT_ID"
-
-# The RUNTIME service account reads the secret at container start. Miss this and the
-# revision crash-loops with a secret-access error — the one classic failure here.
-gcloud secrets add-iam-policy-binding store-tools-access-password \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role=roles/secretmanager.secretAccessor --project "$PROJECT_ID"
-
-# The deployer only needs to see that the secret exists in order to wire it up.
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${SA}" --role=roles/secretmanager.viewer
-```
-
-**Rotating it** later: add a new version
-(`printf '%s' '<new>' | gcloud secrets versions add store-tools-access-password --data-file=-`),
-then redeploy or `gcloud run services update <service> --region "$REGION"` on both
-services so they pick up `:latest`. Every POC cookie dies with the old password.
+> Since the password is not in Secret Manager, no `secretmanager` API, secret, or IAM
+> grant is required. The trade-off taken knowingly: the value lives in each service's
+> configuration, so anyone with project-viewer access can read it back with
+> `gcloud run services describe`. Fine for a demo password; move to Secret Manager
+> (`--set-secrets`) if the deployment ever holds real content.
 
 ---
 
 ## 3. GitHub repository configuration
 
-**Settings → Secrets and variables → Actions → Variables** (all non-secret — the password
-itself lives in Secret Manager, and only its *name* appears here):
+**Settings → Secrets and variables → Actions → Variables** — repository variables, not
+environment ones: the deploy jobs declare no `environment:`, so `vars.*` resolves against
+the repository (and org) scope. None of these is sensitive:
 
 | Variable | Value |
 |---|---|
@@ -140,8 +124,13 @@ itself lives in Secret Manager, and only its *name* appears here):
 | `GCP_WIF_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/storetoolspoc` — the project *number*, which §2 prints |
 | `POC_CLOUD_RUN_SERVICE` | `store-tools-poc` |
 | `PROTOTYPE_CLOUD_RUN_SERVICE` | `publisher-prototype` |
-| `ACCESS_PASSWORD_SECRET` | `store-tools-access-password` (omit to deploy with no gate) |
 | `PROTOTYPE_URL` | the prototype service's URL — set it after the prototype's first deploy prints it |
+
+And one entry under **Secrets** (same page, Secrets tab → repository secret):
+
+| Secret | Value |
+|---|---|
+| `ACCESS_PASSWORD` | the shared gate password (omit for an open deployment) |
 
 `PROTOTYPE_URL` is the one ordering wrinkle: the launcher can't link to a service that
 doesn't exist yet. Deploy the prototype first, set the variable, then the POC's next
@@ -193,7 +182,7 @@ curl -o /dev/null -w '%{http_code}\n' -u prototype:hunter2 localhost:8081/x/y   
 |---|---|---|
 | Wrapper page location | A `/launcher` route inside the POC app | `/` stays the picker (`docs/UI_LAYOUT_REDESIGN_PLAN.md`, decision of record #9); the launcher sits beside it |
 | Access control | Public services + one shared password | User decision, 2026-09-08. IAM/IAP is the stronger option if the demo ever holds real content |
-| Password storage | One Secret Manager secret, both services | Rotation without touching the repo; no password in Actions variables or the image |
+| Password storage | `ACCESS_PASSWORD` Actions secret, both services | User decision, 2026-09-09: changed in the GitHub UI + a deploy re-run, no gcloud. Cost: the value sits in each Cloud Run service's env config |
 | GCP project | protoLab's, second WIF provider | One pipeline pattern, one project to administer |
 | Prototype's server | nginx-unprivileged | Same as protoLab: envsubst `$PORT` template plus first-class `try_files` |
 | Deploy trigger | Push to `main`, path-filtered per app | A prototype-only merge doesn't restart the POC, and vice versa |

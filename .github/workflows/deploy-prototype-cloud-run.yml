@@ -46,14 +46,25 @@ jobs:
 
       - name: Deploy
         env:
-          # The same Secret Manager secret the POC's gate uses — one password
-          # for both apps. Unset means an open deployment.
-          ACCESS_SECRET: ${{ vars.ACCESS_PASSWORD_SECRET }}
+          # The same Actions secret the POC's gate uses — one password for both
+          # apps. Unset means an open deployment.
+          ACCESS_PASSWORD: ${{ secrets.ACCESS_PASSWORD }}
         run: |
           set -euo pipefail
+          # A file, not --set-env-vars: that flag's delimiter (comma, or whatever
+          # a ^x^ prefix names) can occur in a password, and JSON — valid YAML —
+          # has no such collision. Written by python so quoting is not hand-rolled.
+          python3 - > /tmp/run-env.json <<'PY'
+          import json, os
+          password = os.environ.get("ACCESS_PASSWORD", "")
+          print(json.dumps({"APP_PASSWORD": password} if password else {}))
+          PY
           flags=()
-          if [ -n "$ACCESS_SECRET" ]; then
-            flags+=(--set-secrets "APP_PASSWORD=${ACCESS_SECRET}:latest")
+          if [ "$(cat /tmp/run-env.json)" = "{}" ]; then
+            # Clear rather than inherit a stale password from the last revision.
+            flags+=(--clear-env-vars)
+          else
+            flags+=(--env-vars-file /tmp/run-env.json)
           fi
           # nginx serving a few MB of static files: 256Mi is comfortable, and
           # the app is fully client-side, so instances are interchangeable.
@@ -64,6 +75,8 @@ jobs:
             --memory 256Mi --cpu 1 --port 8080 \
             --min-instances 0 --max-instances 2 --concurrency 80 \
             "${flags[@]}"
+          # The password sat in that file; the runner is ephemeral, but don't leave it.
+          rm -f /tmp/run-env.json
 
       - name: Show the service URL
         run: |
