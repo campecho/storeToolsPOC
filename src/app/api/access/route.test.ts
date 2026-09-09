@@ -24,24 +24,30 @@ describe("POST /api/access", () => {
     const response = await POST(submit({ password: PASSWORD, next: "/photo" }));
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/photo");
+    expect(response.headers.get("location")).toBe("http://0.0.0.0:8080/photo");
     const token = response.cookies.get(ACCESS_COOKIE);
     expect(token).toBeDefined();
     expect(await verifyAccessToken(PASSWORD, token?.value, Date.now())).toBe(true);
     expect(token?.httpOnly).toBe(true);
   });
 
-  it("redirects to a path, never to the host it is bound to", async () => {
+  it("redirects to the host the visitor used, not the one it is bound to", async () => {
     process.env.STP_ACCESS_PASSWORD = PASSWORD;
 
-    // The request URL here is the container's own bind address, which is what
-    // the server sees behind a proxy. Building an absolute Location from it
-    // sent the deployed POC's visitors to http://0.0.0.0:8080 (2026-09-09);
-    // a relative one is resolved against the host the client asked for.
-    for (const next of ["/", "/photo", "/?tab=import"]) {
-      const location = (await POST(submit({ password: PASSWORD, next }))).headers.get("location");
-      expect(location).toBe(next);
-      expect(location).not.toContain("0.0.0.0");
+    // submit() posts to the container's own bind address — what the server
+    // sees behind a proxy. Building the Location from that sent the deployed
+    // POC's visitors to http://0.0.0.0:8080 after a correct password
+    // (2026-09-09); the forwarded headers are where the visitor really is.
+    const proxied = { host: "store-tools.example", "x-forwarded-proto": "https" };
+
+    for (const [next, expected] of [
+      ["/", "https://store-tools.example/"],
+      ["/photo", "https://store-tools.example/photo"],
+      ["/?tab=import", "https://store-tools.example/?tab=import"],
+    ]) {
+      const response = await POST(submit({ password: PASSWORD, next }, proxied));
+      expect(response.headers.get("location")).toBe(expected);
+      expect(response.headers.get("location")).not.toContain("0.0.0.0");
     }
   });
 
@@ -51,7 +57,9 @@ describe("POST /api/access", () => {
     const response = await POST(submit({ password: "nope", next: "/photo" }));
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/launcher?error=1&next=%2Fphoto");
+    expect(response.headers.get("location")).toBe(
+      "http://0.0.0.0:8080/launcher?error=1&next=%2Fphoto",
+    );
     expect(response.cookies.get(ACCESS_COOKIE)).toBeUndefined();
   });
 
@@ -60,7 +68,7 @@ describe("POST /api/access", () => {
 
     const response = await POST(submit({ password: PASSWORD, next: "//evil.example" }));
 
-    expect(response.headers.get("location")).toBe("/");
+    expect(response.headers.get("location")).toBe("http://0.0.0.0:8080/");
   });
 
   it("marks the cookie Secure only when the proxy says the visitor is on HTTPS", async () => {
@@ -83,7 +91,7 @@ describe("POST /api/access", () => {
     const response = await POST(submit({ password: "", next: "/layout" }));
 
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/layout");
+    expect(response.headers.get("location")).toBe("http://0.0.0.0:8080/layout");
     expect(response.cookies.get(ACCESS_COOKIE)).toBeUndefined();
   });
 });

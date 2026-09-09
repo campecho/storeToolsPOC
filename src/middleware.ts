@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { accessPassword, isOpenPath } from "@/lib/access/session";
+import { accessPassword, externalOrigin, isOpenPath } from "@/lib/access/session";
 import { ACCESS_COOKIE, verifyAccessToken } from "@/lib/access/token";
 
 /**
@@ -32,16 +32,17 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  // A RELATIVE `Location`, resolved by the client against the URL it asked
-  // for. `NextResponse.redirect()` demands an absolute URL, and the only
-  // origin this server can see is its own bind address — behind a proxy that
-  // is `http://0.0.0.0:8080`, which is nowhere (observed on the deployed POC,
-  // 2026-09-09).
+  // Built on the origin the VISITOR used, not this server's: `nextUrl` here is
+  // the container's bind address, so redirecting to it lands on
+  // `http://0.0.0.0:8080` (observed on the deployed POC, 2026-09-09). The
+  // runtime rejects a relative `Location`, so the origin has to come from the
+  // proxy's headers.
   const carried =
     pathname === "/"
       ? ""
       : `?${new URLSearchParams({ next: `${pathname}${request.nextUrl.search}` })}`;
-  return new NextResponse(null, { status: 307, headers: { Location: `/launcher${carried}` } });
+  const gate = new URL(`/launcher${carried}`, externalOrigin(request.headers, request.nextUrl));
+  return NextResponse.redirect(gate, 307);
 }
 
 export const config = {
