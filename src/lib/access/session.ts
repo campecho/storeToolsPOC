@@ -24,8 +24,21 @@ export function accessPassword(): string | undefined {
  * rather than shipping a dead link.
  */
 export function prototypeUrl(): string | undefined {
-  const value = process.env.STP_PROTOTYPE_URL;
-  return value ? value : undefined;
+  const raw = process.env.STP_PROTOTYPE_URL?.trim();
+  if (!raw) return undefined;
+
+  // A bare host — `publisher-prototype-….a.run.app`, which is how a deploy
+  // variable usually gets pasted — is a RELATIVE href in HTML, so the card
+  // would point back into this app and go nowhere (observed 2026-09-09).
+  // Assume https for a schemeless value, and drop anything that doesn't end
+  // up an http(s) URL rather than rendering a dead card.
+  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
