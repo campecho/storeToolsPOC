@@ -46,3 +46,59 @@ jobs:
             publisher-prototype/playwright-report/
             publisher-prototype/test-results/
           if-no-files-found: ignore
+
+  # Deploy-image smoke, the counterpart to the POC's `docker` lane
+  # (docs/DEPLOY_CLOUD_RUN_PLAN.md): nothing else proves that the static host
+  # serves the built app, falls back for client-side routes, and gates the site
+  # when the deployment supplies a password.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t publisher-prototype .
+
+      - name: Boot without a password — open, with SPA fallback and cache policy
+        run: |
+          set -euo pipefail
+          docker run -d --name proto -p 8080:8080 publisher-prototype
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/ >/dev/null 2>&1; then break; fi
+            if [ "$i" = 30 ]; then
+              echo "::error::Static host never became ready on :8080"; docker logs proto; exit 1
+            fi
+            sleep 2
+          done
+          # The built shell, not a directory listing.
+          curl -fsS http://localhost:8080/ | grep -qi '<div id="root"'
+          # Unknown paths fall back to index.html rather than 404.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8080/some/deep/link)" = 200
+          curl -sSI http://localhost:8080/ | grep -qi 'cache-control: no-cache'
+          asset="$(curl -fsS http://localhost:8080/ | grep -o '/assets/[^"]*\.js' | head -1)"
+          test -n "$asset"
+          curl -sSI "http://localhost:8080$asset" | grep -qi 'cache-control: .*immutable'
+
+      - name: Boot with APP_PASSWORD — gated
+        run: |
+          set -euo pipefail
+          docker run -d --name proto-gate -p 8081:8080 -e APP_PASSWORD=hunter2 publisher-prototype
+          for i in $(seq 1 30); do
+            if [ "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8081/)" = 401 ]; then break; fi
+            if [ "$i" = 30 ]; then
+              echo "::error::Gated host never answered on :8081"; docker logs proto-gate; exit 1
+            fi
+            sleep 2
+          done
+          # Assets are behind the same gate, not just the shell.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:8081/assets/)" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -u wrong:wrong http://localhost:8081/)" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' -u prototype:hunter2 http://localhost:8081/)" = 200
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker logs proto || true
+          docker logs proto-gate || true
+      - name: Stop the containers
+        if: always()
+        run: docker rm -f proto proto-gate || true

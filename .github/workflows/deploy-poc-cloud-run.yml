@@ -1,0 +1,101 @@
+# Deploys the POC (repo root) to Cloud Run on merge to main.
+# Runbook, one-time GCP setup and the variables below: docs/DEPLOY_CLOUD_RUN_PLAN.md.
+#
+# publisher-prototype/ is a separate application on its own service — see
+# deploy-prototype-cloud-run.yml — so prototype-only pushes don't redeploy this.
+
+name: Deploy POC to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "publisher-prototype/**"
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-poc-cloud-run
+  cancel-in-progress: false
+
+env:
+  SERVICE: ${{ vars.POC_CLOUD_RUN_SERVICE }}
+  REGION: ${{ vars.GCP_REGION }}
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # required for keyless WIF auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy
+        env:
+          # The shared gate password (an Actions SECRET, so it's editable in the
+          # GitHub UI and masked in logs) and the prototype's URL for the
+          # launcher's second card. Both optional: unset means an open
+          # deployment / a card that says "not linked yet". Read through env,
+          # never interpolated into the shell.
+          ACCESS_PASSWORD: ${{ secrets.ACCESS_PASSWORD }}
+          PROTOTYPE_URL: ${{ vars.PROTOTYPE_URL }}
+        run: |
+          set -euo pipefail
+          # Cloud Build's default 10m is tight for this image: npm ci, a Next
+          # production build, and the apt layer for the converters.
+          gcloud config set builds/timeout 1800
+          # A file, not --set-env-vars: that flag's delimiter (comma, or whatever
+          # a ^x^ prefix names) can occur in a password, and JSON — valid YAML —
+          # has no such collision. Written by python so quoting is not hand-rolled.
+          python3 - > /tmp/run-env.json <<'PY'
+          import json, os
+          env = {}
+          for name, key in (("ACCESS_PASSWORD", "STP_ACCESS_PASSWORD"),
+                            ("PROTOTYPE_URL", "STP_PROTOTYPE_URL")):
+              value = os.environ.get(name, "")
+              if value:
+                  env[key] = value
+          print(json.dumps(env))
+          PY
+          flags=()
+          if [ "$(cat /tmp/run-env.json)" = "{}" ]; then
+            # Nothing configured: clear the service's env rather than inheriting
+            # a stale password from the previous revision. The image's own ENV
+            # (NODE_ENV, PORT, …) is baked in and unaffected.
+            flags+=(--clear-env-vars)
+          else
+            flags+=(--env-vars-file /tmp/run-env.json)
+          fi
+          # --max-instances=1 is load-bearing, not tuning: import jobs and proof
+          # sessions are in-memory server state (STUBS.md, "Import server state"),
+          # so a second instance would answer with a different session's world.
+          # 2Gi/2vCPU covers sharp plus the spawned pub2raw/heif-convert/tificc
+          # converters; 300s is the ceiling one conversion may take.
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --project "$PROJECT_ID" --region "$REGION" \
+            --platform managed --allow-unauthenticated \
+            --memory 2Gi --cpu 2 --port 8080 --timeout 300 \
+            --min-instances 0 --max-instances 1 --concurrency 40 \
+            "${flags[@]}"
+          # The password sat in that file; the runner is ephemeral, but don't leave it.
+          rm -f /tmp/run-env.json
+
+      - name: Show the service URL
+        run: |
+          gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" --region "$REGION" \
+            --format='value(status.url)' | sed 's|^|Deployed: |'

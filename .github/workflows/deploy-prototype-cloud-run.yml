@@ -1,0 +1,85 @@
+# Deploys publisher-prototype/ to its own Cloud Run service on merge to main.
+# Runbook, one-time GCP setup and the variables below: docs/DEPLOY_CLOUD_RUN_PLAN.md.
+#
+# A thin cd-and-run shim, like publisher-prototype-ci.yml: everything the build
+# needs (Dockerfile, nginx template, password entrypoint) lives inside the
+# directory, so the future repo gets a working deploy by copying this file to
+# its root and dropping `--source publisher-prototype`.
+
+name: Deploy prototype to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "publisher-prototype/**"
+      - ".github/workflows/deploy-prototype-cloud-run.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prototype-cloud-run
+  cancel-in-progress: false
+
+env:
+  SERVICE: ${{ vars.PROTOTYPE_CLOUD_RUN_SERVICE }}
+  REGION: ${{ vars.GCP_REGION }}
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # required for keyless WIF auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy
+        env:
+          # The same Actions secret the POC's gate uses — one password for both
+          # apps. Unset means an open deployment.
+          ACCESS_PASSWORD: ${{ secrets.ACCESS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # A file, not --set-env-vars: that flag's delimiter (comma, or whatever
+          # a ^x^ prefix names) can occur in a password, and JSON — valid YAML —
+          # has no such collision. Written by python so quoting is not hand-rolled.
+          python3 - > /tmp/run-env.json <<'PY'
+          import json, os
+          password = os.environ.get("ACCESS_PASSWORD", "")
+          print(json.dumps({"APP_PASSWORD": password} if password else {}))
+          PY
+          flags=()
+          if [ "$(cat /tmp/run-env.json)" = "{}" ]; then
+            # Clear rather than inherit a stale password from the last revision.
+            flags+=(--clear-env-vars)
+          else
+            flags+=(--env-vars-file /tmp/run-env.json)
+          fi
+          # nginx serving a few MB of static files: 256Mi is comfortable, and
+          # the app is fully client-side, so instances are interchangeable.
+          gcloud run deploy "$SERVICE" \
+            --source publisher-prototype \
+            --project "$PROJECT_ID" --region "$REGION" \
+            --platform managed --allow-unauthenticated \
+            --memory 256Mi --cpu 1 --port 8080 \
+            --min-instances 0 --max-instances 2 --concurrency 80 \
+            "${flags[@]}"
+          # The password sat in that file; the runner is ephemeral, but don't leave it.
+          rm -f /tmp/run-env.json
+
+      - name: Show the service URL
+        run: |
+          gcloud run services describe "$SERVICE" \
+            --project "$PROJECT_ID" --region "$REGION" \
+            --format='value(status.url)' | sed 's|^|Deployed: |'
