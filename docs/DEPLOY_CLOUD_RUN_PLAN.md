@@ -70,14 +70,21 @@ a provider that trusts it. Run as a project owner:
 ```sh
 PROJECT_ID=design-studio-498915           # protoLab's project (user, 2026-09-09)
 REGION=us-central1                       # match protoLab's GCP_REGION
-REPO=campecho/storetoolspoc              # lowercase — the WIF condition is exact-match
+REPO=campecho/storeToolsPOC              # EXACT case — see the warning below
 SA="gh-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 ```
 
-**1. A WIF provider for this repo.** protoLab's provider pins
-`assertion.repository=='campecho/protolab'`, so a second repo needs its own provider in
-the same pool — leaving protoLab's working path untouched:
+> **`REPO` is case-sensitive, and the case that matters is GitHub's.** The OIDC token's
+> `repository` claim carries the repository's real name — `campecho/storeToolsPOC`, not a
+> lowercased form — and both the attribute condition and the principalSet below compare it
+> literally. Get it wrong and the deploy fails at the auth step with
+> `unauthorized_client: The given credential is rejected by the attribute condition`
+> (observed 2026-09-09, when this runbook said lowercase).
+
+**1. A WIF provider for this repo.** protoLab's provider pins its own repository, so a
+second repo needs its own provider in the same pool — leaving protoLab's working path
+untouched:
 
 ```sh
 gcloud iam workload-identity-pools providers create-oidc storetoolspoc \
@@ -98,6 +105,19 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" \
 # The GCP_WIF_PROVIDER value for §3, printed with the project number resolved:
 echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/providers/storetoolspoc"
 ```
+
+If a deploy ever fails with `unauthorized_client … rejected by the attribute condition`,
+the provider's condition and the assertion disagree — check the casing first:
+
+```sh
+gcloud iam workload-identity-pools providers describe storetoolspoc \
+  --location=global --workload-identity-pool=github --project "$PROJECT_ID" \
+  --format='value(attributeCondition)'
+```
+
+Fix it in place with `providers update-oidc … --attribute-condition=…`, and correct the
+service-account binding too — `attribute.repository` is the raw claim, so a member added
+with the wrong casing can never match.
 
 **2. The password** needs nothing in GCP — it is an Actions secret (§3), passed to both
 services as an environment variable by the deploy workflows.
