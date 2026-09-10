@@ -55,14 +55,11 @@ platform that injects one.
 
 ```sh
 docker build -t publisher-prototype .
-docker run --rm -p 8080:8080 publisher-prototype                   # open
-docker run --rm -p 8080:8080 -e APP_PASSWORD=hunter2 publisher-prototype  # gated
+docker run --rm -p 8080:8080 publisher-prototype
 ```
 
-Set `APP_PASSWORD` and the whole site sits behind HTTP Basic auth (username
-`prototype`, override with `APP_USER`) — the shared-password gate a hosted
-build needs. Leave it unset and the app serves openly, which is what local
-runs and the image check want.
+The image carries no access gate: every deployment serves openly, and reaching
+the app is the hosting platform's business, not the container's.
 
 ## Layout
 
