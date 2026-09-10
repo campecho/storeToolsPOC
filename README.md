@@ -55,8 +55,10 @@ docker run --rm -p 8080:8080 store-tools-poc   # http://localhost:8080
 **Hosted deployment.** Merges to `main` deploy both apps to Cloud Run from GitHub Actions
 (keyless WIF, the same pipeline `protoLab` uses): the POC as one service, `publisher-prototype/`
 as another. The URL you hand out is **`<poc-url>/launcher`** — a wrapper page that asks for the
-shared demo password and then offers a card per app. Locally, the gate is off unless you set
-`STP_ACCESS_PASSWORD` (and `STP_PROTOTYPE_URL` for the second card). Setup, variables and the
+shared demo password and then offers a card per app. The gate covers this app; the prototype
+service is a separate origin and deploys ungated, so its card opens without a second sign-in.
+Locally, the gate is off unless you set `STP_ACCESS_PASSWORD` (and `STP_PROTOTYPE_URL` for
+the second card). Setup, variables and the
 verification checklist: [`docs/DEPLOY_CLOUD_RUN_PLAN.md`](docs/DEPLOY_CLOUD_RUN_PLAN.md).
 
 **Persistence:** votes, follows, filed reports, and notification read-state persist to

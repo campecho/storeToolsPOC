@@ -26,7 +26,6 @@ wrapper page that offers both apps and asks for the shared password.
 | `.github/workflows/deploy-poc-cloud-run.yml` | POC deploy on merge to `main` (skips prototype-only and docs-only pushes) |
 | `.github/workflows/deploy-prototype-cloud-run.yml` | Prototype deploy, triggered only by `publisher-prototype/**` |
 | `publisher-prototype/Dockerfile` + `nginx.conf.template` + `.dockerignore` | The prototype's static image: `$PORT` contract, SPA fallback, immutable hashed assets |
-| `publisher-prototype/docker-entrypoint.d/10-basic-auth.sh` | Turns `$APP_PASSWORD` into nginx Basic auth at container start; no password → open |
 | `src/middleware.ts` | The POC's gate: no valid cookie → `/launcher` (HTML) or `401` (API) |
 | `src/app/launcher/page.tsx`, `src/components/launcher/LauncherScreen.tsx` | The wrapper page: password form, then a card per app |
 | `src/app/api/access/route.ts`, `src/lib/access/*` | Password check and the signed, short-lived session cookie |
@@ -36,28 +35,36 @@ about the build changed for deployment.
 
 ### How the password works
 
-One shared password, held as the **`ACCESS_PASSWORD` Actions secret** (user decision,
-2026-09-09: editable in the GitHub UI, no gcloud needed) and injected into both services
-as an environment variable at deploy time:
+**The POC is gated; the prototype is not.** One password, held as the
+**`ACCESS_PASSWORD` Actions secret** (user decision, 2026-09-09: editable in the GitHub
+UI, no gcloud needed) and injected into the POC alone at deploy time:
 
 - **POC** — `STP_ACCESS_PASSWORD`. `src/middleware.ts` gates *every* path except
   `/launcher`, `/api/access` and `/fonts/*`. A correct password at `/launcher` mints an
   HttpOnly cookie (HMAC-SHA256 over its own expiry, keyed by the password, 12h TTL), so
   the password itself isn't replayed on later requests. Rotating the password invalidates
   every outstanding cookie for free — it *is* the signing key.
-- **Prototype** — `APP_PASSWORD`, enforced as HTTP Basic auth by nginx (username
-  `prototype`). A static site has no server to check a cookie, and Basic auth covers the
-  assets too, not just the shell.
-- **Neither variable set → no gate.** That's what `npm run dev`, the Playwright suites
-  and the CI image lanes run against, and it's why forgetting the variable fails open.
-  Check a deployment with `curl -o /dev/null -w '%{http_code}' <url>/`: `307` (POC) or
-  `401` (prototype) means the gate is live; `200` means it isn't.
+- **Prototype** — no gate at all (user decision, 2026-09-10). It previously carried the
+  same password as nginx Basic auth, which meant a second sign-in dialog after the
+  launcher; that mechanism is gone from the image, and the service deploys with
+  `--clear-env-vars`.
+- **`STP_ACCESS_PASSWORD` unset → the POC has no gate either.** That's what `npm run dev`,
+  the Playwright suites and the CI image lanes run against, and it's why forgetting the
+  variable fails open. Check a deployment with
+  `curl -o /dev/null -w '%{http_code}' <poc-url>/`: `307` means the gate is live, `200`
+  means it isn't.
 
 **What this does and doesn't buy.** Both services are `--allow-unauthenticated`, so the
 gate is the only thing in front of the POC's upload/convert routes — which is why it lives
 in middleware rather than in the launcher page's markup, and why the CI lane asserts
 `/api/import` answers `401`. It is still a shared static password over a public URL: fine
 for a demo, not a substitute for IAM/IAP if this ever holds anything real.
+
+**The launcher does not cover the prototype.** The two apps are separate Cloud Run
+services on separate origins, and the launcher's second card is an ordinary cross-origin
+link — the POC's cookie cannot travel to it. So the prototype is reachable by anyone
+holding its URL, with no password. That is the accepted trade for dropping the second
+sign-in prompt; gating it again means IAM/IAP on that service, not a shared password.
 
 ---
 
@@ -150,7 +157,7 @@ And one entry under **Secrets** (same page, Secrets tab → repository secret):
 
 | Secret | Value |
 |---|---|
-| `ACCESS_PASSWORD` | the shared gate password (omit for an open deployment) |
+| `ACCESS_PASSWORD` | the POC's gate password (omit for an open deployment; the prototype ignores it) |
 
 `PROTOTYPE_URL` is the one ordering wrinkle: the launcher can't link to a service that
 doesn't exist yet. Deploy the prototype first, set the variable, then the POC's next
@@ -177,19 +184,18 @@ curl -o /dev/null -w '%{http_code}\n' localhost:8080/api/import # 401
 curl -sc /tmp/jar -o /dev/null -d 'password=hunter2&next=/photo' localhost:8080/api/access
 curl -o /dev/null -w '%{http_code}\n' -b /tmp/jar localhost:8080/photo  # 200
 
-# Prototype: static host, SPA fallback, Basic auth
+# Prototype: static host, SPA fallback, no gate
 cd publisher-prototype
 docker build -t publisher-prototype .
-docker run --rm -p 8081:8080 -e APP_PASSWORD=hunter2 publisher-prototype
-curl -o /dev/null -w '%{http_code}\n' localhost:8081/some/deep/link              # 401
-curl -o /dev/null -w '%{http_code}\n' -u prototype:hunter2 localhost:8081/x/y    # 200 (index.html)
+docker run --rm -p 8081:8080 publisher-prototype
+curl -o /dev/null -w '%{http_code}\n' localhost:8081/some/deep/link  # 200 (index.html)
 ```
 
 **After the first deploys**, on the live URLs:
 
 1. `/launcher` asks for the password; a wrong one says so and sets no cookie.
 2. Past the gate, both cards work — the prototype card leaves for the other service and
-   asks for the same password once (Basic auth, username `prototype`).
+   opens straight into the app, with no second sign-in.
 3. The POC's own surfaces work: `/templates`, `/layout`, `/photo`, and
    `curl <poc>/api/import` reports `"mode":"live"` (the image bundles `libmspub-tools`,
    so a real `.pub` converts rather than falling back to the demo flyer).
@@ -201,8 +207,9 @@ curl -o /dev/null -w '%{http_code}\n' -u prototype:hunter2 localhost:8081/x/y   
 | Decision | Choice | Note |
 |---|---|---|
 | Wrapper page location | A `/launcher` route inside the POC app | `/` stays the picker (`docs/UI_LAYOUT_REDESIGN_PLAN.md`, decision of record #9); the launcher sits beside it |
-| Access control | Public services + one shared password | User decision, 2026-09-08. IAM/IAP is the stronger option if the demo ever holds real content |
-| Password storage | `ACCESS_PASSWORD` Actions secret, both services | User decision, 2026-09-09: changed in the GitHub UI + a deploy re-run, no gcloud. Cost: the value sits in each Cloud Run service's env config |
+| Access control | Public services + one shared password on the POC | User decision, 2026-09-08. IAM/IAP is the stronger option if the demo ever holds real content |
+| Password storage | `ACCESS_PASSWORD` Actions secret | User decision, 2026-09-09: changed in the GitHub UI + a deploy re-run, no gcloud. Cost: the value sits in the POC service's env config |
+| Prototype gate | None — dropped, image and deploy both | User decision, 2026-09-10: the launcher fronts the demo, and Basic auth on the second origin meant a second sign-in dialog. Cost: the prototype URL is open to anyone who has it (§1) |
 | GCP project | protoLab's, second WIF provider | One pipeline pattern, one project to administer |
 | Prototype's server | nginx-unprivileged | Same as protoLab: envsubst `$PORT` template plus first-class `try_files` |
 | Deploy trigger | Push to `main`, path-filtered per app | A prototype-only merge doesn't restart the POC, and vice versa |
