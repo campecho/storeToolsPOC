@@ -40,6 +40,7 @@
  */
 
 import type { PhotoOp } from "@/lib/schema/photo";
+import { paintToCss, solidPaint } from "@/lib/color/paint";
 import { fontStack } from "@/lib/layout/font-catalog";
 import { ensureFamiliesLoaded } from "@/lib/layout/webfonts";
 import { getAssetUrl } from "@/lib/assets/blob-store";
@@ -122,7 +123,8 @@ export function paintOverlayContent(
     const weight = op.font.bold ? "700" : "400";
     const style = op.font.italic ? "italic" : "normal";
     ctx.font = `${style} ${weight} ${op.font.size * scale}px ${fontStack(op.font.family)}`;
-    ctx.fillStyle = op.color;
+    // the print preview of the ink, exactly as the layout canvas shows it
+    ctx.fillStyle = paintToCss(solidPaint(op.color), []);
     ctx.textBaseline = "middle";
     ctx.textAlign = op.align;
     // Single line, NO WRAP at POC (documented) — long text overflows the box.

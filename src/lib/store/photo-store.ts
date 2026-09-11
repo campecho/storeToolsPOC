@@ -8,6 +8,7 @@ import {
 } from "@/lib/schema/photo";
 import { effectiveDims } from "@/lib/photo/geometry";
 import { DEFAULT_FAMILY } from "@/lib/layout/font-catalog";
+import { cmykPercent } from "@/lib/color/convert";
 
 /**
  * Photo-editor state (plan §3.4). The recipe IS the document, and history is a
@@ -374,7 +375,7 @@ export const usePhotoStore = create<PhotoEditorState>()(
             id,
             text: "New text",
             font: { family: DEFAULT_FAMILY, size, bold: false, italic: false },
-            color: "#1a1a1a",
+            color: cmykPercent(0, 0, 0, 100), // print text black (Phase 12)
             align: "left",
             box: {
               x: Math.round((eff.w - boxW) / 2),

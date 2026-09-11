@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { cmykPercent } from "@/lib/color/convert";
 import {
   usePhotoStore,
   mergePhotoState,
@@ -656,7 +657,7 @@ function textOverlayOp(
     id,
     text: "New text",
     font: { family: "Motiva Sans", size: 40, bold: false, italic: false },
-    color: "#1a1a1a",
+    color: cmykPercent(0, 0, 0, 100),
     align: "left",
     box,
     rotation: 0,
