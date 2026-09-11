@@ -47,12 +47,17 @@ export function optionBoolean(
   return typeof value === "boolean" ? value : fallback;
 }
 
+/** The one shape a colour option's value takes. */
+export function isColorValue(value: ToolOptionValue | undefined): value is ColorValue {
+  return typeof value === "object" && value !== null && "space" in value;
+}
+
 /** Colour-option read: the live ColorValue, or null when the tool declares
     no such option — a wrong-kinded entry reads as absent, so a draw never
     guesses a paint. */
 export function optionColor(values: ToolOptionValues, toolId: string, optionId: string): ColorValue | null {
   const value = values[toolId]?.[optionId];
-  return typeof value === "object" && value !== null && "space" in value ? value : null;
+  return isColorValue(value) ? value : null;
 }
 
 /** Enum-option read: the live value if it is one of the contract's declared

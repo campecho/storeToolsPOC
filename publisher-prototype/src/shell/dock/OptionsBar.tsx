@@ -3,7 +3,7 @@ import type { ColorValue } from "../../core/model";
 import type { OptionSpec, ToolContract } from "../../core/registry";
 import { paintToCss } from "../../core/render/paint";
 import { ColorField } from "../panels/ColorField";
-import type { ToolOptionValue } from "../toolOptions";
+import { isColorValue, type ToolOptionValue } from "../toolOptions";
 import { CONSUMED_OPTIONS, WIRED_TOOLS } from "../wiredTools";
 
 /**
@@ -34,7 +34,7 @@ function ColorOption({
       <button
         type="button"
         aria-label={option.label}
-        aria-expanded={open}
+        aria-expanded={open && editable}
         disabled={!editable}
         onClick={() => setOpen((o) => !o)}
       >
@@ -117,7 +117,7 @@ function OptionControl({
       return (
         <ColorOption
           option={option}
-          value={typeof value === "object" && value !== null && "space" in value ? value : option.default}
+          value={isColorValue(value) ? value : option.default}
           editable={editable}
           onChange={onChange}
         />
@@ -147,7 +147,9 @@ export function OptionsBar({
       </span>
       {tool.options.map((option) => (
         <OptionControl
-          key={option.id}
+          // keyed per tool, so switching tools never carries a control's open
+          // state or draft across contracts
+          key={`${tool.id}:${option.id}`}
           option={option}
           value={values?.[option.id]}
           editable={wired && (consumed?.has(option.id) ?? false)}

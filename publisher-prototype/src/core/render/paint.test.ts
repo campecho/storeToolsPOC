@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Swatch } from "../model";
-import { hexToColorValue, paintToCss, paintToHex, paintToShadedCss } from "./paint";
+import { paintToCss, paintToShadedCss } from "./paint";
 
 /**
  * Paint → CSS resolution: every CSS value is the PRINT PREVIEW (proof.ts,
@@ -61,52 +61,9 @@ describe("paintToCss", () => {
     );
   });
 
-  it("renders fallback black for a dangling swatch id (an rgb black, so it prints as rich black)", () => {
-    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, swatches)).toBe("rgb(4, 3, 3)");
-    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, [])).toBe("rgb(4, 3, 3)");
-  });
-});
-
-describe("hexToColorValue", () => {
-  it("parses #rrggbb into normalized rgb channels", () => {
-    expect(hexToColorValue("#ff8000")).toEqual({
-      space: "rgb",
-      values: [1, 128 / 255, 0],
-    });
-    expect(hexToColorValue("#000000")).toEqual({ space: "rgb", values: [0, 0, 0] });
-    expect(hexToColorValue("#ffffff")).toEqual({ space: "rgb", values: [1, 1, 1] });
-  });
-
-  it("accepts uppercase digits", () => {
-    expect(hexToColorValue("#4472C4")).toEqual(hexToColorValue("#4472c4"));
-  });
-
-  it("round-trips through paintToHex exactly; paintToCss shows how it prints", () => {
-    expect(paintToHex({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe("#4472c4");
-    expect(paintToCss({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe(
-      "rgb(60, 114, 173)",
-    );
-  });
-
-  it("resolves malformed strings to fallback black, never an error", () => {
-    for (const bad of ["", "4472c4", "#fff", "#12345", "#gggggg", "#1234567"]) {
-      expect(hexToColorValue(bad)).toEqual({ space: "rgb", values: [0, 0, 0] });
-    }
-  });
-});
-
-describe("paintToHex", () => {
-  it("formats a literal rgb color as its exact #rrggbb — the LITERAL, not the preview", () => {
-    expect(paintToHex({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe("#4472c4");
-  });
-
-  it("resolves swatch references (spot via its cmyk fallback, naive for hex)", () => {
-    expect(paintToHex({ kind: "swatch", swatchId: "sw-rgb" }, swatches)).toBe("#336699");
-    expect(paintToHex({ kind: "swatch", swatchId: "sw-spot" }, swatches)).toBe("#ff0000");
-  });
-
-  it("renders fallback black for a dangling swatch id", () => {
-    expect(paintToHex({ kind: "swatch", swatchId: "ghost" }, swatches)).toBe("#000000");
+  it("renders the print black (100% K) for a dangling swatch id", () => {
+    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, swatches)).toBe("rgb(22, 23, 19)");
+    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, [])).toBe("rgb(22, 23, 19)");
   });
 });
 

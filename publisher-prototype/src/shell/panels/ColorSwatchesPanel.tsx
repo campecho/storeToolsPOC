@@ -65,7 +65,9 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
   // schema-required, so an all-line selection renders None disabled.
   const noneDisabled = disabled || (target === "stroke" && applicable.every((o) => o.type === "line"));
 
-  const first = selected[0];
+  // Read from the first APPLICABLE object — the one a commit reaches — so a
+  // line ahead of a rect under Fill never shows a fill it does not have.
+  const first = applicable[0];
   const currentPaint: Paint | null =
     first === undefined
       ? null

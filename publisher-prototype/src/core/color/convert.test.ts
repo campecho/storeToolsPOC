@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   cmykPercent,
-  colorEquals,
   colorFromHex,
   formatHex,
   hsvToRgb,
   naiveCmykToRgb,
   naiveRgbToCmyk,
   parseHex,
-  rgb255,
   rgbToHsv,
   toPercent,
   to255,
@@ -47,7 +45,6 @@ describe("scaling", () => {
     expect(to255(1.5)).toBe(255);
     expect(toPercent(0.2)).toBe(20);
     expect(toPercent(-1)).toBe(0);
-    expect(rgb255(204, 0, 0)).toEqual({ space: "rgb", values: [0.8, 0, 0] });
     expect(cmykPercent(0, 100, 100, 20)).toEqual({ space: "cmyk", values: [0, 1, 1, 0.2] });
   });
 });
@@ -95,10 +92,3 @@ describe("hsv", () => {
   });
 });
 
-describe("colorEquals", () => {
-  it("compares within display precision and across spaces", () => {
-    expect(colorEquals(rgb255(204, 0, 0), { space: "rgb", values: [0.8, 0.001, 0] })).toBe(true);
-    expect(colorEquals(rgb255(204, 0, 0), rgb255(205, 0, 0))).toBe(false);
-    expect(colorEquals(rgb255(0, 0, 0), cmykPercent(0, 0, 0, 100))).toBe(false);
-  });
-});

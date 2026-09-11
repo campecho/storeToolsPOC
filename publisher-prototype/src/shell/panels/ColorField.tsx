@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ColorValue } from "../../core/model";
 import {
   clamp01,
@@ -38,6 +38,12 @@ import { isOutOfGamut, pressCmyk, proofCmyk, proofColor } from "../../core/color
  * Local draft state re-seeds only when an outside value arrives (undo, a
  * swatch click, the selection changing), never from its own commits —
  * conversion rounding would otherwise move the field under a drag.
+ *
+ * Known and intended: press → screen → press is not an identity under the
+ * perceptual intent, so a click on the visual field at the thumb's own
+ * position, in CMYK mode, commits the separation of the SHOWN colour
+ * (C80 M50 Y0 K5 becomes about C82 M47 Y3 K10). The typed channels are the
+ * exact path; the field is the visual one.
  */
 
 type Mode = "cmyk" | "rgb" | "hex";
@@ -103,6 +109,11 @@ export function ColorField({
   const [hexDraft, setHexDraft] = useState<string | null>(null);
   const [hexInvalid, setHexInvalid] = useState(false);
   const [canEyedrop, setCanEyedrop] = useState(false);
+  // What each channel field shows while being typed: "" or "1" must not snap
+  // back to the committed number (NumberField's draft rule). Cleared on
+  // blur, on a re-seed, and on a mode switch.
+  const [channelDrafts, setChannelDrafts] = useState<Record<string, string>>({});
+  const modeGroup = useId();
   const lastEmitted = useRef<string>(colorKey(value));
   const runRef = useRef<{ id: string; startValue: ColorValue } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -118,6 +129,7 @@ export function ColorField({
     }
     setHexDraft(null);
     setHexInvalid(false);
+    setChannelDrafts({});
   }, [value]);
 
   // Support resolved after mount, never assumed from the user agent.
@@ -180,6 +192,7 @@ export function ColorField({
     setMode(next);
     setHexDraft(null);
     setHexInvalid(false);
+    setChannelDrafts({});
     setHsv(rgbToHsv(screenRgb(draft)));
   };
 
@@ -229,15 +242,24 @@ export function ColorField({
         type="number"
         min={0}
         max={max}
-        value={shown}
+        value={channelDrafts[channel] ?? shown}
         disabled={disabled}
         aria-label={channel}
         className="color-number"
         onChange={(e) => {
-          const n = Number(e.target.value);
-          if (e.target.value.trim() === "" || !Number.isFinite(n) || n < 0 || n > max) return;
+          const text = e.target.value;
+          setChannelDrafts((d) => ({ ...d, [channel]: text }));
+          const n = Number(text);
+          if (text.trim() === "" || !Number.isFinite(n) || n < 0 || n > max) return;
           set(Math.round(n));
         }}
+        onBlur={() =>
+          setChannelDrafts((d) => {
+            const { [channel]: _left, ...rest } = d;
+            void _left;
+            return rest;
+          })
+        }
         onKeyDown={(e) => {
           if (e.key === "Escape") revert();
         }}
@@ -284,7 +306,6 @@ export function ColorField({
         onPointerMove={(e) => {
           if (!disabled && e.buttons & 1) pickFromField(e);
         }}
-        onPointerUp={endRun}
         onKeyDown={(e) => {
           if (disabled) return;
           const step = e.shiftKey ? 0.1 : 0.01;
@@ -314,7 +335,6 @@ export function ColorField({
         aria-label="Hue"
         className="color-slider color-hue"
         onChange={(e) => commitHsv({ ...hsv, h: Number(e.target.value) })}
-        onPointerUp={endRun}
       />
 
       <div className="field-row" role="radiogroup" aria-label="Color mode">
@@ -322,7 +342,7 @@ export function ColorField({
           <label className="field" key={m}>
             <input
               type="radio"
-              name={`${label}-mode`}
+              name={`${modeGroup}-mode`}
               aria-label={m.toUpperCase()}
               checked={mode === m}
               disabled={disabled}

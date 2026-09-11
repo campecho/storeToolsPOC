@@ -25,11 +25,6 @@ export function clamp01(n: number): number {
 
 /* ── Constructors ── */
 
-/** An rgb literal from 0–255 channels. */
-export function rgb255(r: number, g: number, b: number): ColorValue {
-  return { space: "rgb", values: [clamp01(r / 255), clamp01(g / 255), clamp01(b / 255)] };
-}
-
 /** A cmyk literal from integer-percent channels — the values a print
     operator works in. */
 export function cmykPercent(c: number, m: number, y: number, k: number): ColorValue {
@@ -92,10 +87,6 @@ export function naiveRgbToCmyk([r, g, b]: Rgb): Cmyk {
   return [ink(r), ink(g), ink(b), k];
 }
 
-export function naiveColorToRgb(color: ColorValue): Rgb {
-  return color.space === "rgb" ? color.values : naiveCmykToRgb(color.values);
-}
-
 /* ── HSV ── */
 
 export function rgbToHsv([r, g, b]: Rgb): Hsv {
@@ -125,13 +116,4 @@ export function hsvToRgb({ h, s, v }: Hsv): Rgb {
     hh < 5 ? [x, 0, c] :
     [c, 0, x];
   return [clamp01(r + m), clamp01(g + m), clamp01(b + m)];
-}
-
-/* ── Equality ── */
-
-/** Same space and channels within 8-bit / integer-percent precision. */
-export function colorEquals(a: ColorValue, b: ColorValue): boolean {
-  if (a.space !== b.space) return false;
-  const scale = a.space === "rgb" ? 255 : 100;
-  return a.values.every((v, i) => Math.round(v * scale) === Math.round((b.values[i] ?? -1) * scale));
 }

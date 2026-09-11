@@ -277,6 +277,7 @@ body {
 }
 
 .color-gamut {
+  /* the adjust-handle amber, reused as a warning tint — not design direction */
   color: #8a6800;
 }
 

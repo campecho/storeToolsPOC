@@ -3,6 +3,7 @@ import { naiveCmykToRgb, to255, type Cmyk, type Rgb } from "./convert";
 import { PROOF_SAMPLES } from "./luts/samples";
 import {
   GAMUT_WARN_DELTA_E,
+  deltaE76,
   gamutShift,
   isOutOfGamut,
   pressCmyk,
@@ -16,26 +17,8 @@ type Rgb255 = [number, number, number];
 const rgb255 = ([r, g, b]: Rgb): Rgb255 => [to255(r), to255(g), to255(b)];
 const cmykOf = (q: readonly number[]): Cmyk => [(q[0] ?? 0) / 255, (q[1] ?? 0) / 255, (q[2] ?? 0) / 255, (q[3] ?? 0) / 255];
 const rgbOf = (t: readonly number[]): Rgb => [(t[0] ?? 0) / 255, (t[1] ?? 0) / 255, (t[2] ?? 0) / 255];
-const triple = (t: readonly number[]): Rgb255 => [t[0] ?? 0, t[1] ?? 0, t[2] ?? 0];
-
-/** ΔE76 in Lab between two 0–255 sRGB triples — the unit the tables' error report uses. */
-function deltaE(a: Rgb255, b: Rgb255): number {
-  const lab = ([r, g, bl]: Rgb255): [number, number, number] => {
-    const lin = (v: number) => {
-      const c = v / 255;
-      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-    };
-    const [rl, gl, bb] = [lin(r), lin(g), lin(bl)];
-    const x = (0.4124 * rl + 0.3576 * gl + 0.1805 * bb) / 0.95047;
-    const y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bb;
-    const z = (0.0193 * rl + 0.1192 * gl + 0.9505 * bb) / 1.08883;
-    const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
-    return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
-  };
-  const la = lab(a);
-  const lb = lab(b);
-  return Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
-}
+/** ΔE76 between a 0–1 rgb and a 0–255 sample, in the tables' error unit. */
+const deltaE = (approx: Rgb, sample: readonly number[]): number => deltaE76(approx, rgbOf(sample));
 
 describe("proofCmyk — press → screen", () => {
   it("paper is white and 400% is black", () => {
@@ -61,7 +44,7 @@ describe("proofCmyk — press → screen", () => {
   it("matches the profile within 2.5 ΔE at the committed off-grid samples", () => {
     let worst = 0;
     for (const s of PROOF_SAMPLES.cmykToSrgb) {
-      worst = Math.max(worst, deltaE(rgb255(proofCmyk(cmykOf(s.cmyk))), triple(s.srgb)));
+      worst = Math.max(worst, deltaE(proofCmyk(cmykOf(s.cmyk)), s.srgb));
     }
     expect(worst).toBeLessThan(2.5);
   });
@@ -97,7 +80,7 @@ describe("pressCmyk — screen → press", () => {
     for (const s of PROOF_SAMPLES.srgbToCmyk) {
       const approx = pressCmyk(rgbOf(s.srgb));
       const exact = cmykOf(s.cmyk);
-      worst = Math.max(worst, deltaE(rgb255(proofCmyk(approx)), rgb255(proofCmyk(exact))));
+      worst = Math.max(worst, deltaE76(proofCmyk(approx), proofCmyk(exact)));
     }
     expect(worst).toBeLessThan(4);
   });
@@ -108,7 +91,9 @@ describe("proofRgb and gamut", () => {
     const orange = proofRgb([1, 0.5, 0]);
     expect(orange[0]).toBeLessThan(1);
     expect(gamutShift([1, 0.5, 0])).toBeGreaterThan(GAMUT_WARN_DELTA_E);
-    expect(gamutShift([0.5, 0.5, 0.5])).toBeLessThan(GAMUT_WARN_DELTA_E);
+    // a light neutral sits well inside the gamut (mid grey shifts ~5 ΔE, near
+    // the ASSUMED threshold, so it is not the example)
+    expect(gamutShift([0.94, 0.94, 0.94])).toBeLessThan(GAMUT_WARN_DELTA_E);
     expect(isOutOfGamut([1, 0, 0])).toBe(true);
     expect(isOutOfGamut([0.94, 0.94, 0.94])).toBe(false);
   });

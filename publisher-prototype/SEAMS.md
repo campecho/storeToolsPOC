@@ -719,9 +719,16 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   transforms are the dev team's): production colour management replaces the resolver
   behind the same `paintToCss`/`proofColor` signatures, and the export step must pass
   cmyk literals through untouched and convert rgb literals with the SAME profile the
-  tables came from, or preview and print disagree. `paintToHex` is the one LITERAL
-  output (an rgb literal's exact hex) for fields that show what was typed. Tint is ink
-  at t% applied in the swatch's own space before proofing. ASSUMPTION for SME review:
+  tables came from, or preview and print disagree. A field that shows what was typed
+  reads the literal through `resolvePaintColor`. Tint is ink at t% applied in the
+  swatch's own space before proofing. The tables were generated OUTSIDE this directory
+  (the host repository's `scripts/gen-color-luts.mjs`, run as `node
+  scripts/gen-color-luts.mjs` against the profile it ships, then copied in): committing
+  the generator here would add `sharp` and a 3.4 MB profile as dependencies, a decision
+  held open; until it lands, regeneration is that script and a copy, and the file
+  headers carry the profile hash to check against. `proof.ts` relies on the `atob`
+  platform global (browsers and Node ≥ 16; engines pins ≥ 22) — the core's one platform
+  global, by choice, so the tables need no bundler syntax. ASSUMPTION for SME review:
   `GAMUT_WARN_DELTA_E = 6` (ΔE76) is where an rgb colour's shift on press is flagged.
   The naive (1−ink)(1−k) formulas remain in `core/color/convert.ts` as the fallback if
   a table fails to decode and as the test oracle.
@@ -746,7 +753,7 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   OptionSpec's `default` is a `ColorValue`, not a hex string, and `ToolOptionValue`
   admits `ColorValue`. A shape drawn from the options bar therefore carries a paint in
   the space it was authored — the contract defaults are CMYK (fill C80 M50 Y0 K5, the
-  press separation of the lineage's #4472c4 rounded; stroke and the fill/gradient
+  press separation of the lineage's #4472c4 (80/50/1/6) simplified; stroke and the fill/gradient
   tool's colour 100% K; the photo text overlay paper white), all ASSUMPTIONS for SME
   review — and a hex string could not have carried that. The one exception stays
   rgb: `guideColor` is screen chrome, never proofed as ink. The options bar renders

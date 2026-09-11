@@ -16,6 +16,10 @@ import { SRGB_TO_CMYK_B64, SRGB_TO_CMYK_CHANNELS, SRGB_TO_CMYK_STEPS } from "./l
  *   proofRgb    the round trip: how RGB content looks once printed.
  *
  * The naive device formulas stand in only if a table fails to decode.
+ *
+ * `atob` is the one platform global the core relies on (WHATWG, present in
+ * every browser and in Node ≥ 16 — engines pins ≥ 22); no import, so the
+ * boundary check is silent about it by design.
  */
 
 function decodeBase64(b64: string): Uint8Array {
@@ -118,11 +122,16 @@ function srgbToLab([r, g, b]: Rgb): [number, number, number] {
   return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
 }
 
+/** ΔE76 (CIE 1976 Lab distance) between two sRGB colours, 0–1 channels. */
+export function deltaE76(a: Rgb, b: Rgb): number {
+  const la = srgbToLab(a);
+  const lb = srgbToLab(b);
+  return Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
+}
+
 /** ΔE76 between an sRGB color and its printed appearance. */
 export function gamutShift(rgb: Rgb): number {
-  const a = srgbToLab(rgb);
-  const b = srgbToLab(proofRgb(rgb));
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  return deltaE76(rgb, proofRgb(rgb));
 }
 
 /** ASSUMPTION: a shift past this reads as "a different color" at a glance
