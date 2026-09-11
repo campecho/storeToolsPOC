@@ -1,4 +1,8 @@
+import { useState } from "react";
+import type { ColorValue } from "../../core/model";
 import type { OptionSpec, ToolContract } from "../../core/registry";
+import { paintToCss } from "../../core/render/paint";
+import { ColorField } from "../panels/ColorField";
 import type { ToolOptionValue } from "../toolOptions";
 import { CONSUMED_OPTIONS, WIRED_TOOLS } from "../wiredTools";
 
@@ -10,6 +14,42 @@ import { CONSUMED_OPTIONS, WIRED_TOOLS } from "../wiredTools";
  * nothing consumes yet — keeps the disabled presentation, so the bar stays
  * an honest surface.
  */
+/** A colour option: a chip button showing the print preview of the value,
+    opening the same CMYK-first colour field the panel uses. Option values are
+    tool-ctx inputs, not document state, so the field's edit run is ignored. */
+function ColorOption({
+  option,
+  value,
+  editable,
+  onChange,
+}: {
+  option: Extract<OptionSpec, { kind: "color" }>;
+  value: ColorValue;
+  editable: boolean;
+  onChange: (value: ColorValue) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="option option-color">
+      <button
+        type="button"
+        aria-label={option.label}
+        aria-expanded={open}
+        disabled={!editable}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="swatch-chip" style={{ background: paintToCss({ kind: "color", color: value }, []) }} />
+        {option.label}
+      </button>
+      {open && editable && (
+        <span className="option-color-popover">
+          <ColorField label={option.label} value={value} onCommit={(next) => onChange(next)} />
+        </span>
+      )}
+    </span>
+  );
+}
+
 function OptionControl({
   option,
   value,
@@ -75,16 +115,12 @@ function OptionControl({
       );
     case "color":
       return (
-        <label className="option">
-          {option.label}
-          <input
-            type="color"
-            aria-label={option.label}
-            value={typeof value === "string" ? value : option.default}
-            disabled={!editable}
-            onChange={(e) => onChange(e.target.value)}
-          />
-        </label>
+        <ColorOption
+          option={option}
+          value={typeof value === "object" && value !== null && "space" in value ? value : option.default}
+          editable={editable}
+          onChange={onChange}
+        />
       );
   }
 }

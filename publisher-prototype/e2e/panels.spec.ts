@@ -565,9 +565,29 @@ test("color panel: a document swatch applies as a swatch REFERENCE, and undo res
   await expect(colorPanel.getByLabel("Hex", { exact: true })).toHaveValue("#336699");
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   rect = shapeAt(await pageObjects(page), 0);
-  // Back to the rect tool's literal contract-default fill, shown as its hex.
-  expect(rect.fill).toMatchObject({ kind: "color" });
-  await expect(colorPanel.getByLabel("Hex", { exact: true })).toHaveValue("#4472c4");
+  // Back to the rect tool's literal contract-default fill (C80 M50 Y0 K5);
+  // the Hex field shows a cmyk literal as it prints.
+  expect(rect.fill).toEqual({ kind: "color", color: { space: "cmyk", values: [0.8, 0.5, 0, 0.05] } });
+  await expect(colorPanel.getByLabel("Hex", { exact: true })).toHaveValue("#3d73b0");
+});
+
+test("options bar: a colour option opens the colour field, and a shape drawn afterwards carries the CMYK literal", async ({
+  page,
+}) => {
+  await activate(page, "Rectangle");
+  const bar = page.getByTestId("options-bar");
+  await bar.getByLabel("Fill", { exact: true }).click();
+  await expect(bar.getByLabel("CMYK", { exact: true })).toBeChecked();
+  for (const [channel, pct] of [["C", "0"], ["M", "0"], ["Y", "100"], ["K", "0"]] as const) {
+    await bar.getByLabel(channel, { exact: true }).fill(pct);
+  }
+  await drag(page, { x: 1, y: 3 }, { x: 2, y: 4 });
+  await expect.poll(async () => (await pageObjects(page)).length).toBe(1);
+  // The drawn rect carries the option's CMYK literal — 100% Y, never a flattened hex.
+  expect(shapeAt(await pageObjects(page), 0).fill).toEqual({
+    kind: "color",
+    color: { space: "cmyk", values: [0, 0, 1, 0] },
+  });
 });
 
 /** Document setup readback: the setup fields of the present document. */

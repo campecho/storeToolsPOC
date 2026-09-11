@@ -1,3 +1,4 @@
+import { colorFromHex } from "../../color/convert";
 import type { ToolContract } from "../types";
 
 /**
@@ -66,7 +67,8 @@ export const guideTool: ToolContract = {
     { kind: "boolean", id: "snapToGuides", label: "Snap to guides", default: true },
     { kind: "boolean", id: "snapToGrid", label: "Snap to grid", default: false },
     { kind: "boolean", id: "showGuides", label: "Show guides", default: true },
-    { kind: "color", id: "guideColor", label: "Guide color", default: "#00b0f0" },
+    // Guides are screen chrome, not ink — an rgb literal, never proofed as print.
+    { kind: "color", id: "guideColor", label: "Guide color", default: colorFromHex("#00b0f0") },
   ],
   panels: ["guides-grid", "document-setup"],
   undo: "per-gesture",

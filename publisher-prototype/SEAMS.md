@@ -742,3 +742,15 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   supersedes the "Edit runs" entry's "discrete controls (… colour)" clause, which
   described the native input. `NumberField` stays the numeric primitive; the field's
   channel inputs follow its live-apply rule without its per-field run.
+- **Tool option colours (recorded 2026-09-11, user decision):** a `kind: "color"`
+  OptionSpec's `default` is a `ColorValue`, not a hex string, and `ToolOptionValue`
+  admits `ColorValue`. A shape drawn from the options bar therefore carries a paint in
+  the space it was authored — the contract defaults are CMYK (fill C80 M50 Y0 K5, the
+  press separation of the lineage's #4472c4 rounded; stroke and the fill/gradient
+  tool's colour 100% K; the photo text overlay paper white), all ASSUMPTIONS for SME
+  review — and a hex string could not have carried that. The one exception stays
+  rgb: `guideColor` is screen chrome, never proofed as ink. The options bar renders
+  a colour option as a chip button (the print preview) opening the panel's
+  `ColorField`; option values are tool-ctx inputs, not document state, so the field's
+  edit run is ignored there. `drawStyleFromOptions` reads colours with `optionColor`
+  (a wrong-kinded entry reads as absent, so a draw never guesses a paint).

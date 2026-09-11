@@ -280,6 +280,27 @@ body {
   color: #8a6800;
 }
 
+.option-color {
+  position: relative;
+}
+
+.option-color button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.option-color-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  margin-top: 2px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #999;
+}
+
 .debug-bar {
   display: flex;
   flex-wrap: wrap;
