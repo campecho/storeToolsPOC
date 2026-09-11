@@ -149,6 +149,7 @@ export function ColorPicker({
   ariaLabel,
   testIdPrefix,
   children,
+  triggerClassName,
 }: {
   value: Paint | null;
   onChange: (next: Paint | null, live: boolean) => void;
@@ -166,6 +167,8 @@ export function ColorPicker({
   testIdPrefix: string;
   /** A custom trigger face; the default is a swatch square. */
   children?: ReactNode;
+  /** Classes for the custom trigger button (ignored for the default swatch). */
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("cmyk");
@@ -292,7 +295,11 @@ export function ColorPicker({
         aria-haspopup="dialog"
         data-testid={`${p}-trigger`}
         title={ariaLabel}
-        className={children ? "cursor-pointer disabled:cursor-not-allowed" : `relative h-[18px] w-[18px] cursor-pointer rounded-[4px] border disabled:cursor-not-allowed ${open ? "border-[1.5px] border-brand" : "border-[#d6d6d6]"}`}
+        className={
+          children
+            ? `cursor-pointer disabled:cursor-not-allowed ${triggerClassName ?? ""}`
+            : `relative h-[18px] w-[18px] cursor-pointer rounded-[4px] border disabled:cursor-not-allowed ${open ? "border-[1.5px] border-brand" : "border-[#d6d6d6]"}`
+        }
         style={children ? undefined : { backgroundColor: triggerCss }}
       >
         {children}

@@ -59,9 +59,6 @@ deferred slice in `docs/LAYOUT_EDITOR_PLAN.md` §6):
 - Tool palette: the **Table** tool arms but reports "coming later in the beta" honestly.
 - Assets tab: **PDF assets are library-only** — the tile says so and placement is
   disabled until the print pipeline can rasterize them (plan §6).
-- Home band's **font-color swatch** reads the frame's dominant ink (per-run color renders
-  since schema v2) but opens no picker yet — imported colors display and survive editing;
-  choosing a new ink is a later slice.
 - **Path objects** (from `.pub` import) move/resize/rotate/align like any frame — segment
   (node) editing is not offered; the normalized-path model supports it later.
 - Text styling (B/I/U, family, size, color) applies to the **whole frame** — the schema

@@ -629,6 +629,16 @@ test.describe("Text frames & typography (L5)", () => {
     await page.getByTestId("font-family").selectOption("Georgia");
     await expect(ink).toHaveCSS("font-family", /Georgia/);
 
+    // Font color (Phase 12): the picker opens in CMYK; 50% K on every run,
+    // previewed as the press prints it
+    await page.getByTestId("font-color-trigger").click();
+    await expect(page.getByTestId("font-color-mode-cmyk")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("font-color-k").fill("50");
+    await page.getByTestId("font-color-k").press("Enter");
+    await expect(ink).toHaveCSS("color", "rgb(148, 149, 148)");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("font-color-popover")).toBeHidden();
+
     // exact metrics at a known zoom: 24 pt = 32 px, ×1.5 line = 48 px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {
       const input = el as HTMLInputElement;

@@ -23,9 +23,12 @@ import {
   Search,
   SendToBack,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLayoutStore } from "@/store";
+import type { LayoutDocument } from "@/schema";
 import { paintToCss } from "@/lib/color/paint";
+import { OBJECT_PALETTE } from "@/lib/layout/objects";
+import { ColorPicker } from "@/components/ui/ColorPicker";
 import { FindReplaceDialog } from "../FindReplaceDialog";
 import type { AlignKind } from "@/lib/layout/align";
 import { FONT_FAMILIES, FONT_SIZES, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
@@ -132,6 +135,8 @@ export function HomeBand() {
   const font = summary?.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
   const swatches = useLayoutStore((s) => s.doc.swatches);
+  const commitGesture = useLayoutStore((s) => s.commitGesture);
+  const dragBefore = useRef<LayoutDocument | null>(null);
 
   // Clipboard (plan L13): Copy/Cut track the selection, Paste tracks the clipboard
   const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
@@ -233,9 +238,30 @@ export function HomeBand() {
         >
           <span className="text-[12px] underline">U</span>
         </IconBtn>
-        {/* Font color — the swatch reads the frame's dominant ink (schema v2
-            renders per-run color); a picker UI is a later slice. */}
-        <IconBtn wide>
+        {/* Font color — the face reads the frame's dominant ink (per-run since
+            schema v2, a Paint since v4); the picker (Phase 12) applies to every
+            run of the frame, like the other typography controls. */}
+        <ColorPicker
+          value={summary?.color ?? null}
+          onChange={(paint, live) => {
+            if (paint) apply({ color: paint }, live);
+          }}
+          onDragStart={() => {
+            dragBefore.current = useLayoutStore.getState().doc;
+          }}
+          onDragEnd={() => {
+            if (dragBefore.current) commitGesture(dragBefore.current);
+            dragBefore.current = null;
+          }}
+          swatches={swatches}
+          presets={OBJECT_PALETTE}
+          disabled={!target}
+          ariaLabel="Font color"
+          testIdPrefix="font-color"
+          triggerClassName={`flex h-6 w-[30px] items-center justify-center rounded-[5px] border bg-white text-[#555] ${
+            target ? "border-[#dcdcdc]" : "border-[#dcdcdc] opacity-60"
+          }`}
+        >
           <span className="flex flex-col items-center leading-none">
             <span className="text-[11px] font-bold">A</span>
             <span
@@ -243,7 +269,7 @@ export function HomeBand() {
               style={{ backgroundColor: summary ? paintToCss(summary.color, swatches) : "var(--color-brand)" }}
             />
           </span>
-        </IconBtn>
+        </ColorPicker>
       </RibbonGroup>
 
       <RibbonGroup label="Paragraph">
