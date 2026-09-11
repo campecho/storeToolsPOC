@@ -382,15 +382,70 @@ test("color panel: line-end controls stay hidden when no line is selected", asyn
   await expect(colorPanel.getByLabel("Width", { exact: true })).toBeVisible();
 });
 
-test("color panel: picking a fill color commits one literal rgb paint; None hollows; undo restores", async ({
+/** The colour field's Hex mode: one text commit, an rgb literal. */
+async function fillHex(page: Page, hex: string): Promise<void> {
+  const colorPanel = panel(page, "color-swatches");
+  await colorPanel.getByLabel("HEX", { exact: true }).check();
+  await colorPanel.getByLabel("Hex", { exact: true }).fill(hex);
+  await colorPanel.getByLabel("Hex", { exact: true }).press("Enter");
+}
+
+test("color panel: CMYK is the default mode; typing the channels stores a cmyk literal in one entry", async ({
+  page,
+}) => {
+  await drawAndSelectRect(page);
+  const colorPanel = panel(page, "color-swatches");
+  await expect(colorPanel.getByLabel("CMYK", { exact: true })).toBeChecked();
+  const before = await historyDepth(page);
+  for (const [channel, pct] of [["C", "0"], ["M", "100"], ["Y", "100"], ["K", "20"]] as const) {
+    await colorPanel.getByLabel(channel, { exact: true }).fill(pct);
+  }
+  // The document holds CMYK — the operator's numbers, never flattened to rgb.
+  expect(shapeAt(await pageObjects(page), 0).fill).toEqual({
+    kind: "color",
+    color: { space: "cmyk", values: [0, 1, 1, 0.2] },
+  });
+  // All four channels in one visit fold into one history entry.
+  expect(await historyDepth(page)).toBe(before + 1);
+  // Moving between channels keeps the run; leaving the control ends it.
+  await colorPanel.getByLabel("Outline", { exact: true }).focus();
+  await colorPanel.getByLabel("K", { exact: true }).fill("30");
+  expect(await historyDepth(page)).toBe(before + 2);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect(shapeAt(await pageObjects(page), 0).fill).toEqual({
+    kind: "color",
+    color: { space: "cmyk", values: [0, 1, 1, 0.2] },
+  });
+});
+
+test("color panel: Escape reverts the colour to the run's start inside the same entry", async ({
+  page,
+}) => {
+  await drawAndSelectRect(page);
+  const colorPanel = panel(page, "color-swatches");
+  const startFill = shapeAt(await pageObjects(page), 0).fill;
+  const before = await historyDepth(page);
+  await colorPanel.getByLabel("K", { exact: true }).fill("90");
+  expect(shapeAt(await pageObjects(page), 0).fill).toMatchObject({
+    kind: "color",
+    color: { space: "cmyk" },
+  });
+  await colorPanel.getByLabel("K", { exact: true }).press("Escape");
+  expect(shapeAt(await pageObjects(page), 0).fill).toEqual(startFill);
+  expect(await historyDepth(page)).toBe(before + 1);
+});
+
+test("color panel: a Hex entry commits one literal rgb paint; None hollows; undo restores", async ({
   page,
 }) => {
   await drawAndSelectRect(page);
   await armCounter(page);
-  await panel(page, "color-swatches").getByLabel("Color", { exact: true }).fill("#ff0000");
+  await fillHex(page, "#ff0000");
   expect(await notificationCount(page)).toBe(1);
   let rect = shapeAt(await pageObjects(page), 0);
   expect(rect.fill).toEqual({ kind: "color", color: { space: "rgb", values: [1, 0, 0] } });
+  // sRGB red is outside the press gamut — the field says so.
+  await expect(panel(page, "color-swatches").getByRole("status")).toHaveText("shifts on press");
   await panel(page, "color-swatches").getByRole("button", { name: "None", exact: true }).click();
   rect = shapeAt(await pageObjects(page), 0);
   expect(rect.fill).toBeNull();
@@ -406,7 +461,7 @@ test("color panel: outline color keeps the width; width entry keeps the color", 
   const colorPanel = panel(page, "color-swatches");
   await colorPanel.getByLabel("Outline", { exact: true }).check();
   // The drawn rect's contract-default outline: black at 0.75pt.
-  await colorPanel.getByLabel("Color", { exact: true }).fill("#00ff00");
+  await fillHex(page, "#00ff00");
   let stroke = shapeAt(await pageObjects(page), 0).stroke;
   expect(stroke).toEqual({
     paint: { kind: "color", color: { space: "rgb", values: [0, 1, 0] } },
@@ -504,17 +559,15 @@ test("color panel: a document swatch applies as a swatch REFERENCE, and undo res
   expect(await notificationCount(page)).toBe(1);
   let rect = shapeAt(await pageObjects(page), 0);
   expect(rect.fill).toEqual({ kind: "swatch", swatchId: "sw-brand" });
-  // The color well previews the referenced swatch (#336699).
-  await expect(panel(page, "color-swatches").getByLabel("Color", { exact: true })).toHaveValue(
-    "#336699",
-  );
+  // The colour field shows the referenced swatch's literal (#336699 in Hex mode).
+  const colorPanel = panel(page, "color-swatches");
+  await colorPanel.getByLabel("HEX", { exact: true }).check();
+  await expect(colorPanel.getByLabel("Hex", { exact: true })).toHaveValue("#336699");
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   rect = shapeAt(await pageObjects(page), 0);
-  // Back to the rect tool's literal contract-default fill, previewed as its hex.
+  // Back to the rect tool's literal contract-default fill, shown as its hex.
   expect(rect.fill).toMatchObject({ kind: "color" });
-  await expect(panel(page, "color-swatches").getByLabel("Color", { exact: true })).toHaveValue(
-    "#4472c4",
-  );
+  await expect(colorPanel.getByLabel("Hex", { exact: true })).toHaveValue("#4472c4");
 });
 
 /** Document setup readback: the setup fields of the present document. */

@@ -725,3 +725,20 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   `GAMUT_WARN_DELTA_E = 6` (ΔE76) is where an rgb colour's shift on press is flagged.
   The naive (1−ink)(1−k) formulas remain in `core/color/convert.ts` as the fallback if
   a table fails to decode and as the test oracle.
+- **Colour entry (recorded 2026-09-11, user decision):** the Colour & swatches panel's
+  `<input type="color">` is replaced by `ColorField` (`shell/panels/ColorField.tsx`):
+  CMYK is the default mode, then RGB and Hex; a saturation/brightness field and hue
+  strip; a range slider plus number field per channel; the print preview beside the
+  value in the other space, with a "shifts on press" note when an rgb colour is out of
+  the press gamut; the eyedropper where the browser has one. CMYK mode commits a
+  `cmyk` literal with the typed integer percents (the document stores CMYK, nothing
+  is flattened); RGB and Hex modes commit an `rgb` literal; the visual field commits
+  in the active mode (in CMYK, the separation the press profile assigns the picked
+  screen colour). Switching modes converts for display only. Edit runs widen from a
+  field to the whole control: one visit is one history entry — typing all four
+  channels or dragging the hue strip is one undo step — opened on the first commit,
+  ended when focus leaves the control or on Escape (which reverts to the run's start
+  colour inside the run); Hex entry commits once on Enter/blur with no run. This
+  supersedes the "Edit runs" entry's "discrete controls (… colour)" clause, which
+  described the native input. `NumberField` stays the numeric primitive; the field's
+  channel inputs follow its live-apply rule without its per-field run.
