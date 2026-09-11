@@ -294,6 +294,30 @@ path.
     the panel visuals already implemented in Phase 9 (Figma access dropped
     mid-session); a styling verification pass against live Figma design
     context remains open and lands as a follow-up.
+- **Phase 12 — Color (added 2026-09-11).** Content may be authored in CMYK
+  or RGB; the shop prints in CMYK; the canvas must preview content as close
+  as possible to print. Scope:
+  - **Schema v4**: fills, strokes, and run ink become `Paint` values (the
+    publisher prototype's model: a literal `{ space: "rgb" | "cmyk", values }`
+    or a document-swatch reference) so a document records the space a color
+    was authored in; `doc.swatches` joins the root, defaulted empty. v1–v3
+    hex migrates to `rgb` literals on read (localStorage, `.staples` files,
+    imports), per decision 5's migrate-on-read posture. Layer accents stay
+    plain hex — UI chrome, not print ink.
+  - **Print preview**: every color reaching CSS or SVG resolves through
+    lookup tables generated offline from the committed GRACoL2013 profile
+    (`scripts/gen-color-luts.mjs`, sharp's ICC transform); RGB content
+    previews through the profile round-trip so an out-of-gamut color dulls
+    on screen the way it will on paper. The naive formula stays only as the
+    fallback and test oracle.
+  - **`ColorPicker` primitive** in `src/components/ui/` (first consumer of
+    the deferred `Popover`): CMYK is the default mode, then RGB and Hex;
+    visual saturation/brightness field and hue strip; per-channel sliders
+    and numeric fields; proofed preview with a gamut warning; preset and
+    document swatches; eyedropper where the browser supports it. Replaces
+    the Page tab's swatch-only Fill and Stroke rows (the palette stays as
+    presets), wires the Home band's font-color button, and replaces the
+    photo editor's native text-overlay color input.
   - The Phase 9 **full-screen import report retires**; Quick Import's
     summary panel is the conversion review surface of record. The editor's
     reopen path ("View report") re-targets accordingly.
@@ -363,3 +387,14 @@ Confirmed 2026-08-26 (Phase 11):
     Phase 9 full-screen import report.
 12. **Quick Import frames** — `Publisher - Quick Import` (`200:5279`,
     `200:5594`) join the binding-frames set.
+
+Confirmed 2026-09-11 (Phase 12):
+
+13. **Color is stored with its space, never flattened.** A CMYK value the
+    user types reaches the export step untouched; export passes `cmyk`
+    literals through and converts `rgb` literals with the same GRACoL
+    profile the preview tables are built from. Preview color management is
+    a committed lookup table, not live ICC — sharp's ICC transform applies
+    the perceptual intent in both directions and exposes no other, so that
+    is the intent of record for both the tables and the photo pipeline.
+    Raster images are not soft-proofed on the layout canvas in this phase.
