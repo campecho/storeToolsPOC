@@ -16,7 +16,8 @@ import { TEXT_STYLES, textSummary, type TextStyleKey } from "@/lib/layout/text";
 export function useTextTarget(): {
   target: (FrameObject & { text: NonNullable<FrameObject["text"]> }) | undefined;
   summary: ReturnType<typeof textSummary> | undefined;
-  apply: (patch: TextPropsPatch) => void;
+  /** `transient` skips history — a color-picker drag; commitGesture ends it. */
+  apply: (patch: TextPropsPatch, transient?: boolean) => void;
   applyStyle: (key: TextStyleKey) => void;
 } {
   const objects = useLayoutStore(surfaceObjects);
@@ -34,8 +35,8 @@ export function useTextTarget(): {
   return {
     target,
     summary: target ? textSummary(target.text) : undefined,
-    apply: (patch) => {
-      if (target) setTextProps(target.id, patch);
+    apply: (patch, transient = false) => {
+      if (target) setTextProps(target.id, patch, transient);
     },
     applyStyle: (key) => {
       if (target) setTextProps(target.id, TEXT_STYLES[key].props);

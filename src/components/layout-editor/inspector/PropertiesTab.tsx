@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
-import type { ColorValue, LayoutObject } from "@/schema";
-import { hexPaint, paintEquals, paintToCss, solidPaint } from "@/lib/color/paint";
+import type { ColorValue, LayoutDocument, LayoutObject, Paint } from "@/schema";
+import { paintEquals, paintToCss, solidPaint } from "@/lib/color/paint";
+import { ColorPicker } from "@/components/ui/ColorPicker";
 import {
   OBJECT_PALETTE,
   STROKE_WIDTHS,
@@ -18,8 +19,11 @@ import { Field, NumberField, SectionLabel } from "./Field";
 /**
  * Properties inspector tab (wire region 7, live per L4): Transform X/Y/W/H
  * round-trips the selected object's bbox (a line's endpoints map through it),
- * plus minimal Fill and Stroke rows — grayscale ramp + brand red + none, the
- * wireframe language's ink set. No selection shows the wire's empty state.
+ * plus Fill and Stroke rows — the ink-set presets (grayscale ramp + brand
+ * red + none) for one-click picks, and the color picker (Phase 12: CMYK
+ * first, RGB, hex) for anything else. A picker drag is one history step:
+ * the edits ride `transient` and commitGesture closes them at release.
+ * No selection shows the wire's empty state.
  */
 
 function Swatch({
@@ -60,7 +64,10 @@ export function PropertiesTab() {
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const transformObject = useLayoutStore((s) => s.transformObject);
   const setObjectProps = useLayoutStore((s) => s.setObjectProps);
+  const commitGesture = useLayoutStore((s) => s.commitGesture);
+  const swatches = useLayoutStore((s) => s.doc.swatches);
   const revertPhotoEdit = useLayoutStore((s) => s.revertPhotoEdit);
+  const dragBefore = useRef<LayoutDocument | null>(null);
   const docName = useLayoutStore((s) => s.doc.name);
   const router = useRouter();
   const [photoNote, setPhotoNote] = useState<string | null>(null);
@@ -107,6 +114,16 @@ export function PropertiesTab() {
   };
 
   const stroke = obj.stroke;
+  const dragStart = () => {
+    dragBefore.current = useLayoutStore.getState().doc;
+  };
+  const dragEnd = () => {
+    if (dragBefore.current) commitGesture(dragBefore.current);
+    dragBefore.current = null;
+  };
+  const setFill = (fill: Paint | null, live: boolean) => setObjectProps(obj.id, { fill }, live);
+  const setStrokePaint = (paint: Paint | null, live: boolean) =>
+    setObjectProps(obj.id, { stroke: paint ? { paint, width: stroke?.width ?? 1 } : null }, live);
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,10 +220,21 @@ export function PropertiesTab() {
                 key={c.id}
                 color={c.color}
                 active={paintEquals(obj.fill, solidPaint(c.color))}
-                onPick={() => setObjectProps(obj.id, { fill: solidPaint(c.color) })}
+                onPick={() => setFill(solidPaint(c.color), false)}
                 testId={`fill-${c.id}`}
               />
             ))}
+            <ColorPicker
+              value={obj.fill}
+              onChange={setFill}
+              onDragStart={dragStart}
+              onDragEnd={dragEnd}
+              swatches={swatches}
+              presets={OBJECT_PALETTE}
+              allowNone
+              ariaLabel="Fill color"
+              testIdPrefix="fill-picker"
+            />
           </div>
         </div>
       )}
@@ -227,12 +255,21 @@ export function PropertiesTab() {
               key={c.id}
               color={c.color}
               active={paintEquals(stroke?.paint, solidPaint(c.color))}
-              onPick={() =>
-                setObjectProps(obj.id, { stroke: { paint: solidPaint(c.color), width: stroke?.width ?? 1 } })
-              }
+              onPick={() => setStrokePaint(solidPaint(c.color), false)}
               testId={`stroke-${c.id}`}
             />
           ))}
+          <ColorPicker
+            value={stroke?.paint ?? null}
+            onChange={setStrokePaint}
+            onDragStart={dragStart}
+            onDragEnd={dragEnd}
+            swatches={swatches}
+            presets={OBJECT_PALETTE}
+            allowNone={!line}
+            ariaLabel="Stroke color"
+            testIdPrefix="stroke-picker"
+          />
         </div>
         <div className="flex items-center gap-2">
           <div className="text-[10px] text-[#999]">Width</div>
@@ -240,7 +277,7 @@ export function PropertiesTab() {
             value={stroke?.width ?? ""}
             onChange={(e) =>
               setObjectProps(obj.id, {
-                stroke: { paint: stroke?.paint ?? hexPaint("#555555"), width: Number(e.target.value) },
+                stroke: { paint: stroke?.paint ?? solidPaint(OBJECT_PALETTE[5].color), width: Number(e.target.value) },
               })
             }
             data-testid="stroke-width"

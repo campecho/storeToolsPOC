@@ -1,5 +1,6 @@
 import type { FontProps, Paint, Paragraph, TextAlign, TextProps, TextRun } from "@/schema";
-import { hexPaint, paintKey } from "@/lib/color/paint";
+import { cmykPercent } from "@/lib/color/convert";
+import { paintKey, solidPaint } from "@/lib/color/paint";
 import { DEFAULT_FAMILY } from "./font-catalog";
 
 /**
@@ -13,8 +14,9 @@ import { DEFAULT_FAMILY } from "./font-catalog";
 
 export { FONT_FAMILIES, DEFAULT_FAMILY, fontStack } from "./font-catalog";
 
-/** The wire's near-black body ink, as a Paint (schema v4). */
-export const DEFAULT_TEXT_INK: Paint = hexPaint("#111111");
+/** Body ink: 100% K, the print-native text black (never rich black —
+    registration on small type). Schema v4 Paint. */
+export const DEFAULT_TEXT_INK: Paint = solidPaint(cmykPercent(0, 0, 0, 100));
 
 export const FONT_SIZES = [8, 9, 10, 11, 12, 14, 18, 24, 36, 48, 60, 72];
 export const LINE_SPACINGS = [1, 1.15, 1.2, 1.5, 2];

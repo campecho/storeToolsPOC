@@ -501,13 +501,15 @@ export interface LayoutEditorState {
   /** Typing is transient — the edit session commits one snapshot at close.
       The overlay parses its DOM to paragraphs (schema v2) and writes them whole. */
   setTextParagraphs: (id: string, paragraphs: Paragraph[]) => void;
-  /** Styling clicks are discrete input commits — each pushes history. */
-  setTextProps: (id: string, patch: TextPropsPatch) => void;
+  /** Styling clicks are discrete input commits — each pushes history;
+      `transient` skips it (a color-picker drag — commitGesture ends it). */
+  setTextProps: (id: string, patch: TextPropsPatch, transient?: boolean) => void;
   /** Appends, selects, and returns the tool to Select (Publisher behavior). */
   addObject: (obj: LayoutObject) => void;
   /** Geometry edit; `transient` skips history (live drags — commitGesture ends them). */
   transformObject: (id: string, patch: TransformPatch, transient?: boolean) => void;
-  setObjectProps: (id: string, patch: ObjectPropsPatch) => void;
+  /** Fill/stroke edit; `transient` skips history (a color-picker drag). */
+  setObjectProps: (id: string, patch: ObjectPropsPatch, transient?: boolean) => void;
   deleteSelection: () => void;
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
@@ -1116,16 +1118,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
           ),
         })),
 
-      setTextProps: (id, patch) =>
+      setTextProps: (id, patch, transient = false) =>
         set((s) => {
           const target = surfaceObjects(s).find((o) => o.id === id);
           if (!target || target.type !== "text" || !target.text) return s;
           const next = applyTextProps(target, patch);
           if (JSON.stringify(next) === JSON.stringify(target)) return s;
-          return {
-            ...pushed(s, s.doc),
-            doc: mapSurfaceObjects(s, (objs) => objs.map((o) => (o.id === id ? next : o))),
-          };
+          const doc = mapSurfaceObjects(s, (objs) => objs.map((o) => (o.id === id ? next : o)));
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
         }),
 
       addObject: (obj) =>
@@ -1145,13 +1145,13 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return transient ? { doc } : { ...pushed(s, s.doc), doc };
         }),
 
-      setObjectProps: (id, patch) =>
-        set((s) => ({
-          ...pushed(s, s.doc),
-          doc: mapSurfaceObjects(s, (objs) =>
+      setObjectProps: (id, patch, transient = false) =>
+        set((s) => {
+          const doc = mapSurfaceObjects(s, (objs) =>
             objs.map((o) => (o.id === id ? applyProps(o, patch) : o)),
-          ),
-        })),
+          );
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
 
       deleteSelection: () =>
         set((s) => {
