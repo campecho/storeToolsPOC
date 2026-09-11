@@ -104,4 +104,5 @@ export function statusMeta(type: ItemType, status: ItemStatus): { label: string;
   return { label: type === "bug" ? "Closed" : "Declined", dot: "#bcbcbc" };
 }
 
+export * from "./color";
 export * from "./layout";
