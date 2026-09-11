@@ -35,6 +35,9 @@ export const OBJECT_PALETTE: readonly { id: string; color: ColorValue }[] = [
   { id: "brand", color: cmykPercent(0, 100, 100, 20) },
 ];
 
+/** The preset a stroke width edit paints with when the object had no stroke. */
+export const DEFAULT_STROKE_PRESET: ColorValue = cmykPercent(0, 0, 0, 67);
+
 export const STROKE_WIDTHS = [1, 1.5, 2, 3, 4] as const;
 
 export type DrawableFrameType = "rect" | "ellipse" | "picture";

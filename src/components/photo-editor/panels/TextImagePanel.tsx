@@ -68,6 +68,11 @@ export function TextImagePanel() {
   const selected = overlays.find((o) => o.id === selectedOverlayId) ?? null;
   const selectedText: TextOverlayOp | null =
     selected && selected.op === "textOverlay" ? selected : null;
+  // A stable Paint per ink, so the picker's re-seed effect sees one value per edit.
+  const selectedInk = useMemo(
+    () => (selectedText ? solidPaint(selectedText.color) : null),
+    [selectedText],
+  );
   // The render contract caps the overlays sidecar at 16 — guard the add so an
   // export never fails validation (RenderPayloadSchema.overlays.max(16)).
   const atCap = overlays.length >= 16;
@@ -311,7 +316,7 @@ export function TextImagePanel() {
             {/* Text color (Phase 12): the CMYK-first picker; every commit —
                 live drag or field — rides the coalesced "Edit text" step. */}
             <ColorPicker
-              value={selectedText ? solidPaint(selectedText.color) : null}
+              value={selectedInk}
               onChange={(paint) => {
                 if (paint?.kind === "color") editText({ color: paint.color });
               }}
@@ -324,7 +329,7 @@ export function TextImagePanel() {
             >
               <span
                 className="block h-[16px] w-[20px] rounded-[3px] border border-[#d6d6d6]"
-                style={{ backgroundColor: selectedText ? paintToCss(solidPaint(selectedText.color), []) : "#ffffff" }}
+                style={{ backgroundColor: selectedInk ? paintToCss(selectedInk, []) : "#ffffff" }}
               />
             </ColorPicker>
           </div>

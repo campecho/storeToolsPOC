@@ -458,7 +458,7 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(22, 112, 172)");
   });
 
-  test("color picker: RGB channels, None, and the K-only text ink", async ({ page }) => {
+  test("color picker: RGB channels, None, and the print-native default fill", async ({ page }) => {
     await page.goto("/layout");
     await page.getByTestId("tool-rect").click();
     await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });

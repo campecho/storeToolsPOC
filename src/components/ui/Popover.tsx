@@ -46,26 +46,40 @@ export function Popover({
       setPos({ top, left });
     };
     place();
+    // the panel's height changes with its content (a mode switch) — re-place
+    // so a panel flipped above its trigger never floats away from it
+    const observer = panelRef.current ? new ResizeObserver(place) : null;
+    if (panelRef.current) observer?.observe(panelRef.current);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => {
+      observer?.disconnect();
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
   }, [open, width]);
+
+  // The latest onClose, read at event time, so a fresh callback identity per
+  // render doesn't re-subscribe the listeners.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return;
-      onClose();
+      onCloseRef.current();
     };
+    // Capture phase, so the editor's own Escape (deselect) never fires under
+    // an open popover. An input inside the panel that owns a draft marks
+    // itself `data-draft`: that Escape is the input's to revert, and the
+    // popover stays open for it.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
+      if (e.key !== "Escape") return;
+      if (e.target instanceof HTMLElement && e.target.dataset.draft === "true") return;
+      e.stopPropagation();
+      onCloseRef.current();
     };
     window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey, true);
@@ -73,7 +87,7 @@ export function Popover({
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <div ref={anchorRef} className="relative inline-flex shrink-0">

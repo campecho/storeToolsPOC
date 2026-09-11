@@ -1300,6 +1300,36 @@ describe("persisted-state validation (the merge guard)", () => {
     }
   });
 
+  it("a v3 photoEdit recipe's text overlay lifts its hex ink through the layout migration", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v3.json"), "utf8");
+    const v3 = JSON.parse(raw) as { pages: { layers: { objects: Record<string, unknown>[] }[] }[] };
+    const hero = v3.pages[0].layers[0].objects.find((o) => o.id === "obj-hero")!;
+    hero.photoEdit = {
+      originalAssetId: "asset-1",
+      recipe: [
+        {
+          op: "textOverlay",
+          label: "Add text",
+          id: "t1",
+          text: "hi",
+          font: { family: "Arimo", size: 24, bold: false, italic: false },
+          color: "#CC0000",
+          align: "left",
+          box: { x: 0, y: 0, w: 50, h: 20 },
+          rotation: 0,
+        },
+      ],
+    };
+    const parsed = V3LayoutDocumentSchema.safeParse(v3);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    const migrated = migrateV3Document(parsed.data);
+    expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
+    const out = migrated.pages[0].layers[0].objects.find((o) => o.id === "obj-hero");
+    const op = out?.type === "picture" ? out.photoEdit?.recipe[0] : undefined;
+    expect(op?.op === "textOverlay" && op.color).toEqual({ space: "rgb", values: [0.8, 0, 0] });
+  });
+
   it("a v3 document (fixtures/layout-document.v3.json) migrates to v4 — every hex becomes an rgb literal Paint, layer accents stay hex", () => {
     const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v3.json"), "utf8");
     const v3 = V3LayoutDocumentSchema.safeParse(JSON.parse(raw));

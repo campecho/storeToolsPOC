@@ -1,4 +1,4 @@
-import type { Paragraph, Swatch, TextProps, TextRun } from "@/schema";
+import { PaintSchema, type Paragraph, type Swatch, type TextProps, type TextRun } from "@/schema";
 import { paintKey, paintToCss } from "@/lib/color/paint";
 import { fontStack, ptToPx, type RunStyle } from "@/lib/layout/text";
 
@@ -110,7 +110,11 @@ function parseRunStyle(node: Node | null): RunStyle | undefined {
     const raw = (n as Element).getAttribute(RUN_ATTR);
     if (raw) {
       try {
-        return JSON.parse(raw) as RunStyle;
+        const parsed = JSON.parse(raw) as { font: RunStyle["font"]; color: unknown };
+        // the ink is a Paint (schema v4) — a stale or foreign attribute must
+        // never smuggle a hex string back into the document
+        const color = PaintSchema.safeParse(parsed.color);
+        return color.success ? { font: parsed.font, color: color.data } : undefined;
       } catch {
         return undefined;
       }

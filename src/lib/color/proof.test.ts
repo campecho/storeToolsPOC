@@ -96,7 +96,9 @@ describe("proofRgb and gamut", () => {
     const orange = proofRgb([1, 0.5, 0]);
     expect(orange[0]).toBeLessThan(1);
     expect(gamutShift([1, 0.5, 0])).toBeGreaterThan(GAMUT_WARN_DELTA_E);
-    expect(gamutShift([0.5, 0.5, 0.5])).toBeLessThan(GAMUT_WARN_DELTA_E);
+    // a light neutral sits well inside the gamut (mid grey shifts ~5 ΔE, near
+    // the ASSUMED threshold, so it is not the example)
+    expect(gamutShift([0.94, 0.94, 0.94])).toBeLessThan(GAMUT_WARN_DELTA_E);
     expect(isOutOfGamut([1, 0, 0])).toBe(true);
     expect(isOutOfGamut([0.94, 0.94, 0.94])).toBe(false);
   });

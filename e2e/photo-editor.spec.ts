@@ -1746,6 +1746,10 @@ test.describe("Text & image (PE6)", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("text-color-popover")).toBeHidden();
     await expectHistory(page, 2); // "Edit text" coalesced into the add
+    // the ink reached the overlay: reopening reads it back as K 50
+    await page.getByTestId("text-color-trigger").click();
+    await expect(page.getByTestId("text-color-k")).toHaveValue("50");
+    await page.keyboard.press("Escape");
   });
 
   test("corner handle scales the box and the font size together", async ({ page }) => {

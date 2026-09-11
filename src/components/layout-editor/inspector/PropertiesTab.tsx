@@ -4,9 +4,11 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
 import type { ColorValue, LayoutDocument, LayoutObject, Paint } from "@/schema";
+import { to255, toPercent } from "@/lib/color/convert";
 import { paintEquals, paintToCss, solidPaint } from "@/lib/color/paint";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import {
+  DEFAULT_STROKE_PRESET,
   OBJECT_PALETTE,
   STROKE_WIDTHS,
   bboxOf,
@@ -26,7 +28,9 @@ import { Field, NumberField, SectionLabel } from "./Field";
  * No selection shows the wire's empty state.
  */
 
-function Swatch({
+/** One preset ink from OBJECT_PALETTE (or None) — distinct from the
+    document's named Swatch model, which the picker lists separately. */
+function PresetSwatch({
   color,
   active,
   onPick,
@@ -42,7 +46,13 @@ function Swatch({
       type="button"
       onClick={onPick}
       data-testid={testId}
-      aria-label={color ? `${color.space} ${color.values.join(" ")}` : "None"}
+      aria-label={
+        color
+          ? color.space === "cmyk"
+            ? `CMYK ${color.values.map(toPercent).join(" ")}`
+            : `RGB ${color.values.map(to255).join(" ")}`
+          : "None"
+      }
       aria-pressed={active}
       className={`relative h-[18px] w-[18px] cursor-pointer rounded-[4px] border ${
         active ? "border-[1.5px] border-brand" : "border-[#d6d6d6]"
@@ -209,14 +219,14 @@ export function PropertiesTab() {
         <div>
           <SectionLabel>Fill</SectionLabel>
           <div className="flex flex-wrap gap-[6px]">
-            <Swatch
+            <PresetSwatch
               color={null}
               active={obj.fill === null}
               onPick={() => setObjectProps(obj.id, { fill: null })}
               testId="fill-none"
             />
             {OBJECT_PALETTE.map((c) => (
-              <Swatch
+              <PresetSwatch
                 key={c.id}
                 color={c.color}
                 active={paintEquals(obj.fill, solidPaint(c.color))}
@@ -243,7 +253,7 @@ export function PropertiesTab() {
         <SectionLabel>Stroke</SectionLabel>
         <div className="mb-2 flex flex-wrap gap-[6px]">
           {!line && (
-            <Swatch
+            <PresetSwatch
               color={null}
               active={stroke === null}
               onPick={() => setObjectProps(obj.id, { stroke: null })}
@@ -251,7 +261,7 @@ export function PropertiesTab() {
             />
           )}
           {OBJECT_PALETTE.map((c) => (
-            <Swatch
+            <PresetSwatch
               key={c.id}
               color={c.color}
               active={paintEquals(stroke?.paint, solidPaint(c.color))}
@@ -277,7 +287,7 @@ export function PropertiesTab() {
             value={stroke?.width ?? ""}
             onChange={(e) =>
               setObjectProps(obj.id, {
-                stroke: { paint: stroke?.paint ?? solidPaint(OBJECT_PALETTE[5].color), width: Number(e.target.value) },
+                stroke: { paint: stroke?.paint ?? solidPaint(DEFAULT_STROKE_PRESET), width: Number(e.target.value) },
               })
             }
             data-testid="stroke-width"

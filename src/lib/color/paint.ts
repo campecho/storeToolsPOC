@@ -1,5 +1,5 @@
 import type { ColorValue, Paint, Swatch } from "@/schema";
-import { colorFromHex, formatHex, naiveColorToRgb, to255, toPercent, type Rgb } from "./convert";
+import { cmykPercent, colorFromHex, formatHex, naiveColorToRgb, to255, toPercent, type Rgb } from "./convert";
 import { proofColor } from "./proof";
 
 /**
@@ -14,11 +14,11 @@ import { proofColor } from "./proof";
  *
  * Swatch references resolve through the document's swatch list (a spot
  * swatch renders its CMYK process fallback); a dangling id renders the
- * literal fallback black rather than erroring — the soft-reference rule
- * `masterId` already follows.
+ * fallback black — 100% K, the same black every default ink uses — rather
+ * than erroring: the soft-reference rule `masterId` already follows.
  */
 
-const FALLBACK_BLACK: ColorValue = { space: "rgb", values: [0, 0, 0] };
+const FALLBACK_BLACK: ColorValue = cmykPercent(0, 0, 0, 100);
 
 export function solidPaint(color: ColorValue): Paint {
   return { kind: "color", color };
@@ -54,7 +54,7 @@ export function resolvePaintColor(paint: Paint, swatches: readonly Swatch[]): Co
 /** PREVIEW rgb (0–1) for a paint: the print proof (proof.ts) — a cmyk
     literal as the press renders it, an rgb literal as it will look once
     separated and printed. */
-export function paintToRgb(paint: Paint, swatches: readonly Swatch[]): Rgb {
+function paintToRgb(paint: Paint, swatches: readonly Swatch[]): Rgb {
   return proofColor(resolvePaintColor(paint, swatches));
 }
 

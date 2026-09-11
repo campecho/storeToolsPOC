@@ -122,7 +122,9 @@ function ChannelInput({
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
-        if (e.key === "Escape") {
+        if (e.key === "Escape" && draft !== null) {
+          // revert the draft; a second Escape (no draft) closes the popover
+          e.stopPropagation();
           escaped.current = true;
           setDraft(null);
           e.currentTarget.blur();
@@ -131,6 +133,7 @@ function ChannelInput({
       inputMode="numeric"
       aria-label={label}
       data-testid={testId}
+      data-draft={draft !== null ? "true" : undefined}
       className="h-[24px] w-[42px] rounded-[5px] border border-[#d6d6d6] bg-white px-[6px] text-right text-[11px] text-[#444] outline-none focus:border-[#b0b0b0]"
     />
   );
@@ -182,8 +185,10 @@ export function ColorPicker({
   const fieldRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
-  // Outside edits (undo, another control, a swatch swap) re-seed the draft;
-  // our own emissions don't, because conversion rounding would move the field.
+  // Outside edits (undo, another control, a different paint arriving)
+  // re-seed the draft; our own emissions don't, because conversion rounding
+  // would move the field. A referenced swatch's VALUES changing does not
+  // re-seed (the key is swatch id + tint) — there is no swatch editor yet.
   useEffect(() => {
     const key = value ? paintKey(value) : null;
     if (key === lastEmitted.current) return;
@@ -330,9 +335,13 @@ export function ColorPicker({
           if (e.buttons & 1) pickFromField(e, true);
         }}
         onPointerUp={(e) => {
-          pickFromField(e, false);
+          // the gesture commit (onDragEnd) is the history boundary — the
+          // release itself stays live, or the drag would push two entries
+          pickFromField(e, true);
           endDrag();
         }}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
         onKeyDown={(e) => {
           const step = e.shiftKey ? 0.1 : 0.01;
           const nudge: Partial<Hsv> | null =
@@ -362,8 +371,15 @@ export function ColorPicker({
         min={0}
         max={360}
         value={Math.round(hsv.h)}
-        onPointerDown={beginDrag}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          beginDrag();
+        }}
         onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+        // keyboard steps never begin a drag, so each is a discrete history
+        // entry — the "styling clicks are discrete commits" rule
         onChange={(e) => commitHsv({ ...hsv, h: Number(e.target.value) }, dragging.current)}
         aria-label="Hue"
         data-testid={`${p}-hue`}
@@ -391,8 +407,13 @@ export function ColorPicker({
                   min={0}
                   max={100}
                   value={pct}
-                  onPointerDown={beginDrag}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    beginDrag();
+                  }}
                   onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onLostPointerCapture={endDrag}
                   onChange={(e) => set(Number(e.target.value), dragging.current)}
                   aria-label={`${label} percent`}
                   data-testid={`${p}-${label.toLowerCase()}-slider`}
@@ -426,8 +447,13 @@ export function ColorPicker({
                   min={0}
                   max={255}
                   value={n}
-                  onPointerDown={beginDrag}
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    beginDrag();
+                  }}
                   onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onLostPointerCapture={endDrag}
                   onChange={(e) => set(Number(e.target.value), dragging.current)}
                   aria-label={`${label} value`}
                   data-testid={`${p}-${label.toLowerCase()}-slider`}
@@ -467,7 +493,8 @@ export function ColorPicker({
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") e.currentTarget.blur();
-                if (e.key === "Escape") {
+                if (e.key === "Escape" && hexDraft !== null) {
+                  e.stopPropagation();
                   setHexDraft(null);
                   setHexInvalid(false);
                   e.currentTarget.blur();
@@ -477,6 +504,7 @@ export function ColorPicker({
               aria-label="Hex color"
               aria-invalid={hexInvalid}
               data-testid={`${p}-hex`}
+              data-draft={hexDraft !== null ? "true" : undefined}
               className={`h-[24px] flex-1 rounded-[5px] border bg-white px-[8px] font-mono text-[12px] uppercase text-[#444] outline-none ${
                 hexInvalid ? "border-brand" : "border-[#d6d6d6] focus:border-[#b0b0b0]"
               }`}
