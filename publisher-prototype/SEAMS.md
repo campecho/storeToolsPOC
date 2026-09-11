@@ -706,3 +706,22 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   specs assert on ALPHA (255 on the page, ≈128 ghosted, 0 untouched), independent of
   fill and pasteboard colours. The spec zooms to 50% first: the boot viewport shows a
   quarter inch of pasteboard and nothing above y ≈ 2.4 in.
+- **Print preview tables (recorded 2026-09-11, user decision):** content may be authored
+  in CMYK or RGB, the shop prints CMYK, and the canvas must show content as close as
+  possible to how it will print. So every CSS colour `core/render/paint.ts` emits is a
+  print PREVIEW: a cmyk literal as the press renders it, an rgb literal as it will look
+  once separated and printed, a spot swatch through its CMYK process fallback. The
+  preview comes from two committed lookup tables under `core/color/luts/` — exact
+  transforms of the GRACoL2013_CRPC6 press profile (perceptual intent, sampled with an
+  lcms-based tool; provenance and profile hash in each file's header) at 9 (CMYK→sRGB)
+  and 17 (sRGB→CMYK) steps, interpolated multilinearly in `core/color/proof.ts` — no
+  ICC engine in the prototype, no async load. This is a SURFACE (PLAN.md §2: ICC/CMYK
+  transforms are the dev team's): production colour management replaces the resolver
+  behind the same `paintToCss`/`proofColor` signatures, and the export step must pass
+  cmyk literals through untouched and convert rgb literals with the SAME profile the
+  tables came from, or preview and print disagree. `paintToHex` is the one LITERAL
+  output (an rgb literal's exact hex) for fields that show what was typed. Tint is ink
+  at t% applied in the swatch's own space before proofing. ASSUMPTION for SME review:
+  `GAMUT_WARN_DELTA_E = 6` (ΔE76) is where an rgb colour's shift on press is flagged.
+  The naive (1−ink)(1−k) formulas remain in `core/color/convert.ts` as the fallback if
+  a table fails to decode and as the test oracle.

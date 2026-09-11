@@ -3,10 +3,13 @@ import type { Swatch } from "../model";
 import { hexToColorValue, paintToCss, paintToHex, paintToShadedCss } from "./paint";
 
 /**
- * Paint → CSS resolution: literal colors render directly (cmyk via the
- * naive (1−ink)(1−k) fallback), swatch references resolve through the
- * swatch list with optional tint toward paper white, and a dangling
- * swatchId renders fallback black — the soft-reference rule.
+ * Paint → CSS resolution: every CSS value is the PRINT PREVIEW (proof.ts,
+ * the "Print preview tables" surface) — a cmyk literal as the press renders
+ * it, an rgb literal as it will look once separated and printed. Swatch
+ * references resolve through the swatch list with optional tint (ink at
+ * t%), and a dangling swatchId renders fallback black — the soft-reference
+ * rule. The literal values behind these expectations are checked in
+ * ../color/proof.test.ts against the profile's own samples.
  */
 
 const swatches: Swatch[] = [
@@ -22,45 +25,45 @@ const swatches: Swatch[] = [
 ];
 
 describe("paintToCss", () => {
-  it("renders a literal rgb color", () => {
+  it("renders a literal rgb color as it will print — an out-of-gamut orange dulls", () => {
     expect(
       paintToCss({ kind: "color", color: { space: "rgb", values: [1, 0.5, 0] } }, swatches),
-    ).toBe("rgb(255, 128, 0)");
+    ).toBe("rgb(240, 130, 18)");
   });
 
-  it("renders a literal cmyk color via the naive fallback conversion", () => {
+  it("renders a literal cmyk color as the press does — 100% K is a dark grey, M+Y the press red", () => {
     expect(
       paintToCss({ kind: "color", color: { space: "cmyk", values: [0, 1, 1, 0] } }, swatches),
-    ).toBe("rgb(255, 0, 0)");
+    ).toBe("rgb(234, 39, 26)");
     expect(
       paintToCss({ kind: "color", color: { space: "cmyk", values: [0, 0, 0, 1] } }, swatches),
-    ).toBe("rgb(0, 0, 0)");
+    ).toBe("rgb(22, 23, 19)");
   });
 
   it("resolves an rgb swatch reference", () => {
-    expect(paintToCss({ kind: "swatch", swatchId: "sw-rgb" }, swatches)).toBe("rgb(51, 102, 153)");
+    expect(paintToCss({ kind: "swatch", swatchId: "sw-rgb" }, swatches)).toBe("rgb(36, 97, 145)");
   });
 
-  it("renders cmyk and spot swatches through their fallback values", () => {
-    expect(paintToCss({ kind: "swatch", swatchId: "sw-cmyk" }, swatches)).toBe("rgb(0, 0, 0)");
-    expect(paintToCss({ kind: "swatch", swatchId: "sw-spot" }, swatches)).toBe("rgb(255, 0, 0)");
+  it("renders cmyk and spot swatches through their process values", () => {
+    expect(paintToCss({ kind: "swatch", swatchId: "sw-cmyk" }, swatches)).toBe("rgb(22, 23, 19)");
+    expect(paintToCss({ kind: "swatch", swatchId: "sw-spot" }, swatches)).toBe("rgb(234, 39, 26)");
   });
 
-  it("applies tint as a mix toward paper white", () => {
+  it("applies tint as ink at t% — 50% of K100 previews as the press's K50", () => {
     expect(paintToCss({ kind: "swatch", swatchId: "sw-cmyk", tint: 0.5 }, swatches)).toBe(
-      "rgb(128, 128, 128)",
+      "rgb(148, 149, 148)",
     );
     expect(paintToCss({ kind: "swatch", swatchId: "sw-cmyk", tint: 1 }, swatches)).toBe(
-      "rgb(0, 0, 0)",
+      "rgb(22, 23, 19)",
     );
     expect(paintToCss({ kind: "swatch", swatchId: "sw-cmyk", tint: 0 }, swatches)).toBe(
       "rgb(255, 255, 255)",
     );
   });
 
-  it("renders fallback black for a dangling swatch id", () => {
-    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, swatches)).toBe("rgb(0, 0, 0)");
-    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, [])).toBe("rgb(0, 0, 0)");
+  it("renders fallback black for a dangling swatch id (an rgb black, so it prints as rich black)", () => {
+    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, swatches)).toBe("rgb(4, 3, 3)");
+    expect(paintToCss({ kind: "swatch", swatchId: "gone" }, [])).toBe("rgb(4, 3, 3)");
   });
 });
 
@@ -78,9 +81,10 @@ describe("hexToColorValue", () => {
     expect(hexToColorValue("#4472C4")).toEqual(hexToColorValue("#4472c4"));
   });
 
-  it("round-trips through paintToCss", () => {
+  it("round-trips through paintToHex exactly; paintToCss shows how it prints", () => {
+    expect(paintToHex({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe("#4472c4");
     expect(paintToCss({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe(
-      "rgb(68, 114, 196)",
+      "rgb(60, 114, 173)",
     );
   });
 
@@ -92,11 +96,11 @@ describe("hexToColorValue", () => {
 });
 
 describe("paintToHex", () => {
-  it("formats a literal rgb color as the input[type=color] #rrggbb form", () => {
+  it("formats a literal rgb color as its exact #rrggbb — the LITERAL, not the preview", () => {
     expect(paintToHex({ kind: "color", color: hexToColorValue("#4472c4") }, [])).toBe("#4472c4");
   });
 
-  it("resolves swatch references (spot via its cmyk fallback) like paintToCss", () => {
+  it("resolves swatch references (spot via its cmyk fallback, naive for hex)", () => {
     expect(paintToHex({ kind: "swatch", swatchId: "sw-rgb" }, swatches)).toBe("#336699");
     expect(paintToHex({ kind: "swatch", swatchId: "sw-spot" }, swatches)).toBe("#ff0000");
   });
@@ -111,7 +115,7 @@ describe("paintToShadedCss", () => {
     // The banner's folds: the same surface in shadow, not a grey wash.
     expect(
       paintToShadedCss({ kind: "color", color: { space: "rgb", values: [1, 0.5, 0] } }, swatches),
-    ).toBe("rgb(204, 102, 0)");
+    ).toBe("rgb(192, 104, 14)");
   });
 
   it("shades a swatch reference through the same resolution paintToCss uses", () => {
