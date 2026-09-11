@@ -380,7 +380,8 @@ export function ColorPicker({
             const set = (next: number, live: boolean) => {
               const values = [...displayCmyk] as [number, number, number, number];
               values[i] = next / 100;
-              emit({ space: "cmyk", values }, live);
+              // every channel at display precision: what is stored is what is shown
+              emit(roundCmyk(values), live);
             };
             return (
               <div key={label} className="flex items-center gap-2">
@@ -415,7 +416,7 @@ export function ColorPicker({
             const set = (next: number, live: boolean) => {
               const values = [...displayRgb] as [number, number, number];
               values[i] = next / 255;
-              emit({ space: "rgb", values }, live);
+              emit(roundRgb(values), live);
             };
             return (
               <div key={label} className="flex items-center gap-2">
