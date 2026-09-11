@@ -1,5 +1,6 @@
 import type { ColorValue, Paint, Swatch } from "@/schema";
 import { colorFromHex, formatHex, naiveColorToRgb, to255, toPercent, type Rgb } from "./convert";
+import { proofColor } from "./proof";
 
 /**
  * Paint resolution (redesign plan Phase 12) — the ONE place a Paint becomes a
@@ -50,16 +51,26 @@ export function resolvePaintColor(paint: Paint, swatches: readonly Swatch[]): Co
   return applyTint(color, paint.tint);
 }
 
-/** PREVIEW rgb (0–1) for a paint. Naive device conversion until the
-    GRACoL-derived tables land (Phase 12, print preview). */
+/** PREVIEW rgb (0–1) for a paint: the print proof (proof.ts) — a cmyk
+    literal as the press renders it, an rgb literal as it will look once
+    separated and printed. */
 export function paintToRgb(paint: Paint, swatches: readonly Swatch[]): Rgb {
-  return naiveColorToRgb(resolvePaintColor(paint, swatches));
+  return proofColor(resolvePaintColor(paint, swatches));
 }
 
-/** PREVIEW as a CSS color — what every canvas, thumbnail, and face renders. */
+const cssCache = new Map<string, string>();
+
+/** PREVIEW as a CSS color — what every canvas, thumbnail, and face renders.
+    Memoized by paint identity: the canvas resolves every object every frame. */
 export function paintToCss(paint: Paint, swatches: readonly Swatch[]): string {
+  const key = paint.kind === "swatch" ? `${paintKey(paint)}|${swatches.map((s) => `${s.id}:${s.space}:${s.values.join(",")}`).join(";")}` : paintKey(paint);
+  const hit = cssCache.get(key);
+  if (hit !== undefined) return hit;
   const [r, g, b] = paintToRgb(paint, swatches);
-  return `rgb(${to255(r)}, ${to255(g)}, ${to255(b)})`;
+  const css = `rgb(${to255(r)}, ${to255(g)}, ${to255(b)})`;
+  if (cssCache.size > 4096) cssCache.clear();
+  cssCache.set(key, css);
+  return css;
 }
 
 /** LITERAL hex, lowercase: exact for an rgb literal (round-trips a v3 hex

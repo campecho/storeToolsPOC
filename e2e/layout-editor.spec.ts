@@ -402,16 +402,19 @@ test.describe("Objects: draw, select, transform (L4)", () => {
 
     await page.getByTestId("insp-page").click();
     await page.getByTestId("fill-CC0000").click();
+    // The canvas shows the PRINT PREVIEW (plan Phase 12): sRGB #cc0000
+    // separated through the GRACoL profile and rendered back — duller than
+    // the screen red, exactly as it will print.
     await expect(page.getByTestId("object-rect")).toHaveCSS(
       "background-color",
-      "rgb(204, 0, 0)",
+      "rgb(212, 45, 27)",
     );
 
     await page.reload();
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
     await expect(page.getByTestId("object-rect")).toHaveCSS(
       "background-color",
-      "rgb(204, 0, 0)",
+      "rgb(212, 45, 27)",
     );
   });
 
