@@ -3,6 +3,10 @@ import { inToPx } from "@/lib/layout/geometry";
 import { isOverflowing } from "@/lib/layout/text";
 import { paraCss, runCss } from "@/components/layout-editor/canvas/rich-text-dom";
 
+/** The mirror measures height only — a run's ink never moves a glyph, so no
+    swatch list is needed to resolve it. */
+const NO_SWATCHES: readonly never[] = [];
+
 /**
  * Import overset check + autofit (plan §10.4–§10.5, part of P4). Publisher's
  * "shrink text on overflow" and our font remapping (§10.5) mean an imported
@@ -126,10 +130,10 @@ export function measureFrameOverflow(
     const pd = d.createElement("div");
     Object.assign(pd.style, paraCss(p, zoom));
     // the paragraph carries its first run's scaled size so empty lines keep height
-    pd.style.fontSize = runCss(p.runs[0], zoom, fontScale).fontSize;
+    pd.style.fontSize = runCss(p.runs[0], zoom, fontScale, NO_SWATCHES).fontSize;
     for (const r of p.runs) {
       const span = d.createElement("span");
-      Object.assign(span.style, runCss(r, zoom, fontScale));
+      Object.assign(span.style, runCss(r, zoom, fontScale, NO_SWATCHES));
       span.textContent = r.text;
       pd.appendChild(span);
     }

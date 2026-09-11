@@ -16,18 +16,19 @@ import {
   translated,
   withBBox,
 } from "./objects";
+import { hexPaint } from "@/lib/color/paint";
 
 describe("factories", () => {
   it("frames get wireframe-language defaults and respect the minimum size", () => {
     const r = createFrame("rect", 1, 2, 3, 4);
     expect(r).toMatchObject({ type: "rect", x: 1, y: 2, w: 3, h: 4, rotation: 0, locked: false });
-    expect(r.fill).toBe("#f2f2f2");
-    expect(r.stroke).toEqual({ color: "#8f8f8f", width: 1 });
+    expect(r.fill).toEqual(hexPaint("#f2f2f2"));
+    expect(r.stroke).toEqual({ paint: hexPaint("#8f8f8f"), width: 1 });
     expect(createFrame("rect", 0, 0, 0.001, 0.001).w).toBe(MIN_OBJECT_IN);
   });
 
   it("pictures are the gray placeholder frame", () => {
-    expect(createFrame("picture", 0, 0, 2, 2).fill).toBe("#e8e8e8");
+    expect(createFrame("picture", 0, 0, 2, 2).fill).toEqual(hexPaint("#e8e8e8"));
   });
 
   it("lines keep endpoint geometry", () => {
@@ -48,7 +49,7 @@ describe("factories", () => {
             {
               text: "",
               font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
-              color: "#111111",
+              color: hexPaint("#111111"),
             },
           ],
         },

@@ -1,4 +1,5 @@
-import type { FontProps, Paragraph, TextAlign, TextProps, TextRun } from "@/schema";
+import type { FontProps, Paint, Paragraph, TextAlign, TextProps, TextRun } from "@/schema";
+import { hexPaint, paintKey } from "@/lib/color/paint";
 import { DEFAULT_FAMILY } from "./font-catalog";
 
 /**
@@ -12,7 +13,8 @@ import { DEFAULT_FAMILY } from "./font-catalog";
 
 export { FONT_FAMILIES, DEFAULT_FAMILY, fontStack } from "./font-catalog";
 
-export const DEFAULT_TEXT_COLOR = "#111111";
+/** The wire's near-black body ink, as a Paint (schema v4). */
+export const DEFAULT_TEXT_INK: Paint = hexPaint("#111111");
 
 export const FONT_SIZES = [8, 9, 10, 11, 12, 14, 18, 24, 36, 48, 60, 72];
 export const LINE_SPACINGS = [1, 1.15, 1.2, 1.5, 2];
@@ -42,12 +44,12 @@ export function isOverflowing(
 /* ── Schema-v2 text helpers: paragraphs/runs are the source of truth ── */
 
 /** The style a run carries — font plus ink (what TextPatch writes). */
-export type RunStyle = { font: FontProps; color: string };
+export type RunStyle = { font: FontProps; color: Paint };
 
 export function defaultRunStyle(): RunStyle {
   return {
     font: { family: DEFAULT_FAMILY, size: 11, bold: false, italic: false, underline: false },
-    color: DEFAULT_TEXT_COLOR,
+    color: DEFAULT_TEXT_INK,
   };
 }
 
@@ -83,7 +85,7 @@ export function plainToParagraphs(
  */
 export function textSummary(t: TextProps): {
   font: FontProps;
-  color: string;
+  color: Paint;
   align: TextAlign;
   lineSpacing: number;
   uniform: boolean;
@@ -93,7 +95,7 @@ export function textSummary(t: TextProps): {
   let bestN = 0;
   for (const p of t.paragraphs) {
     for (const r of p.runs) {
-      const key = JSON.stringify([r.font, r.color]);
+      const key = JSON.stringify([r.font, paintKey(r.color)]);
       const entry = weights.get(key) ?? { run: r, n: 0 };
       entry.n += Math.max(r.text.length, 1);
       weights.set(key, entry);
@@ -124,7 +126,7 @@ export type TextPatch = {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
-  color?: string;
+  color?: Paint;
   align?: TextAlign;
   lineSpacing?: number;
 };

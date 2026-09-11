@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { LayoutDocument, LayoutObject } from "@/lib/schema";
-import { baseLayerDef, BASE_LAYER_ID } from "@/lib/schema";
+import { baseLayerDef, BASE_LAYER_ID, LayoutDocumentSchema } from "@/lib/schema";
 import { migrateV2Document, V2LayoutDocumentSchema } from "@/lib/schema/layout-v2";
+import { migrateV3Document, type V3LayoutObject } from "@/lib/schema/layout-v3";
+import { hexPaint } from "@/lib/color/paint";
 import {
   addLayer,
   distributeToLayers,
@@ -25,14 +27,28 @@ const rect = (id: string): LayoutObject => ({
   h: 1,
   rotation: 0,
   locked: false,
-  fill: "#fff",
+  fill: hexPaint("#ffffff"),
+  stroke: null,
+});
+
+/** The same rect in the frozen v3 object shape (hex fill) for the v2 migration lane. */
+const v3Rect = (id: string): V3LayoutObject => ({
+  id,
+  type: "rect",
+  x: 0,
+  y: 0,
+  w: 1,
+  h: 1,
+  rotation: 0,
+  locked: false,
+  fill: "#ffffff",
   stroke: null,
 });
 
 /** Two layers (base + "top"), page 1: a/b on base, c on top. */
 function twoLayerDoc(): LayoutDocument {
   return {
-    version: 3,
+    version: 4,
     name: "t",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -57,6 +73,7 @@ function twoLayerDoc(): LayoutDocument {
     masters: [],
     assets: {},
     guides: { v: [], h: [] },
+    swatches: [],
   };
 }
 
@@ -206,16 +223,21 @@ describe("migrateV2Document", () => {
       bleed: 0,
       margin: 0.5,
       columns: 1,
-      pages: [{ id: "p1", masterId: null, objects: [rect("a"), rect("b")] }],
-      masters: [{ id: "m1", label: "A", objects: [rect("m")] }],
+      pages: [{ id: "p1", masterId: null, objects: [v3Rect("a"), v3Rect("b")] }],
+      masters: [{ id: "m1", label: "A", objects: [v3Rect("m")] }],
     });
     const v3 = migrateV2Document(v2);
     expect(v3.version).toBe(3);
     expect(v3.layers).toEqual([baseLayerDef()]);
     expect(v3.pages[0].layers).toEqual([
-      { layerId: BASE_LAYER_ID, objects: [rect("a"), rect("b")] },
+      { layerId: BASE_LAYER_ID, objects: [v3Rect("a"), v3Rect("b")] },
     ]);
     // masters stay flat
     expect(v3.masters[0].objects.map((o) => o.id)).toEqual(["m"]);
+    // …and the v3 → v4 step lifts the hex fills to Paints, reaching the current schema
+    const v4 = migrateV3Document(v3);
+    expect(LayoutDocumentSchema.safeParse(v4).success).toBe(true);
+    expect(v4.version).toBe(4);
+    expect(v4.pages[0].layers).toEqual([{ layerId: BASE_LAYER_ID, objects: [rect("a"), rect("b")] }]);
   });
 });

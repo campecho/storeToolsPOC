@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useLayoutStore } from "@/store";
+import { paintToCss } from "@/lib/color/paint";
 import { FindReplaceDialog } from "../FindReplaceDialog";
 import type { AlignKind } from "@/lib/layout/align";
 import { FONT_FAMILIES, FONT_SIZES, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
@@ -130,6 +131,7 @@ export function HomeBand() {
   const { target, summary, apply, applyStyle } = useTextTarget();
   const font = summary?.font;
   const styleKey = target ? matchTextStyle(target.text) : undefined;
+  const swatches = useLayoutStore((s) => s.doc.swatches);
 
   // Clipboard (plan L13): Copy/Cut track the selection, Paste tracks the clipboard
   const hasSelection = useLayoutStore((s) => s.selectedIds.length > 0);
@@ -238,7 +240,7 @@ export function HomeBand() {
             <span className="text-[11px] font-bold">A</span>
             <span
               className="mt-[1px] h-[3px] w-[15px] rounded-[1px]"
-              style={{ backgroundColor: summary?.color ?? "var(--color-brand)" }}
+              style={{ backgroundColor: summary ? paintToCss(summary.color, swatches) : "var(--color-brand)" }}
             />
           </span>
         </IconBtn>

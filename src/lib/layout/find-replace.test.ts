@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { FrameObject, LayoutDocument, Paragraph } from "@/lib/schema";
 import { BASE_LAYER_ID, baseLayerDef } from "@/lib/schema";
+import { hexPaint } from "@/lib/color/paint";
 import { findMatches, replaceInDoc } from "./find-replace";
 
 const font = { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false };
 const para = (texts: string[]): Paragraph => ({
   align: "left",
   lineSpacing: 1.2,
-  runs: texts.map((text) => ({ text, font, color: "#111" })),
+  runs: texts.map((text) => ({ text, font, color: hexPaint("#111111") })),
 });
 const frame = (id: string, paragraphs: Paragraph[]): FrameObject => ({
   id,
@@ -25,7 +26,7 @@ const frame = (id: string, paragraphs: Paragraph[]): FrameObject => ({
 
 function doc(frames: FrameObject[], masterFrames: FrameObject[] = []): LayoutDocument {
   return {
-    version: 3,
+    version: 4,
     name: "t",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -38,6 +39,7 @@ function doc(frames: FrameObject[], masterFrames: FrameObject[] = []): LayoutDoc
     masters: masterFrames.length ? [{ id: "m1", label: "A", objects: masterFrames }] : [],
     assets: {},
     guides: { v: [], h: [] },
+    swatches: [],
   };
 }
 

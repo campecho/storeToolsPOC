@@ -1,4 +1,6 @@
-import type { FrameObject, LayoutObject, LineObject } from "@/schema";
+import type { ColorValue, FrameObject, LayoutObject, LineObject } from "@/schema";
+import { colorFromHex } from "@/lib/color/convert";
+import { hexPaint } from "@/lib/color/paint";
 import { defaultTextProps } from "./text";
 
 /**
@@ -18,8 +20,10 @@ export const DUPLICATE_OFFSET_IN = 0.25;
 /** Shift while rotating snaps to this increment (plan L10). */
 export const ROTATE_SNAP_DEG = 15;
 
-/** Grayscale ramp + brand red — the wireframe language's ink set (plan L4). */
-export const OBJECT_PALETTE = [
+/** Grayscale ramp + brand red — the wireframe language's ink set (plan L4).
+    `id` is the swatch's test-id suffix (stable across the v4 color model);
+    `color` is the literal the swatch applies. */
+export const OBJECT_PALETTE: readonly { id: string; color: ColorValue }[] = [
   "#ffffff",
   "#f2f2f2",
   "#d9d9d9",
@@ -28,7 +32,7 @@ export const OBJECT_PALETTE = [
   "#555555",
   "#111111",
   "#CC0000",
-] as const;
+].map((hex) => ({ id: hex.slice(1), color: colorFromHex(hex) }));
 
 export const STROKE_WIDTHS = [1, 1.5, 2, 3, 4] as const;
 
@@ -53,8 +57,8 @@ export function createFrame(
     rotation: 0,
     locked: false,
     // picture = the gray placeholder frame (design doc §4.5; real import deferred)
-    fill: picture ? "#e8e8e8" : "#f2f2f2",
-    stroke: { color: picture ? "#b0b0b0" : "#8f8f8f", width: 1 },
+    fill: hexPaint(picture ? "#e8e8e8" : "#f2f2f2"),
+    stroke: { paint: hexPaint(picture ? "#b0b0b0" : "#8f8f8f"), width: 1 },
   };
 }
 
@@ -87,7 +91,7 @@ export function createLine(x1: number, y1: number, x2: number, y2: number): Line
     y1,
     x2,
     y2,
-    stroke: { color: "#555555", width: 1.5 },
+    stroke: { paint: hexPaint("#555555"), width: 1.5 },
   };
 }
 

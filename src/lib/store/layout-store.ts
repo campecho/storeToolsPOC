@@ -8,10 +8,12 @@ import {
   type MasterPage,
   type Orientation,
   type Paragraph,
+  type Paint,
   type Stroke,
 } from "@/schema";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
 import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
+import { V3LayoutDocumentSchema, migrateV3Document } from "@/lib/schema/layout-v3";
 import { BASE_LAYER_ID, baseLayerDef } from "@/lib/schema";
 import type { PhotoOp } from "@/lib/schema/photo";
 import {
@@ -120,7 +122,7 @@ export type TransformPatch = {
   y2?: number;
 };
 
-export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
+export type ObjectPropsPatch = { fill?: Paint | null; stroke?: Stroke | null };
 
 /** Flattened text edit (plan L5) — applies to the WHOLE frame: since schema
     v2 the runs are the source of truth, so a patch maps over every run. */
@@ -272,7 +274,7 @@ function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
 export function createDefaultDocument(): LayoutDocument {
   return {
-    version: 3,
+    version: 4,
     name: "Untitled publication",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -288,6 +290,7 @@ export function createDefaultDocument(): LayoutDocument {
       { id: "master-a", label: "A", objects: [] },
       { id: "master-b", label: "B", objects: [] },
     ],
+    swatches: [],
     assets: {},
     guides: { v: [], h: [] },
   };
@@ -1649,14 +1652,18 @@ export const useLayoutStore = create<LayoutEditorState>()(
         const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
         let parsed = LayoutDocumentSchema.safeParse(p?.doc);
         if (!parsed.success) {
-          const v2 = V2LayoutDocumentSchema.safeParse(p?.doc);
-          if (v2.success) {
-            parsed = { success: true, data: migrateV2Document(v2.data) };
-          } else {
-            const legacy = V1LayoutDocumentSchema.safeParse(p?.doc);
-            if (legacy.success) {
-              parsed = { success: true, data: migrateV2Document(migrateLegacyDocument(legacy.data)) };
-            }
+          const v3 = V3LayoutDocumentSchema.safeParse(p?.doc);
+          const v2 = v3.success ? null : V2LayoutDocumentSchema.safeParse(p?.doc);
+          const legacy = v3.success || v2?.success ? null : V1LayoutDocumentSchema.safeParse(p?.doc);
+          if (v3.success) {
+            parsed = { success: true, data: migrateV3Document(v3.data) };
+          } else if (v2?.success) {
+            parsed = { success: true, data: migrateV3Document(migrateV2Document(v2.data)) };
+          } else if (legacy?.success) {
+            parsed = {
+              success: true,
+              data: migrateV3Document(migrateV2Document(migrateLegacyDocument(legacy.data))),
+            };
           }
         }
         if (parsed.success) {

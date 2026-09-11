@@ -12,6 +12,8 @@ import { LayoutDocumentSchema, BASE_LAYER_ID, baseLayerDef } from "@/schema";
 import type { ImportReport } from "@/lib/import/report";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
 import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
+import { V3LayoutDocumentSchema, migrateV3Document } from "@/lib/schema/layout-v3";
+import { hexPaint } from "@/lib/color/paint";
 import { plainToParagraphs, textContent, textSummary } from "@/lib/layout/text";
 import { MAX_PAGE_IN } from "@/lib/layout/geometry";
 import {
@@ -309,7 +311,7 @@ describe("text frames (L5)", () => {
     const s = useLayoutStore.getState();
     const t = createTextFrame(1, 1, 3, 1);
     s.addObject(t);
-    const style = { font: t.text!.paragraphs[0].runs[0].font, color: "#111111" };
+    const style = { font: t.text!.paragraphs[0].runs[0].font, color: hexPaint("#111111") };
     const depth = useLayoutStore.getState().past.length;
     s.setTextParagraphs(t.id, plainToParagraphs("S", style));
     s.setTextParagraphs(t.id, plainToParagraphs("SP", style));
@@ -323,7 +325,7 @@ describe("text frames (L5)", () => {
     const s = useLayoutStore.getState();
     const t = createTextFrame(1, 1, 3, 1);
     s.addObject(t);
-    const style = { font: t.text!.paragraphs[0].runs[0].font, color: "#111111" };
+    const style = { font: t.text!.paragraphs[0].runs[0].font, color: hexPaint("#111111") };
     const before = useLayoutStore.getState().doc; // session opens
     s.setTextParagraphs(t.id, plainToParagraphs("Hello", style));
     s.setTextParagraphs(t.id, plainToParagraphs("Hello world", style));
@@ -1281,11 +1283,13 @@ describe("persisted-state validation (the merge guard)", () => {
     expect(LayoutDocumentSchema.safeParse(doc).success).toBe(true);
   });
 
-  it("the committed contract fixture parses (fixtures/layout-document.v3.json)", () => {
-    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v3.json"), "utf8");
+  it("the committed contract fixture parses (fixtures/layout-document.v4.json)", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v4.json"), "utf8");
     const parsed = LayoutDocumentSchema.safeParse(JSON.parse(raw));
     expect(parsed.success).toBe(true);
     if (parsed.success) {
+      expect(parsed.data.version).toBe(4);
+      expect(parsed.data.swatches).toEqual([]);
       expect(parsed.data.pages).toHaveLength(2);
       expect(parsed.data.masters.map((m) => m.label)).toEqual(["A", "B"]);
       // every page's master reference resolves (soft ref — see schema note)
@@ -1296,13 +1300,33 @@ describe("persisted-state validation (the merge guard)", () => {
     }
   });
 
-  it("a v2 document (fixtures/layout-document.v2.json) migrates to v3 — every page object preserved on the base layer", () => {
+  it("a v3 document (fixtures/layout-document.v3.json) migrates to v4 — every hex becomes an rgb literal Paint, layer accents stay hex", () => {
+    const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v3.json"), "utf8");
+    const v3 = V3LayoutDocumentSchema.safeParse(JSON.parse(raw));
+    expect(v3.success).toBe(true);
+    if (!v3.success) return;
+    const migrated = migrateV3Document(v3.data);
+    expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
+    expect(migrated.version).toBe(4);
+    expect(migrated.swatches).toEqual([]);
+    const page1 = migrated.pages[0].layers[0].objects;
+    const starBurst = page1.find((o) => o.id === "obj-star-burst");
+    expect(starBurst?.type === "path" && starBurst.fill).toEqual(hexPaint("#CC0000"));
+    const hero = page1.find((o) => o.id === "obj-hero");
+    expect(hero?.type === "picture" && hero.stroke).toEqual({ paint: hexPaint("#b0b0b0"), width: 1 });
+    const headline = page1.find((o) => o.id === "obj-headline");
+    const para = headline?.type === "text" ? headline.text?.paragraphs[0] : undefined;
+    expect(para?.runs[0].color).toEqual(hexPaint("#111111"));
+    // layer accents are UI chrome, not document ink — still hex
+    expect(migrated.layers[0].color).toBe("#41b6e6");
+  });
+
+  it("a v2 document (fixtures/layout-document.v2.json) migrates to v3 — every page object preserved on the base layer — and on to v4", () => {
     const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v2.json"), "utf8");
     const v2 = V2LayoutDocumentSchema.safeParse(JSON.parse(raw));
     expect(v2.success).toBe(true);
     if (!v2.success) return;
     const migrated = migrateV2Document(v2.data);
-    expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
     expect(migrated.version).toBe(3);
     expect(migrated.layers).toEqual([baseLayerDef()]);
     migrated.pages.forEach((p, i) => {
@@ -1310,30 +1334,35 @@ describe("persisted-state validation (the merge guard)", () => {
       expect(p.layers[0].layerId).toBe(BASE_LAYER_ID);
       expect(p.layers[0].objects).toEqual(v2.data.pages[i].objects);
     });
+    const current = migrateV3Document(migrated);
+    expect(LayoutDocumentSchema.safeParse(current).success).toBe(true);
+    expect(current.version).toBe(4);
   });
 
-  it("a persisted v1 document (fixtures/layout-document.v1.json) migrates to v3 — never dropped", () => {
+  it("a persisted v1 document (fixtures/layout-document.v1.json) migrates to v3 and on to v4 — never dropped", () => {
     const raw = readFileSync(join(process.cwd(), "fixtures/layout-document.v1.json"), "utf8");
     const v1 = V1LayoutDocumentSchema.safeParse(JSON.parse(raw));
     expect(v1.success).toBe(true);
     if (!v1.success) return;
-    const migrated = migrateV2Document(migrateLegacyDocument(v1.data));
-    // the migrated document is a fully valid v3 document…
+    const v3 = migrateV2Document(migrateLegacyDocument(v1.data));
+    expect(v3.version).toBe(3);
+    // non-text objects pass through the v1 → v3 steps untouched, landed on the base layer
+    expect(v3.pages[1].layers[0].objects[0]).toEqual(v1.data.pages[1].objects[0]);
+    // the fully migrated document is a valid current (v4) document…
+    const migrated = migrateV3Document(v3);
     expect(LayoutDocumentSchema.safeParse(migrated).success).toBe(true);
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     // …with the v1 text carried into runs (content, style, fixed v1 ink)
     const headline = migrated.pages[0].layers[0].objects.find((o) => o.id === "obj-headline");
     expect(headline?.type === "text" && headline.text && textContent(headline.text)).toBe("GRAND OPENING");
     const para = headline?.type === "text" ? headline.text?.paragraphs[0] : undefined;
     expect(para?.align).toBe("center");
     expect(para?.runs[0].font).toMatchObject({ family: "Motiva Sans", size: 48, bold: true });
-    expect(para?.runs[0].color).toBe("#111111");
-    // non-text objects pass through untouched, landed on the base layer
-    expect(migrated.pages[1].layers[0].objects[0]).toEqual(v1.data.pages[1].objects[0]);
+    expect(para?.runs[0].color).toEqual(hexPaint("#111111"));
   });
 
   it("rejects corrupt shapes so the editor falls back to pristine", () => {
-    expect(LayoutDocumentSchema.safeParse({ version: 3, name: "broken" }).success).toBe(false);
+    expect(LayoutDocumentSchema.safeParse({ version: 4, name: "broken" }).success).toBe(false);
     expect(LayoutDocumentSchema.safeParse(null).success).toBe(false);
     const noPages = { ...createDefaultDocument(), pages: [] };
     expect(LayoutDocumentSchema.safeParse(noPages).success).toBe(false);

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
-import type { LayoutObject } from "@/schema";
+import type { ColorValue, LayoutObject } from "@/schema";
+import { hexPaint, paintEquals, paintToCss, solidPaint } from "@/lib/color/paint";
 import {
   OBJECT_PALETTE,
   STROKE_WIDTHS,
@@ -27,7 +28,7 @@ function Swatch({
   onPick,
   testId,
 }: {
-  color: string | null;
+  color: ColorValue | null;
   active: boolean;
   onPick: () => void;
   testId: string;
@@ -37,12 +38,12 @@ function Swatch({
       type="button"
       onClick={onPick}
       data-testid={testId}
-      aria-label={color ?? "None"}
+      aria-label={color ? `${color.space} ${color.values.join(" ")}` : "None"}
       aria-pressed={active}
       className={`relative h-[18px] w-[18px] cursor-pointer rounded-[4px] border ${
         active ? "border-[1.5px] border-brand" : "border-[#d6d6d6]"
       }`}
-      style={{ backgroundColor: color ?? "#ffffff" }}
+      style={{ backgroundColor: color ? paintToCss(solidPaint(color), []) : "#ffffff" }}
     >
       {color === null && (
         // the classic "none" diagonal
@@ -199,11 +200,11 @@ export function PropertiesTab() {
             />
             {OBJECT_PALETTE.map((c) => (
               <Swatch
-                key={c}
-                color={c}
-                active={obj.fill?.toLowerCase() === c.toLowerCase()}
-                onPick={() => setObjectProps(obj.id, { fill: c })}
-                testId={`fill-${c.slice(1)}`}
+                key={c.id}
+                color={c.color}
+                active={paintEquals(obj.fill, solidPaint(c.color))}
+                onPick={() => setObjectProps(obj.id, { fill: solidPaint(c.color) })}
+                testId={`fill-${c.id}`}
               />
             ))}
           </div>
@@ -223,13 +224,13 @@ export function PropertiesTab() {
           )}
           {OBJECT_PALETTE.map((c) => (
             <Swatch
-              key={c}
-              color={c}
-              active={stroke?.color.toLowerCase() === c.toLowerCase()}
+              key={c.id}
+              color={c.color}
+              active={paintEquals(stroke?.paint, solidPaint(c.color))}
               onPick={() =>
-                setObjectProps(obj.id, { stroke: { color: c, width: stroke?.width ?? 1 } })
+                setObjectProps(obj.id, { stroke: { paint: solidPaint(c.color), width: stroke?.width ?? 1 } })
               }
-              testId={`stroke-${c.slice(1)}`}
+              testId={`stroke-${c.id}`}
             />
           ))}
         </div>
@@ -239,7 +240,7 @@ export function PropertiesTab() {
             value={stroke?.width ?? ""}
             onChange={(e) =>
               setObjectProps(obj.id, {
-                stroke: { color: stroke?.color ?? "#555555", width: Number(e.target.value) },
+                stroke: { paint: stroke?.paint ?? hexPaint("#555555"), width: Number(e.target.value) },
               })
             }
             data-testid="stroke-width"

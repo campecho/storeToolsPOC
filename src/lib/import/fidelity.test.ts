@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LayoutDocument, LayoutObject, TextRun } from "@/schema";
 import { BASE_LAYER_ID, baseLayerDef } from "@/schema";
+import { hexPaint } from "@/lib/color/paint";
 import {
   categoryRatio,
   computeFidelity,
@@ -44,7 +45,7 @@ const run = (text: string, over: Partial<TextRun["font"]> & { color?: string; fa
     italic: over.italic ?? false,
     underline: false,
   },
-  color: over.color ?? "#000000",
+  color: hexPaint(over.color ?? "#000000"),
 });
 
 const textFrame = (id: string, x: number, y: number, w: number, h: number, runs: TextRun[], rotation = 0): LayoutObject => ({
@@ -78,8 +79,8 @@ const pathObj = (
   h,
   rotation: 0,
   locked: false,
-  fill,
-  stroke: stroke ? { color: stroke, width: 1 } : null,
+  fill: fill === null ? null : hexPaint(fill),
+  stroke: stroke ? { paint: hexPaint(stroke), width: 1 } : null,
   d: [
     { c: "M", x: 0, y: 0 },
     { c: "L", x: 1, y: 0 },
@@ -104,7 +105,7 @@ const picture = (id: string, x: number, y: number, w: number, h: number, assetId
 });
 
 const doc = (objects: LayoutObject[], size = { w: 8.5, h: 11 }): LayoutDocument => ({
-  version: 3,
+  version: 4,
   name: "synthetic",
   product: null,
   size,
@@ -117,9 +118,10 @@ const doc = (objects: LayoutObject[], size = { w: 8.5, h: 11 }): LayoutDocument 
   masters: [],
   assets: {},
   guides: { v: [], h: [] },
+  swatches: [],
 });
 
-const score = (xhtml: string, d: LayoutDocument, blobs: ImportAssetsPayload = {}): FileScore =>
+const score =(xhtml: string, d: LayoutDocument, blobs: ImportAssetsPayload = {}): FileScore =>
   scoreAgainstReference({ name: "synthetic", refPages: parseReferencePages(xhtml), doc: d, blobs });
 
 const b64 = (s: string) => Buffer.from(s).toString("base64");

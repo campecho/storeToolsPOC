@@ -1,21 +1,18 @@
 import { z } from "zod";
+import { AssetSchema, OrientationSchema, ProductBindingSchema, baseLayerDef } from "./layout";
 import {
-  AssetSchema,
-  LayoutObjectSchema,
-  MasterPageSchema,
-  OrientationSchema,
-  ProductBindingSchema,
-  baseLayerDef,
-  type LayoutDocument,
-  type LayoutPage,
-} from "./layout";
+  V3LayoutObjectSchema,
+  V3MasterPageSchema,
+  type V3LayoutDocument,
+  type V3LayoutPage,
+} from "./layout-v3";
 
 /**
  * FROZEN schema v2 (redesign Phase 5) — the shape this POC persisted before
  * layers. Kept only so migrateV2Document can open v2 documents (localStorage,
  * saved `.staples` files, exported JSON). Never extend this file; new fields
- * go in layout.ts. Objects are shape-identical to v3, so their schemas are
- * shared; only the page/document containers are frozen here.
+ * go in layout.ts. Objects are shape-identical to v3, so the frozen v3 object
+ * schemas are shared; only the page/document containers are frozen here.
  *
  * v2 → v3 deltas: `version` 2→3; per-page flat `objects` → `layers`
  * ([{layerId, objects}]); new document-level `layers` definitions. A migrated
@@ -25,7 +22,7 @@ import {
 const V2LayoutPageSchema = z.object({
   id: z.string(),
   masterId: z.string().nullable(),
-  objects: z.array(LayoutObjectSchema),
+  objects: z.array(V3LayoutObjectSchema),
   sizeOverride: z.object({ w: z.number().positive(), h: z.number().positive() }).optional(),
 });
 export type V2LayoutPage = z.infer<typeof V2LayoutPageSchema>;
@@ -40,7 +37,7 @@ export const V2LayoutDocumentSchema = z.object({
   margin: z.number().min(0),
   columns: z.number().int().min(1),
   pages: z.array(V2LayoutPageSchema).min(1),
-  masters: z.array(MasterPageSchema),
+  masters: z.array(V3MasterPageSchema),
   assets: z.record(AssetSchema).default({}),
   guides: z
     .object({ v: z.array(z.number()), h: z.array(z.number()) })
@@ -49,13 +46,14 @@ export const V2LayoutDocumentSchema = z.object({
 export type V2LayoutDocument = z.infer<typeof V2LayoutDocumentSchema>;
 
 /** A v2 page's flat objects become the base layer's contents, z-order intact. */
-function migratePage(p: V2LayoutPage): LayoutPage {
+function migratePage(p: V2LayoutPage): V3LayoutPage {
   const { objects, ...rest } = p;
   return { ...rest, layers: [{ layerId: baseLayerDef().id, objects }] };
 }
 
-/** A parsed v2 document lifted to v3 — pure, total, unit-tested. */
-export function migrateV2Document(v2: V2LayoutDocument): LayoutDocument {
+/** A parsed v2 document lifted to v3 — chain migrateV3Document (layout-v3.ts)
+    after it to reach the current v4 shape. Pure, total, unit-tested. */
+export function migrateV2Document(v2: V2LayoutDocument): V3LayoutDocument {
   return {
     ...v2,
     version: 3,

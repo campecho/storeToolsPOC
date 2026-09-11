@@ -1,4 +1,5 @@
-import type { Paragraph, TextProps, TextRun } from "@/schema";
+import type { Paragraph, Swatch, TextProps, TextRun } from "@/schema";
+import { paintKey, paintToCss } from "@/lib/color/paint";
 import { fontStack, ptToPx, type RunStyle } from "@/lib/layout/text";
 
 /**
@@ -22,11 +23,14 @@ type ParaProps = Pick<Paragraph, "align" | "lineSpacing" | "indent" | "firstLine
 /** Inline CSS for one run at a zoom — shared with the static TextFrameNode.
     `fontScale` is the frame's import-autofit factor (schema `text.fontScale`):
     it scales the RENDERED size only — the run's declared size (and the data
-    attribute the parser reads back) stays the source of truth. */
+    attribute the parser reads back) stays the source of truth. The ink is a
+    Paint (schema v4) resolved to its PREVIEW color through the document's
+    swatches — the CSS shows the print proof, the data attribute keeps the Paint. */
 export function runCss(
-  run: { font: TextRun["font"]; color: string },
+  run: { font: TextRun["font"]; color: TextRun["color"] },
   zoom: number,
-  fontScale = 1,
+  fontScale: number,
+  swatches: readonly Swatch[],
 ) {
   return {
     fontFamily: fontStack(run.font.family),
@@ -34,7 +38,7 @@ export function runCss(
     fontWeight: run.font.bold ? "700" : "400",
     fontStyle: run.font.italic ? "italic" : "normal",
     textDecoration: run.font.underline ? "underline" : "none",
-    color: run.color,
+    color: paintToCss(run.color, swatches),
   } as const;
 }
 
@@ -61,7 +65,12 @@ function paraProps(p: Paragraph): ParaProps {
     frame's autofit scale (visual parity with the canvas) while the data
     attributes keep the DECLARED styles — parseEditableDom reads those, so a
     scaled frame round-trips its true run sizes untouched. */
-export function seedEditableDom(el: HTMLElement, text: TextProps, zoom: number): void {
+export function seedEditableDom(
+  el: HTMLElement,
+  text: TextProps,
+  zoom: number,
+  swatches: readonly Swatch[],
+): void {
   const scale = text.fontScale ?? 1;
   el.replaceChildren();
   for (const p of text.paragraphs) {
@@ -73,7 +82,7 @@ export function seedEditableDom(el: HTMLElement, text: TextProps, zoom: number):
       if (r.text === "") continue;
       const span = document.createElement("span");
       span.setAttribute(RUN_ATTR, JSON.stringify({ font: r.font, color: r.color }));
-      Object.assign(span.style, runCss(r, zoom, scale));
+      Object.assign(span.style, runCss(r, zoom, scale, swatches));
       span.textContent = r.text;
       div.appendChild(span);
       wrote = true;
@@ -86,7 +95,7 @@ export function seedEditableDom(el: HTMLElement, text: TextProps, zoom: number):
       const span = document.createElement("span");
       const style = p.runs[0];
       span.setAttribute(RUN_ATTR, JSON.stringify({ font: style.font, color: style.color }));
-      Object.assign(span.style, runCss(style, zoom, scale));
+      Object.assign(span.style, runCss(style, zoom, scale, swatches));
       div.appendChild(span);
       const br = document.createElement("br");
       br.setAttribute("data-ph", "1");
@@ -143,10 +152,11 @@ function tokensToRuns(
   // when anything else precedes it; a lone break IS the empty line.
   if (tokens.length > 1 && tokens[tokens.length - 1].text === "\n") tokens = tokens.slice(0, -1);
   if (tokens.length === 1 && tokens[0].text === "\n") tokens = [{ text: "", style: tokens[0].style }];
-  const runs: { text: string; font: RunStyle["font"]; color: string }[] = [];
+  const runs: { text: string; font: RunStyle["font"]; color: RunStyle["color"] }[] = [];
+  const styleKey = (font: RunStyle["font"], color: RunStyle["color"]) => JSON.stringify([font, paintKey(color)]);
   for (const t of tokens) {
     const prev = runs[runs.length - 1];
-    if (prev && JSON.stringify([prev.font, prev.color]) === JSON.stringify([t.style.font, t.style.color])) {
+    if (prev && styleKey(prev.font, prev.color) === styleKey(t.style.font, t.style.color)) {
       prev.text += t.text;
     } else {
       runs.push({ text: t.text, font: t.style.font, color: t.style.color });
