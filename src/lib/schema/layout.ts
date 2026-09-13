@@ -105,11 +105,51 @@ export const PathSegSchema = z.union([
 ]);
 export type PathSeg = z.infer<typeof PathSegSchema>;
 
-/** Rect / ellipse / picture / text / path frame. `text` is set on type "text"
-    only; `d` on type "path" only. */
+/** A point in an object's unit frame box. The callout tail tip deliberately
+    sits OUTSIDE 0–1 — that is what gives the tail length — so no bounds. */
+export const NormalizedPointSchema = z.object({ x: z.number(), y: z.number() });
+
+/**
+ * The geometry field(s) each parametric shape type owns (merged from the
+ * publisher prototype's SHAPE_GEOMETRY_FIELDS): a shape may carry its own
+ * kind's parameters and no other kind's, enforced by the superRefine below.
+ * Parameters are optional — absent means the kind's default at every point
+ * of use — so the delta stays additive (schema version stays 3; pre-merge
+ * documents parse unchanged).
+ */
+export const SHAPE_PARAM_FIELDS = {
+  roundedRect: ["cornerRadius"],
+  starPolygon: ["points", "innerRadiusRatio"],
+  callout: ["tailTip"],
+  banner: ["panelInset", "panelHeight"],
+} as const;
+
+const ALL_SHAPE_PARAM_FIELDS = [
+  "cornerRadius",
+  "points",
+  "innerRadiusRatio",
+  "tailTip",
+  "panelInset",
+  "panelHeight",
+] as const;
+
+/** Rect / ellipse / picture / text / path frame, plus the parametric shape
+    kinds merged from the publisher prototype (roundedRect / starPolygon /
+    callout / banner). `text` is set on type "text" only; `d` on type "path"
+    only; each parametric kind carries exactly its own SHAPE_PARAM_FIELDS. */
 export const FrameObjectSchema = z.object({
   id: z.string(),
-  type: z.enum(["rect", "ellipse", "picture", "text", "path"]),
+  type: z.enum([
+    "rect",
+    "ellipse",
+    "picture",
+    "text",
+    "path",
+    "roundedRect",
+    "starPolygon",
+    "callout",
+    "banner",
+  ]),
   x: z.number(),
   y: z.number(),
   w: z.number(),
@@ -142,8 +182,53 @@ export const FrameObjectSchema = z.object({
       originalAssetId: z.string(),
     })
     .optional(),
+  /** roundedRect only: corner radius, INCHES. Deliberately not clamped to the
+      frame (prototype decision of record): a resize can shrink a frame under
+      a radius the user set; the geometric bound (half the shorter side) is
+      applied wherever the shape is drawn, so growing the frame back restores
+      the radius rather than losing it. */
+  cornerRadius: z.number().min(0).optional(),
+  /** starPolygon only: outer point count. */
+  points: z.number().int().min(3).optional(),
+  /** starPolygon only: inner radius as a fraction of the outer. */
+  innerRadiusRatio: z.number().min(0).max(1).optional(),
+  /** callout only: the tail tip, normalized to the frame box (usually outside
+      0–1 — the tail reaches past the body on purpose). */
+  tailTip: NormalizedPointSchema.optional(),
+  /** banner only: how far the raised panel's sides sit in from the frame
+      edges, as a fraction of the frame. */
+  panelInset: z.number().min(0).max(1).optional(),
+  /** banner only: where the panel's bottom edge falls, as a fraction of the
+      frame. */
+  panelHeight: z.number().min(0).max(1).optional(),
+}).superRefine((o, ctx) => {
+  // A shape carries only its own kind's parameters (prototype rule): a stray
+  // parameter on the wrong kind is a document no tool can have written.
+  const owned: readonly string[] =
+    o.type in SHAPE_PARAM_FIELDS
+      ? SHAPE_PARAM_FIELDS[o.type as keyof typeof SHAPE_PARAM_FIELDS]
+      : [];
+  for (const field of ALL_SHAPE_PARAM_FIELDS) {
+    if (o[field] !== undefined && !owned.includes(field)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `"${field}" is not a parameter of type "${o.type}"`,
+      });
+    }
+  }
 });
 export type FrameObject = z.infer<typeof FrameObjectSchema>;
+
+/* Line decorations (merged from the publisher prototype's LineObject delta,
+   additive rule carried over: absent = the default — "none"/"m"/"solid" —
+   and tools omit defaults so pre-merge documents stay valid and lean). */
+export const ArrowHeadSchema = z.enum(["none", "arrow", "circle", "diamond"]);
+export type ArrowHead = z.infer<typeof ArrowHeadSchema>;
+export const ArrowHeadSizeSchema = z.enum(["s", "m", "l"]);
+export type ArrowHeadSize = z.infer<typeof ArrowHeadSizeSchema>;
+export const LineDashSchema = z.enum(["solid", "dashed", "dotted"]);
+export type LineDash = z.infer<typeof LineDashSchema>;
 
 export const LineObjectSchema = z.object({
   id: z.string(),
@@ -153,6 +238,15 @@ export const LineObjectSchema = z.object({
   x2: z.number(),
   y2: z.number(),
   stroke: StrokeSchema,
+  /** Decoration at the (x1,y1) end; absent = "none". An arrow is a line with
+      a head — there is no separate arrow object type. */
+  headStart: ArrowHeadSchema.optional(),
+  /** Decoration at the (x2,y2) end; absent = "none". */
+  headEnd: ArrowHeadSchema.optional(),
+  /** Head size for both ends; absent = "m". */
+  headSize: ArrowHeadSizeSchema.optional(),
+  /** Dash style; absent = "solid". */
+  dash: LineDashSchema.optional(),
 });
 export type LineObject = z.infer<typeof LineObjectSchema>;
 

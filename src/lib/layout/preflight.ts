@@ -48,8 +48,16 @@ function objectLabel(o: LayoutObject, doc: LayoutDocument): string {
     return "Text frame";
   }
   if (o.type === "picture") return (o.assetId && doc.assets[o.assetId]?.name) || "Picture frame";
-  if (o.type === "line") return "Line";
-  return o.type === "rect" ? "Rectangle" : o.type === "ellipse" ? "Ellipse" : "Path";
+  if (o.type === "line") return o.headStart || o.headEnd ? "Arrow" : "Line";
+  const labels: Partial<Record<LayoutObject["type"], string>> = {
+    rect: "Rectangle",
+    roundedRect: "Rounded rectangle",
+    ellipse: "Ellipse",
+    starPolygon: "Star",
+    callout: "Callout",
+    banner: "Banner",
+  };
+  return labels[o.type] ?? "Path";
 }
 
 type Target = { o: LayoutObject; pageId: string; pageNo: number; pageW: number; pageH: number };

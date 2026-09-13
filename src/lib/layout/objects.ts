@@ -1,4 +1,11 @@
 import type { FrameObject, LayoutObject, LineObject } from "@/schema";
+import {
+  BANNER_DEFAULT_HEIGHT,
+  BANNER_DEFAULT_INSET,
+  outlineOvershoot,
+  tailTipFor,
+  type ParametricShapeType,
+} from "./shape-paths";
 import { defaultTextProps } from "./text";
 
 /**
@@ -88,6 +95,47 @@ export function createLine(x1: number, y1: number, x2: number, y2: number): Line
     x2,
     y2,
     stroke: { color: "#555555", width: 1.5 },
+  };
+}
+
+/** An arrow is a line with an end head (prototype vocabulary — no separate
+    arrow object). Only the non-default head is stored, per the additive rule. */
+export function createArrow(x1: number, y1: number, x2: number, y2: number): LineObject {
+  return { ...createLine(x1, y1, x2, y2), headEnd: "arrow" };
+}
+
+/**
+ * A parametric shape with its prototype draw defaults stored explicitly, so
+ * the adjust handles and the Properties fields have a value to start from.
+ * Fill/stroke stay in the wireframe language, like every drawn frame here.
+ */
+export function createShape(
+  type: ParametricShapeType,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): FrameObject {
+  const params: Partial<FrameObject> =
+    type === "roundedRect"
+      ? { cornerRadius: 0.1 }
+      : type === "starPolygon"
+        ? { points: 5, innerRadiusRatio: 0.5 }
+        : type === "callout"
+          ? { tailTip: tailTipFor("bottom-left") }
+          : { panelInset: BANNER_DEFAULT_INSET, panelHeight: BANNER_DEFAULT_HEIGHT };
+  return {
+    id: crypto.randomUUID(),
+    type,
+    x,
+    y,
+    w: Math.max(MIN_OBJECT_IN, w),
+    h: Math.max(MIN_OBJECT_IN, h),
+    rotation: 0,
+    locked: false,
+    fill: "#f2f2f2",
+    stroke: { color: "#8f8f8f", width: 1 },
+    ...params,
   };
 }
 
@@ -211,20 +259,34 @@ export function angleFromCenter(cx: number, cy: number, px: number, py: number):
   return (Math.atan2(px - cx, -(py - cy)) * 180) / Math.PI;
 }
 
-/** The object's axis-aligned bounds *after* rotation (plan L10 snaps by these); a line is its own bbox. */
+/**
+ * The object's axis-aligned VISUAL footprint: bounds after rotation (plan L10
+ * snaps by these), a line its own bbox — plus whatever the outline reaches
+ * outside its frame box (the callout's tail tip, via `outlineOvershoot`), so
+ * marquee/snap/preflight see what is actually drawn (the prototype's "bounds
+ * take in what is drawn" decision). The selection frame and the Properties
+ * X/Y/W/H stay on `bboxOf` — the body box is what resize scales, and the tip
+ * is normalized to it.
+ */
 export function rotatedBBox(obj: LayoutObject): BBox {
   const b = bboxOf(obj);
-  if (obj.type === "line" || !obj.rotation) return b;
+  if (obj.type === "line") return b;
+  const overshoot = outlineOvershoot(obj).map((p) => ({
+    x: b.x + p.x * b.w,
+    y: b.y + p.y * b.h,
+  }));
+  if (!obj.rotation && !overshoot.length) return b;
   const cx = b.x + b.w / 2;
   const cy = b.y + b.h / 2;
-  const corners = [
-    rotatePoint(b.x, b.y, cx, cy, obj.rotation),
-    rotatePoint(b.x + b.w, b.y, cx, cy, obj.rotation),
-    rotatePoint(b.x + b.w, b.y + b.h, cx, cy, obj.rotation),
-    rotatePoint(b.x, b.y + b.h, cx, cy, obj.rotation),
-  ];
-  const xs = corners.map((c) => c.x);
-  const ys = corners.map((c) => c.y);
+  const pts = [
+    { x: b.x, y: b.y },
+    { x: b.x + b.w, y: b.y },
+    { x: b.x + b.w, y: b.y + b.h },
+    { x: b.x, y: b.y + b.h },
+    ...overshoot,
+  ].map((p) => (obj.rotation ? rotatePoint(p.x, p.y, cx, cy, obj.rotation) : p));
+  const xs = pts.map((c) => c.x);
+  const ys = pts.map((c) => c.y);
   const minX = Math.min(...xs);
   const minY = Math.min(...ys);
   return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };

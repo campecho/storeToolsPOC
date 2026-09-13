@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
-import type { LayoutObject } from "@/schema";
+import type { ArrowHead, ArrowHeadSize, FrameObject, LayoutObject, LineDash } from "@/schema";
 import {
   OBJECT_PALETTE,
   STROKE_WIDTHS,
@@ -11,6 +11,12 @@ import {
   withBBox,
   type BBox,
 } from "@/lib/layout/objects";
+import {
+  BANNER_DEFAULT_HEIGHT,
+  BANNER_DEFAULT_INSET,
+  isParametricShape,
+  tailTipFor,
+} from "@/lib/layout/shape-paths";
 import { openPlacedPictureInPhotoEditor } from "@/lib/photo/return-trip";
 import { Field, NumberField, SectionLabel } from "./Field";
 
@@ -19,6 +25,10 @@ import { Field, NumberField, SectionLabel } from "./Field";
  * round-trips the selected object's bbox (a line's endpoints map through it),
  * plus minimal Fill and Stroke rows — grayscale ramp + brand red + none, the
  * wireframe language's ink set. No selection shows the wire's empty state.
+ * Merged prototype surfaces: a Shape section drives a parametric shape's
+ * stored parameters (the adjust handles' values, numerically), and a Line
+ * section drives a line's dash and arrow heads — the prototype tool options
+ * bar's functions, rehomed to the inspector per this app's pattern.
  */
 
 function Swatch({
@@ -54,11 +64,150 @@ function Swatch({
   );
 }
 
+/** One 26px select row for the Line section's enum options. */
+function DecorSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  testId,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange: (v: T) => void;
+  testId: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-[54px] shrink-0 text-[10px] text-[#999]">{label}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        data-testid={testId}
+        aria-label={label}
+        className="h-[26px] flex-1 cursor-pointer rounded-[5px] border border-[#d6d6d6] bg-white px-[6px] text-[12px] text-[#444] outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+const HEAD_OPTIONS: readonly { value: ArrowHead; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "arrow", label: "Arrow" },
+  { value: "circle", label: "Circle" },
+  { value: "diamond", label: "Diamond" },
+];
+const HEAD_SIZE_OPTIONS: readonly { value: ArrowHeadSize; label: string }[] = [
+  { value: "s", label: "Small" },
+  { value: "m", label: "Medium" },
+  { value: "l", label: "Large" },
+];
+const DASH_OPTIONS: readonly { value: LineDash; label: string }[] = [
+  { value: "solid", label: "Solid" },
+  { value: "dashed", label: "Dashed" },
+  { value: "dotted", label: "Dotted" },
+];
+
+/** The Shape section's parameter fields for one parametric kind — numeric
+    twins of the canvas adjust handles, committing through the same store
+    action (adjustShape clamps). */
+function ShapeParams({ obj }: { obj: FrameObject }) {
+  const adjustShape = useLayoutStore((s) => s.adjustShape);
+  const two = (v: number) => (Math.round(v * 100) / 100).toString();
+  if (obj.type === "roundedRect") {
+    return (
+      <div className="flex gap-2">
+        <NumberField
+          label="Corner radius"
+          value={obj.cornerRadius ?? 0}
+          onCommit={(v) => adjustShape(obj.id, { cornerRadius: v })}
+          testId="prop-corner-radius"
+        />
+        <div className="flex-1" />
+      </div>
+    );
+  }
+  if (obj.type === "starPolygon") {
+    return (
+      <div className="flex gap-2">
+        <NumberField
+          label="Points"
+          value={obj.points ?? 5}
+          onCommit={(v) => adjustShape(obj.id, { points: v })}
+          testId="prop-star-points"
+          raw
+          format={(v) => String(Math.round(v))}
+        />
+        <NumberField
+          label="Inner radius"
+          value={obj.innerRadiusRatio ?? 0.5}
+          onCommit={(v) => adjustShape(obj.id, { innerRadiusRatio: v })}
+          testId="prop-star-ratio"
+          raw
+          format={two}
+        />
+      </div>
+    );
+  }
+  if (obj.type === "callout") {
+    const tip = obj.tailTip ?? tailTipFor("bottom-left");
+    return (
+      <div className="flex gap-2">
+        <NumberField
+          label="Tail X"
+          value={tip.x}
+          onCommit={(v) => adjustShape(obj.id, { tailTip: { ...tip, x: v } })}
+          testId="prop-tail-x"
+          raw
+          format={two}
+        />
+        <NumberField
+          label="Tail Y"
+          value={tip.y}
+          onCommit={(v) => adjustShape(obj.id, { tailTip: { ...tip, y: v } })}
+          testId="prop-tail-y"
+          raw
+          format={two}
+        />
+      </div>
+    );
+  }
+  // banner — the two ribbon parameters, as fractions of the frame
+  return (
+    <div className="flex gap-2">
+      <NumberField
+        label="Panel inset"
+        value={obj.panelInset ?? BANNER_DEFAULT_INSET}
+        onCommit={(v) => adjustShape(obj.id, { panelInset: v })}
+        testId="prop-panel-inset"
+        raw
+        format={two}
+      />
+      <NumberField
+        label="Panel height"
+        value={obj.panelHeight ?? BANNER_DEFAULT_HEIGHT}
+        onCommit={(v) => adjustShape(obj.id, { panelHeight: v })}
+        testId="prop-panel-height"
+        raw
+        format={two}
+      />
+    </div>
+  );
+}
+
 export function PropertiesTab() {
   const objects = useLayoutStore(surfaceObjects);
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const transformObject = useLayoutStore((s) => s.transformObject);
   const setObjectProps = useLayoutStore((s) => s.setObjectProps);
+  const setLineDecor = useLayoutStore((s) => s.setLineDecor);
   const revertPhotoEdit = useLayoutStore((s) => s.revertPhotoEdit);
   const docName = useLayoutStore((s) => s.doc.name);
   const router = useRouter();
@@ -135,6 +284,13 @@ export function PropertiesTab() {
           </div>
         )}
       </div>
+
+      {obj.type !== "line" && isParametricShape(obj) && (
+        <div>
+          <SectionLabel>Shape</SectionLabel>
+          <ShapeParams obj={obj} />
+        </div>
+      )}
 
       {obj.type === "picture" && (
         <div>
@@ -259,6 +415,42 @@ export function PropertiesTab() {
           </select>
         </div>
       </div>
+
+      {obj.type === "line" && (
+        <div>
+          <SectionLabel>Line</SectionLabel>
+          <div className="flex flex-col gap-2">
+            <DecorSelect
+              label="Dash"
+              value={obj.dash ?? "solid"}
+              options={DASH_OPTIONS}
+              onChange={(v) => setLineDecor(obj.id, { dash: v })}
+              testId="prop-line-dash"
+            />
+            <DecorSelect
+              label="Start head"
+              value={obj.headStart ?? "none"}
+              options={HEAD_OPTIONS}
+              onChange={(v) => setLineDecor(obj.id, { headStart: v })}
+              testId="prop-head-start"
+            />
+            <DecorSelect
+              label="End head"
+              value={obj.headEnd ?? "none"}
+              options={HEAD_OPTIONS}
+              onChange={(v) => setLineDecor(obj.id, { headEnd: v })}
+              testId="prop-head-end"
+            />
+            <DecorSelect
+              label="Head size"
+              value={obj.headSize ?? "m"}
+              options={HEAD_SIZE_OPTIONS}
+              onChange={(v) => setLineDecor(obj.id, { headSize: v })}
+              testId="prop-head-size"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

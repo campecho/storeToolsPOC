@@ -11,10 +11,14 @@ import {
   Image as ImageIcon,
   Lock,
   LockOpen,
+  MessageSquare,
   Minus,
   Printer,
+  Ribbon,
   Spline,
   Square,
+  Squircle,
+  Star,
   Trash2,
   Type,
 } from "lucide-react";
@@ -47,12 +51,20 @@ function rowLabel(o: LayoutObject, doc: LayoutDocument): string {
       return (o.assetId && doc.assets[o.assetId]?.name) || "Picture";
     case "rect":
       return "Rectangle";
+    case "roundedRect":
+      return "Rounded rectangle";
     case "ellipse":
       return "Ellipse";
+    case "starPolygon":
+      return "Star";
+    case "callout":
+      return "Callout";
+    case "banner":
+      return "Banner";
     case "path":
       return "Path";
     case "line":
-      return "Line";
+      return o.headStart || o.headEnd ? "Arrow" : "Line";
   }
 }
 
@@ -61,8 +73,16 @@ function RowIcon({ type }: { type: LayoutObject["type"] }) {
   switch (type) {
     case "rect":
       return <Square {...props} />;
+    case "roundedRect":
+      return <Squircle {...props} />;
     case "ellipse":
       return <Circle {...props} />;
+    case "starPolygon":
+      return <Star {...props} />;
+    case "callout":
+      return <MessageSquare {...props} />;
+    case "banner":
+      return <Ribbon {...props} />;
     case "line":
       return <Minus {...props} />;
     case "text":

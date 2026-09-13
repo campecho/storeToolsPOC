@@ -2,14 +2,27 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import {
   LayoutDocumentSchema,
+  SHAPE_PARAM_FIELDS,
+  type ArrowHead,
+  type ArrowHeadSize,
   type Asset,
   type LayoutDocument,
   type LayoutObject,
+  type LineDash,
   type MasterPage,
   type Orientation,
   type Paragraph,
   type Stroke,
 } from "@/schema";
+import {
+  clampBannerHeight,
+  clampBannerInset,
+  clampCalloutTip,
+  STAR_POINTS_MAX,
+  STAR_POINTS_MIN,
+  STAR_RATIO_MAX,
+  STAR_RATIO_MIN,
+} from "@/lib/layout/shape-paths";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
 import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
 import { BASE_LAYER_ID, baseLayerDef } from "@/lib/schema";
@@ -76,8 +89,14 @@ export type EditorTool =
   | "select"
   | "text"
   | "rect"
+  | "roundrect"
   | "ellipse"
   | "line"
+  | "arrow"
+  | "star"
+  | "callout"
+  | "banner"
+  | "pen"
   | "pic"
   | "table"
   | "zoom"
@@ -98,13 +117,27 @@ export const TOOL_LABELS: Record<EditorTool, string> = {
   select: "Select tool",
   text: "Text tool",
   rect: "Rectangle tool",
+  roundrect: "Rounded rectangle tool",
   ellipse: "Ellipse tool",
   line: "Line tool",
+  arrow: "Arrow tool",
+  star: "Star tool",
+  callout: "Callout tool",
+  banner: "Banner tool",
+  pen: "Pen tool",
   pic: "Picture tool",
   table: "Table tool",
   zoom: "Zoom tool",
   move: "Move tool",
 };
+
+/** Draw-tool → the parametric shape type it places (merged prototype kinds). */
+export const SHAPE_TOOL_TYPES = {
+  roundrect: "roundedRect",
+  star: "starPolygon",
+  callout: "callout",
+  banner: "banner",
+} as const;
 
 /** Geometry-only edit to one object — frame x/y/w/h(/rotation) or line endpoints. */
 export type TransformPatch = {
@@ -121,6 +154,25 @@ export type TransformPatch = {
 };
 
 export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
+
+/** One parameter of one parametric shape (merged prototype adjust handles +
+    Properties fields). Values clamp on apply to what the builders draw. */
+export type ShapeParamPatch = {
+  cornerRadius?: number;
+  points?: number;
+  innerRadiusRatio?: number;
+  tailTip?: { x: number; y: number };
+  panelInset?: number;
+  panelHeight?: number;
+};
+
+/** Line decoration edit (merged prototype arrow/dash options). */
+export type LineDecorPatch = {
+  headStart?: ArrowHead;
+  headEnd?: ArrowHead;
+  headSize?: ArrowHeadSize;
+  dash?: LineDash;
+};
 
 /** Flattened text edit (plan L5) — applies to the WHOLE frame: since schema
     v2 the runs are the source of truth, so a patch maps over every run. */
@@ -267,6 +319,63 @@ function applyProps(o: LayoutObject, patch: ObjectPropsPatch): LayoutObject {
     ...(patch.fill !== undefined ? { fill: patch.fill } : {}),
     ...(patch.stroke !== undefined ? { stroke: patch.stroke } : {}),
   };
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * A shape-parameter edit lands only on the kind that owns the field
+ * (SHAPE_PARAM_FIELDS — the schema would reject a stray parameter), clamped
+ * to what the builders draw. The corner radius clamps to ≥0 only: the stored
+ * value is deliberately frame-unclamped (see the schema note).
+ */
+function applyShapeParam(o: LayoutObject, patch: ShapeParamPatch): LayoutObject {
+  if (o.type === "line" || !(o.type in SHAPE_PARAM_FIELDS)) return o;
+  const owned: readonly string[] = SHAPE_PARAM_FIELDS[o.type as keyof typeof SHAPE_PARAM_FIELDS];
+  const next = { ...o };
+  if (patch.cornerRadius !== undefined && owned.includes("cornerRadius")) {
+    next.cornerRadius = Math.max(0, patch.cornerRadius);
+  }
+  if (patch.points !== undefined && owned.includes("points")) {
+    next.points = clamp(Math.round(patch.points), STAR_POINTS_MIN, STAR_POINTS_MAX);
+  }
+  if (patch.innerRadiusRatio !== undefined && owned.includes("innerRadiusRatio")) {
+    next.innerRadiusRatio = clamp(patch.innerRadiusRatio, STAR_RATIO_MIN, STAR_RATIO_MAX);
+  }
+  if (patch.tailTip !== undefined && owned.includes("tailTip")) {
+    next.tailTip = clampCalloutTip(patch.tailTip);
+  }
+  if (patch.panelInset !== undefined && owned.includes("panelInset")) {
+    next.panelInset = clampBannerInset(patch.panelInset);
+  }
+  if (patch.panelHeight !== undefined && owned.includes("panelHeight")) {
+    next.panelHeight = clampBannerHeight(patch.panelHeight);
+  }
+  return next;
+}
+
+/** Decoration defaults store as ABSENCE (the schema's additive rule), so a
+    patch that sets "none"/"m"/"solid" drops the field instead of writing it. */
+function applyLineDecor(o: LayoutObject, patch: LineDecorPatch): LayoutObject {
+  if (o.type !== "line") return o;
+  const next = { ...o };
+  if (patch.headStart !== undefined) {
+    if (patch.headStart === "none") delete next.headStart;
+    else next.headStart = patch.headStart;
+  }
+  if (patch.headEnd !== undefined) {
+    if (patch.headEnd === "none") delete next.headEnd;
+    else next.headEnd = patch.headEnd;
+  }
+  if (patch.headSize !== undefined) {
+    if (patch.headSize === "m") delete next.headSize;
+    else next.headSize = patch.headSize;
+  }
+  if (patch.dash !== undefined) {
+    if (patch.dash === "solid") delete next.dash;
+    else next.dash = patch.dash;
+  }
+  return next;
 }
 
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
@@ -505,6 +614,11 @@ export interface LayoutEditorState {
   /** Geometry edit; `transient` skips history (live drags — commitGesture ends them). */
   transformObject: (id: string, patch: TransformPatch, transient?: boolean) => void;
   setObjectProps: (id: string, patch: ObjectPropsPatch) => void;
+  /** Parametric-shape parameter edit (adjust handles + Properties fields);
+      `transient` skips history like transformObject (commitGesture ends drags). */
+  adjustShape: (id: string, patch: ShapeParamPatch, transient?: boolean) => void;
+  /** Line heads/dash edit — one history entry per change. */
+  setLineDecor: (id: string, patch: LineDecorPatch) => void;
   deleteSelection: () => void;
   /** Copies land 0.25 in right+down and become the selection. */
   duplicateSelection: () => void;
@@ -1147,6 +1261,22 @@ export const useLayoutStore = create<LayoutEditorState>()(
           ...pushed(s, s.doc),
           doc: mapSurfaceObjects(s, (objs) =>
             objs.map((o) => (o.id === id ? applyProps(o, patch) : o)),
+          ),
+        })),
+
+      adjustShape: (id, patch, transient = false) =>
+        set((s) => {
+          const doc = mapSurfaceObjects(s, (objs) =>
+            objs.map((o) => (o.id === id ? applyShapeParam(o, patch) : o)),
+          );
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
+
+      setLineDecor: (id, patch) =>
+        set((s) => ({
+          ...pushed(s, s.doc),
+          doc: mapSurfaceObjects(s, (objs) =>
+            objs.map((o) => (o.id === id ? applyLineDecor(o, patch) : o)),
           ),
         })),
 

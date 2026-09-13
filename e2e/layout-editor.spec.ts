@@ -1879,3 +1879,143 @@ test.describe("Template picker (Phase 9)", () => {
     await expect(page.getByText("Template Explorer")).toBeVisible();
   });
 });
+
+/**
+ * Merged publisher-prototype tools: the shape tools (rounded rect, star,
+ * callout, banner) draw and carry amber adjust handles for their stored
+ * parameters; the arrow tool draws a decorated line with a Line section in
+ * the inspector; the pen tool builds a path click by click and commits it
+ * as one object.
+ */
+test.describe("Merged prototype tools (shapes, arrow, pen)", () => {
+  async function drag(
+    page: import("@playwright/test").Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    await page.mouse.move(box.x + from.x, box.y + from.y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + to.x, box.y + to.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  /** Drag from the center of a handle by a pixel delta. */
+  async function dragHandle(
+    page: import("@playwright/test").Page,
+    testId: string,
+    dx: number,
+    dy: number,
+  ) {
+    const h = (await page.getByTestId(testId).boundingBox())!;
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(h.x + h.width / 2 + dx, h.y + h.height / 2 + dy, { steps: 6 });
+    await page.mouse.up();
+  }
+
+  test("rounded rect draws and its adjust handle drives the stored radius", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-roundrect").click();
+    await expect(page.getByTestId("status-tool")).toHaveText(
+      "Rounded rectangle tool · drag to draw",
+    );
+    await drag(page, { x: 40, y: 40 }, { x: 230, y: 150 });
+
+    await expect(page.getByTestId("object-roundedRect")).toHaveCount(1);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("handle-adjust-corner-radius")).toBeVisible();
+
+    // the Shape section shows the draw default; the handle drag grows it
+    await page.getByTestId("insp-page").click();
+    await expect(page.getByTestId("prop-corner-radius")).toHaveValue("0.1");
+    await dragHandle(page, "handle-adjust-corner-radius", 40, 0);
+    const radius = Number(await page.getByTestId("prop-corner-radius").inputValue());
+    expect(radius).toBeGreaterThan(0.1);
+
+    // one gesture, one history entry
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(page.getByTestId("prop-corner-radius")).toHaveValue("0.1");
+  });
+
+  test("star and banner draw with their parameter handles; callout's tail handle rides the tip", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-star").click();
+    await drag(page, { x: 40, y: 40 }, { x: 160, y: 160 });
+    await expect(page.getByTestId("object-starPolygon")).toHaveCount(1);
+    await expect(page.getByTestId("handle-adjust-inner-radius")).toBeVisible();
+    await page.getByTestId("insp-page").click();
+    await expect(page.getByTestId("prop-star-points")).toHaveValue("5");
+
+    await page.getByTestId("tool-banner").click();
+    await drag(page, { x: 200, y: 40 }, { x: 420, y: 120 });
+    await expect(page.getByTestId("object-banner")).toHaveCount(1);
+    await expect(page.getByTestId("handle-adjust-banner-inset")).toBeVisible();
+    await expect(page.getByTestId("handle-adjust-banner-height")).toBeVisible();
+
+    await page.getByTestId("tool-callout").click();
+    await drag(page, { x: 200, y: 200 }, { x: 360, y: 300 });
+    await expect(page.getByTestId("object-callout")).toHaveCount(1);
+    await expect(page.getByTestId("handle-adjust-callout-tail")).toBeVisible();
+    // dragging the tip changes length and angle together — the stored tip moves
+    await expect(page.getByTestId("prop-tail-x")).toHaveValue("0.06");
+    await dragHandle(page, "handle-adjust-callout-tail", 60, 0);
+    const tailX = Number(await page.getByTestId("prop-tail-x").inputValue());
+    expect(tailX).toBeGreaterThan(0.06);
+  });
+
+  test("arrow draws a line with an end head; the Line section edits decorations", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-arrow").click();
+    await expect(page.getByTestId("status-tool")).toHaveText("Arrow tool · drag to draw");
+    await drag(page, { x: 40, y: 200 }, { x: 220, y: 260 });
+
+    await expect(page.getByTestId("object-line")).toHaveCount(1);
+    await expect(page.getByTestId("line-head-end")).toHaveCount(1);
+    await expect(page.getByTestId("handle-p1")).toBeVisible();
+
+    // the inspector's Line section reads the merged decoration fields…
+    await page.getByTestId("insp-page").click();
+    await expect(page.getByTestId("prop-head-end")).toHaveValue("arrow");
+    // …and writes them: a start head appears on the canvas
+    await page.getByTestId("prop-head-start").selectOption("circle");
+    await expect(page.getByTestId("line-head-start")).toHaveCount(1);
+  });
+
+  test("pen builds a path click by click; Enter commits one selected object", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-pen").click();
+    await expect(page.getByTestId("status-tool")).toHaveText(
+      "Pen tool · click to add points, Enter to finish",
+    );
+
+    const box = (await page.getByTestId("publication-page").boundingBox())!;
+    for (const [x, y] of [
+      [60, 60],
+      [200, 80],
+      [160, 200],
+    ] as const) {
+      await page.mouse.click(box.x + x, box.y + y);
+    }
+    await expect(page.getByTestId("pen-draft")).toBeVisible();
+    await page.keyboard.press("Enter");
+
+    await expect(page.getByTestId("pen-draft")).toBeHidden();
+    await expect(page.getByTestId("object-path")).toHaveCount(1);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("status-tool")).toHaveText("Select tool · 1 object");
+
+    // Escape discards a fresh draft instead of committing it
+    await page.getByTestId("tool-pen").click();
+    await page.mouse.click(box.x + 300, box.y + 60);
+    await page.mouse.click(box.x + 380, box.y + 120);
+    await expect(page.getByTestId("pen-draft")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("pen-draft")).toBeHidden();
+    await expect(page.getByTestId("object-path")).toHaveCount(1);
+  });
+});

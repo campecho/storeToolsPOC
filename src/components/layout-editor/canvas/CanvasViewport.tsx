@@ -2,10 +2,16 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { interactiveSurfaceObjects, surfaceObjects, visibleSurfaceObjects, useLayoutStore } from "@/store";
+import {
+  interactiveSurfaceObjects,
+  surfaceObjects,
+  visibleSurfaceObjects,
+  useLayoutStore,
+  SHAPE_TOOL_TYPES,
+} from "@/store";
 import { visibleLayerIds } from "@/lib/layout/layers";
 import type { BBox, HandleDir } from "@/lib/layout/objects";
-import type { LayoutDocument, LayoutObject, LineObject } from "@/schema";
+import type { FrameObject, LayoutDocument, LayoutObject, LineObject, PathSeg } from "@/schema";
 import {
   DPI,
   clampZoom,
@@ -20,15 +26,27 @@ import {
   DRAW_THRESHOLD_IN,
   angleFromCenter,
   bboxOf,
+  createArrow,
   createFrame,
   createLine,
+  createShape,
   createTextFrame,
   resizeBBox,
   resizeRotatedBBox,
+  rotatePoint,
   rotatedBBox,
   snapAngle,
   translated,
 } from "@/lib/layout/objects";
+import { clampCornerRadius, starInnerArmDirection } from "@/lib/layout/shape-paths";
+import {
+  PEN_START_HIT_PX,
+  mirrorPoint,
+  penDraftSegments,
+  penObjectFromDraft,
+  type PenAnchor,
+  type PenPoint,
+} from "@/lib/layout/pen";
 import { ASSET_DND_TYPE, importAssetFile } from "@/lib/assets/import";
 import {
   SNAP_THRESHOLD_PX,
@@ -41,7 +59,7 @@ import {
 import { openPlacedPictureInPhotoEditor } from "@/lib/photo/return-trip";
 import { PageSurface } from "./PageSurface";
 import { ObjectNode } from "./ObjectNode";
-import { SelectionOverlay } from "./SelectionOverlay";
+import { SelectionOverlay, type AdjustHandleId } from "./SelectionOverlay";
 import { TextEditOverlay } from "./TextEditOverlay";
 
 /**
@@ -69,7 +87,20 @@ import { TextEditOverlay } from "./TextEditOverlay";
  */
 
 const RULER_BREADTH = 18;
-const DRAW_TOOLS = new Set(["rect", "ellipse", "line", "pic", "text"]);
+const DRAW_TOOLS = new Set([
+  "rect",
+  "roundrect",
+  "ellipse",
+  "line",
+  "arrow",
+  "star",
+  "callout",
+  "banner",
+  "pic",
+  "text",
+]);
+/** Tools whose draft previews (and commits) are a segment, not a box. */
+const LINE_TOOLS = new Set(["line", "arrow"]);
 
 type Gesture =
   | { kind: "pan"; fromX: number; fromY: number; panX: number; panY: number }
@@ -147,6 +178,30 @@ type Gesture =
       targets: SnapTargets;
       thresholdIn: number;
       before: LayoutDocument;
+    }
+  | {
+      kind: "adjust";
+      id: string;
+      pointerId: number;
+      captured?: boolean;
+      handle: AdjustHandleId;
+      startX: number;
+      startY: number;
+      /** The shape at grab — its frame, rotation, and initial parameters. */
+      startObj: FrameObject;
+      before: LayoutDocument;
+    }
+  | {
+      kind: "penPress";
+      pointerId: number;
+      captured?: boolean;
+      startX: number;
+      startY: number;
+      curX: number;
+      curY: number;
+      /** Decided at press: this press lands on the start anchor and closes
+          the path (needs a closable ring — at least 3 anchors). */
+      closing: boolean;
     };
 
 function Ruler({
@@ -266,6 +321,89 @@ function DraftPreview({
   );
 }
 
+/**
+ * The pen tool's in-flight draft (merged prototype tool): the drawn segments
+ * so far, a rubber segment to the hover point, anchor dots (the start anchor
+ * rings up once the path is closable), and the mirrored handle pair while a
+ * press drags a curve anchor. Page coordinates; brand-colored chrome like
+ * every draft preview.
+ */
+function PenDraftOverlay({
+  anchors,
+  hover,
+  live,
+  closable,
+  zoom,
+}: {
+  anchors: readonly PenAnchor[];
+  hover: PenPoint | null;
+  live: { point: PenPoint; handleOut: PenPoint; handleIn: PenPoint } | null;
+  closable: boolean;
+  zoom: number;
+}) {
+  const px = (v: number) => inToPx(v, zoom);
+  const d = penDraftSegments(anchors)
+    .map((s: PathSeg) => {
+      if (s.c === "Z") return "Z";
+      if (s.c === "C")
+        return `C ${px(s.x1)} ${px(s.y1)}, ${px(s.x2)} ${px(s.y2)}, ${px(s.x)} ${px(s.y)}`;
+      return `${s.c} ${px(s.x)} ${px(s.y)}`;
+    })
+    .join(" ");
+  const last = anchors[anchors.length - 1];
+  return (
+    <svg
+      data-testid="pen-draft"
+      className="pointer-events-none absolute left-0 top-0 overflow-visible"
+      width={1}
+      height={1}
+    >
+      <path d={d} fill="none" stroke="var(--color-brand)" strokeWidth={1.5} />
+      {/* rubber segment from the last anchor to the pointer */}
+      {last && hover && !live && (
+        <line
+          x1={px(last.point.x)}
+          y1={px(last.point.y)}
+          x2={px(hover.x)}
+          y2={px(hover.y)}
+          stroke="var(--color-brand)"
+          strokeWidth={1}
+          strokeDasharray="4 3"
+        />
+      )}
+      {/* the curve handle pair while a press drags: out where the pointer is,
+          in mirrored about the anchor */}
+      {live && (
+        <>
+          <line
+            x1={px(live.handleIn.x)}
+            y1={px(live.handleIn.y)}
+            x2={px(live.handleOut.x)}
+            y2={px(live.handleOut.y)}
+            stroke="var(--color-brand)"
+            strokeWidth={1}
+          />
+          {[live.handleIn, live.handleOut].map((h, i) => (
+            <circle key={i} cx={px(h.x)} cy={px(h.y)} r={3} fill="var(--color-brand)" />
+          ))}
+        </>
+      )}
+      {anchors.map((a, i) => (
+        <circle
+          key={i}
+          data-testid={i === 0 ? "pen-anchor-start" : undefined}
+          cx={px(a.point.x)}
+          cy={px(a.point.y)}
+          r={i === 0 && closable ? 5 : 3.5}
+          fill="#ffffff"
+          stroke="var(--color-brand)"
+          strokeWidth={1.5}
+        />
+      ))}
+    </svg>
+  );
+}
+
 export function CanvasViewport() {
   const router = useRouter();
   const doc = useLayoutStore((s) => s.doc);
@@ -295,6 +433,15 @@ export function CanvasViewport() {
     y2: number;
   } | null>(null);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
+  // Pen tool (merged prototype): the multi-press draft, the rubber-segment
+  // hover point, and the live curve-handle preview while a press drags.
+  const [penDraft, setPenDraft] = useState<PenAnchor[]>([]);
+  const [penHover, setPenHover] = useState<PenPoint | null>(null);
+  const [penLive, setPenLive] = useState<{
+    point: PenPoint;
+    handleOut: PenPoint;
+    handleIn: PenPoint;
+  } | null>(null);
   // L9: the picture frame highlighted under a dragged asset, and a transient
   // note when a picked file wasn't an image.
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -579,6 +726,57 @@ export function CanvasViewport() {
     return { axis: best.axis, index: best.index };
   };
 
+  /* ── Pen tool (merged prototype tool set) ── */
+
+  /** Discard the in-flight pen draft and its previews. */
+  const clearPenDraft = () => {
+    setPenDraft([]);
+    setPenHover(null);
+    setPenLive(null);
+  };
+
+  /** Commit the draft as ONE path object (one history entry — addObject
+      selects it and hands the tool back to Select, like every draw). An
+      unfinishable draft (too few anchors, degenerate box) discards instead. */
+  const commitPenDraft = (anchors: readonly PenAnchor[], closed: boolean) => {
+    const obj = penObjectFromDraft(anchors, closed);
+    clearPenDraft();
+    if (obj) useLayoutStore.getState().addObject(obj);
+  };
+
+  // Leaving the pen tool abandons the draft — nothing else can own it.
+  useEffect(() => {
+    if (tool !== "pen") clearPenDraft();
+    // clearPenDraft only writes state; it never needs to be a dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool]);
+
+  // Pen keys: Enter commits the open path, Escape discards the draft,
+  // Backspace retracts the last anchor. Only while a draft exists, and never
+  // from a form field, so inspector typing stays untouched.
+  useEffect(() => {
+    if (tool !== "pen" || penDraft.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target;
+      if (t instanceof HTMLElement && t.closest("input, textarea, select, [contenteditable]")) {
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitPenDraft(penDraft, false);
+      } else if (e.key === "Escape") {
+        clearPenDraft();
+      } else if (e.key === "Backspace") {
+        e.preventDefault(); // some browsers still navigate back on it
+        setPenDraft((d) => d.slice(0, -1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // commitPenDraft/clearPenDraft are stable per render and close over penDraft
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, penDraft]);
+
   /** Open the device picker to fill an empty picture frame (L9 fill-on-click). */
   const openPicker = (frameId: string) => {
     pendingFrame.current = frameId;
@@ -726,6 +924,24 @@ export function CanvasViewport() {
     };
   };
 
+  /** Amber adjust-handle pointer-down (merged prototype adjust gestures):
+      drag one parameter of one parametric shape; commit once at release. */
+  const startAdjust = (obj: LayoutObject) => (handle: AdjustHandleId, e: React.PointerEvent) => {
+    if (e.button !== 0 || obj.type === "line") return;
+    e.stopPropagation();
+    const p = toPageIn(e);
+    gesture.current = {
+      kind: "adjust",
+      id: obj.id,
+      pointerId: e.pointerId,
+      handle,
+      startX: p.x,
+      startY: p.y,
+      startObj: obj,
+      before: useLayoutStore.getState().doc,
+    };
+  };
+
   const onBoardPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     if (pickNote) setPickNote(null); // dismiss the last skip note on the next action
@@ -745,6 +961,27 @@ export function CanvasViewport() {
       gesture.current = { kind: "draw", startX: sp.x, startY: sp.y, ...snap };
       setDraft({ x1: sp.x, y1: sp.y, x2: sp.x, y2: sp.y });
       setSnapLines(sp.lines);
+    } else if (tool === "pen") {
+      if (s.selectedGuide) s.selectGuide(null);
+      capture(e);
+      const p = toPageIn(e);
+      // A press on the start anchor (within tolerance, ring closable) is the
+      // close-click; anywhere else an under-slop release adds a straight
+      // anchor and a drag adds a curve anchor with mirrored handles.
+      const start = penDraft[0];
+      const closing =
+        penDraft.length >= 3 &&
+        start !== undefined &&
+        Math.hypot(p.x - start.point.x, p.y - start.point.y) <= PEN_START_HIT_PX / (DPI * zoom);
+      gesture.current = {
+        kind: "penPress",
+        pointerId: e.pointerId,
+        startX: p.x,
+        startY: p.y,
+        curX: p.x,
+        curY: p.y,
+        closing,
+      };
     } else if (tool === "select") {
       const p = toPageIn(e);
       // grab a nearby ruler guide (plan L11). Only reached when no object caught
@@ -782,7 +1019,11 @@ export function CanvasViewport() {
 
   const onBoardPointerMove = (e: React.PointerEvent) => {
     const g = gesture.current;
-    if (!g) return;
+    if (!g) {
+      // no gesture — the pen's rubber segment still tracks the pointer
+      if (tool === "pen" && penDraft.length > 0) setPenHover(toPageIn(e));
+      return;
+    }
     const s = useLayoutStore.getState();
     if (g.kind === "pan") {
       s.setPan({ x: g.panX + (e.clientX - g.fromX), y: g.panY + (e.clientY - g.fromY) });
@@ -861,6 +1102,52 @@ export function CanvasViewport() {
         s.transformObject(g.id, { x: b.x, y: b.y, w: b.w, h: b.h }, true);
         setSnapLines(sp.lines);
       }
+    } else if (g.kind === "penPress") {
+      g.curX = p.x;
+      g.curY = p.y;
+      // a captured (past-slop) press is pulling a curve anchor's handleOut;
+      // handleIn mirrors it about the anchor (the Publisher convention)
+      const anchor = { x: g.startX, y: g.startY };
+      setPenLive({ point: anchor, handleOut: p, handleIn: mirrorPoint(p, anchor) });
+    } else if (g.kind === "adjust") {
+      const o = g.startObj;
+      // the pointer in the shape's own frame space (adjust handles track a
+      // rotated shape rather than the page), then its unit box
+      const local = (pt: { x: number; y: number }) =>
+        o.rotation ? rotatePoint(pt.x, pt.y, o.x + o.w / 2, o.y + o.h / 2, -o.rotation) : pt;
+      const unit = (pt: { x: number; y: number }) => {
+        const l = local(pt);
+        return { x: o.w > 0 ? (l.x - o.x) / o.w : 0.5, y: o.h > 0 ? (l.y - o.y) / o.h : 0.5 };
+      };
+      const grab = { x: g.startX, y: g.startY };
+      // Continuous parameters apply TRAVEL rather than absolute position, so
+      // the value never jumps to meet the pointer; the banner's two handles
+      // sit ON the value they set and read absolute (prototype semantics).
+      if (g.handle === "corner-radius") {
+        const travel = local(p).x - local(grab).x;
+        s.adjustShape(
+          g.id,
+          { cornerRadius: clampCornerRadius((o.cornerRadius ?? 0) + travel, o.w, o.h) },
+          true,
+        );
+      } else if (g.handle === "inner-radius") {
+        const u = starInnerArmDirection(o.points ?? 5);
+        const proj = (pt: { x: number; y: number }) => {
+          const q = unit(pt);
+          return ((q.x - 0.5) * u.x + (q.y - 0.5) * u.y) / 0.5;
+        };
+        s.adjustShape(
+          g.id,
+          { innerRadiusRatio: (o.innerRadiusRatio ?? 0.5) + proj(p) - proj(grab) },
+          true,
+        );
+      } else if (g.handle === "callout-tail") {
+        s.adjustShape(g.id, { tailTip: unit(p) }, true);
+      } else if (g.handle === "banner-inset") {
+        s.adjustShape(g.id, { panelInset: unit(p).x }, true);
+      } else {
+        s.adjustShape(g.id, { panelHeight: unit(p).y }, true);
+      }
     } else {
       const ex = g.which === "p1" ? g.startObj.x1 : g.startObj.x2;
       const ey = g.which === "p1" ? g.startObj.y1 : g.startObj.y2;
@@ -888,9 +1175,10 @@ export function CanvasViewport() {
       const sp = snapPoint(raw.x, raw.y, g.targets, g.thresholdIn);
       const dx = sp.x - g.startX;
       const dy = sp.y - g.startY;
-      if (tool === "line") {
+      if (LINE_TOOLS.has(tool)) {
         if (Math.hypot(dx, dy) < DRAW_THRESHOLD_IN) return;
-        s.addObject(createLine(g.startX, g.startY, sp.x, sp.y));
+        const make = tool === "arrow" ? createArrow : createLine;
+        s.addObject(make(g.startX, g.startY, sp.x, sp.y));
       } else {
         const w = Math.abs(dx);
         const h = Math.abs(dy);
@@ -902,10 +1190,28 @@ export function CanvasViewport() {
           const frame = createTextFrame(x, y, w, h);
           s.addObject(frame);
           s.setEditingText(frame.id);
+        } else if (tool in SHAPE_TOOL_TYPES) {
+          s.addObject(createShape(SHAPE_TOOL_TYPES[tool as keyof typeof SHAPE_TOOL_TYPES], x, y, w, h));
         } else {
           const type = tool === "pic" ? "picture" : (tool as "rect" | "ellipse");
           s.addObject(createFrame(type, x, y, w, h));
         }
+      }
+    } else if (g.kind === "penPress") {
+      setPenLive(null);
+      if (g.closing) {
+        // the close-click commits the ring; a drag on it is ignored (curving
+        // the closing segment belongs to node editing, as in the prototype)
+        commitPenDraft(penDraft, true);
+      } else if (!g.captured) {
+        setPenDraft((d) => [...d, { point: { x: g.startX, y: g.startY } }]);
+      } else {
+        const anchor = { x: g.startX, y: g.startY };
+        const handleOut = { x: g.curX, y: g.curY };
+        setPenDraft((d) => [
+          ...d,
+          { point: anchor, handleOut, handleIn: mirrorPoint(handleOut, anchor) },
+        ]);
       }
     } else if (g.kind === "marquee") {
       setMarquee(null);
@@ -946,7 +1252,7 @@ export function CanvasViewport() {
         : "cursor-grab"
       : tool === "zoom"
         ? "cursor-zoom-in"
-        : DRAW_TOOLS.has(tool)
+        : DRAW_TOOLS.has(tool) || tool === "pen"
           ? "cursor-crosshair"
           : "";
 
@@ -996,6 +1302,13 @@ export function CanvasViewport() {
             const s = useLayoutStore.getState();
             if (e.altKey) s.zoomOut();
             else s.zoomIn();
+          }}
+          onDoubleClick={() => {
+            // pen: double-click commits the open path — both clicks added
+            // anchors, so the draft drops the double-click's duplicate first
+            if (tool === "pen" && penDraft.length > 0) {
+              commitPenDraft(penDraft.slice(0, -1), false);
+            }
           }}
         >
           {/* device file picker for L9 fill-on-click — triggered from a frame click */}
@@ -1095,7 +1408,16 @@ export function CanvasViewport() {
               })}
               {/* ruler guides render as a full-workspace layer over the
                   pasteboard (below), not clipped to the page. */}
-              {draft && <DraftPreview draft={draft} line={tool === "line"} zoom={zoom} />}
+              {draft && <DraftPreview draft={draft} line={LINE_TOOLS.has(tool)} zoom={zoom} />}
+              {tool === "pen" && penDraft.length > 0 && (
+                <PenDraftOverlay
+                  anchors={penDraft}
+                  hover={penHover}
+                  live={penLive}
+                  closable={penDraft.length >= 3}
+                  zoom={zoom}
+                />
+              )}
               {selected && tool === "select" && (
                 <SelectionOverlay
                   obj={selected}
@@ -1105,6 +1427,7 @@ export function CanvasViewport() {
                   onEndpointDown={
                     selected.type === "line" ? startEndpoint(selected) : () => undefined
                   }
+                  onAdjustDown={startAdjust(selected)}
                 />
               )}
               {/* multi-selection: an outline per member (rotating with it) —

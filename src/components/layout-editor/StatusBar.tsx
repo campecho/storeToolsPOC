@@ -14,13 +14,27 @@ import { UNITS } from "@/lib/layout/units";
  * parked while a master is being edited; the single-page / two-page spread
  * toggle is live since L12.
  */
+const DRAG_TO_DRAW = new Set([
+  "rect",
+  "roundrect",
+  "ellipse",
+  "line",
+  "arrow",
+  "star",
+  "callout",
+  "banner",
+  "pic",
+  "text",
+]);
+
 function statusText(tool: ReturnType<typeof useLayoutStore.getState>["tool"], count: number) {
   if (tool === "select") {
     return count ? `Select tool · ${count} object${count > 1 ? "s" : ""}` : "Select tool · ready";
   }
-  if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "pic" || tool === "text") {
+  if (DRAG_TO_DRAW.has(tool)) {
     return `${TOOL_LABELS[tool]} · drag to draw`;
   }
+  if (tool === "pen") return "Pen tool · click to add points, Enter to finish";
   if (tool === "table") return "Table tool · coming later in the beta";
   return `${TOOL_LABELS[tool]} · ready`;
 }
