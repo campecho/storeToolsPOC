@@ -73,6 +73,15 @@ export function paintToCss(paint: Paint, swatches: readonly Swatch[]): string {
   return css;
 }
 
+/** PREVIEW as a CSS color, scaled toward black by `scale` — the shading a
+    parametric shape draws over its own fill (shape-paths' SHADE_SCALE). The
+    paint resolves to its preview rgb first and the scale applies there, so a
+    cmyk or swatch fill shades the tone the canvas actually shows. */
+export function shadedPaintCss(paint: Paint, swatches: readonly Swatch[], scale: number): string {
+  const [r, g, b] = paintToRgb(paint, swatches);
+  return `rgb(${to255(r * scale)}, ${to255(g * scale)}, ${to255(b * scale)})`;
+}
+
 /** LITERAL hex, lowercase: exact for an rgb literal (round-trips a v3 hex
     unchanged), the naive device value for cmyk. Not the preview. */
 export function paintToHex(paint: Paint, swatches: readonly Swatch[]): string {

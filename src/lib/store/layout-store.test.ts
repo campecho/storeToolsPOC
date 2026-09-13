@@ -18,8 +18,10 @@ import { plainToParagraphs, textContent, textSummary } from "@/lib/layout/text";
 import { MAX_PAGE_IN } from "@/lib/layout/geometry";
 import {
   DUPLICATE_OFFSET_IN,
+  createArrow,
   createFrame,
   createLine,
+  createShape,
   createTextFrame,
 } from "@/lib/layout/objects";
 import { placedPictureRect } from "@/lib/assets/placement";
@@ -1519,5 +1521,90 @@ describe("photo-editor round-trip (F2, PE8)", () => {
     const beforePic = useLayoutStore.getState().doc;
     s.revertPhotoEdit(pic.id);
     expect(useLayoutStore.getState().doc).toBe(beforePic);
+  });
+});
+
+describe("merged prototype tools — adjustShape / setLineDecor", () => {
+  it("adjustShape writes a parameter, clamped, in one history step", () => {
+    const s = useLayoutStore.getState();
+    const star = createShape("starPolygon", 1, 1, 2, 2);
+    s.addObject(star);
+    s.adjustShape(star.id, { points: 8.4, innerRadiusRatio: 2 });
+    expect(pageObjects()[0]).toMatchObject({ points: 8, innerRadiusRatio: 0.95 });
+    s.undo();
+    expect(pageObjects()[0]).toMatchObject({ points: 5, innerRadiusRatio: 0.5 });
+  });
+
+  it("adjustShape ignores a parameter the kind doesn't own", () => {
+    const s = useLayoutStore.getState();
+    const rr = createShape("roundedRect", 1, 1, 2, 1);
+    s.addObject(rr);
+    s.adjustShape(rr.id, { points: 9, panelInset: 0.3 });
+    const after = pageObjects()[0];
+    expect(after).not.toHaveProperty("points", 9);
+    expect(after).not.toHaveProperty("panelInset");
+  });
+
+  it("adjustShape keeps the corner radius frame-unclamped but never negative", () => {
+    const s = useLayoutStore.getState();
+    const rr = createShape("roundedRect", 1, 1, 2, 1);
+    s.addObject(rr);
+    // stored past the geometric bound on purpose — the clamp lives at draw
+    s.adjustShape(rr.id, { cornerRadius: 3 });
+    expect(pageObjects()[0]).toMatchObject({ cornerRadius: 3 });
+    s.adjustShape(rr.id, { cornerRadius: -1 });
+    expect(pageObjects()[0]).toMatchObject({ cornerRadius: 0 });
+  });
+
+  it("adjustShape clamps the callout tail and the banner parameters", () => {
+    const s = useLayoutStore.getState();
+    const c = createShape("callout", 0, 0, 2, 1);
+    s.addObject(c);
+    s.adjustShape(c.id, { tailTip: { x: 9, y: -9 } });
+    expect(pageObjects()[0]).toMatchObject({ tailTip: { x: 2, y: -1 } });
+    const b = createShape("banner", 0, 2, 4, 1);
+    s.addObject(b);
+    s.adjustShape(b.id, { panelInset: 0, panelHeight: 1 });
+    expect(pageObjects()[1]).toMatchObject({ panelInset: 0.05, panelHeight: 0.9 });
+  });
+
+  it("transient adjustShape skips history until commitGesture (the drag contract)", () => {
+    const s = useLayoutStore.getState();
+    const rr = createShape("roundedRect", 1, 1, 2, 1);
+    s.addObject(rr);
+    const before = useLayoutStore.getState().doc;
+    s.adjustShape(rr.id, { cornerRadius: 0.3 }, true);
+    s.adjustShape(rr.id, { cornerRadius: 0.4 }, true);
+    s.commitGesture(before);
+    expect(pageObjects()[0]).toMatchObject({ cornerRadius: 0.4 });
+    s.undo();
+    expect(pageObjects()[0]).toMatchObject({ cornerRadius: 0.1 });
+  });
+
+  it("setLineDecor stores non-defaults and drops fields set back to the default", () => {
+    const s = useLayoutStore.getState();
+    const a = createArrow(0, 0, 2, 1);
+    s.addObject(a);
+    s.setLineDecor(a.id, { headStart: "circle", headSize: "l", dash: "dashed" });
+    expect(pageObjects()[0]).toMatchObject({
+      headStart: "circle",
+      headEnd: "arrow",
+      headSize: "l",
+      dash: "dashed",
+    });
+    s.setLineDecor(a.id, { headEnd: "none", headSize: "m", dash: "solid" });
+    const after = pageObjects()[0];
+    expect(after).not.toHaveProperty("headEnd");
+    expect(after).not.toHaveProperty("headSize");
+    expect(after).not.toHaveProperty("dash");
+    expect(after).toMatchObject({ headStart: "circle" });
+  });
+
+  it("setLineDecor no-ops on a frame object", () => {
+    const s = useLayoutStore.getState();
+    const r = createFrame("rect", 0, 0, 1, 1);
+    s.addObject(r);
+    s.setLineDecor(r.id, { headEnd: "arrow" });
+    expect(pageObjects()[0]).not.toHaveProperty("headEnd");
   });
 });

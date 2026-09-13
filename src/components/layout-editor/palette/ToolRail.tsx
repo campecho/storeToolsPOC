@@ -1,21 +1,29 @@
 import {
+  ArrowUpRight,
   Circle,
   Image,
+  MessageSquare,
   MousePointer2,
   Move,
+  PenTool,
   RectangleHorizontal,
+  Ribbon,
   Search,
   Slash,
+  Squircle,
+  Star,
   Table,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLayoutStore, TOOL_LABELS, type EditorTool } from "@/store";
 
 /**
- * Vertical tool rail (redesign plan §2.5): 9 single-select tools grouped by
+ * Vertical tool rail (redesign plan §2.5): single-select tools grouped by
  * dividers. Originally the figma's floating bottom-center canvas toolbar;
  * re-docked as a fixed rail between the Pages panel and the workspace by
  * request 2026-08-26 (sequence: pages · tools · workspace · inspector).
+ * The shapes group carries the publisher prototype's merged tool set
+ * (rounded rect, arrow, star, callout, banner, pen) beside the originals.
  * The active tool wears the figma's red fill; the status bar mirrors it.
  */
 
@@ -28,8 +36,14 @@ const ENTRIES: RailEntry[] = [
   { kind: "tool", id: "text", icon: null }, // serif "T" glyph, per the figma
   { kind: "divider" },
   { kind: "tool", id: "rect", icon: RectangleHorizontal },
+  { kind: "tool", id: "roundrect", icon: Squircle },
   { kind: "tool", id: "ellipse", icon: Circle },
   { kind: "tool", id: "line", icon: Slash },
+  { kind: "tool", id: "arrow", icon: ArrowUpRight },
+  { kind: "tool", id: "star", icon: Star },
+  { kind: "tool", id: "callout", icon: MessageSquare },
+  { kind: "tool", id: "banner", icon: Ribbon },
+  { kind: "tool", id: "pen", icon: PenTool },
   { kind: "divider" },
   { kind: "tool", id: "pic", icon: Image },
   { kind: "tool", id: "table", icon: Table },

@@ -77,7 +77,11 @@ Editor screen, top to bottom (1462×906 reference frame):
    - **Tool rail** — 54px vertical rail between the Pages panel and the
      canvas, white, right border: the figma's floating bottom-center tool
      strip (below), re-docked as a fixed rail by request 2026-08-26. Same
-     tools, grouping, and active treatment.
+     tools, grouping, and active treatment. *(2026-08-29, by directive: the
+     rail carries the publisher prototype's merged tool set beside the
+     figma's nine — rounded rectangle, arrow, star, callout, banner, and
+     pen, ported from `publisher-prototype/` where those tools were LIVE
+     and the POC had none.)*
    - **Left panel, "Pages"** — 189px. Header: "Pages" caption + a red pill /
      secondary pill button pair; page thumbnails (selected = red border +
      red number), a "+" placeholder tile, "Add page" caption. On the Masters

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Swatch } from "@/schema";
 import { cmykPercent, rgb255 } from "./convert";
-import { hexPaint, paintEquals, paintKey, paintToCss, paintToHex, resolvePaintColor, solidPaint } from "./paint";
+import {
+  hexPaint,
+  paintEquals,
+  paintKey,
+  paintToCss,
+  paintToHex,
+  resolvePaintColor,
+  shadedPaintCss,
+  solidPaint,
+} from "./paint";
 import { proofCmyk, proofRgb } from "./proof";
 
 const swatches: Swatch[] = [
@@ -72,5 +81,34 @@ describe("paintKey / paintEquals", () => {
     expect(paintKey({ kind: "swatch", swatchId: "sw-k" })).toBe("swatch:sw-k:1");
     expect(paintKey({ kind: "swatch", swatchId: "sw-k", tint: 0.5 })).toBe("swatch:sw-k:0.5");
     expect(paintKey(solidPaint(cmykPercent(0, 100, 100, 20)))).toBe("cmyk:0,100,100,20");
+  });
+});
+
+describe("shadedPaintCss", () => {
+  const shade = 0.8;
+
+  it("scales the preview toward black on all three channels", () => {
+    const paint = solidPaint(cmykPercent(0, 0, 0, 5));
+    const [r, g, b] = proofCmyk([0, 0, 0, 0.05]);
+    expect(shadedPaintCss(paint, [], shade)).toBe(css([r * shade, g * shade, b * shade]));
+  });
+
+  it("shades a cmyk fill through its proof, not a naive device value", () => {
+    // The point of resolving first: the tone shaded is the one on screen.
+    const paint = solidPaint(cmykPercent(0, 100, 100, 20));
+    const [r, g, b] = proofCmyk([0, 1, 1, 0.2]);
+    expect(shadedPaintCss(paint, [], shade)).toBe(css([r * shade, g * shade, b * shade]));
+  });
+
+  it("shades a swatch reference through the resolved swatch", () => {
+    const [r, g, b] = proofRgb([0.2, 0.4, 0.6]);
+    expect(shadedPaintCss({ kind: "swatch", swatchId: "sw-rgb" }, swatches, shade)).toBe(
+      css([r * shade, g * shade, b * shade]),
+    );
+  });
+
+  it("leaves the paint untouched at scale 1 — same tone as the preview", () => {
+    const paint = hexPaint("#4472c4");
+    expect(shadedPaintCss(paint, [], 1)).toBe(paintToCss(paint, []));
   });
 });
