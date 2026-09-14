@@ -1,3 +1,5 @@
+import type { ColorValue } from "../model";
+
 /**
  * The capability registry's contract types (PLAN.md §4, §5).
  *
@@ -93,7 +95,10 @@ export type OptionSpec =
       default: string;
       values: readonly string[];
     }
-  | { kind: "color"; id: string; label: string; default: string };
+  /** A colour option's default is a ColorValue (SEAMS.md "Tool option
+      colours"): a print tool's defaults are authored in CMYK, and a hex
+      string could not carry the space the value was authored in. */
+  | { kind: "color"; id: string; label: string; default: ColorValue };
 
 /** Panels of §4.3 — layout set plus the photo-mode set. */
 export type PanelId =

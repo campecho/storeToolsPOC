@@ -18,19 +18,22 @@ import {
   translated,
   withBBox,
 } from "./objects";
+import { cmykPercent } from "@/lib/color/convert";
+import { solidPaint } from "@/lib/color/paint";
 import { tailTipFor } from "./shape-paths";
 
 describe("factories", () => {
   it("frames get wireframe-language defaults and respect the minimum size", () => {
     const r = createFrame("rect", 1, 2, 3, 4);
     expect(r).toMatchObject({ type: "rect", x: 1, y: 2, w: 3, h: 4, rotation: 0, locked: false });
-    expect(r.fill).toBe("#f2f2f2");
-    expect(r.stroke).toEqual({ color: "#8f8f8f", width: 1 });
+    // print-native defaults (Phase 12): K-only tints, never screen hex
+    expect(r.fill).toEqual(solidPaint(cmykPercent(0, 0, 0, 5)));
+    expect(r.stroke).toEqual({ paint: solidPaint(cmykPercent(0, 0, 0, 44)), width: 1 });
     expect(createFrame("rect", 0, 0, 0.001, 0.001).w).toBe(MIN_OBJECT_IN);
   });
 
   it("pictures are the gray placeholder frame", () => {
-    expect(createFrame("picture", 0, 0, 2, 2).fill).toBe("#e8e8e8");
+    expect(createFrame("picture", 0, 0, 2, 2).fill).toEqual(solidPaint(cmykPercent(0, 0, 0, 9)));
   });
 
   it("lines keep endpoint geometry", () => {
@@ -51,7 +54,7 @@ describe("factories", () => {
             {
               text: "",
               font: { family: "Motiva Sans", size: 11, bold: false, italic: false, underline: false },
-              color: "#111111",
+              color: solidPaint(cmykPercent(0, 0, 0, 100)), // 100% K, the print text black
             },
           ],
         },
@@ -88,8 +91,8 @@ describe("factories", () => {
       panelHeight: 0.65,
     });
     expect(createShape("starPolygon", 0, 0, 2, 2)).toMatchObject({
-      fill: "#f2f2f2",
-      stroke: { color: "#8f8f8f", width: 1 },
+      fill: solidPaint(cmykPercent(0, 0, 0, 5)),
+      stroke: { paint: solidPaint(cmykPercent(0, 0, 0, 44)), width: 1 },
     });
   });
 });

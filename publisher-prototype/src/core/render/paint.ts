@@ -1,72 +1,52 @@
 import type { ColorValue, Paint, Swatch } from "../model";
+import { cmykPercent, to255, type Rgb } from "../color/convert";
+import { proofColor } from "../color/proof";
 
 /**
  * Paint → CSS resolution — portable, framework-free preview color logic
  * shared by the Konva stage, the SVG overlay, and any future preview
- * surface. Print-fidelity color management is out of scope: cmyk and spot
- * render their fallback values, exactly as the color model specifies for
- * preview/separations-off output.
+ * surface. Every CSS color this module emits is the PRINT PREVIEW: a cmyk
+ * literal as the press renders it, an rgb literal as it will look once
+ * separated and printed, a spot swatch through its CMYK process fallback
+ * (proof.ts, the "Print preview tables" surface in SEAMS.md). A field that
+ * shows what was typed reads the literal through `resolvePaintColor`.
  */
 
-type Rgb = readonly [number, number, number];
+/** A dangling swatch renders the print black, 100% K — the same black the
+    contract-default stroke uses — never a rich rgb black. */
+const FALLBACK_BLACK: ColorValue = cmykPercent(0, 0, 0, 100);
 
-const FALLBACK_BLACK: Rgb = [0, 0, 0];
-
-/** Naive preview conversion, channel = (1 − ink)(1 − k) — the fallback
-    formula, not color management. */
-function cmykToRgb(values: readonly [number, number, number, number]): Rgb {
-  const [c, m, y, k] = values;
-  return [(1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)];
-}
-
-function colorValueToRgb(color: ColorValue): Rgb {
-  return color.space === "rgb" ? color.values : cmykToRgb(color.values);
-}
-
-/** ASSUMPTION: a tint renders as a mix toward paper white (ink at t%), the
-    print convention — the color model defines tint's strength, not its
-    preview math. */
-function applyTint(rgb: Rgb, tint: number): Rgb {
-  const [r, g, b] = rgb;
-  return [1 - tint * (1 - r), 1 - tint * (1 - g), 1 - tint * (1 - b)];
+/** A tint is ink at t% of full strength: cmyk channels scale; rgb mixes
+    toward paper white. Absent tint = full strength. */
+function applyTint(color: ColorValue, tint: number | undefined): ColorValue {
+  if (tint === undefined || tint >= 1) return color;
+  if (color.space === "cmyk") {
+    const [c, m, y, k] = color.values;
+    return { space: "cmyk", values: [c * tint, m * tint, y * tint, k * tint] };
+  }
+  const [r, g, b] = color.values;
+  return { space: "rgb", values: [1 - tint * (1 - r), 1 - tint * (1 - g), 1 - tint * (1 - b)] };
 }
 
 function toCss(rgb: Rgb): string {
-  const to255 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   return `rgb(${to255(rgb[0])}, ${to255(rgb[1])}, ${to255(rgb[2])})`;
 }
 
-/** Parse a `#rrggbb` hex string (the `<input type="color">` form, the
-    registry's color-option default format) into a literal rgb ColorValue
-    with normalized 0–1 channels. A malformed string resolves to fallback
-    black — this module's soft-failure rule, never an error. */
-export function hexToColorValue(hex: string): ColorValue {
-  const match = /^#([0-9a-fA-F]{6})$/.exec(hex);
-  const digits = match?.[1];
-  if (digits === undefined) return { space: "rgb", values: [...FALLBACK_BLACK] };
-  const n = Number.parseInt(digits, 16);
-  return {
-    space: "rgb",
-    values: [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255],
-  };
+/** The literal color a paint stands for, with any swatch tint applied: a
+    swatch reference through the list (spot → its CMYK fallback), a dangling
+    swatchId → black — the soft-reference rule, never an error. */
+export function resolvePaintColor(paint: Paint, swatches: readonly Swatch[]): ColorValue {
+  if (paint.kind === "color") return paint.color;
+  const swatch = swatches.find((s) => s.id === paint.swatchId);
+  if (swatch === undefined) return FALLBACK_BLACK;
+  const color: ColorValue =
+    swatch.space === "rgb"
+      ? { space: "rgb", values: swatch.values }
+      : { space: "cmyk", values: swatch.values };
+  return applyTint(color, paint.tint);
 }
 
-/** Resolve a Paint to the `#rrggbb` form an `<input type="color">` needs —
-    the same preview resolution as paintToCss (cmyk/spot render fallbacks,
-    dangling swatchId falls back to black), just hex-formatted. */
-export function paintToHex(paint: Paint, swatches: readonly Swatch[]): string {
-  const rgb = resolvePaint(paint, swatches);
-  const to2 = (v: number) =>
-    Math.round(Math.min(1, Math.max(0, v)) * 255)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${to2(rgb[0])}${to2(rgb[1])}${to2(rgb[2])}`;
-}
-
-/** Resolve a Paint to a CSS color. Swatch references resolve through the
-    given swatch list (spot swatches render their CMYK process fallback); a
-    dangling swatchId renders the literal fallback black — the soft-reference
-    rule, never an error. */
+/** Resolve a Paint to a CSS color — the print preview. */
 export function paintToCss(paint: Paint, swatches: readonly Swatch[]): string {
   return toCss(resolvePaint(paint, swatches));
 }
@@ -88,16 +68,7 @@ export function paintToShadedCss(paint: Paint, swatches: readonly Swatch[]): str
   return toCss([r * SHADE_SCALE, g * SHADE_SCALE, b * SHADE_SCALE]);
 }
 
+/** PREVIEW rgb (0–1) for a paint: the print proof of its literal. */
 function resolvePaint(paint: Paint, swatches: readonly Swatch[]): Rgb {
-  if (paint.kind === "color") {
-    return colorValueToRgb(paint.color);
-  }
-  const swatch = swatches.find((s) => s.id === paint.swatchId);
-  const rgb =
-    swatch === undefined
-      ? FALLBACK_BLACK
-      : swatch.space === "rgb"
-        ? swatch.values
-        : cmykToRgb(swatch.values);
-  return paint.tint === undefined ? rgb : applyTint(rgb, paint.tint);
+  return proofColor(resolvePaintColor(paint, swatches));
 }

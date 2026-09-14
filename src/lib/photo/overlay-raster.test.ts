@@ -21,7 +21,7 @@ function text(
     id,
     text: opts.textValue ?? "Hi",
     font: { family: "Motiva Sans", size: 24, bold: false, italic: false },
-    color: "#1a1a1a",
+    color: { space: "cmyk" as const, values: [0, 0, 0, 1] as [number, number, number, number] },
     align: "left" as const,
     box: opts.box ?? { x: 0, y: 0, w: 100, h: 40 },
     rotation: opts.rotation ?? 0,

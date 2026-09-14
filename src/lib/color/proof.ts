@@ -1,0 +1,130 @@
+import type { ColorValue } from "@/schema";
+import { clamp01, naiveCmykToRgb, naiveRgbToCmyk, type Cmyk, type Rgb } from "./convert";
+import { CMYK_TO_SRGB_B64, CMYK_TO_SRGB_CHANNELS, CMYK_TO_SRGB_STEPS } from "./luts/cmyk-to-srgb";
+import { SRGB_TO_CMYK_B64, SRGB_TO_CMYK_CHANNELS, SRGB_TO_CMYK_STEPS } from "./luts/srgb-to-cmyk";
+
+/**
+ * Print preview (redesign plan Phase 12, decision 13): what the GRACoL press
+ * makes of a color, as the screen shows it. Two lookup tables generated
+ * offline from the committed profile (scripts/gen-color-luts.mjs) and
+ * interpolated multilinearly here — no runtime ICC engine, no async load,
+ * deterministic, a few hundred multiplications per color.
+ *
+ *   proofCmyk   press → screen: the preview of a CMYK literal.
+ *   pressCmyk   screen → press: the separation an RGB literal will print as
+ *               (the picker's CMYK readout in RGB mode).
+ *   proofRgb    the round trip: how RGB content looks once printed — an
+ *               out-of-gamut orange dulls on screen the way it will on paper.
+ *
+ * The naive device formulas stand in only if a table fails to decode.
+ */
+
+function decodeBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+type Table = { data: Uint8Array; steps: number; channels: number };
+
+function loadTable(b64: string, steps: number, channels: number, inputDims: number): Table | null {
+  const data = decodeBase64(b64);
+  return data.length === steps ** inputDims * channels ? { data, steps, channels } : null;
+}
+
+let cmykTable: Table | null | undefined;
+let rgbTable: Table | null | undefined;
+
+function tableCmyk(): Table | null {
+  if (cmykTable === undefined) cmykTable = loadTable(CMYK_TO_SRGB_B64, CMYK_TO_SRGB_STEPS, CMYK_TO_SRGB_CHANNELS, 4);
+  return cmykTable;
+}
+function tableRgb(): Table | null {
+  if (rgbTable === undefined) rgbTable = loadTable(SRGB_TO_CMYK_B64, SRGB_TO_CMYK_STEPS, SRGB_TO_CMYK_CHANNELS, 3);
+  return rgbTable;
+}
+
+/** Multilinear interpolation over a regular grid: every corner of the cell
+    around `coords` weighted by its distance. Output in 0–1. */
+function lerpN(table: Table, coords: readonly number[]): number[] {
+  const { data, steps, channels } = table;
+  const dims = coords.length;
+  const idx: number[] = [];
+  const frac: number[] = [];
+  for (const v of coords) {
+    const x = clamp01(v) * (steps - 1);
+    const i = Math.min(Math.floor(x), steps - 2);
+    idx.push(i);
+    frac.push(x - i);
+  }
+  const out = new Array<number>(channels).fill(0);
+  const corners = 1 << dims;
+  for (let corner = 0; corner < corners; corner++) {
+    let weight = 1;
+    let offset = 0;
+    for (let d = 0; d < dims; d++) {
+      const hi = (corner >> (dims - 1 - d)) & 1;
+      weight *= hi ? frac[d] : 1 - frac[d];
+      offset = offset * steps + idx[d] + hi;
+    }
+    if (weight === 0) continue;
+    for (let ch = 0; ch < channels; ch++) out[ch] += (weight * data[offset * channels + ch]) / 255;
+  }
+  return out;
+}
+
+/** Press → screen. */
+export function proofCmyk(cmyk: Cmyk): Rgb {
+  const table = tableCmyk();
+  if (!table) return naiveCmykToRgb(cmyk);
+  const [r, g, b] = lerpN(table, cmyk);
+  return [r, g, b];
+}
+
+/** Screen → press: the separation the profile assigns an sRGB color. */
+export function pressCmyk(rgb: Rgb): Cmyk {
+  const table = tableRgb();
+  if (!table) return naiveRgbToCmyk(rgb);
+  const [c, m, y, k] = lerpN(table, rgb);
+  return [c, m, y, k];
+}
+
+/** How RGB content looks once printed. */
+export function proofRgb(rgb: Rgb): Rgb {
+  return proofCmyk(pressCmyk(rgb));
+}
+
+/** The preview for any literal. */
+export function proofColor(color: ColorValue): Rgb {
+  return color.space === "cmyk" ? proofCmyk(color.values) : proofRgb(color.values);
+}
+
+/* ── Gamut warning ── */
+
+function srgbToLab([r, g, b]: Rgb): [number, number, number] {
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [rl, gl, bl] = [lin(r), lin(g), lin(b)];
+  const x = (0.4124 * rl + 0.3576 * gl + 0.1805 * bl) / 0.95047;
+  const y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+  const z = (0.0193 * rl + 0.1192 * gl + 0.9505 * bl) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+/** ΔE76 between an sRGB color and its printed appearance. */
+export function gamutShift(rgb: Rgb): number {
+  const a = srgbToLab(rgb);
+  const b = srgbToLab(proofRgb(rgb));
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+/** ASSUMPTION: a shift past this reads as "a different color" at a glance
+    (ΔE76 ≈ 2 is just noticeable; the perceptual intent moves even neutrals by
+    ~4–5). Tune against real proofs; recorded for SME validation. */
+export const GAMUT_WARN_DELTA_E = 6;
+
+/** True when printing will visibly change this sRGB color. */
+export function isOutOfGamut(rgb: Rgb): boolean {
+  return gamutShift(rgb) > GAMUT_WARN_DELTA_E;
+}

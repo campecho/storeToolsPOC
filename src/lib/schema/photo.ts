@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { colorFromHex } from "@/lib/color/convert";
+import { ColorValueSchema } from "./color";
 
 /**
  * Photo-editor document model (plan §3.4) — the recipe IS the document.
@@ -210,7 +212,10 @@ export const TextOverlayOpSchema = z.object({
     bold: z.boolean(),
     italic: z.boolean(),
   }),
-  color: z.string(),
+  /** Ink as a ColorValue (Phase 12: authored in CMYK or RGB). A pre-Phase-12
+      recipe stored a hex string; it parses as an rgb literal, so persisted
+      photo documents and layout `photoEdit` recipes keep opening. */
+  color: z.preprocess((v) => (typeof v === "string" ? colorFromHex(v) : v), ColorValueSchema),
   align: z.enum(["left", "center", "right"]),
   box: PixelRectSchema,
   rotation: z.number(),

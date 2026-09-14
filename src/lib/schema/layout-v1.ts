@@ -1,15 +1,7 @@
 import { z } from "zod";
-import {
-  AssetSchema,
-  FontPropsSchema,
-  OrientationSchema,
-  ProductBindingSchema,
-  StrokeSchema,
-  TextAlignSchema,
-  type LayoutObject,
-  type Paragraph,
-} from "./layout";
+import { AssetSchema, FontPropsSchema, OrientationSchema, ProductBindingSchema, TextAlignSchema } from "./layout";
 import type { V2LayoutDocument } from "./layout-v2";
+import { V3StrokeSchema, type V3LayoutObject, type V3TextProps } from "./layout-v3";
 
 /**
  * FROZEN schema v1 (plan §9) — the shape this POC persisted before the P2
@@ -40,7 +32,7 @@ const V1FrameObjectSchema = z.object({
   rotation: z.number(),
   locked: z.boolean(),
   fill: z.string().nullable(),
-  stroke: StrokeSchema.nullable(),
+  stroke: V3StrokeSchema.nullable(),
   text: V1TextPropsSchema.optional(),
   assetId: z.string().optional(),
 });
@@ -52,7 +44,7 @@ const V1LineObjectSchema = z.object({
   y1: z.number(),
   x2: z.number(),
   y2: z.number(),
-  stroke: StrokeSchema,
+  stroke: V3StrokeSchema,
 });
 
 const V1LayoutObjectSchema = z.union([V1FrameObjectSchema, V1LineObjectSchema]);
@@ -93,7 +85,7 @@ export type V1LayoutDocument = z.infer<typeof V1LayoutDocumentSchema>;
 const V1_TEXT_COLOR = "#111111";
 
 /** v1 per-frame text → v2 paragraphs: one paragraph per line, one run each. */
-function migrateText(t: V1TextProps): { paragraphs: Paragraph[] } {
+function migrateText(t: V1TextProps): V3TextProps {
   const lines = t.content.split("\n");
   return {
     paragraphs: (lines.length ? lines : [""]).map((line) => ({
@@ -104,7 +96,7 @@ function migrateText(t: V1TextProps): { paragraphs: Paragraph[] } {
   };
 }
 
-function migrateObject(o: V1LayoutObject): LayoutObject {
+function migrateObject(o: V1LayoutObject): V3LayoutObject {
   if (o.type === "line") return o;
   const { text, ...rest } = o;
   return text ? { ...rest, text: migrateText(text) } : rest;

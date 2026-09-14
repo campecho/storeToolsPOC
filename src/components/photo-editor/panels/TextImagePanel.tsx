@@ -11,6 +11,8 @@ import {
   Type,
 } from "lucide-react";
 import { usePhotoStore } from "@/lib/store/photo-store";
+import { ColorPicker } from "@/components/ui/ColorPicker";
+import { paintToCss, solidPaint } from "@/lib/color/paint";
 import { FONT_CATALOG } from "@/lib/layout/font-catalog";
 import { ingestOverlayImage } from "@/lib/photo/client";
 import {
@@ -66,6 +68,11 @@ export function TextImagePanel() {
   const selected = overlays.find((o) => o.id === selectedOverlayId) ?? null;
   const selectedText: TextOverlayOp | null =
     selected && selected.op === "textOverlay" ? selected : null;
+  // A stable Paint per ink, so the picker's re-seed effect sees one value per edit.
+  const selectedInk = useMemo(
+    () => (selectedText ? solidPaint(selectedText.color) : null),
+    [selectedText],
+  );
   // The render contract caps the overlays sidecar at 16 — guard the add so an
   // export never fails validation (RenderPayloadSchema.overlays.max(16)).
   const atCap = overlays.length >= 16;
@@ -306,22 +313,25 @@ export function TextImagePanel() {
             >
               <Italic size={13} strokeWidth={2} />
             </ToggleButton>
-            <label
-              className={`flex h-[30px] w-[34px] items-center justify-center rounded-[5px] border ${
-                selectedText ? "cursor-pointer border-[#dcdcdc] bg-white" : "cursor-not-allowed border-[#e6e6e6] bg-[#f6f6f6]"
+            {/* Text color (Phase 12): the CMYK-first picker; every commit —
+                live drag or field — rides the coalesced "Edit text" step. */}
+            <ColorPicker
+              value={selectedInk}
+              onChange={(paint) => {
+                if (paint?.kind === "color") editText({ color: paint.color });
+              }}
+              disabled={!selectedText}
+              ariaLabel="Text color"
+              testIdPrefix="text-color"
+              triggerClassName={`flex h-[30px] w-[34px] items-center justify-center rounded-[5px] border ${
+                selectedText ? "border-[#dcdcdc] bg-white" : "border-[#e6e6e6] bg-[#f6f6f6]"
               }`}
-              title="Text color"
             >
-              <input
-                type="color"
-                data-testid="text-color"
-                value={selectedText?.color ?? "#1a1a1a"}
-                disabled={!selectedText}
-                aria-label="Text color"
-                onChange={(e) => editText({ color: e.target.value })}
-                className="h-[16px] w-[20px] cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed"
+              <span
+                className="block h-[16px] w-[20px] rounded-[3px] border border-[#d6d6d6]"
+                style={{ backgroundColor: selectedInk ? paintToCss(selectedInk, []) : "#ffffff" }}
               />
-            </label>
+            </ColorPicker>
           </div>
 
           {/* alignment */}

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { FrameObject, LayoutDocument, LayoutObject } from "@/lib/schema";
 import { BASE_LAYER_ID, baseLayerDef } from "@/lib/schema";
+import { hexPaint } from "@/lib/color/paint";
 import { runPreflight, MIN_DPI_WARN, SAFE_ZONE_IN } from "./preflight";
 
 const rect = (
@@ -19,14 +20,14 @@ const rect = (
   h,
   rotation: 0,
   locked: false,
-  fill: "#fff",
+  fill: hexPaint("#ffffff"),
   stroke: null,
   ...extra,
 });
 
 function doc(objects: LayoutObject[], patch: Partial<LayoutDocument> = {}): LayoutDocument {
   return {
-    version: 3,
+    version: 4,
     name: "t",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -39,6 +40,7 @@ function doc(objects: LayoutObject[], patch: Partial<LayoutDocument> = {}): Layo
     masters: [],
     assets: {},
     guides: { v: [], h: [] },
+    swatches: [],
     ...patch,
   };
 }
@@ -51,7 +53,7 @@ const text = (id: string, family: string): FrameObject => ({
       {
         align: "left",
         lineSpacing: 1.2,
-        runs: [{ text: "Hello", font: { family, size: 11, bold: false, italic: false, underline: false }, color: "#111" }],
+        runs: [{ text: "Hello", font: { family, size: 11, bold: false, italic: false, underline: false }, color: hexPaint("#111111") }],
       },
     ],
   },
@@ -100,7 +102,7 @@ describe("runPreflight", () => {
 
   it("flags hairline strokes and injected overset ids", () => {
     const issues = runPreflight(
-      doc([rect("a", 2, 2, 1, 1, { stroke: { color: "#000", width: 0.25 } }), text("t", "Motiva Sans")]),
+      doc([rect("a", 2, 2, 1, 1, { stroke: { paint: hexPaint("#000000"), width: 0.25 } }), text("t", "Motiva Sans")]),
       { oversetIds: ["t"] },
     );
     expect(issues.find((i) => i.rule === "hairline")).toBeTruthy();

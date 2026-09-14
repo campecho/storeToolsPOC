@@ -636,15 +636,3 @@ export function shapeShading(shape: ShapeGeometry, w: number, h: number): PathSe
     toward black, measured off the prototype's reference capture (×0.80 on
     all three channels). */
 export const SHADE_SCALE = 0.8;
-
-/** A #rrggbb (or #rgb) fill scaled toward black for shading; any other
-    string comes back unchanged (shading then just re-fills the same tone). */
-export function shadedFill(fill: string): string {
-  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(fill);
-  if (!m) return fill;
-  const hex = m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1];
-  const scaled = [0, 2, 4].map((i) =>
-    Math.round(parseInt(hex.slice(i, i + 2), 16) * SHADE_SCALE),
-  );
-  return `#${scaled.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-}

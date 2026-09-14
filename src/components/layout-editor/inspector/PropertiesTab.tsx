@@ -1,10 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { surfaceObjects, useLayoutStore } from "@/store";
-import type { ArrowHead, ArrowHeadSize, FrameObject, LayoutObject, LineDash } from "@/schema";
+import type {
+  ArrowHead,
+  ArrowHeadSize,
+  ColorValue,
+  FrameObject,
+  LayoutDocument,
+  LayoutObject,
+  LineDash,
+  Paint,
+} from "@/schema";
+import { to255, toPercent } from "@/lib/color/convert";
+import { paintEquals, paintToCss, solidPaint } from "@/lib/color/paint";
+import { ColorPicker } from "@/components/ui/ColorPicker";
 import {
+  DEFAULT_STROKE_PRESET,
   OBJECT_PALETTE,
   STROKE_WIDTHS,
   bboxOf,
@@ -23,21 +36,26 @@ import { Field, NumberField, SectionLabel } from "./Field";
 /**
  * Properties inspector tab (wire region 7, live per L4): Transform X/Y/W/H
  * round-trips the selected object's bbox (a line's endpoints map through it),
- * plus minimal Fill and Stroke rows — grayscale ramp + brand red + none, the
- * wireframe language's ink set. No selection shows the wire's empty state.
+ * plus Fill and Stroke rows — the ink-set presets (grayscale ramp + brand
+ * red + none) for one-click picks, and the color picker (Phase 12: CMYK
+ * first, RGB, hex) for anything else. A picker drag is one history step:
+ * the edits ride `transient` and commitGesture closes them at release.
+ * No selection shows the wire's empty state.
  * Merged prototype surfaces: a Shape section drives a parametric shape's
  * stored parameters (the adjust handles' values, numerically), and a Line
  * section drives a line's dash and arrow heads — the prototype tool options
  * bar's functions, rehomed to the inspector per this app's pattern.
  */
 
-function Swatch({
+/** One preset ink from OBJECT_PALETTE (or None) — distinct from the
+    document's named Swatch model, which the picker lists separately. */
+function PresetSwatch({
   color,
   active,
   onPick,
   testId,
 }: {
-  color: string | null;
+  color: ColorValue | null;
   active: boolean;
   onPick: () => void;
   testId: string;
@@ -47,12 +65,18 @@ function Swatch({
       type="button"
       onClick={onPick}
       data-testid={testId}
-      aria-label={color ?? "None"}
+      aria-label={
+        color
+          ? color.space === "cmyk"
+            ? `CMYK ${color.values.map(toPercent).join(" ")}`
+            : `RGB ${color.values.map(to255).join(" ")}`
+          : "None"
+      }
       aria-pressed={active}
       className={`relative h-[18px] w-[18px] cursor-pointer rounded-[4px] border ${
         active ? "border-[1.5px] border-brand" : "border-[#d6d6d6]"
       }`}
-      style={{ backgroundColor: color ?? "#ffffff" }}
+      style={{ backgroundColor: color ? paintToCss(solidPaint(color), []) : "#ffffff" }}
     >
       {color === null && (
         // the classic "none" diagonal
@@ -207,8 +231,11 @@ export function PropertiesTab() {
   const selectedIds = useLayoutStore((s) => s.selectedIds);
   const transformObject = useLayoutStore((s) => s.transformObject);
   const setObjectProps = useLayoutStore((s) => s.setObjectProps);
+  const commitGesture = useLayoutStore((s) => s.commitGesture);
+  const swatches = useLayoutStore((s) => s.doc.swatches);
   const setLineDecor = useLayoutStore((s) => s.setLineDecor);
   const revertPhotoEdit = useLayoutStore((s) => s.revertPhotoEdit);
+  const dragBefore = useRef<LayoutDocument | null>(null);
   const docName = useLayoutStore((s) => s.doc.name);
   const router = useRouter();
   const [photoNote, setPhotoNote] = useState<string | null>(null);
@@ -255,6 +282,16 @@ export function PropertiesTab() {
   };
 
   const stroke = obj.stroke;
+  const dragStart = () => {
+    dragBefore.current = useLayoutStore.getState().doc;
+  };
+  const dragEnd = () => {
+    if (dragBefore.current) commitGesture(dragBefore.current);
+    dragBefore.current = null;
+  };
+  const setFill = (fill: Paint | null, live: boolean) => setObjectProps(obj.id, { fill }, live);
+  const setStrokePaint = (paint: Paint | null, live: boolean) =>
+    setObjectProps(obj.id, { stroke: paint ? { paint, width: stroke?.width ?? 1 } : null }, live);
 
   return (
     <div className="flex flex-col gap-4">
@@ -347,21 +384,32 @@ export function PropertiesTab() {
         <div>
           <SectionLabel>Fill</SectionLabel>
           <div className="flex flex-wrap gap-[6px]">
-            <Swatch
+            <PresetSwatch
               color={null}
               active={obj.fill === null}
               onPick={() => setObjectProps(obj.id, { fill: null })}
               testId="fill-none"
             />
             {OBJECT_PALETTE.map((c) => (
-              <Swatch
-                key={c}
-                color={c}
-                active={obj.fill?.toLowerCase() === c.toLowerCase()}
-                onPick={() => setObjectProps(obj.id, { fill: c })}
-                testId={`fill-${c.slice(1)}`}
+              <PresetSwatch
+                key={c.id}
+                color={c.color}
+                active={paintEquals(obj.fill, solidPaint(c.color))}
+                onPick={() => setFill(solidPaint(c.color), false)}
+                testId={`fill-${c.id}`}
               />
             ))}
+            <ColorPicker
+              value={obj.fill}
+              onChange={setFill}
+              onDragStart={dragStart}
+              onDragEnd={dragEnd}
+              swatches={swatches}
+              presets={OBJECT_PALETTE}
+              allowNone
+              ariaLabel="Fill color"
+              testIdPrefix="fill-picker"
+            />
           </div>
         </div>
       )}
@@ -370,7 +418,7 @@ export function PropertiesTab() {
         <SectionLabel>Stroke</SectionLabel>
         <div className="mb-2 flex flex-wrap gap-[6px]">
           {!line && (
-            <Swatch
+            <PresetSwatch
               color={null}
               active={stroke === null}
               onPick={() => setObjectProps(obj.id, { stroke: null })}
@@ -378,16 +426,25 @@ export function PropertiesTab() {
             />
           )}
           {OBJECT_PALETTE.map((c) => (
-            <Swatch
-              key={c}
-              color={c}
-              active={stroke?.color.toLowerCase() === c.toLowerCase()}
-              onPick={() =>
-                setObjectProps(obj.id, { stroke: { color: c, width: stroke?.width ?? 1 } })
-              }
-              testId={`stroke-${c.slice(1)}`}
+            <PresetSwatch
+              key={c.id}
+              color={c.color}
+              active={paintEquals(stroke?.paint, solidPaint(c.color))}
+              onPick={() => setStrokePaint(solidPaint(c.color), false)}
+              testId={`stroke-${c.id}`}
             />
           ))}
+          <ColorPicker
+            value={stroke?.paint ?? null}
+            onChange={setStrokePaint}
+            onDragStart={dragStart}
+            onDragEnd={dragEnd}
+            swatches={swatches}
+            presets={OBJECT_PALETTE}
+            allowNone={!line}
+            ariaLabel="Stroke color"
+            testIdPrefix="stroke-picker"
+          />
         </div>
         <div className="flex items-center gap-2">
           <div className="text-[10px] text-[#999]">Width</div>
@@ -395,7 +452,7 @@ export function PropertiesTab() {
             value={stroke?.width ?? ""}
             onChange={(e) =>
               setObjectProps(obj.id, {
-                stroke: { color: stroke?.color ?? "#555555", width: Number(e.target.value) },
+                stroke: { paint: stroke?.paint ?? solidPaint(DEFAULT_STROKE_PRESET), width: Number(e.target.value) },
               })
             }
             data-testid="stroke-width"

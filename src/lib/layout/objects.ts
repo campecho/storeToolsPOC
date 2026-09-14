@@ -1,4 +1,6 @@
-import type { FrameObject, LayoutObject, LineObject } from "@/schema";
+import type { ColorValue, FrameObject, LayoutObject, LineObject } from "@/schema";
+import { cmykPercent } from "@/lib/color/convert";
+import { solidPaint } from "@/lib/color/paint";
 import {
   BANNER_DEFAULT_HEIGHT,
   BANNER_DEFAULT_INSET,
@@ -25,17 +27,23 @@ export const DUPLICATE_OFFSET_IN = 0.25;
 /** Shift while rotating snaps to this increment (plan L10). */
 export const ROTATE_SNAP_DEG = 15;
 
-/** Grayscale ramp + brand red — the wireframe language's ink set (plan L4). */
-export const OBJECT_PALETTE = [
-  "#ffffff",
-  "#f2f2f2",
-  "#d9d9d9",
-  "#b0b0b0",
-  "#8f8f8f",
-  "#555555",
-  "#111111",
-  "#CC0000",
-] as const;
+/** Grayscale ramp + brand red — the wireframe language's ink set (plan L4),
+    authored in CMYK since the shop prints CMYK (Phase 12): paper, a K-only
+    ramp, and the brand red as its press separation. `id` is the swatch's
+    test-id suffix; `color` the literal it applies. */
+export const OBJECT_PALETTE: readonly { id: string; color: ColorValue }[] = [
+  { id: "paper", color: cmykPercent(0, 0, 0, 0) },
+  { id: "k5", color: cmykPercent(0, 0, 0, 5) },
+  { id: "k15", color: cmykPercent(0, 0, 0, 15) },
+  { id: "k31", color: cmykPercent(0, 0, 0, 31) },
+  { id: "k44", color: cmykPercent(0, 0, 0, 44) },
+  { id: "k67", color: cmykPercent(0, 0, 0, 67) },
+  { id: "k93", color: cmykPercent(0, 0, 0, 93) },
+  { id: "brand", color: cmykPercent(0, 100, 100, 20) },
+];
+
+/** The preset a stroke width edit paints with when the object had no stroke. */
+export const DEFAULT_STROKE_PRESET: ColorValue = cmykPercent(0, 0, 0, 67);
 
 export const STROKE_WIDTHS = [1, 1.5, 2, 3, 4] as const;
 
@@ -60,8 +68,8 @@ export function createFrame(
     rotation: 0,
     locked: false,
     // picture = the gray placeholder frame (design doc §4.5; real import deferred)
-    fill: picture ? "#e8e8e8" : "#f2f2f2",
-    stroke: { color: picture ? "#b0b0b0" : "#8f8f8f", width: 1 },
+    fill: solidPaint(cmykPercent(0, 0, 0, picture ? 9 : 5)),
+    stroke: { paint: solidPaint(cmykPercent(0, 0, 0, picture ? 31 : 44)), width: 1 },
   };
 }
 
@@ -94,7 +102,7 @@ export function createLine(x1: number, y1: number, x2: number, y2: number): Line
     y1,
     x2,
     y2,
-    stroke: { color: "#555555", width: 1.5 },
+    stroke: { paint: solidPaint(cmykPercent(0, 0, 0, 67)), width: 1.5 },
   };
 }
 
@@ -133,8 +141,8 @@ export function createShape(
     h: Math.max(MIN_OBJECT_IN, h),
     rotation: 0,
     locked: false,
-    fill: "#f2f2f2",
-    stroke: { color: "#8f8f8f", width: 1 },
+    fill: solidPaint(cmykPercent(0, 0, 0, 5)),
+    stroke: { paint: solidPaint(cmykPercent(0, 0, 0, 44)), width: 1 },
     ...params,
   };
 }

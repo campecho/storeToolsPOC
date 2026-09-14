@@ -93,7 +93,7 @@ const textOverlayOp = (id: string): PhotoOp => ({
   id,
   text: "hi",
   font: { family: "Arimo", size: 24, bold: false, italic: false },
-  color: "#000000",
+  color: { space: "cmyk", values: [0, 0, 0, 1] },
   align: "left",
   box: { x: 0, y: 0, w: 50, h: 20 },
   rotation: 0,

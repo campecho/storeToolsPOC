@@ -1729,6 +1729,29 @@ test.describe("Text & image (PE6)", () => {
     await expect(page.getByTestId("text-layer-0")).toContainText("SUMMER SALE");
   });
 
+  test("text color opens the CMYK-first picker; the ink edit coalesces into the text step", async ({ page }) => {
+    await openDemoPhoto(page);
+    await addText(page, "SUMMER SALE");
+    await expectHistory(page, 2);
+
+    await page.getByTestId("text-color-trigger").click();
+    await expect(page.getByTestId("text-color-mode-cmyk")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("text-color-k").fill("50");
+    await page.getByTestId("text-color-k").press("Enter");
+    // the trigger face shows the print preview of 50% K
+    await expect(page.getByTestId("text-color-trigger").locator("span")).toHaveCSS(
+      "background-color",
+      "rgb(148, 149, 148)",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("text-color-popover")).toBeHidden();
+    await expectHistory(page, 2); // "Edit text" coalesced into the add
+    // the ink reached the overlay: reopening reads it back as K 50
+    await page.getByTestId("text-color-trigger").click();
+    await expect(page.getByTestId("text-color-k")).toHaveValue("50");
+    await page.keyboard.press("Escape");
+  });
+
   test("corner handle scales the box and the font size together", async ({ page }) => {
     await openDemoPhoto(page);
     await addText(page);

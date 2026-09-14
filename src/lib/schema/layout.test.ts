@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FrameObjectSchema, LineObjectSchema } from "./layout";
+import { cmykPercent } from "@/lib/color/convert";
+import { solidPaint } from "@/lib/color/paint";
 
 /**
  * Schema deltas for the merged prototype tool set: the parametric shape
@@ -15,8 +17,8 @@ const frame = {
   h: 1,
   rotation: 0,
   locked: false,
-  fill: "#f2f2f2",
-  stroke: { color: "#8f8f8f", width: 1 },
+  fill: solidPaint(cmykPercent(0, 0, 0, 5)),
+  stroke: { paint: solidPaint(cmykPercent(0, 0, 0, 44)), width: 1 },
 };
 
 describe("FrameObjectSchema — parametric shape kinds", () => {
@@ -87,7 +89,7 @@ describe("LineObjectSchema — merged decorations are additive", () => {
     y1: 0,
     x2: 2,
     y2: 1,
-    stroke: { color: "#555555", width: 1.5 },
+    stroke: { paint: solidPaint(cmykPercent(0, 0, 0, 67)), width: 1.5 },
   };
 
   it("keeps parsing a bare pre-merge line", () => {

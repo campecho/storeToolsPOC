@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { FrameObject, LayoutObject, PathSeg } from "@/schema";
+import type { FrameObject, LayoutObject, PathSeg, Swatch } from "@/schema";
+import { paintToCss, shadedPaintCss } from "@/lib/color/paint";
 import { inToPx } from "@/lib/layout/geometry";
 import { bboxOf } from "@/lib/layout/objects";
 import {
@@ -12,7 +13,7 @@ import {
 import {
   isParametricShape,
   outlineOvershoot,
-  shadedFill,
+  SHADE_SCALE,
   shapeOutline,
   shapeShading,
 } from "@/lib/layout/shape-paths";
@@ -125,6 +126,7 @@ function PictureFill({
 function TextFrameNode({
   obj,
   zoom,
+  swatches,
   interactive,
   editing,
   withTestId,
@@ -133,6 +135,7 @@ function TextFrameNode({
 }: {
   obj: FrameObject;
   zoom: number;
+  swatches: readonly Swatch[];
   interactive: boolean;
   editing: boolean;
   withTestId: boolean;
@@ -174,8 +177,8 @@ function TextFrameNode({
         top: inToPx(obj.y, zoom),
         width: inToPx(obj.w, zoom),
         height: inToPx(obj.h, zoom),
-        backgroundColor: obj.fill ?? "transparent",
-        border: obj.stroke ? `${strokePx}px solid ${obj.stroke.color}` : undefined,
+        backgroundColor: obj.fill ? paintToCss(obj.fill, swatches) : "transparent",
+        border: obj.stroke ? `${strokePx}px solid ${paintToCss(obj.stroke.paint, swatches)}` : undefined,
         transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
       }}
       onPointerDown={interactive ? onPointerDown : undefined}
@@ -202,9 +205,9 @@ function TextFrameNode({
         >
           {text.paragraphs.map((p, pi) => (
             // the div carries its first run's (scaled) size so empty lines keep height
-            <div key={pi} style={{ ...paraCss(p, zoom), fontSize: runCss(p.runs[0], zoom, scale).fontSize }}>
+            <div key={pi} style={{ ...paraCss(p, zoom), fontSize: runCss(p.runs[0], zoom, scale, swatches).fontSize }}>
               {p.runs.map((r, ri) => (
-                <span key={ri} style={runCss(r, zoom, scale)}>
+                <span key={ri} style={runCss(r, zoom, scale, swatches)}>
                   {r.text}
                 </span>
               ))}
@@ -251,11 +254,15 @@ export function ObjectNode({
       round-trip into the Photo Editor (PE8, F2). */
   onDoubleClick?: () => void;
 }) {
+  // Paints resolve through the document's swatches (schema v4); every color
+  // below is the print PREVIEW, never the raw literal.
+  const swatches = useLayoutStore((s) => s.doc.swatches);
   if (obj.type === "text" && obj.text) {
     return (
       <TextFrameNode
         obj={obj}
         zoom={zoom}
+        swatches={swatches}
         interactive={interactive}
         editing={editing}
         withTestId={withTestId}
@@ -323,7 +330,7 @@ export function ObjectNode({
           y1={ly(t1.y)}
           x2={lx(t2.x)}
           y2={ly(t2.y)}
-          stroke={obj.stroke.color}
+          stroke={paintToCss(obj.stroke.paint, swatches)}
           strokeWidth={strokePx}
           strokeDasharray={dashIn?.map((v) => inToPx(v, zoom)).join(" ")}
           pointerEvents="none"
@@ -336,7 +343,7 @@ export function ObjectNode({
               cx={lx(head.center.x)}
               cy={ly(head.center.y)}
               r={inToPx(head.radius, zoom)}
-              fill={obj.stroke.color}
+              fill={paintToCss(obj.stroke.paint, swatches)}
               pointerEvents="none"
             />
           ) : (
@@ -344,7 +351,7 @@ export function ObjectNode({
               key={key}
               data-testid={withTestId ? `line-head-${key}` : undefined}
               points={head.points.map((p) => `${lx(p.x)},${ly(p.y)}`).join(" ")}
-              fill={obj.stroke.color}
+              fill={paintToCss(obj.stroke.paint, swatches)}
               pointerEvents="none"
             />
           ),
@@ -390,9 +397,9 @@ export function ObjectNode({
           <g transform={`translate(${-ex0 * w}, ${-ey0 * h})`}>
             <path
               d={outline}
-              fill={obj.fill ?? "none"}
+              fill={obj.fill ? paintToCss(obj.fill, swatches) : "none"}
               fillRule="evenodd"
-              stroke={obj.stroke?.color}
+              stroke={obj.stroke ? paintToCss(obj.stroke.paint, swatches) : undefined}
               strokeWidth={strokeW || undefined}
               className={interactive ? "cursor-move" : undefined}
               pointerEvents={interactive ? "visiblePainted" : "none"}
@@ -402,9 +409,9 @@ export function ObjectNode({
             {shading && (
               <path
                 d={shading}
-                fill={shadedFill(obj.fill!)}
+                fill={shadedPaintCss(obj.fill!, swatches, SHADE_SCALE)}
                 fillRule="evenodd"
-                stroke={obj.stroke?.color}
+                stroke={obj.stroke ? paintToCss(obj.stroke.paint, swatches) : undefined}
                 strokeWidth={strokeW || undefined}
                 pointerEvents="none"
               />
@@ -436,9 +443,9 @@ export function ObjectNode({
         <svg width={w} height={h} className="overflow-visible">
           <path
             d={d}
-            fill={obj.fill ?? "none"}
+            fill={obj.fill ? paintToCss(obj.fill, swatches) : "none"}
             fillRule="evenodd"
-            stroke={obj.stroke?.color}
+            stroke={obj.stroke ? paintToCss(obj.stroke.paint, swatches) : undefined}
             strokeWidth={strokeW || undefined}
           />
         </svg>
@@ -458,8 +465,8 @@ export function ObjectNode({
         top: inToPx(obj.y, zoom),
         width: inToPx(obj.w, zoom),
         height: inToPx(obj.h, zoom),
-        backgroundColor: obj.fill ?? "transparent",
-        border: obj.stroke ? `${strokePx}px solid ${obj.stroke.color}` : undefined,
+        backgroundColor: obj.fill ? paintToCss(obj.fill, swatches) : "transparent",
+        border: obj.stroke ? `${strokePx}px solid ${paintToCss(obj.stroke.paint, swatches)}` : undefined,
         transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
       }}
       onPointerDown={interactive ? onPointerDown : undefined}

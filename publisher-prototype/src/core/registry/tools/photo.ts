@@ -1,3 +1,4 @@
+import { cmykPercent } from "../../color/convert";
 import type { ToolContract } from "../types";
 
 /**
@@ -381,7 +382,7 @@ export const textOverlayTool: ToolContract = {
   ],
   options: [
     { kind: "number", id: "fontSize", label: "Size", default: 24, min: 6, max: 288, unit: "pt" },
-    { kind: "color", id: "color", label: "Color", default: "#ffffff" },
+    { kind: "color", id: "color", label: "Color", default: cmykPercent(0, 0, 0, 0) },
     { kind: "boolean", id: "bold", label: "Bold", default: false },
     { kind: "boolean", id: "italic", label: "Italic", default: false },
     {

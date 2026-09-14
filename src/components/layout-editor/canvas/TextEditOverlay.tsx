@@ -29,6 +29,7 @@ export function TextEditOverlay({ obj, zoom }: { obj: FrameObject; zoom: number 
   const lastEmitted = useRef<string | null>(null);
   const text = obj.text!;
   const summary = textSummary(text);
+  const swatches = useLayoutStore((s) => s.doc.swatches);
 
   // Mount-only (keyed by frame id): capture the before-document for the
   // session's single history commit, seed the DOM, focus, caret at end.
@@ -40,7 +41,7 @@ export function TextEditOverlay({ obj, zoom }: { obj: FrameObject; zoom: number 
       const target = surfaceObjects(store).find((o) => o.id === obj.id);
       const current = target?.type === "text" && target.text ? target.text : null;
       if (current) {
-        seedEditableDom(el, current, lastZoom.current);
+        seedEditableDom(el, current, lastZoom.current, store.doc.swatches);
         lastEmitted.current = JSON.stringify(current.paragraphs);
       }
       el.focus();
@@ -70,11 +71,11 @@ export function TextEditOverlay({ obj, zoom }: { obj: FrameObject; zoom: number 
     const incoming = JSON.stringify(text.paragraphs);
     if (incoming === lastEmitted.current && lastZoom.current === zoom) return;
     const caret = captureCaretOffset(el);
-    seedEditableDom(el, text, zoom);
+    seedEditableDom(el, text, zoom, swatches);
     lastEmitted.current = incoming;
     lastZoom.current = zoom;
     if (caret !== null) restoreCaretOffset(el, caret);
-  }, [text, zoom]);
+  }, [text, zoom, swatches]);
 
   const insetPx = (v: number | undefined) => (v ? inToPx(v, zoom) : 0);
 

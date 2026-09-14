@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FrameObject, LayoutDocument, TextProps } from "@/schema";
 import { createDefaultDocument } from "@/store";
+import { hexPaint } from "@/lib/color/paint";
 import { isOverflowing, ptToPx } from "@/lib/layout/text";
 import {
   AUTOFIT_MIN_SCALE,
@@ -23,7 +24,7 @@ import {
  */
 
 const RUN = { family: "Arial", size: 12, bold: false, italic: false, underline: false };
-const para = (text: string) => ({ align: "left" as const, lineSpacing: 1.2, runs: [{ text, font: RUN, color: "#111111" }] });
+const para = (text: string) => ({ align: "left" as const, lineSpacing: 1.2, runs: [{ text, font: RUN, color: hexPaint("#111111") }] });
 const textOf = (...lines: string[]): TextProps => ({ paragraphs: lines.map(para) });
 
 const frame = (id: string, over: Partial<FrameObject> = {}): FrameObject => ({

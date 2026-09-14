@@ -401,18 +401,87 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
 
     await page.getByTestId("insp-page").click();
-    await page.getByTestId("fill-CC0000").click();
+    await page.getByTestId("fill-brand").click();
+    // The canvas shows the PRINT PREVIEW (plan Phase 12): the brand preset
+    // is C0 M100 Y100 K20, rendered as the GRACoL press prints it — not the
+    // screen's #cc0000.
     await expect(page.getByTestId("object-rect")).toHaveCSS(
       "background-color",
-      "rgb(204, 0, 0)",
+      "rgb(197, 42, 24)",
     );
 
     await page.reload();
     await expect(page.getByTestId("object-rect")).toHaveCount(1);
     await expect(page.getByTestId("object-rect")).toHaveCSS(
       "background-color",
-      "rgb(204, 0, 0)",
+      "rgb(197, 42, 24)",
     );
+  });
+
+  test("color picker: CMYK is the default mode; typed channels store CMYK and preview as print", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-rect").click();
+    await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
+    await page.getByTestId("insp-page").click();
+
+    await page.getByTestId("fill-picker-trigger").click();
+    await expect(page.getByTestId("fill-picker-popover")).toBeVisible();
+    await expect(page.getByTestId("fill-picker-mode-cmyk")).toHaveAttribute("aria-pressed", "true");
+
+    // 100% process cyan on paper (the default fill is 5% K, so clear K too) —
+    // the press cyan, never the naive #00ffff
+    await page.getByTestId("fill-picker-k").fill("0");
+    await page.getByTestId("fill-picker-k").press("Enter");
+    await page.getByTestId("fill-picker-c").fill("100");
+    await page.getByTestId("fill-picker-c").press("Enter");
+    await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(0, 165, 229)");
+    // the popover stays open across commits; the preview shows the same proof
+    await expect(page.getByTestId("fill-picker-preview")).toHaveCSS("background-color", "rgb(0, 165, 229)");
+
+    // Hex mode stores an rgb literal; the canvas shows how it prints
+    await page.getByTestId("fill-picker-mode-hex").click();
+    await page.getByTestId("fill-picker-hex").fill("086dd2");
+    await page.getByTestId("fill-picker-hex").press("Enter");
+    await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(22, 112, 172)");
+    await expect(page.getByTestId("fill-picker-gamut")).toBeVisible(); // a saturated blue shifts on press
+
+    // A malformed hex commits nothing and says so
+    await page.getByTestId("fill-picker-hex").fill("12345");
+    await page.getByTestId("fill-picker-hex").press("Enter");
+    await expect(page.getByTestId("fill-picker-hex-invalid")).toBeVisible();
+    await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(22, 112, 172)");
+
+    // Escape closes; the value survives a reload (schema v4 stores the space)
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("fill-picker-popover")).toBeHidden();
+    await page.reload();
+    await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(22, 112, 172)");
+  });
+
+  test("color picker: RGB channels, None, and the print-native default fill", async ({ page }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-rect").click();
+    await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
+    await page.getByTestId("insp-page").click();
+
+    await page.getByTestId("stroke-picker-trigger").click();
+    await page.getByTestId("stroke-picker-mode-rgb").click();
+    await page.getByTestId("stroke-picker-r").fill("8");
+    await page.getByTestId("stroke-picker-r").press("Enter");
+    await page.getByTestId("stroke-picker-g").fill("109");
+    await page.getByTestId("stroke-picker-g").press("Enter");
+    await page.getByTestId("stroke-picker-b").fill("210");
+    await page.getByTestId("stroke-picker-b").press("Enter");
+    await expect(page.getByTestId("object-rect")).toHaveCSS("border-color", "rgb(22, 112, 172)");
+
+    await page.getByTestId("stroke-picker-none").click();
+    // no stroke = no border (preflight keeps border-style solid at width 0)
+    await expect(page.getByTestId("object-rect")).toHaveCSS("border-width", "0px");
+    await expect(page.getByTestId("stroke-none")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Escape");
+
+    // the default fill is 5% K, previewed as the press prints it
+    await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(243, 243, 243)");
   });
 
   test("Insert band arms tools; Table is honest about being deferred", async ({ page }) => {
@@ -559,6 +628,16 @@ test.describe("Text frames & typography (L5)", () => {
     await expect(ink).toHaveCSS("text-decoration-line", "underline");
     await page.getByTestId("font-family").selectOption("Georgia");
     await expect(ink).toHaveCSS("font-family", /Georgia/);
+
+    // Font color (Phase 12): the picker opens in CMYK; 50% K on every run,
+    // previewed as the press prints it
+    await page.getByTestId("font-color-trigger").click();
+    await expect(page.getByTestId("font-color-mode-cmyk")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("font-color-k").fill("50");
+    await page.getByTestId("font-color-k").press("Enter");
+    await expect(ink).toHaveCSS("color", "rgb(148, 149, 148)");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("font-color-popover")).toBeHidden();
 
     // exact metrics at a known zoom: 24 pt = 32 px, ×1.5 line = 48 px
     await page.getByTestId("zoom-slider").evaluate((el, value) => {

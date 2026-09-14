@@ -1,3 +1,4 @@
+import { cmykPercent } from "../../color/convert";
 import type { ToolContract } from "../types";
 
 /**
@@ -61,7 +62,7 @@ export const fillGradientTool: ToolContract = {
       default: "solid",
       values: ["none", "solid", "gradient", "pattern"],
     },
-    { kind: "color", id: "color", label: "Color", default: "#000000" },
+    { kind: "color", id: "color", label: "Color", default: cmykPercent(0, 0, 0, 100) },
     {
       kind: "enum",
       id: "gradientType",

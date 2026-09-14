@@ -13,6 +13,35 @@ import {
 /* The three print-geometry ops going live at PE5 (stored-explicit)    */
 /* ================================================================== */
 
+describe("TextOverlayOpSchema — ink is a ColorValue (Phase 12)", () => {
+  const base = {
+    op: "textOverlay",
+    label: "Add text",
+    id: "t1",
+    text: "hi",
+    font: { family: "Arimo", size: 24, bold: false, italic: false },
+    align: "left",
+    box: { x: 0, y: 0, w: 50, h: 20 },
+    rotation: 0,
+  };
+
+  it("parses a cmyk literal untouched", () => {
+    const r = PhotoOpSchema.safeParse({ ...base, color: { space: "cmyk", values: [0, 0, 0, 1] } });
+    expect(r.success).toBe(true);
+    if (r.success && r.data.op === "textOverlay") expect(r.data.color).toEqual({ space: "cmyk", values: [0, 0, 0, 1] });
+  });
+
+  it("lifts a pre-Phase-12 hex string to an rgb literal so old recipes keep opening", () => {
+    const r = PhotoOpSchema.safeParse({ ...base, color: "#CC0000" });
+    expect(r.success).toBe(true);
+    if (r.success && r.data.op === "textOverlay") expect(r.data.color).toEqual({ space: "rgb", values: [0.8, 0, 0] });
+  });
+
+  it("rejects an out-of-range channel", () => {
+    expect(PhotoOpSchema.safeParse({ ...base, color: { space: "rgb", values: [2, 0, 0] } }).success).toBe(false);
+  });
+});
+
 describe("BleedExpandOpSchema — px is required (pre-release v1)", () => {
   const base = { op: "bleedExpand", label: "Expand bleed 0.125 in", strategy: "mirror", amount: 0.125 };
 

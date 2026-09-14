@@ -7,10 +7,12 @@ import {
   type LayoutPage,
   type Paragraph,
   type PathSeg,
+  type Stroke,
   type TextProps,
   type TextRun,
 } from "@/schema";
-import { DEFAULT_TEXT_COLOR, textContent } from "@/lib/layout/text";
+import { hexPaint, paintKey } from "@/lib/color/paint";
+import { DEFAULT_TEXT_INK, textContent } from "@/lib/layout/text";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
 import { assetIdFor, decodeBase64, imageDimensions, isRenderableImage, sniffImageMime } from "./image-meta";
 import type { IRDoc, IRPage, IRParagraph, IRPathSeg, IRShape, IRSpan, IRStyle } from "./model";
@@ -62,10 +64,11 @@ function mapRotation(deg: number | undefined): number {
   return round(((deg % 360) + 360) % 360, 2);
 }
 
-function mapStroke(style: IRStyle): { color: string; width: number } | null {
+function mapStroke(style: IRStyle): Stroke | null {
   if (!style.stroke) return null;
-  // Schema stroke width is CSS px at zoom 1 (ObjectNode: width × zoom).
-  return { color: style.stroke.color, width: round(style.stroke.widthIn * 96, 2) };
+  // Schema stroke width is CSS px at zoom 1 (ObjectNode: width × zoom). A
+  // Publisher color is screen RGB — an rgb literal (the export step separates it).
+  return { paint: hexPaint(style.stroke.color), width: round(style.stroke.widthIn * 96, 2) };
 }
 
 /* ── Text: spans → runs, per-family font disposition (plan §10.5) ── */
@@ -105,11 +108,11 @@ function mapSpan(span: IRSpan, ctx: FontCtx): TextRun {
       italic: !!span.italic,
       underline: !!span.underline,
     },
-    color: span.color ?? DEFAULT_TEXT_COLOR,
+    color: span.color ? hexPaint(span.color) : DEFAULT_TEXT_INK,
   };
 }
 
-const runStyleKey = (r: TextRun) => JSON.stringify([r.font, r.color]);
+const runStyleKey = (r: TextRun) => JSON.stringify([r.font, paintKey(r.color)]);
 
 function mapParagraph(p: IRParagraph, ctx: FontCtx): Paragraph {
   // Merge adjacent same-style runs (libmspub splits spans liberally —
@@ -133,7 +136,7 @@ function mapParagraph(p: IRParagraph, ctx: FontCtx): Paragraph {
     runs.push({
       text: "",
       font: { family: disposeFamily(undefined, ctx), size: 11, bold: false, italic: false, underline: false },
-      color: DEFAULT_TEXT_COLOR,
+      color: DEFAULT_TEXT_INK,
     });
   }
   return {
@@ -376,7 +379,7 @@ function mapPage(
       h: round(shape.bbox.h),
       rotation: mapRotation(shape.rotationDeg),
       locked: false,
-      fill: shape.style.fill,
+      fill: shape.style.fill === null ? null : hexPaint(shape.style.fill),
       stroke: mapStroke(shape.style),
     };
     if (shape.style.fillKind) {
@@ -449,7 +452,7 @@ function mapPage(
           y1: round(shape.y1),
           x2: round(shape.x2),
           y2: round(shape.y2),
-          stroke: mapStroke(shape.style) ?? { color: "#111111", width: 1 },
+          stroke: mapStroke(shape.style) ?? { paint: hexPaint("#111111"), width: 1 },
         });
         break;
       }
@@ -500,7 +503,7 @@ function mapPage(
         // Tier 3: flag-only placeholder (plan §10.3) — visibly not converted.
         ctx.fidelity.flagged++;
         note(id, 3, "table not converted — placeholder frame marks its position (tables tranche)");
-        objects.push({ ...base, type: "rect", fill: null, stroke: { color: "#b58686", width: 1 } });
+        objects.push({ ...base, type: "rect", fill: null, stroke: { paint: hexPaint("#b58686"), width: 1 } });
         return; // counted as flagged, not converted/degraded
       }
       case "textbox": {
@@ -629,7 +632,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
   }
 
   const doc: LayoutDocument = {
-    version: 3,
+    version: 4,
     name,
     product: null,
     size,
@@ -645,6 +648,7 @@ export function mapToLayoutDocument(ir: IRDoc, name: string): MapResult {
     layers: [baseLayerDef()],
     pages,
     masters: [],
+    swatches: [],
     assets: assets.assets,
     guides: { v: [], h: [] },
   };

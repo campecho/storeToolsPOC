@@ -1,4 +1,12 @@
+import { cmykPercent } from "../../color/convert";
 import type { ToolContract } from "../types";
+
+/** Contract-default paints, authored in CMYK since the shop prints CMYK
+    (SEAMS.md "Tool option colours"). ASSUMPTION: C80 M50 Y0 K5 is the press
+    separation of the lineage's #4472c4 fill, rounded; 100% K is the print
+    black. Working guesses for SME review, not design direction. */
+const DEFAULT_FILL = cmykPercent(80, 50, 0, 5);
+const DEFAULT_STROKE = cmykPercent(0, 0, 0, 100);
 
 /**
  * Shape tools (PLAN.md §4.1 #8–17). Contracts only — canvas behavior
@@ -58,8 +66,8 @@ export const rectTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -139,8 +147,8 @@ export const roundedRectTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -222,8 +230,8 @@ export const ellipseTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -282,7 +290,7 @@ export const lineTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -349,7 +357,7 @@ export const arrowTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -474,8 +482,8 @@ export const starPolygonTool: ToolContract = {
       max: 0.9,
       step: 0.05,
     },
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -559,8 +567,8 @@ export const calloutTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -654,8 +662,8 @@ export const bannerTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",
@@ -745,8 +753,8 @@ export const penTool: ToolContract = {
     },
   ],
   options: [
-    { kind: "color", id: "fill", label: "Fill", default: "#4472c4" },
-    { kind: "color", id: "stroke", label: "Stroke", default: "#000000" },
+    { kind: "color", id: "fill", label: "Fill", default: DEFAULT_FILL },
+    { kind: "color", id: "stroke", label: "Stroke", default: DEFAULT_STROKE },
     {
       kind: "number",
       id: "strokeWidth",

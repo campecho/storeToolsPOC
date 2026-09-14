@@ -12,6 +12,7 @@ import {
   type MasterPage,
   type Orientation,
   type Paragraph,
+  type Paint,
   type Stroke,
 } from "@/schema";
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/lib/layout/shape-paths";
 import { V1LayoutDocumentSchema, migrateLegacyDocument } from "@/lib/schema/layout-v1";
 import { V2LayoutDocumentSchema, migrateV2Document } from "@/lib/schema/layout-v2";
+import { V3LayoutDocumentSchema, migrateV3Document } from "@/lib/schema/layout-v3";
 import { BASE_LAYER_ID, baseLayerDef } from "@/lib/schema";
 import type { PhotoOp } from "@/lib/schema/photo";
 import {
@@ -153,7 +155,7 @@ export type TransformPatch = {
   y2?: number;
 };
 
-export type ObjectPropsPatch = { fill?: string | null; stroke?: Stroke | null };
+export type ObjectPropsPatch = { fill?: Paint | null; stroke?: Stroke | null };
 
 /** One parameter of one parametric shape (merged prototype adjust handles +
     Properties fields). Values clamp on apply to what the builders draw. */
@@ -381,7 +383,7 @@ function applyLineDecor(o: LayoutObject, patch: LineDecorPatch): LayoutObject {
 /** The pristine document — Letter, wire defaults, master A applied (§3.4). */
 export function createDefaultDocument(): LayoutDocument {
   return {
-    version: 3,
+    version: 4,
     name: "Untitled publication",
     product: null,
     size: { w: 8.5, h: 11 },
@@ -397,6 +399,7 @@ export function createDefaultDocument(): LayoutDocument {
       { id: "master-a", label: "A", objects: [] },
       { id: "master-b", label: "B", objects: [] },
     ],
+    swatches: [],
     assets: {},
     guides: { v: [], h: [] },
   };
@@ -607,13 +610,15 @@ export interface LayoutEditorState {
   /** Typing is transient — the edit session commits one snapshot at close.
       The overlay parses its DOM to paragraphs (schema v2) and writes them whole. */
   setTextParagraphs: (id: string, paragraphs: Paragraph[]) => void;
-  /** Styling clicks are discrete input commits — each pushes history. */
-  setTextProps: (id: string, patch: TextPropsPatch) => void;
+  /** Styling clicks are discrete input commits — each pushes history;
+      `transient` skips it (a color-picker drag — commitGesture ends it). */
+  setTextProps: (id: string, patch: TextPropsPatch, transient?: boolean) => void;
   /** Appends, selects, and returns the tool to Select (Publisher behavior). */
   addObject: (obj: LayoutObject) => void;
   /** Geometry edit; `transient` skips history (live drags — commitGesture ends them). */
   transformObject: (id: string, patch: TransformPatch, transient?: boolean) => void;
-  setObjectProps: (id: string, patch: ObjectPropsPatch) => void;
+  /** Fill/stroke edit; `transient` skips history (a color-picker drag). */
+  setObjectProps: (id: string, patch: ObjectPropsPatch, transient?: boolean) => void;
   /** Parametric-shape parameter edit (adjust handles + Properties fields);
       `transient` skips history like transformObject (commitGesture ends drags). */
   adjustShape: (id: string, patch: ShapeParamPatch, transient?: boolean) => void;
@@ -1227,16 +1232,14 @@ export const useLayoutStore = create<LayoutEditorState>()(
           ),
         })),
 
-      setTextProps: (id, patch) =>
+      setTextProps: (id, patch, transient = false) =>
         set((s) => {
           const target = surfaceObjects(s).find((o) => o.id === id);
           if (!target || target.type !== "text" || !target.text) return s;
           const next = applyTextProps(target, patch);
           if (JSON.stringify(next) === JSON.stringify(target)) return s;
-          return {
-            ...pushed(s, s.doc),
-            doc: mapSurfaceObjects(s, (objs) => objs.map((o) => (o.id === id ? next : o))),
-          };
+          const doc = mapSurfaceObjects(s, (objs) => objs.map((o) => (o.id === id ? next : o)));
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
         }),
 
       addObject: (obj) =>
@@ -1256,13 +1259,13 @@ export const useLayoutStore = create<LayoutEditorState>()(
           return transient ? { doc } : { ...pushed(s, s.doc), doc };
         }),
 
-      setObjectProps: (id, patch) =>
-        set((s) => ({
-          ...pushed(s, s.doc),
-          doc: mapSurfaceObjects(s, (objs) =>
+      setObjectProps: (id, patch, transient = false) =>
+        set((s) => {
+          const doc = mapSurfaceObjects(s, (objs) =>
             objs.map((o) => (o.id === id ? applyProps(o, patch) : o)),
-          ),
-        })),
+          );
+          return transient ? { doc } : { ...pushed(s, s.doc), doc };
+        }),
 
       adjustShape: (id, patch, transient = false) =>
         set((s) => {
@@ -1779,14 +1782,18 @@ export const useLayoutStore = create<LayoutEditorState>()(
         const p = persisted as { doc?: unknown; level?: unknown; unit?: unknown } | undefined;
         let parsed = LayoutDocumentSchema.safeParse(p?.doc);
         if (!parsed.success) {
-          const v2 = V2LayoutDocumentSchema.safeParse(p?.doc);
-          if (v2.success) {
-            parsed = { success: true, data: migrateV2Document(v2.data) };
-          } else {
-            const legacy = V1LayoutDocumentSchema.safeParse(p?.doc);
-            if (legacy.success) {
-              parsed = { success: true, data: migrateV2Document(migrateLegacyDocument(legacy.data)) };
-            }
+          const v3 = V3LayoutDocumentSchema.safeParse(p?.doc);
+          const v2 = v3.success ? null : V2LayoutDocumentSchema.safeParse(p?.doc);
+          const legacy = v3.success || v2?.success ? null : V1LayoutDocumentSchema.safeParse(p?.doc);
+          if (v3.success) {
+            parsed = { success: true, data: migrateV3Document(v3.data) };
+          } else if (v2?.success) {
+            parsed = { success: true, data: migrateV3Document(migrateV2Document(v2.data)) };
+          } else if (legacy?.success) {
+            parsed = {
+              success: true,
+              data: migrateV3Document(migrateV2Document(migrateLegacyDocument(legacy.data))),
+            };
           }
         }
         if (parsed.success) {

@@ -1,4 +1,6 @@
 import type { FrameObject, PathSeg } from "@/schema";
+import { cmykPercent } from "@/lib/color/convert";
+import { solidPaint } from "@/lib/color/paint";
 
 /**
  * Pen / freeform tool core, merged from the publisher prototype
@@ -139,7 +141,7 @@ export function penObjectFromDraft(
     h,
     rotation: 0,
     locked: false,
-    fill: "#f2f2f2",
-    stroke: { color: "#8f8f8f", width: 1 },
+    fill: solidPaint(cmykPercent(0, 0, 0, 5)),
+    stroke: { paint: solidPaint(cmykPercent(0, 0, 0, 44)), width: 1 },
   };
 }

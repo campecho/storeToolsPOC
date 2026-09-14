@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { LayoutDocument, LayoutObject, TextProps, TextRun } from "@/schema";
+import type { LayoutDocument, LayoutObject, Swatch, TextProps, TextRun } from "@/schema";
+import { paintToHex } from "@/lib/color/paint";
 import { textContent } from "@/lib/layout/text";
 import { arcToCubics } from "./arc";
 import { isDingbat, resolveFamily, translateDingbats } from "./font-remap";
@@ -394,7 +395,10 @@ type DocText = { id: string; x: number; y: number; w: number; h: number; text: T
 type DocShape = { id: string; bbox: BBox; fill: string | null; stroke: string | null };
 type DocPicture = { id: string; bbox: BBox; assetId?: string };
 
-function splitDocObjects(objects: LayoutObject[]): {
+function splitDocObjects(
+  objects: LayoutObject[],
+  swatches: readonly Swatch[],
+): {
   texts: DocText[];
   shapes: DocShape[];
   pictures: DocPicture[];
@@ -413,7 +417,7 @@ function splitDocObjects(objects: LayoutObject[]): {
           h: Math.abs(o.y2 - o.y1),
         },
         fill: null,
-        stroke: o.stroke.color.toLowerCase(),
+        stroke: paintToHex(o.stroke.paint, swatches),
       });
     } else if (o.type === "text" && o.text) {
       texts.push({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h, text: o.text });
@@ -429,8 +433,8 @@ function splitDocObjects(objects: LayoutObject[]): {
       shapes.push({
         id: o.id,
         bbox: { x: o.x, y: o.y, w: o.w, h: o.h },
-        fill: o.fill ? o.fill.toLowerCase() : null,
-        stroke: o.stroke ? o.stroke.color.toLowerCase() : null,
+        fill: o.fill ? paintToHex(o.fill, swatches) : null,
+        stroke: o.stroke ? paintToHex(o.stroke.paint, swatches) : null,
       });
     }
   }
@@ -582,6 +586,7 @@ function scoreMatchedText(
   where: string,
   pageH: number,
   pageNumber: number,
+  swatches: readonly Swatch[],
 ): void {
   // Page-number field: the mapper substitutes '#' → page number in frames whose
   // CENTER sits in the header/footer band. Mirror it here under the SAME
@@ -645,8 +650,8 @@ function scoreMatchedText(
     );
     t.check(
       "color",
-      runs.every((r) => r.color.toLowerCase() === span.color),
-      `${label}: ref ${span.color} vs doc ${runs[0]?.color}`,
+      runs.every((r) => paintToHex(r.color, swatches) === span.color),
+      `${label}: ref ${span.color} vs doc ${runs[0] ? paintToHex(runs[0].color, swatches) : undefined}`,
     );
   });
 }
@@ -731,7 +736,7 @@ export function scoreAgainstReference(input: FidelityInput): FileScore {
           : `${where}: ref ${ref.w}×${ref.h}in vs doc ${size.w}×${size.h}in`,
     );
 
-    const docEls = splitDocObjects(page?.layers.flatMap((l) => l.objects) ?? []);
+    const docEls = splitDocObjects(page?.layers.flatMap((l) => l.objects) ?? [], doc.swatches);
     const refTexts = ref?.texts ?? [];
     const refShapesAll = ref?.shapes ?? [];
     const refPlain = refShapesAll.filter((s) => !s.patternId);
@@ -765,7 +770,7 @@ export function scoreAgainstReference(input: FidelityInput): FileScore {
         unmatched++;
         failUnmatchedText(r, t, where);
       } else {
-        scoreMatchedText(r, docEls.texts[di], t, where, size.h, p + 1);
+        scoreMatchedText(r, docEls.texts[di], t, where, size.h, p + 1, doc.swatches);
       }
     });
     extras += docEls.texts.filter((_, di) => !textTaken.doc.has(di)).length;

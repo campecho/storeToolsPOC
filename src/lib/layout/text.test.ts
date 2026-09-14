@@ -12,6 +12,7 @@ import {
   textSummary,
   TEXT_STYLES,
 } from "./text";
+import { hexPaint } from "@/lib/color/paint";
 import { createTextFrame } from "./objects";
 
 describe("font families (§7.6 posture)", () => {
@@ -75,7 +76,7 @@ describe("schema-v2 text helpers", () => {
   const run = (text: string, over: Partial<{ size: number; bold: boolean; color: string }> = {}) => ({
     text,
     font: { family: "Arial", size: over.size ?? 11, bold: over.bold ?? false, italic: false, underline: false },
-    color: over.color ?? "#111111",
+    color: hexPaint(over.color ?? "#111111"),
   });
 
   it("textContent joins runs and paragraphs (runs may hold soft breaks)", () => {
@@ -89,7 +90,7 @@ describe("schema-v2 text helpers", () => {
   });
 
   it("plainToParagraphs round-trips through textContent", () => {
-    const style = { font: run("").font, color: "#111111" };
+    const style = { font: run("").font, color: hexPaint("#111111") };
     const t = { paragraphs: plainToParagraphs("A\nB\n\nC", style) };
     expect(textContent(t)).toBe("A\nB\n\nC");
     expect(t.paragraphs).toHaveLength(4);
@@ -119,7 +120,7 @@ describe("schema-v2 text helpers", () => {
     };
     const next = applyToAllRuns(t, { bold: true });
     expect(next.paragraphs[0].runs.every((r) => r.font.bold)).toBe(true);
-    expect(next.paragraphs[0].runs[0].color).toBe("#ffffff");
+    expect(next.paragraphs[0].runs[0].color).toEqual(hexPaint("#ffffff"));
     expect(next.paragraphs[0].runs[1].font.size).toBe(24);
   });
 });

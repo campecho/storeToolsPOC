@@ -266,8 +266,10 @@ async function paintedColorAt(page: Page, pt: DocPoint): Promise<string> {
   }, p);
 }
 
-/** The pen's default fill (penTool options, src/core/registry/tools/shapes.ts). */
-const PEN_FILL = "#4472c4";
+/** The pen's default fill (penTool options, src/core/registry/tools/shapes.ts)
+    — C80 M50 Y0 K5, as the canvas PAINTS it: the print preview of that
+    separation, not a screen hex. */
+const PEN_FILL = "#3d73b0";
 
 test("a partial shape's FILL is both painted and clickable", async ({ page }) => {
   await activate(page, "Pen / freeform");

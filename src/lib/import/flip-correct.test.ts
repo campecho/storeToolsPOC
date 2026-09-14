@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FrameObject, LayoutDocument, LayoutObject } from "@/schema";
 import { BASE_LAYER_ID, baseLayerDef } from "@/schema";
+import { hexPaint } from "@/lib/color/paint";
 import type { EscherShapeTransform } from "./escher";
 import { extractShapeTransforms } from "./escher";
 import { applyFlipCorrections } from "./flip-correct";
@@ -54,7 +55,7 @@ const textFrame = (
           {
             text: "flip me",
             font: { family: "Arimo", size: 11, bold: false, italic: false, underline: false },
-            color: "#111111",
+            color: hexPaint("#111111"),
           },
         ],
       },
@@ -71,13 +72,13 @@ const rectFrame = (id: string, x: number, y: number, w: number, h: number, rotat
   h,
   rotation,
   locked: false,
-  fill: "#cccccc",
+  fill: hexPaint("#cccccc"),
   stroke: null,
 });
 
 const makeResult = (pageObjects: LayoutObject[][]): MapResult => {
   const doc: LayoutDocument = {
-    version: 3,
+    version: 4,
     name: "synthetic",
     product: null,
     size: { w: PAGE_W, h: PAGE_H },
@@ -94,6 +95,7 @@ const makeResult = (pageObjects: LayoutObject[][]): MapResult => {
     masters: [],
     assets: {},
     guides: { v: [], h: [] },
+    swatches: [],
   };
   return {
     doc,

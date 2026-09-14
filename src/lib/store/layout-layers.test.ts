@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useLayoutStore, interactiveSurfaceObjects, surfaceObjects } from "./layout-store";
 import { BASE_LAYER_ID } from "@/lib/schema";
 import type { LayoutObject } from "@/lib/schema";
+import { hexPaint } from "@/lib/color/paint";
 
 /**
  * Store-level layer behavior (schema v3, redesign Phase 5): the active layer
@@ -18,7 +19,7 @@ const rect = (id: string): LayoutObject => ({
   h: 1,
   rotation: 0,
   locked: false,
-  fill: "#fff",
+  fill: hexPaint("#ffffff"),
   stroke: null,
 });
 

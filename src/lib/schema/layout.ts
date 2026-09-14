@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaintSchema, SwatchSchema } from "./color";
 import { PhotoOpSchema } from "./photo";
 
 /**
@@ -11,17 +12,20 @@ import { PhotoOpSchema } from "./photo";
  * CONTRACT: LayoutDocumentSchema IS the document format — the persistence
  * shape, the `.pub` import target (plan §9-§11), and the render contract. Any
  * backend stack implements against it; a committed example lives at
- * fixtures/layout-document.v3.json (v1/v2 kept beside it as migration inputs).
- * Older documents migrate on load: v1 → v2 via migrateLegacyDocument
+ * fixtures/layout-document.v4.json (v1/v2/v3 kept beside it as migration
+ * inputs). Older documents migrate on load: v1 → v2 via migrateLegacyDocument
  * (schema/layout-v1.ts), v2 → v3 via migrateV2Document (schema/layout-v2.ts) —
- * v3 nests each page's flat objects into named layer containers (Phase 5).
+ * v3 nests each page's flat objects into named layer containers (Phase 5) —
+ * and v3 → v4 via migrateV3Document (schema/layout-v3.ts): v4 stores every
+ * fill, stroke, and run ink as a Paint carrying its color space (Phase 12).
  */
 
 export const OrientationSchema = z.enum(["portrait", "landscape"]);
 export type Orientation = z.infer<typeof OrientationSchema>;
 
+/** Stroke — the paint plus a width in CSS px at zoom 1 (ObjectNode: width × zoom). */
 export const StrokeSchema = z.object({
-  color: z.string(),
+  paint: PaintSchema,
   width: z.number(),
 });
 export type Stroke = z.infer<typeof StrokeSchema>;
@@ -42,8 +46,8 @@ export type TextAlign = z.infer<typeof TextAlignSchema>;
 export const TextRunSchema = z.object({
   text: z.string(),
   font: FontPropsSchema,
-  /** Ink color (hex) — schema v2; v1 was fixed #111111. */
-  color: z.string(),
+  /** Ink — a Paint since schema v4 (v2/v3 stored hex; v1 was fixed #111111). */
+  color: PaintSchema,
 });
 export type TextRun = z.infer<typeof TextRunSchema>;
 
@@ -157,7 +161,8 @@ export const FrameObjectSchema = z.object({
   /** In the schema now (import fidelity); the editing UI arrives later. */
   rotation: z.number(),
   locked: z.boolean(),
-  fill: z.string().nullable(),
+  /** Solid fill as a Paint (schema v4); null = none. */
+  fill: PaintSchema.nullable(),
   stroke: StrokeSchema.nullable(),
   text: TextPropsSchema.optional(),
   /** Paths only (schema v2): normalized segments — see PathSegSchema. */
@@ -341,7 +346,7 @@ export const AssetSchema = z.object({
 export type Asset = z.infer<typeof AssetSchema>;
 
 export const LayoutDocumentSchema = z.object({
-  version: z.literal(3),
+  version: z.literal(4),
   name: z.string(),
   product: ProductBindingSchema.nullable(),
   /** Effective page dimensions in inches (already orientation-applied). */
@@ -357,6 +362,9 @@ export const LayoutDocumentSchema = z.object({
       furniture renders as a single band beneath all page layers. */
   layers: z.array(LayerDefSchema).min(1),
   masters: z.array(MasterPageSchema),
+  /** Named document colors (schema v4, Phase 12) — paints may reference one
+      by id. Defaulted so a v4 document without the field still parses. */
+  swatches: z.array(SwatchSchema).default([]),
   /** Asset library metadata (L8) — defaulted so pre-L8 documents keep parsing. */
   assets: z.record(AssetSchema).default({}),
   /** Ruler-dragged guides (L11), inches: `v` = x-positions, `h` = y-positions.

@@ -1,7 +1,6 @@
 import type { DrawStyle, LineExtras } from "../core/gestures";
-import type { ArrowHead, ArrowHeadSize, LineDash, Paint, Stroke } from "../core/model";
+import type { ArrowHead, ArrowHeadSize, ColorValue, LineDash, Paint, Stroke } from "../core/model";
 import { toolRegistry } from "../core/registry";
-import { hexToColorValue } from "../core/render/paint";
 
 /**
  * Live tool-option values (PLAN.md §2 options bar, wired phase): App-level
@@ -11,7 +10,7 @@ import { hexToColorValue } from "../core/render/paint";
  * inputs to the next gesture, not document or viewport state.
  */
 
-export type ToolOptionValue = string | number | boolean;
+export type ToolOptionValue = string | number | boolean | ColorValue;
 export type ToolOptionValues = Record<string, Record<string, ToolOptionValue>>;
 
 /** Every registry tool's options at their contract defaults. */
@@ -48,6 +47,19 @@ export function optionBoolean(
   return typeof value === "boolean" ? value : fallback;
 }
 
+/** The one shape a colour option's value takes. */
+export function isColorValue(value: ToolOptionValue | undefined): value is ColorValue {
+  return typeof value === "object" && value !== null && "space" in value;
+}
+
+/** Colour-option read: the live ColorValue, or null when the tool declares
+    no such option — a wrong-kinded entry reads as absent, so a draw never
+    guesses a paint. */
+export function optionColor(values: ToolOptionValues, toolId: string, optionId: string): ColorValue | null {
+  const value = values[toolId]?.[optionId];
+  return isColorValue(value) ? value : null;
+}
+
 /** Enum-option read: the live value if it is one of the contract's declared
     members, the fallback otherwise — same guard rule as optionNumber. */
 export function optionEnum<T extends string>(
@@ -65,8 +77,9 @@ export function optionEnum<T extends string>(
 
 /**
  * The DrawStyle a draw machine's ctx consumes, from the tool's live options:
- * `fill`/`stroke` hex colors become literal rgb Paints (hexToColorValue),
- * `strokeWidth` is points per the contracts. A tool without a fill option
+ * `fill`/`stroke` ColorValues become literal Paints in whatever space they
+ * were authored (CMYK by contract default), `strokeWidth` is points per the
+ * contracts. A tool without a fill option
  * (line) draws with fill null; ditto stroke.
  */
 const ARROW_HEADS: readonly ArrowHead[] = ["none", "arrow", "circle", "diamond"];
@@ -94,14 +107,11 @@ export function lineExtrasFromOptions(values: ToolOptionValues, toolId: string):
 
 export function drawStyleFromOptions(values: ToolOptionValues, toolId: string): DrawStyle {
   const options = values[toolId] ?? {};
-  const fillHex = typeof options.fill === "string" ? options.fill : null;
-  const strokeHex = typeof options.stroke === "string" ? options.stroke : null;
+  const fillColor = optionColor(values, toolId, "fill");
+  const strokeColor = optionColor(values, toolId, "stroke");
   const strokeWidth = typeof options.strokeWidth === "number" ? options.strokeWidth : 1;
-  const fill: Paint | null =
-    fillHex === null ? null : { kind: "color", color: hexToColorValue(fillHex) };
+  const fill: Paint | null = fillColor === null ? null : { kind: "color", color: fillColor };
   const stroke: Stroke | null =
-    strokeHex === null
-      ? null
-      : { paint: { kind: "color", color: hexToColorValue(strokeHex) }, width: strokeWidth };
+    strokeColor === null ? null : { paint: { kind: "color", color: strokeColor }, width: strokeWidth };
   return { fill, stroke };
 }

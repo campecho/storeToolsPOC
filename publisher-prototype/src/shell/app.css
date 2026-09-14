@@ -220,6 +220,88 @@ body {
   margin-left: auto;
 }
 
+.color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 220px;
+}
+
+.color-sv {
+  position: relative;
+  height: 96px;
+  border: 1px solid #999;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.color-sv-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #000;
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+}
+
+.color-slider {
+  flex: 1;
+  height: 10px;
+  appearance: none;
+  border: 1px solid #999;
+}
+
+.color-hue {
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.color-channel-label {
+  width: 12px;
+  font-size: 11px;
+}
+
+.color-number {
+  width: 52px;
+}
+
+.color-hex {
+  width: 84px;
+  font-family: monospace;
+}
+
+.color-preview {
+  width: 20px;
+  height: 20px;
+}
+
+.color-gamut {
+  /* the adjust-handle amber, reused as a warning tint — not design direction */
+  color: #8a6800;
+}
+
+.option-color {
+  position: relative;
+}
+
+.option-color button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.option-color-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  margin-top: 2px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #999;
+}
+
 .debug-bar {
   display: flex;
   flex-wrap: wrap;

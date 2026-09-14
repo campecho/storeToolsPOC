@@ -706,3 +706,58 @@ HEIC, ICC/CMYK — PLAN.md §6.5, §6.7).
   specs assert on ALPHA (255 on the page, ≈128 ghosted, 0 untouched), independent of
   fill and pasteboard colours. The spec zooms to 50% first: the boot viewport shows a
   quarter inch of pasteboard and nothing above y ≈ 2.4 in.
+- **Print preview tables (recorded 2026-09-11, user decision):** content may be authored
+  in CMYK or RGB, the shop prints CMYK, and the canvas must show content as close as
+  possible to how it will print. So every CSS colour `core/render/paint.ts` emits is a
+  print PREVIEW: a cmyk literal as the press renders it, an rgb literal as it will look
+  once separated and printed, a spot swatch through its CMYK process fallback. The
+  preview comes from two committed lookup tables under `core/color/luts/` — exact
+  transforms of the GRACoL2013_CRPC6 press profile (perceptual intent, sampled with an
+  lcms-based tool; provenance and profile hash in each file's header) at 9 (CMYK→sRGB)
+  and 17 (sRGB→CMYK) steps, interpolated multilinearly in `core/color/proof.ts` — no
+  ICC engine in the prototype, no async load. This is a SURFACE (PLAN.md §2: ICC/CMYK
+  transforms are the dev team's): production colour management replaces the resolver
+  behind the same `paintToCss`/`proofColor` signatures, and the export step must pass
+  cmyk literals through untouched and convert rgb literals with the SAME profile the
+  tables came from, or preview and print disagree. A field that shows what was typed
+  reads the literal through `resolvePaintColor`. Tint is ink at t% applied in the
+  swatch's own space before proofing. The tables were generated OUTSIDE this directory
+  (the host repository's `scripts/gen-color-luts.mjs`, run as `node
+  scripts/gen-color-luts.mjs` against the profile it ships, then copied in): committing
+  the generator here would add `sharp` and a 3.4 MB profile as dependencies, a decision
+  held open; until it lands, regeneration is that script and a copy, and the file
+  headers carry the profile hash to check against. `proof.ts` relies on the `atob`
+  platform global (browsers and Node ≥ 16; engines pins ≥ 22) — the core's one platform
+  global, by choice, so the tables need no bundler syntax. ASSUMPTION for SME review:
+  `GAMUT_WARN_DELTA_E = 6` (ΔE76) is where an rgb colour's shift on press is flagged.
+  The naive (1−ink)(1−k) formulas remain in `core/color/convert.ts` as the fallback if
+  a table fails to decode and as the test oracle.
+- **Colour entry (recorded 2026-09-11, user decision):** the Colour & swatches panel's
+  `<input type="color">` is replaced by `ColorField` (`shell/panels/ColorField.tsx`):
+  CMYK is the default mode, then RGB and Hex; a saturation/brightness field and hue
+  strip; a range slider plus number field per channel; the print preview beside the
+  value in the other space, with a "shifts on press" note when an rgb colour is out of
+  the press gamut; the eyedropper where the browser has one. CMYK mode commits a
+  `cmyk` literal with the typed integer percents (the document stores CMYK, nothing
+  is flattened); RGB and Hex modes commit an `rgb` literal; the visual field commits
+  in the active mode (in CMYK, the separation the press profile assigns the picked
+  screen colour). Switching modes converts for display only. Edit runs widen from a
+  field to the whole control: one visit is one history entry — typing all four
+  channels or dragging the hue strip is one undo step — opened on the first commit,
+  ended when focus leaves the control or on Escape (which reverts to the run's start
+  colour inside the run); Hex entry commits once on Enter/blur with no run. This
+  supersedes the "Edit runs" entry's "discrete controls (… colour)" clause, which
+  described the native input. `NumberField` stays the numeric primitive; the field's
+  channel inputs follow its live-apply rule without its per-field run.
+- **Tool option colours (recorded 2026-09-11, user decision):** a `kind: "color"`
+  OptionSpec's `default` is a `ColorValue`, not a hex string, and `ToolOptionValue`
+  admits `ColorValue`. A shape drawn from the options bar therefore carries a paint in
+  the space it was authored — the contract defaults are CMYK (fill C80 M50 Y0 K5, the
+  press separation of the lineage's #4472c4 (80/50/1/6) simplified; stroke and the fill/gradient
+  tool's colour 100% K; the photo text overlay paper white), all ASSUMPTIONS for SME
+  review — and a hex string could not have carried that. The one exception stays
+  rgb: `guideColor` is screen chrome, never proofed as ink. The options bar renders
+  a colour option as a chip button (the print preview) opening the panel's
+  `ColorField`; option values are tool-ctx inputs, not document state, so the field's
+  edit run is ignored there. `drawStyleFromOptions` reads colours with `optionColor`
+  (a wrong-kinded entry reads as absent, so a draw never guesses a paint).

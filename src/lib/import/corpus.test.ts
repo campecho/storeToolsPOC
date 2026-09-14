@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LayoutDocumentSchema, type Paragraph, type TextRun } from "@/schema";
+import { paintToHex } from "@/lib/color/paint";
 import { textContent } from "@/lib/layout/text";
 import { buildModel } from "./model";
 import { mapToLayoutDocument, PUBLISHER_DEFAULT_LINE_SPACING } from "./mapper";
@@ -195,7 +196,7 @@ describe("corpus: production_checkpoint_labels.pub (layered, vector-heavy)", () 
 
   it("renders the labels' white ink per run — the corpus case that forced text color", () => {
     const white = texts.filter(
-      (o) => o.type === "text" && o.text && allRuns(o.text.paragraphs).some((r) => r.color === "#ffffff"),
+      (o) => o.type === "text" && o.text && allRuns(o.text.paragraphs).some((r) => paintToHex(r.color, []) === "#ffffff"),
     );
     expect(white.length).toBeGreaterThan(0);
   });

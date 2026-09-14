@@ -19,7 +19,6 @@ import {
   roundedRectPathFor,
   starPath,
   tailTipFor,
-  shadedFill,
   starInnerArmPoint,
 } from "./shape-paths";
 
@@ -509,20 +508,5 @@ describe("starInnerArmPoint", () => {
       expect(p.x).toBeCloseTo(inner.x, 12);
       expect(p.y).toBeCloseTo(inner.y, 12);
     }
-  });
-});
-
-describe("shadedFill", () => {
-  it("scales an #rrggbb fill toward black by the measured 0.8", () => {
-    expect(shadedFill("#f2f2f2")).toBe("#c2c2c2");
-    expect(shadedFill("#CC0000")).toBe("#a30000");
-  });
-
-  it("expands #rgb shorthand before scaling", () => {
-    expect(shadedFill("#fff")).toBe("#cccccc");
-  });
-
-  it("returns anything unparseable unchanged", () => {
-    expect(shadedFill("tomato")).toBe("tomato");
   });
 });

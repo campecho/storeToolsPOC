@@ -8,7 +8,7 @@ import {
   type LineDash,
   type Paint,
 } from "../../core/model";
-import { hexToColorValue, paintToCss, paintToHex } from "../../core/render/paint";
+import { paintToCss, resolvePaintColor } from "../../core/render/paint";
 import {
   inEditRun,
   objectArrowHeadsCommitted,
@@ -19,17 +19,20 @@ import {
   selectDocument,
 } from "../../core/store";
 import { useAppDispatch, useAppSelector } from "../hooks";
+import { ColorField } from "./ColorField";
 import { NumberField } from "./NumberField";
 import { SelectField } from "./SelectField";
 
 /**
  * The live Colour & swatches panel (PLAN.md §4.3 "color-swatches"; Phase B
  * Layers & colour group, on-screen use): apply color to the selection's
- * fill or outline — a picked literal rgb color, a named document swatch
- * (kept as a swatch REFERENCE so later swatch edits restyle the document),
- * or none. Outline width edits per-object widths; outline color keeps them
- * (the strokePaint/strokeWidth commit split). Both apply as they are made —
- * the width field folds its run into one history entry (NumberField).
+ * fill or outline — a literal picked in the colour field (CMYK first, then
+ * RGB and Hex; ColorField), a named document swatch (kept as a swatch
+ * REFERENCE so later swatch edits restyle the document), or none. Outline
+ * width edits per-object widths; outline color keeps them (the
+ * strokePaint/strokeWidth commit split). Both apply as they are made — the
+ * colour field and the width field each fold a visit into one history
+ * entry (edit runs).
  *
  * The Outline target also carries what else describes a line's outline: the
  * dash pattern and the end decorations. Those reach lines only — the shape a
@@ -62,7 +65,9 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
   // schema-required, so an all-line selection renders None disabled.
   const noneDisabled = disabled || (target === "stroke" && applicable.every((o) => o.type === "line"));
 
-  const first = selected[0];
+  // Read from the first APPLICABLE object — the one a commit reaches — so a
+  // line ahead of a rect under Fill never shows a fill it does not have.
+  const first = applicable[0];
   const currentPaint: Paint | null =
     first === undefined
       ? null
@@ -73,10 +78,13 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
         : (first.stroke?.paint ?? null);
   const firstStroked = selected.find((o) => o.stroke !== null);
 
-  const applyPaint = (paint: Paint | null): void => {
+  const applyPaint = (paint: Paint | null, editRun?: string): void => {
     const ids = applicable.map((o) => o.id);
-    if (target === "fill") dispatch(objectFillCommitted({ pageIndex, ids, fill: paint }));
-    else dispatch(objectStrokePaintCommitted({ pageIndex, ids, paint }));
+    const action =
+      target === "fill"
+        ? objectFillCommitted({ pageIndex, ids, fill: paint })
+        : objectStrokePaintCommitted({ pageIndex, ids, paint });
+    dispatch(inEditRun(action, editRun));
   };
 
   // Dash and end decorations describe a LINE's outline specifically — the
@@ -120,19 +128,14 @@ export function ColorSwatchesPanel({ pageIndex }: { pageIndex: number }) {
           Outline
         </label>
       </div>
+      <ColorField
+        key={target}
+        label="Color"
+        value={currentPaint === null ? null : resolvePaintColor(currentPaint, doc.swatches)}
+        disabled={disabled}
+        onCommit={(color, editRun) => applyPaint({ kind: "color", color }, editRun)}
+      />
       <div className="field-row">
-        <label className="field">
-          Color
-          <input
-            type="color"
-            aria-label="Color"
-            value={currentPaint === null ? "#000000" : paintToHex(currentPaint, doc.swatches)}
-            disabled={disabled}
-            onChange={(e) =>
-              applyPaint({ kind: "color", color: hexToColorValue(e.target.value) })
-            }
-          />
-        </label>
         <button type="button" disabled={noneDisabled} onClick={() => applyPaint(null)}>
           None
         </button>

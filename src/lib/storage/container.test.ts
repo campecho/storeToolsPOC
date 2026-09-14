@@ -19,13 +19,16 @@ const v2Fixture = JSON.parse(
 const v1Fixture = JSON.parse(
   readFileSync(resolve(__dirname, "../../../fixtures/layout-document.v1.json"), "utf8"),
 ) as unknown;
+const v3Fixture = JSON.parse(
+  readFileSync(resolve(__dirname, "../../../fixtures/layout-document.v3.json"), "utf8"),
+) as unknown;
 
 const STAMPS = { created: "2026-08-20T10:00:00.000Z", modified: "2026-08-20T12:30:00.000Z" };
 
 describe("packStaples / unpackStaples", () => {
   const doc = parseLayoutPayload(v2Fixture);
 
-  it("round-trips the v2 contract fixture (upgraded to v3 on read) with its asset bytes", () => {
+  it("round-trips the v2 contract fixture (upgraded to v4 on read) with its asset bytes", () => {
     const assets = { "asset-1": new Uint8Array([1, 2, 3]) };
     const bytes = packStaples({ doc, assets, ...STAMPS });
     const unpacked = unpackStaples(bytes);
@@ -35,7 +38,7 @@ describe("packStaples / unpackStaples", () => {
       formatVersion: STAPLES_FORMAT_VERSION,
       created: STAMPS.created,
       modified: STAMPS.modified,
-      document: { schemaVersion: 3, kind: "layout", name: doc.name, pageCount: doc.pages.length },
+      document: { schemaVersion: 4, kind: "layout", name: doc.name, pageCount: doc.pages.length },
     });
   });
 
@@ -47,7 +50,13 @@ describe("packStaples / unpackStaples", () => {
     const entries = unzipSync(packStaples({ doc: createDefaultDocument(), ...STAMPS }));
     entries["document.json"] = strToU8(JSON.stringify(v1Fixture));
     const unpacked = unpackStaples(zipSync(entries));
-    expect(unpacked.doc.version).toBe(3);
+    expect(unpacked.doc.version).toBe(4);
+  });
+
+  it("migrates a v3 payload to v4 on read — hex colors lifted to Paints", () => {
+    const migrated = parseLayoutPayload(v3Fixture);
+    expect(migrated.version).toBe(4);
+    expect(migrated.swatches).toEqual([]);
   });
 
   it("rejects bytes that are not a ZIP archive", () => {
@@ -75,10 +84,11 @@ describe("packStaples / unpackStaples", () => {
     expect(() => unpackStaples(zipSync(entries))).toThrow(/newer build/);
   });
 
-  it("rejects an unknown document version with the version named", () => {
+  it("rejects an unknown document version, naming it and the v4 schema this build reads", () => {
     const entries = unzipSync(packStaples({ doc, ...STAMPS }));
-    entries["document.json"] = strToU8(JSON.stringify({ version: 4 }));
-    expect(() => unpackStaples(zipSync(entries))).toThrow(/Unsupported document version 4/);
+    entries["document.json"] = strToU8(JSON.stringify({ version: 5 }));
+    expect(() => unpackStaples(zipSync(entries))).toThrow(/Unsupported document version 5/);
+    expect(() => unpackStaples(zipSync(entries))).toThrow(/layout schema v4/);
   });
 
   it("ignores directory placeholders and nested paths in assets/", () => {

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LayoutDocumentSchema, type LayoutObject } from "@/schema";
+import { hexPaint, paintToHex } from "@/lib/color/paint";
 import { textContent } from "@/lib/layout/text";
 import { decodeBase64 } from "./image-meta";
 import { buildModel } from "./model";
@@ -65,10 +66,10 @@ describe("buildModel (plan §10.2 intermediate model)", () => {
 });
 
 describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
-  it("produces a schema-valid v3 document", () => {
+  it("produces a schema-valid v4 document", () => {
     const parsed = LayoutDocumentSchema.safeParse(doc);
     expect(parsed.success).toBe(true);
-    expect(doc.version).toBe(3);
+    expect(doc.version).toBe(4);
   });
 
   it("sets document size, orientation, and name from the source", () => {
@@ -87,7 +88,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
       y: 0.5,
       w: 7.5,
       h: 1.75,
-      fill: "#cc0000",
+      fill: hexPaint("#cc0000"),
       rotation: 0,
     });
   });
@@ -99,7 +100,7 @@ describe("mapToLayoutDocument (plan §10.3, P2 content bar)", () => {
     expect(para.runs).toHaveLength(1);
     expect(para.runs[0]).toMatchObject({
       text: "GRAND OPENING",
-      color: "#ffffff", // the corpus's white-on-dark labels made this a P2 must
+      color: hexPaint("#ffffff"), // the corpus's white-on-dark labels made this a P2 must
     });
     expect(para.runs[0].font).toMatchObject({ family: "Impact", size: 48, bold: false });
     expect(para.align).toBe("center");
@@ -316,7 +317,7 @@ describe("mapper edge cases", () => {
     if (o.type !== "text" || !o.text) throw new Error("expected text frame");
     const run = o.text.paragraphs[0].runs[0];
     expect(run.text).toBe("✔"); // 0xFC — the corpus checkpoint checkmark
-    expect(run.color).toBe("#ffffff");
+    expect(run.color).toEqual(hexPaint("#ffffff"));
     expect(run.font.size).toBe(18); // 0.25in = 18pt
     expect(result.notes.some((n) => !n.objectId && n.message.includes("Wingdings"))).toBe(true);
   });
@@ -446,7 +447,7 @@ describe("gradient fill flattening", () => {
     const result = mapToLayoutDocument(buildModel(parseTrace(trace)), "x");
     const o = result.doc.pages[0].layers[0].objects[0];
     if (o.type === "line") throw new Error("unexpected line");
-    expect(o.fill).toBe("#5d7087"); // per-channel midpoint of the two stops
+    expect(o.fill && paintToHex(o.fill, [])).toBe("#5d7087"); // per-channel midpoint of the two stops
     expect(result.notes.some((n) => n.tier === 2 && n.message === "gradient fill flattened to the nearest flat color")).toBe(true);
     expect(result.fidelity.degraded).toBe(1);
   });
