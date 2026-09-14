@@ -6,15 +6,14 @@ import { surfaceObjects, useLayoutStore } from "@/store";
 import type {
   ArrowHead,
   ArrowHeadSize,
-  ColorValue,
   FrameObject,
   LayoutDocument,
   LayoutObject,
   LineDash,
   Paint,
+  Swatch,
 } from "@/schema";
-import { to255, toPercent } from "@/lib/color/convert";
-import { paintEquals, paintToCss, solidPaint } from "@/lib/color/paint";
+import { paintToCss, solidPaint } from "@/lib/color/paint";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import {
   DEFAULT_STROKE_PRESET,
@@ -36,9 +35,12 @@ import { Field, NumberField, SectionLabel } from "./Field";
 /**
  * Properties inspector tab (wire region 7, live per L4): Transform X/Y/W/H
  * round-trips the selected object's bbox (a line's endpoints map through it),
- * plus Fill and Stroke rows — the ink-set presets (grayscale ramp + brand
- * red + none) for one-click picks, and the color picker (Phase 12: CMYK
- * first, RGB, hex) for anything else. A picker drag is one history step:
+ * plus Fill and Stroke rows. Each row is the shared color picker (Phase 12:
+ * CMYK first, RGB, hex) behind a full-width chip of the current paint — the
+ * ONE colour-selection surface, as Phase 12 specifies; the ink set (grayscale
+ * ramp + brand red) rides along as the picker's presets and None is the
+ * picker's own button, so the standalone swatch rows are gone.
+ * A picker drag is one history step:
  * the edits ride `transient` and commitGesture closes them at release.
  * No selection shows the wire's empty state.
  * Merged prototype surfaces: a Shape section drives a parametric shape's
@@ -47,44 +49,33 @@ import { Field, NumberField, SectionLabel } from "./Field";
  * bar's functions, rehomed to the inspector per this app's pattern.
  */
 
-/** One preset ink from OBJECT_PALETTE (or None) — distinct from the
-    document's named Swatch model, which the picker lists separately. */
-function PresetSwatch({
-  color,
-  active,
-  onPick,
+/** The picker's trigger face for a Fill or Stroke row: a full-width chip of
+    the paint's PRINT PREVIEW, or the classic "none" diagonal when the paint is
+    null. `to top right` puts the band corner to corner at any chip size, so
+    one rule covers the row however wide the inspector gets. */
+function PaintChip({
+  paint,
+  swatches,
   testId,
 }: {
-  color: ColorValue | null;
-  active: boolean;
-  onPick: () => void;
+  paint: Paint | null;
+  swatches: readonly Swatch[];
   testId: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onPick}
+    <span
       data-testid={testId}
-      aria-label={
-        color
-          ? color.space === "cmyk"
-            ? `CMYK ${color.values.map(toPercent).join(" ")}`
-            : `RGB ${color.values.map(to255).join(" ")}`
-          : "None"
+      data-none={paint === null ? "true" : undefined}
+      className="block h-[26px] w-full rounded-[5px] border border-[#d6d6d6]"
+      style={
+        paint
+          ? { backgroundColor: paintToCss(paint, swatches) }
+          : {
+              background:
+                "linear-gradient(to top right, #fff calc(50% - 0.5px), var(--color-brand) calc(50% - 0.5px), var(--color-brand) calc(50% + 0.5px), #fff calc(50% + 0.5px))",
+            }
       }
-      aria-pressed={active}
-      className={`relative h-[18px] w-[18px] cursor-pointer rounded-[4px] border ${
-        active ? "border-[1.5px] border-brand" : "border-[#d6d6d6]"
-      }`}
-      style={{ backgroundColor: color ? paintToCss(solidPaint(color), []) : "#ffffff" }}
-    >
-      {color === null && (
-        // the classic "none" diagonal
-        <span className="absolute inset-0 overflow-hidden rounded-[3px]">
-          <span className="absolute left-1/2 top-1/2 h-[26px] w-px -translate-x-1/2 -translate-y-1/2 rotate-45 bg-brand" />
-        </span>
-      )}
-    </button>
+    />
   );
 }
 
@@ -383,57 +374,26 @@ export function PropertiesTab() {
       {!line && (
         <div>
           <SectionLabel>Fill</SectionLabel>
-          <div className="flex flex-wrap gap-[6px]">
-            <PresetSwatch
-              color={null}
-              active={obj.fill === null}
-              onPick={() => setObjectProps(obj.id, { fill: null })}
-              testId="fill-none"
-            />
-            {OBJECT_PALETTE.map((c) => (
-              <PresetSwatch
-                key={c.id}
-                color={c.color}
-                active={paintEquals(obj.fill, solidPaint(c.color))}
-                onPick={() => setFill(solidPaint(c.color), false)}
-                testId={`fill-${c.id}`}
-              />
-            ))}
-            <ColorPicker
-              value={obj.fill}
-              onChange={setFill}
-              onDragStart={dragStart}
-              onDragEnd={dragEnd}
-              swatches={swatches}
-              presets={OBJECT_PALETTE}
-              allowNone
-              ariaLabel="Fill color"
-              testIdPrefix="fill-picker"
-            />
-          </div>
+          <ColorPicker
+            value={obj.fill}
+            onChange={setFill}
+            onDragStart={dragStart}
+            onDragEnd={dragEnd}
+            swatches={swatches}
+            presets={OBJECT_PALETTE}
+            allowNone
+            ariaLabel="Fill color"
+            testIdPrefix="fill-picker"
+            triggerClassName="block w-full"
+          >
+            <PaintChip paint={obj.fill} swatches={swatches} testId="fill-chip" />
+          </ColorPicker>
         </div>
       )}
 
       <div>
         <SectionLabel>Stroke</SectionLabel>
-        <div className="mb-2 flex flex-wrap gap-[6px]">
-          {!line && (
-            <PresetSwatch
-              color={null}
-              active={stroke === null}
-              onPick={() => setObjectProps(obj.id, { stroke: null })}
-              testId="stroke-none"
-            />
-          )}
-          {OBJECT_PALETTE.map((c) => (
-            <PresetSwatch
-              key={c.id}
-              color={c.color}
-              active={paintEquals(stroke?.paint, solidPaint(c.color))}
-              onPick={() => setStrokePaint(solidPaint(c.color), false)}
-              testId={`stroke-${c.id}`}
-            />
-          ))}
+        <div className="mb-2">
           <ColorPicker
             value={stroke?.paint ?? null}
             onChange={setStrokePaint}
@@ -444,7 +404,10 @@ export function PropertiesTab() {
             allowNone={!line}
             ariaLabel="Stroke color"
             testIdPrefix="stroke-picker"
-          />
+            triggerClassName="block w-full"
+          >
+            <PaintChip paint={stroke?.paint ?? null} swatches={swatches} testId="stroke-chip" />
+          </ColorPicker>
         </div>
         <div className="flex items-center gap-2">
           <div className="text-[10px] text-[#999]">Width</div>

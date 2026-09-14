@@ -395,13 +395,16 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     await expect(page.getByTestId("status-tool")).toHaveText("Select tool · ready");
   });
 
-  test("fill swatches restyle the selection; drawn objects persist", async ({ page }) => {
+  test("fill presets restyle the selection; drawn objects persist", async ({ page }) => {
     await page.goto("/layout");
     await page.getByTestId("tool-rect").click();
     await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
 
     await page.getByTestId("insp-page").click();
-    await page.getByTestId("fill-brand").click();
+    // the ink set lives inside the picker now — there is no standalone swatch row
+    await page.getByTestId("fill-picker-trigger").click();
+    await page.getByTestId("fill-picker-preset-brand").click();
+    await page.keyboard.press("Escape");
     // The canvas shows the PRINT PREVIEW (plan Phase 12): the brand preset
     // is C0 M100 Y100 K20, rendered as the GRACoL press prints it — not the
     // screen's #cc0000.
@@ -477,11 +480,43 @@ test.describe("Objects: draw, select, transform (L4)", () => {
     await page.getByTestId("stroke-picker-none").click();
     // no stroke = no border (preflight keeps border-style solid at width 0)
     await expect(page.getByTestId("object-rect")).toHaveCSS("border-width", "0px");
-    await expect(page.getByTestId("stroke-none")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("stroke-picker-none")).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press("Escape");
+    // the trigger chip carries the none state once the popover closes
+    await expect(page.getByTestId("stroke-chip")).toHaveAttribute("data-none", "true");
 
     // the default fill is 5% K, previewed as the press prints it
     await expect(page.getByTestId("object-rect")).toHaveCSS("background-color", "rgb(243, 243, 243)");
+  });
+
+  test("the Fill and Stroke rows are picker-only; the chip previews as the press prints", async ({
+    page,
+  }) => {
+    await page.goto("/layout");
+    await page.getByTestId("tool-rect").click();
+    await drag(page, { x: 40, y: 40 }, { x: 140, y: 120 });
+    await page.getByTestId("insp-page").click();
+
+    // the standalone swatch rows retired with Phase 12 — the picker is the ONE
+    // colour-selection surface, so the ink set is reachable only inside it
+    await expect(page.getByTestId("fill-brand")).toHaveCount(0);
+    await expect(page.getByTestId("fill-none")).toHaveCount(0);
+    await expect(page.getByTestId("stroke-k67")).toHaveCount(0);
+    await expect(page.getByTestId("stroke-none")).toHaveCount(0);
+
+    // the chip is the trigger: it shows the PRINT PREVIEW of the current paint,
+    // not the screen hex (the default fill is 5% K)
+    await expect(page.getByTestId("fill-chip")).toHaveCSS("background-color", "rgb(243, 243, 243)");
+    await page.getByTestId("fill-picker-trigger").click();
+    await page.getByTestId("fill-picker-preset-brand").click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("fill-chip")).toHaveCSS("background-color", "rgb(197, 42, 24)");
+    await expect(page.getByTestId("fill-chip")).not.toHaveAttribute("data-none");
+
+    await page.getByTestId("fill-picker-trigger").click();
+    await page.getByTestId("fill-picker-none").click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("fill-chip")).toHaveAttribute("data-none", "true");
   });
 
   test("Insert band arms tools; Table is honest about being deferred", async ({ page }) => {
@@ -660,16 +695,62 @@ test.describe("Text frames & typography (L5)", () => {
     await expect(para).toHaveCSS("line-height", "38.4px");
   });
 
+  test("the Text tab's Color row is the Home band's picker on the same target", async ({ page }) => {
+    await page.goto("/layout");
+    await typeFrame(page, { x: 40, y: 40 }, { x: 300, y: 140 }, "Ink me");
+    const ink = page.getByTestId("text-content").locator("span").first();
+
+    await page.getByTestId("insp-text").click();
+    // the chip starts at the default body ink (100% K) as the press prints it
+    // — rich black on paper, not the screen's #000
+    await expect(page.getByTestId("tab-color-chip")).toHaveCSS(
+      "background-color",
+      "rgb(22, 23, 19)",
+    );
+
+    // the tab's picker restyles every run, exactly as the ribbon's does
+    await page.getByTestId("tab-color-trigger").click();
+    await expect(page.getByTestId("tab-color-mode-cmyk")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("tab-color-preset-brand").click();
+    await page.keyboard.press("Escape");
+    await expect(ink).toHaveCSS("color", "rgb(197, 42, 24)");
+    await expect(page.getByTestId("tab-color-chip")).toHaveCSS(
+      "background-color",
+      "rgb(197, 42, 24)",
+    );
+
+    // one target, two surfaces. The ribbon picker opens SEEDED with the ink the
+    // tab just applied, so typing K alone keeps brand's C/M/Y (0/100/100) and
+    // lands on 0/100/100/50 — it could only do that reading the same target —
+    // and the tab's chip picks the change straight back up
+    await page.getByTestId("ribbon-home").click();
+    await page.getByTestId("font-color-trigger").click();
+    await page.getByTestId("font-color-k").fill("50");
+    await page.getByTestId("font-color-k").press("Enter");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("tab-color-chip")).toHaveCSS(
+      "background-color",
+      "rgb(142, 35, 12)",
+    );
+
+    // the picker's edit is one undo step, like every other styling click
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(ink).toHaveCSS("color", "rgb(197, 42, 24)");
+  });
+
   test("typography controls disable without a text target", async ({ page }) => {
     await page.goto("/layout");
     await expect(page.getByTestId("tog-bold")).toBeDisabled();
     await expect(page.getByTestId("font-family")).toBeDisabled();
     await expect(page.getByTestId("style-heading")).toBeDisabled();
+    await page.getByTestId("insp-text").click();
+    await expect(page.getByTestId("tab-color-trigger")).toBeDisabled();
 
     // a rect selection is not a text target either
     await page.getByTestId("tool-rect").click();
     await dragOnPage(page, { x: 40, y: 40 }, { x: 160, y: 120 });
     await expect(page.getByTestId("tog-bold")).toBeDisabled();
+    await expect(page.getByTestId("tab-color-trigger")).toBeDisabled();
   });
 });
 
