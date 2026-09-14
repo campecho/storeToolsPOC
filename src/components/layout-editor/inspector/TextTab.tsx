@@ -1,8 +1,21 @@
 "use client";
 
+import { useRef } from "react";
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight } from "lucide-react";
-import { FONT_FAMILIES, FONT_SIZES, LINE_SPACINGS, TEXT_STYLES, matchTextStyle } from "@/lib/layout/text";
+import {
+  DEFAULT_TEXT_INK,
+  FONT_FAMILIES,
+  FONT_SIZES,
+  LINE_SPACINGS,
+  TEXT_STYLES,
+  matchTextStyle,
+} from "@/lib/layout/text";
 import { formatIn } from "@/lib/layout/presets";
+import { useLayoutStore } from "@/store";
+import type { LayoutDocument } from "@/schema";
+import { paintToCss } from "@/lib/color/paint";
+import { OBJECT_PALETTE } from "@/lib/layout/objects";
+import { ColorPicker } from "@/components/ui/ColorPicker";
 import { FaceSelect } from "../FaceSelect";
 import { useTextTarget } from "../useTextTarget";
 import { SectionLabel } from "./Field";
@@ -10,13 +23,20 @@ import { SectionLabel } from "./Field";
 /**
  * Text inspector tab (wire region 7): Character · Paragraph · Style — live
  * against the text target (plan L5). Without one it keeps the wire's at-rest
- * faces (left align shown active), disabled.
+ * faces (left align shown active, the default body ink), disabled.
+ *
+ * Character's Color row is the SAME picker the Home band's font-color button
+ * opens, on the same target through the same hook — the two surfaces can't
+ * drift apart, per L5.
  */
 export function TextTab() {
   const { target, summary, apply, applyStyle } = useTextTarget();
   const font = summary?.font;
   const align = summary?.align ?? "left";
   const styleKey = target ? matchTextStyle(target.text) : undefined;
+  const swatches = useLayoutStore((s) => s.doc.swatches);
+  const commitGesture = useLayoutStore((s) => s.commitGesture);
+  const dragBefore = useRef<LayoutDocument | null>(null);
 
   const fieldFace =
     "flex h-[30px] items-center justify-between rounded-[5px] border border-[#d6d6d6] bg-white px-[9px] text-[12px] text-[#555]";
@@ -77,6 +97,41 @@ export function TextTab() {
               I
             </button>
           </div>
+        </div>
+        {/* Run ink. The face reads the frame's dominant colour (per-run since
+            schema v2, a Paint since v4) and the edit maps over every run, like
+            the other typography controls. A picker drag is one history step:
+            the edits ride `transient` and commitGesture closes them at release. */}
+        <div className="mt-2">
+          <ColorPicker
+            value={summary?.color ?? null}
+            onChange={(paint, live) => {
+              if (paint) apply({ color: paint }, live);
+            }}
+            onDragStart={() => {
+              dragBefore.current = useLayoutStore.getState().doc;
+            }}
+            onDragEnd={() => {
+              if (dragBefore.current) commitGesture(dragBefore.current);
+              dragBefore.current = null;
+            }}
+            swatches={swatches}
+            presets={OBJECT_PALETTE}
+            disabled={!target}
+            ariaLabel="Font color"
+            testIdPrefix="tab-color"
+            triggerClassName="block w-full"
+          >
+            <span
+              data-testid="tab-color-chip"
+              className={`block h-[30px] w-full rounded-[5px] border border-[#d6d6d6] ${
+                target ? "" : "opacity-60"
+              }`}
+              style={{
+                backgroundColor: paintToCss(summary?.color ?? DEFAULT_TEXT_INK, swatches),
+              }}
+            />
+          </ColorPicker>
         </div>
       </div>
 

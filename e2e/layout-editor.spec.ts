@@ -695,16 +695,62 @@ test.describe("Text frames & typography (L5)", () => {
     await expect(para).toHaveCSS("line-height", "38.4px");
   });
 
+  test("the Text tab's Color row is the Home band's picker on the same target", async ({ page }) => {
+    await page.goto("/layout");
+    await typeFrame(page, { x: 40, y: 40 }, { x: 300, y: 140 }, "Ink me");
+    const ink = page.getByTestId("text-content").locator("span").first();
+
+    await page.getByTestId("insp-text").click();
+    // the chip starts at the default body ink (100% K) as the press prints it
+    // — rich black on paper, not the screen's #000
+    await expect(page.getByTestId("tab-color-chip")).toHaveCSS(
+      "background-color",
+      "rgb(22, 23, 19)",
+    );
+
+    // the tab's picker restyles every run, exactly as the ribbon's does
+    await page.getByTestId("tab-color-trigger").click();
+    await expect(page.getByTestId("tab-color-mode-cmyk")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("tab-color-preset-brand").click();
+    await page.keyboard.press("Escape");
+    await expect(ink).toHaveCSS("color", "rgb(197, 42, 24)");
+    await expect(page.getByTestId("tab-color-chip")).toHaveCSS(
+      "background-color",
+      "rgb(197, 42, 24)",
+    );
+
+    // one target, two surfaces. The ribbon picker opens SEEDED with the ink the
+    // tab just applied, so typing K alone keeps brand's C/M/Y (0/100/100) and
+    // lands on 0/100/100/50 — it could only do that reading the same target —
+    // and the tab's chip picks the change straight back up
+    await page.getByTestId("ribbon-home").click();
+    await page.getByTestId("font-color-trigger").click();
+    await page.getByTestId("font-color-k").fill("50");
+    await page.getByTestId("font-color-k").press("Enter");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("tab-color-chip")).toHaveCSS(
+      "background-color",
+      "rgb(142, 35, 12)",
+    );
+
+    // the picker's edit is one undo step, like every other styling click
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(ink).toHaveCSS("color", "rgb(197, 42, 24)");
+  });
+
   test("typography controls disable without a text target", async ({ page }) => {
     await page.goto("/layout");
     await expect(page.getByTestId("tog-bold")).toBeDisabled();
     await expect(page.getByTestId("font-family")).toBeDisabled();
     await expect(page.getByTestId("style-heading")).toBeDisabled();
+    await page.getByTestId("insp-text").click();
+    await expect(page.getByTestId("tab-color-trigger")).toBeDisabled();
 
     // a rect selection is not a text target either
     await page.getByTestId("tool-rect").click();
     await dragOnPage(page, { x: 40, y: 40 }, { x: 160, y: 120 });
     await expect(page.getByTestId("tog-bold")).toBeDisabled();
+    await expect(page.getByTestId("tab-color-trigger")).toBeDisabled();
   });
 });
 
