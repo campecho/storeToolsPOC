@@ -246,6 +246,9 @@ previewRecordId: string | null;     // id, not index — survives sort/exclude/e
   seeded with the *placeholder chips* (the editable truth); the at-rest
   render returns to values when the session ends. Preview never alters what
   is stored.
+- **When the current record goes away** (excluded, deleted, or filtered out
+  by a re-import) the navigator moves to the nearest included record;
+  removing the data source turns preview off.
 - **Overflow**: the live overset badge measures whatever is rendered, so in
   preview it reports overflow for the current record — a feature. A
   "check every record" pass is Later (§4.10).
@@ -284,10 +287,10 @@ steps are reachable in any order once a source exists.
    workbook has several — re-reads on change), first five rows as a table,
    "N records · M columns", the display-format note (§4.3), and the typed
    errors. "Change source" and "Remove" here too.
-2. **Map Fields** — a table of every text box in the document (page ·
-   label, using the same labelling preflight gives its issues — the
-   module-private `objectLabel` in `preflight.ts`, exported for this) with a
-   column dropdown:
+2. **Map Fields** — a table of every text box on the document's pages and
+   masters (page or master · label, using the same labelling preflight
+   gives its issues — the module-private `objectLabel` in `preflight.ts`,
+   exported for this) with a column dropdown:
    choosing a column **binds the box** (§4.2); a box holding inline fields
    among literal text shows "Custom (2 fields)" with an "Unbind all" action;
    "— none —" unbinds. This is the "assign columns to text fields"
@@ -311,7 +314,7 @@ Mail merge therefore rides existing surfaces:
 
 | Surface | Addition |
 |---|---|
-| **Insert band** (`InsertBand.tsx`) | New `RibbonGroup` **Mail merge**: **Data source** tile (opens the setup dialog), **Merge field ▾** (dropdown of columns; inserts at the caret when a text session is open, appends to the selected text box otherwise, or creates a text box at the page centre holding just the field when nothing is selected — the prototype's three insert cases), **Review data** tile. The two data tiles disable with a tooltip until a source exists. |
+| **Insert band** (`InsertBand.tsx`) | New `RibbonGroup` **Mail merge**: **Data source** tile (opens the setup dialog), **Merge field ▾** (a column list on the shared `Popover` primitive, `src/components/ui/Popover.tsx`; inserts at the caret when a text session is open, appends to the selected text box otherwise, or creates a text box at the page centre holding just the field when nothing is selected — the prototype's three insert cases), **Review data** tile. The two data tiles disable with a tooltip until a source exists. |
 | **Text tab** (`inspector/TextTab.tsx`) | New **Mail merge** section under the typography controls when the target box exists and a source is loaded: **Insert field ▾**, **Bind box to column ▾** (current binding shown), and the box's fields as removable chips. Uses `useTextTarget`, so it follows the edited-or-selected box like every other text control. |
 | **Status bar** (`StatusBar.tsx`) | Preview chip, record navigator, Exclude, Edit list (§4.4). |
 | **Canvas** | Field chips; preview banner. |
@@ -344,8 +347,10 @@ requestFieldInsert(column)          // caret path, consumed by the edit overlay 
 setMergeDialog("setup" | "review" | null)
 ```
 
-Selectors in `src/lib/merge/records.ts` (pure, tested): `orderedRecords`,
-`includedRecords`, `currentRecord`, `matchedCount`, `neighbourRecord`.
+`setMergeData` also drops a `sort` whose column the new source lacks and
+clears the preview state (§4.4). Selectors in `src/lib/merge/records.ts`
+(pure, tested): `orderedRecords`, `includedRecords`, `currentRecord`,
+`matchedCount`, `neighbourRecord`.
 Persist: `partialize` already carries `doc`, so `merge` rides along; the
 session fields are excluded like `spread`. `undo`/`redo` snapshot `doc`, so
 merge edits are undoable; the persist `merge` function needs no change
@@ -369,8 +374,12 @@ or after it, Backspace/Delete removes it whole, typing never lands inside.
   (`{ column, seq }`); on change it builds the chip in the current run's
   style at the selection range (`Range.insertNode`, collapsing after), then
   runs the same parse-and-`setTextParagraphs` path as `onInput`, so the
-  session's single history commit still covers it. Plain-text paste stays
-  plain (a pasted «Name» is literal text, not a field).
+  session's single history commit still covers it. The session survives
+  the click on the ribbon or Text tab exactly as it survives the styling
+  clicks today (reseed + caret restore); if the selection has nonetheless
+  left the overlay, the chip goes at the last captured caret offset, else
+  at the end. Plain-text paste stays plain (a pasted «Name» is literal
+  text, not a field).
 - Cmd/Ctrl+B/I/U and the styling surfaces map over field runs like any run
   (`applyToAllRuns` is unchanged).
 
