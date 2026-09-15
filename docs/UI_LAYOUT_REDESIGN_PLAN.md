@@ -279,7 +279,9 @@ path.
 - **Phase 10 — deferred (design exists, out of initial scope).** Booklet
   imposition, Package job, Mail merge, table editor, PDF export presets,
   "Bench"/"Layouts"/"Recent Jobs" suite surfaces, photo editor re-skin to
-  the new chrome. Each needs its own plan before work starts.
+  the new chrome. Each needs its own plan before work starts. *(Mail merge:
+  plan proposed 2026-09-15 in `docs/MAIL_MERGE_PLAN.md`, awaiting
+  confirmation.)*
 - **Phase 11 — picker as home + Quick Import (added 2026-08-26).** Source
   frames `Publisher - select a template` (`91:768`), `… - Custom`
   (`223:12210`), and `Publisher - Quick Import` (`200:5279` upload state,
