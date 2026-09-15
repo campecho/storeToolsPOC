@@ -23,7 +23,7 @@ not built here — see §8 decision 6.
 | `publisher-prototype/docs/microsoft_publisher_feature_requirements.md` §7.1 | Data sources (Excel, CSV, Outlook, Access, other); merge fields, address blocks, greeting lines, field formatting, recipient filtering and sorting, preview merged records, generate/print/PDF merged output. "Data mapping should be clear and correctable. Invalid or missing fields should be flagged. Large recipient lists must process reliably." |
 | `docs/Desktop_Publisher_Design_Doc.md` §4.7 | CSV/TSV/XLSX/JSON sources; text tokens and image merge; conditional logic; catalog (repeating) merge and one-record-per-page; live preview; per-record PDF. |
 | `docs/UI_LAYOUT_REDESIGN_PLAN.md` §2 "Dialogs", Phase 10, decisions 1 and 7 | The figma frame `mail-merge-setup`: a dialog with a steps rail **Select Data Source → Map Fields → Preview Records → Generate Sheets**, a source `customers_q4.xlsx`, a field-mapping table, and "Matched: 847 of 1,203 recipients". Mail merge is Phase 10 (deferred, needs its own plan). The five-item menu set is canonical (no Mailings menu — the eight-item variants in the mail-merge frames are drift); the right-panel tabs are fixed at Page / Text / Layers / Preflight. |
-| `publisher-prototype/src/core/registry/tools/data.ts`, `panels.ts` (`data-merge`) | The prototype's merge-field contract: insert **inline in text** when clicking inside a text frame, as a standalone field frame on empty canvas; preview toggle is **view state, never document history**; missing fields are flagged **wherever the field renders**; a `format` option (as entered / upper / lower / title case); real data-source connection, batch generation, and merged print/PDF are process-boundary (SURFACE) operations. |
+| `publisher-prototype/src/core/registry/tools/data.ts`, `publisher-prototype/src/core/registry/panels.ts` (`data-merge`) | The prototype's merge-field contract: insert **inline in text** when clicking inside a text frame, as a standalone field frame on empty canvas; preview toggle is **view state, never document history**; missing fields are flagged **wherever the field renders**; a `format` option (as entered / upper / lower / title case); real data-source connection, batch generation, and merged print/PDF are process-boundary (SURFACE) operations. |
 | `publisher-prototype/src/core/model/objects.ts` `MergeFieldObjectSchema` | A standalone merge field is a text-frame-like object carrying `field` (the column name) and optional `text` styling; inline fields are "a text-engine tranche concern". |
 | `docs/SECURITY_CONSIDERATIONS.md` §2.4 and the VDP row | Merge lists are concentrated PII: minimize, expire, never accumulate; sanitize CSV formula-injection prefixes on any export. |
 | `docs/LAYOUT_EDITOR_PLAN.md` §1.3, §6 | Data merge / VDP deferred to "their own suite slices" — this plan is that slice for the editor. |
@@ -85,9 +85,11 @@ by another slice.
 ### 4.1 Document model (schema delta — additive, version stays 4)
 
 Two additions, both following the repo's additive rule ("absent = default,
-pre-delta documents parse unchanged" — the shape parameters and `swatches` /
-`assets` / `guides` precedents in `layout.ts`). No migration; v1–v3 documents
-still migrate to v4 and simply carry `merge: null`.
+pre-delta documents parse unchanged" — the shape parameters, `assets`, and
+`guides` precedents in `layout.ts`, each added without a version bump;
+`swatches` is not that precedent, it rode the v3→v4 bump the Paint change
+forced). No migration; v1–v3 documents still migrate to v4 and simply carry
+`merge: null`.
 
 **A field run.** `TextRunSchema` gains an optional column binding:
 
@@ -309,12 +311,12 @@ frame is a follow-up, exactly as Phase 11 recorded.
 
 ### 4.7 Where the controls live (no new menu, no new tab)
 
-Decision 1 rules out a Mailings menu; decision 7 fixes the inspector tabs.
-Mail merge therefore rides existing surfaces:
+The redesign plan's decision 1 rules out a Mailings menu and its decision 7
+fixes the inspector tabs. Mail merge therefore rides existing surfaces:
 
 | Surface | Addition |
 |---|---|
-| **Insert band** (`InsertBand.tsx`) | New `RibbonGroup` **Mail merge**: **Data source** tile (opens the setup dialog), **Merge field ▾** (a column list on the shared `Popover` primitive, `src/components/ui/Popover.tsx`; inserts at the caret when a text session is open, appends to the selected text box otherwise, or creates a text box at the page centre holding just the field when nothing is selected — the prototype's three insert cases), **Review data** tile. The two data tiles disable with a tooltip until a source exists. |
+| **Insert band** (`InsertBand.tsx`) | New `RibbonGroup` **Mail merge**: **Data source** tile (opens the setup dialog), **Merge field ▾** (a column list on the shared `Popover` primitive, `src/components/ui/Popover.tsx`; inserts at the caret when a text session is open, appends to the selected text box otherwise, or creates a text box at the page centre holding just the field when nothing is selected — the prototype's two click cases plus a middle case of the POC's own, since its selection can exist without a caret), **Review data** tile. The two data tiles disable with a tooltip until a source exists. |
 | **Text tab** (`inspector/TextTab.tsx`) | New **Mail merge** section under the typography controls when the target box exists and a source is loaded: **Insert field ▾**, **Bind box to column ▾** (current binding shown), and the box's fields as removable chips. Uses `useTextTarget`, so it follows the edited-or-selected box like every other text control. |
 | **Status bar** (`StatusBar.tsx`) | Preview chip, record navigator, Exclude, Edit list (§4.4). |
 | **Canvas** | Field chips; preview banner. |
@@ -322,7 +324,8 @@ Mail merge therefore rides existing surfaces:
 | **Preflight tab** | The two merge rules (§4.10), located like any other issue. |
 
 If the team prefers a fifth inspector tab or a Mailings menu instead, that
-re-opens decisions 1 and 7 — stop-and-ask, per `CLAUDE.md`.
+re-opens the redesign plan's decisions 1 and 7 — stop-and-ask, per
+`CLAUDE.md`.
 
 ### 4.8 Store actions and history
 
@@ -400,10 +403,13 @@ name that overflows is caught before output.
 
 ### 4.11 Interactions with existing features
 
-- **Find & Replace** (`src/lib/layout/find-replace.ts`): `findMatches` and
-  `replaceInDoc` skip runs with `field` — a replace can never rewrite a
-  placeholder. (The label is still visible content for overset measurement
-  and preflight labels, which is why it lives in `text`.)
+- **Find & Replace** (`src/lib/layout/find-replace.ts`): field runs are
+  neither matched nor replaced, so a replace can never rewrite a
+  placeholder. `replaceInDoc` already works per run and simply skips them;
+  `findMatches` searches the frame's whole `textContent`, so it must build
+  its search text from the non-field runs instead (M2 work, tested). The
+  label stays visible content for overset measurement and preflight labels,
+  which is why it lives in `text`.
 - **Import** (`.pub`): §7.1 asks that Publisher merge placeholders be
   preserved and unresolved data-source references reported, not fatal. The
   mapper produces no fields today (libmspub's trace carries none we consume);
@@ -426,7 +432,9 @@ name that overflows is caught before output.
 ### 4.12 Alignment with the publisher prototype
 
 - Same column-name binding (`field: string`), same "flag wherever it
-  renders" and "preview is view state" rules, same three insert cases.
+  renders" and "preview is view state" rules, and the prototype's two click
+  insert cases (inline in text, standalone on empty canvas); the POC adds a
+  selected-box case and has no panel to drag from.
 - Divergence, deliberate: the POC has no `mergeField` object type — its
   per-run text model already exists, so a standalone field is a one-run text
   frame. At merge time the prototype's `MergeFieldObject` maps to that shape
@@ -434,7 +442,8 @@ name that overflows is caught before output.
   prototype's `format` option is Later here (§2).
 - The prototype's data-merge panel bundles data sources, fields, filtering,
   and preview into one panel; the POC spreads them over the setup dialog,
-  Text tab, and status bar because decisions 1 and 7 fix its chrome.
+  Text tab, and status bar because the redesign plan's decisions 1 and 7
+  fix its chrome.
   Functionally identical; recorded here so the eventual merge is a UI
   rehoming, not a model change.
 
@@ -444,7 +453,7 @@ Each phase lands independently on its own branch; gate for every phase:
 `npm run typecheck`, `npm run lint`, `npm run test`, `npm run e2e` green
 (the `ci.yml` checks and e2e lanes), plus a review pass. Commits touch the
 host repo only (no `publisher-prototype/` files). Store changes stay in
-`layout-store.ts`; the schema change is M0's and needs decision 1 first.
+`layout-store.ts`; the schema change is M0's and needs §8 decision 1 first.
 
 - **M0 — Schema and core library (no UI).** `src/lib/schema/merge.ts`;
   `field` on `TextRunSchema` and `merge` on `LayoutDocumentSchema`
@@ -463,7 +472,8 @@ host repo only (no `publisher-prototype/` files). Store changes stay in
 - **M2 — Fields on the canvas.** Chip render in `TextFrameNode`; chip
   seed/parse/caret in `rich-text-dom.ts`; caret insert in
   `TextEditOverlay.tsx`; Merge field ▾ tile; Text tab section; setup step 2
-  (Map Fields); find/replace skip; store insert/bind/unbind actions.
+  (Map Fields); find/replace reworked to skip field runs (§4.11); store
+  insert/bind/unbind actions.
 - **M3 — Preview.** Session state; status-bar Preview chip and navigator;
   `MergePreviewBanner.tsx`; record resolution in `TextFrameNode`; step 3's
   "Preview on canvas"; keyboard: none new (Escape closes dialogs via
@@ -496,15 +506,17 @@ Unit (vitest, colocated, node environment):
 - `fields.test.ts`: label, resolve (literal / resolved / unresolved / empty),
   bind and unbind (style preserved, never-empty rule), fields-in-document,
   unresolved listing.
-- `records.test.ts`: ordering with and without sort, included filter,
-  neighbour stepping at the ends, matched count, id stability across edits.
+- `records.test.ts`: ordering with and without sort, included filter, the
+  find-box predicate (case-insensitive, any column), neighbour stepping at
+  the ends, matched count, id stability across edits.
 - `layout.test.ts` (schema): v4 without `merge` parses; with `merge`
   parses; field/label invariant refuses drift; cells-length invariant.
 - `layout-store.test.ts`: every §4.8 action, history membership (document
   actions push, session actions don't), persist round-trip carries `merge`
   and drops preview state.
 - `preflight.test.ts`: both rules, hidden/non-print exclusion.
-- `find-replace.test.ts`: field runs skipped.
+- `find-replace.test.ts`: field runs neither counted nor replaced; a query
+  that would span a field's label finds nothing.
 - `container.test.ts`: `.staples` pack/unpack with `merge`.
 
 E2E (playwright, `e2e/layout-editor.spec.ts` + `storage.spec.ts`, fixture
@@ -516,7 +528,7 @@ E2E (playwright, `e2e/layout-editor.spec.ts` + `storage.spec.ts`, fixture
 - Toggle preview: values appear; next/prev change them; Exclude drops the
   record from the count; return to plan view restores chips.
 - Edit a cell in the review modal; the canvas preview reflects it; undo
-  reverts it.
+  reverts it. Type in the find box; the rows shown shrink to the matches.
 - Save then open the `.staples` file: source, records, and fields intact.
 - Preflight shows the unresolved error after "Remove data source".
 
@@ -532,8 +544,8 @@ merge-aware overflow pass across all records; renaming columns.
 
 1. **Schema delta is additive, version stays 4** — `field?` on runs with the
    label invariant, `merge` on the document defaulted to `null`. *Recommend
-   yes:* the same rule the shape parameters, swatches, assets, and guides
-   used; no migration; older builds read the file minus merge.
+   yes:* the same rule the shape parameters, assets, and guides used; no
+   migration; older builds read the file minus merge.
 2. **Records live in the document**, persisted with it and saved in the
    `.staples` file, capped at 2,000 records / 60 columns / 500 KB cell text.
    *Recommend yes* for the POC. Implications to accept: the recipient list is
